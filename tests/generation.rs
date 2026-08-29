@@ -5,6 +5,7 @@
 //! tests make that loud instead of silent.
 
 use scale_sim::geology::Rock;
+use scale_sim::network::{Network, Road};
 use scale_sim::polity::{Polities, UNCLAIMED};
 use scale_sim::settlement::{Kind, Settlements};
 use scale_sim::world::{Biome, World};
@@ -329,6 +330,118 @@ fn settlement_placement_is_deterministic() {
     let pop_a: Vec<u32> = a.list.iter().map(|s| s.population).collect();
     let pop_b: Vec<u32> = b.list.iter().map(|s| s.population).collect();
     assert_eq!(pop_a, pop_b, "same world produced different populations");
+}
+
+#[test]
+fn roads_stay_on_land_and_form_a_hierarchy() {
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let p = Polities::partition(&w, 24);
+        let s = Settlements::place(&w, &p, 2500);
+        let net = Network::build(&w, &s, 500);
+
+        for i in 0..w.biomes.len() {
+            if net.road[i] != Road::None {
+                assert!(
+                    w.elevation.data[i] >= w.sea_level,
+                    "seed {seed}: road at {i} runs over water"
+                );
+            }
+        }
+
+        let highway = net.count(Road::Highway);
+        let road = net.count(Road::Road);
+        let track = net.count(Road::Track);
+        assert!(highway > 0, "seed {seed}: no trunk routes at all");
+        // Trunk routes are the exception, not the rule. If highways
+        // outnumber tracks the traffic model has stopped discriminating.
+        assert!(
+            highway < track,
+            "seed {seed}: {highway} highway cells vs {track} track cells"
+        );
+        assert!(road > 0, "seed {seed}: no intermediate roads");
+
+        let paved = (highway + road + track) as f32;
+        let land = (w.land_fraction() * w.biomes.len() as f32).max(1.0);
+        let share = paved / land;
+        assert!(
+            (0.01..0.35).contains(&share),
+            "seed {seed}: roads cover {:.0}% of land",
+            share * 100.0
+        );
+    }
+}
+
+#[test]
+fn navigable_water_reaches_the_sea() {
+    // A big river draining into a closed basin is not a trade route. Every
+    // navigable stretch must connect to the ocean through other navigable
+    // cells.
+    let w = World::generate(256, 144, 20260828);
+    let p = Polities::partition(&w, 24);
+    let s = Settlements::place(&w, &p, 2500);
+    let net = Network::build(&w, &s, 500);
+
+    let (width, height) = (w.width, w.height);
+    let mut seen = vec![false; width * height];
+    let mut stack: Vec<usize> = Vec::new();
+
+    // Start from navigable cells touching the sea.
+    for i in 0..width * height {
+        if !net.navigable[i] {
+            continue;
+        }
+        let (x, y) = (i % width, i / width);
+        let mut at_sea = false;
+        for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+            let ny = y as i32 + dy;
+            if ny < 0 || ny >= height as i32 {
+                continue;
+            }
+            let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+            if matches!(w.biomes[ny as usize * width + nx], Biome::Ocean | Biome::Shallows) {
+                at_sea = true;
+            }
+        }
+        if at_sea {
+            seen[i] = true;
+            stack.push(i);
+        }
+    }
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % width, i / width);
+        for (dx, dy) in [(-1i32, 0i32), (1, 0), (0, -1), (0, 1)] {
+            let ny = y as i32 + dy;
+            if ny < 0 || ny >= height as i32 {
+                continue;
+            }
+            let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+            let j = ny as usize * width + nx;
+            if net.navigable[j] && !seen[j] {
+                seen[j] = true;
+                stack.push(j);
+            }
+        }
+    }
+
+    for i in 0..width * height {
+        assert!(
+            !net.navigable[i] || seen[i],
+            "navigable cell {i} is cut off from the sea"
+        );
+    }
+}
+
+#[test]
+fn network_is_deterministic() {
+    let w = World::generate(192, 108, 555);
+    let p = Polities::partition(&w, 20);
+    let s = Settlements::place(&w, &p, 1500);
+    let a = Network::build(&w, &s, 400);
+    let b = Network::build(&w, &s, 400);
+    assert_eq!(a.road, b.road, "same world produced different roads");
+    assert_eq!(a.navigable, b.navigable, "same world produced different waterways");
+    assert_eq!(a.chokepoints, b.chokepoints, "chokepoints differ between runs");
 }
 
 #[test]

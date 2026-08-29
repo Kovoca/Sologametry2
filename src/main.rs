@@ -18,6 +18,7 @@ use std::path::Path;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use scale_sim::geology::{Geology, Rock};
+use scale_sim::network::{Network, Road};
 use scale_sim::polity::{Polities, UNCLAIMED};
 use scale_sim::settlement::{Kind, Settlements};
 use scale_sim::world::{Biome, Params, World};
@@ -180,6 +181,7 @@ fn main() {
     // pure terrain.
     let polities = Polities::partition(&world, args.nations);
     let settlements = Settlements::place(&world, &polities, args.cities);
+    let network = Network::build(&world, &settlements, 1400);
 
     let dir = Path::new(&args.out);
     fs::create_dir_all(dir).expect("create output directory");
@@ -202,11 +204,14 @@ fn main() {
     write_polity_png(&world, &polities, &dir.join("world_nations.png"), scale);
     write_settlement_png(&world, &polities, &settlements,
         &dir.join("world_settlements.png"), scale);
+    write_network_png(&world, &settlements, &network,
+        &dir.join("world_routes.png"), scale);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
     print_polities(&world, &polities);
     print_settlements(&settlements);
+    print_network(&world, &network);
 }
 
 // --- PNG output ----------------------------------------------------------
@@ -477,6 +482,69 @@ fn write_settlement_png(
     img.save(path).expect("write settlement png");
 }
 
+/// Trade infrastructure over a dark land: navigable water in blue, roads
+/// graded by traffic, chokepoints picked out in red.
+fn write_network_png(
+    world: &World,
+    set: &Settlements,
+    net: &Network,
+    path: &Path,
+    scale: u32,
+) {
+    let (w, h) = (world.width, world.height);
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.elevation.data[i] < world.sea_level {
+                [12, 18, 36]
+            } else if net.navigable[i] {
+                [70, 145, 220]
+            } else if let Some(c) = net.road[i].colour() {
+                c
+            } else {
+                // Faint relief so routes read against the land they cross.
+                let e = ((world.elevation.data[i] - world.sea_level)
+                    / (1.0 - world.sea_level).max(1e-3))
+                .clamp(0.0, 1.0);
+                let v = (34.0 + e * 40.0) as u8;
+                [v, v - 4, v - 10]
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+
+    // Chokepoints, then the great cities they serve.
+    for &i in &net.chokepoints {
+        put_block(&mut img, i % w, i / w, scale, [255, 70, 60]);
+    }
+    for s in set.ranked().into_iter().take(120) {
+        put_block(&mut img, s.cell % w, s.cell / w, scale, [255, 255, 255]);
+    }
+
+    img.save(path).expect("write network png");
+}
+
+fn print_network(world: &World, net: &Network) {
+    let land = (world.land_fraction() * world.biomes.len() as f32).max(1.0);
+    let highway = net.count(Road::Highway);
+    let road = net.count(Road::Road);
+    let track = net.count(Road::Track);
+    let paved = highway + road + track;
+
+    println!(
+        "routes    {paved} cells of road ({:.1}% of land)   {} navigable water cells",
+        paved as f32 / land * 100.0,
+        net.navigable_count()
+    );
+    println!(
+        "  {highway} highway, {road} road, {track} track   {} chokepoints on the trunk network",
+        net.chokepoints.len()
+    );
+    println!();
+}
+
 fn fmt_pop(p: u32) -> String {
     if p >= 1_000_000 {
         format!("{:.1}M", p as f64 / 1.0e6)
@@ -709,7 +777,7 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     }
     print_geology(world);
 
-    println!("wrote 10 PNGs + world.txt to {out}/");
+    println!("wrote 11 PNGs + world.txt to {out}/");
     println!("re-generate this exact world with:  --seed {}", world.seed);
 }
 

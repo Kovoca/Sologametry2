@@ -31,6 +31,7 @@ is fast. It writes maps into `out/`:
 | `world_resources.png` | Deposits — red metal ore, white coal, green petroleum |
 | `world_nations.png` | Political territories, one colour each; white dot = capital |
 | `world_settlements.png` | Cities and towns — gold capitals, orange cities, white towns |
+| `world_routes.png` | Roads by traffic, blue navigable rivers, red chokepoints |
 | `world.txt` | The biome map as ASCII (`+` river, `o` lake) |
 
 It also prints a land-percentage and biome breakdown to the terminal.
@@ -76,6 +77,7 @@ src/
   geology.rs   rock type, mineral & fossil deposits, soil fertility
   polity.rs    natural political fragmentation (runs after World, reads it)
   settlement.rs cities and towns inside those territories
+  network.rs   navigable waterways, roads by traffic, chokepoints
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs

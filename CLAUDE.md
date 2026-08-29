@@ -94,8 +94,17 @@ follows the size of that hinterland** — no rank-size rule is imposed, the
 distribution falls out. Tuned against Earth: largest city ~11-46M, median
 ~300k, largest/median ~150x.
 
-Not built yet: water table, named-region detection, navigable-water
-routing and roads, flora/fauna, history sim.
+`src/network.rs` builds the trade infrastructure (spec A4.9). Every hub
+routes to the *nearest larger* hub, so traffic flows up a hierarchy the way
+real road networks grew; existing routes are cheaper to widen than to
+duplicate, so traffic converges onto trunk lines. Nothing is designated a
+highway — a highway is a road that ended up carrying a lot. Also marks
+navigable rivers (big flow, connected to the sea) and chokepoints (trunk
+cells with no parallel route: bridges, passes). Routing is 8-connected;
+4-connected comes out visibly axis-aligned.
+
+Not built yet: water table, named-region detection, rail/ports/airfields,
+flora/fauna, history sim.
 
 ## Calibrate against reality, not against taste
 
