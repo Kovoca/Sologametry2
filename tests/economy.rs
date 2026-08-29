@@ -16,7 +16,7 @@ fn run(econ: &mut Economy, days: u64) {
 
 #[test]
 fn conservation_holds_over_a_long_run() {
-    // Rule R1. Nothing may enter or leave except through the journal â€”
+    // Rule R1. Nothing may enter or leave except through the journal —
     // this is the property the whole ledger/journal structure exists to
     // guarantee, and the one that must never regress.
     let mut econ = slice::build(Doctrine::Negligent);
@@ -40,7 +40,7 @@ fn stock_never_goes_negative() {
                 let q = econ.ledger.sites[site].stock[c as usize];
                 assert!(
                     q > -1e-6,
-                    "{} holds {q:.6} {c} â€” stock went negative",
+                    "{} holds {q:.6} {c} — stock went negative",
                     econ.ledger.sites[site].name
                 );
             }
@@ -241,13 +241,16 @@ fn a_haul_contract_appears_because_the_arithmetic_changed() {
     run(&mut econ, 20);
     assert!(
         econ.arbitrage(0, FOOD) <= 0.0,
-        "a profitable haul exists in an undisturbed economy â€” \
+        "a profitable haul exists in an undisturbed economy — \
          the markets should be within freight cost of each other"
     );
 
-    econ.grid.fail_line("Kelling line A");
+    // A mere line fault will not do it: crews fix that inside the four-day
+    // food buffer and the shops never notice. It takes a transformer with
+    // no spare in store — a fault the region genuinely cannot answer.
+    econ.grid.fail_transformer("Kelling line A");
     let mut appeared = false;
-    for _ in 0..25 {
+    for _ in 0..40 {
         econ.step();
         if econ.arbitrage(0, FOOD) > 0.0 {
             appeared = true;
@@ -261,9 +264,29 @@ fn a_haul_contract_appears_because_the_arithmetic_changed() {
 }
 
 #[test]
+fn a_routine_fault_never_reaches_the_shops() {
+    // The counterpart, and the reason the one above needs a transformer:
+    // a working region absorbs an ordinary failure entirely. If every
+    // fault produced a famine the model would be worthless.
+    let mut econ = slice::build(Doctrine::Negligent);
+    run(&mut econ, 20);
+    econ.grid.fail_line("Kelling line A");
+    run(&mut econ, 25);
+
+    assert!(
+        econ.unmet_demand[FOOD as usize] == 0.0,
+        "a four-day line repair left people hungry"
+    );
+    assert!(
+        econ.arbitrage(0, FOOD) <= 0.0,
+        "a routine fault created a trade opportunity"
+    );
+}
+
+#[test]
 fn cutting_the_road_decouples_the_markets() {
     // Spec A.7: the price gap between two markets cannot exceed the cost
-    // of moving goods between them â€” unless nothing can move, in which
+    // of moving goods between them — unless nothing can move, in which
     // case they are no longer one market at all.
     let mut econ = slice::build(Doctrine::Prudent);
     run(&mut econ, 40);

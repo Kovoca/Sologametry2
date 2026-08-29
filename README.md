@@ -72,13 +72,17 @@ fault has to be noticed, reported over working comms, assigned to a crew,
 and travelled to before any work starts, so how long the lights stay off
 falls out of how the region is run:
 
-| Run | Outcome |
-|---|---|
-| `--doctrine negligent` (default) | no spare line; 10 days dark; food hits 5× cost, people go without, a profitable haul appears between the towns |
-| `--doctrine prudent` | spare line, crews nearby; 3 days; nobody notices |
-| `--fault transformer --doctrine prudent` | spare in store; 8 days |
-| `--fault transformer` (negligent) | none in store; built to order; still dark a year later |
-| `--comms-out` | nobody can report it; never fixed at all |
+| Run | Outage | Effect |
+|---|---|---|
+| `--doctrine negligent` (default) | 4 days | absorbed by the food buffer; nobody notices |
+| `--doctrine prudent` | 2 days | absorbed, and the spare line meant no blackout anyway |
+| `--fault transformer --doctrine prudent` | 7 days | spare fitted from store |
+| `--fault transformer` (negligent) | **still out after a year** | none in store, built to order; famine, and a profitable haul appears between the towns |
+| `--comms-out` | **never fixed** | nobody can report it, however obvious the effects |
+
+Note the shape of that: an ordinary fault is a nuisance a working region
+absorbs. Catastrophe needs a real cause — a part that has to be
+manufactured, or a region that cannot report its own emergency.
 
 ## Tests
 

@@ -7,8 +7,8 @@
 //! and nothing more.
 //!
 //! Hand-placed on purpose. This is the smallest world in which the
-//! connective systems â€” production, distribution, prices, freight, the
-//! grid â€” can be watched interacting, and it is meant to be replaced by
+//! connective systems — production, distribution, prices, freight, the
+//! grid — can be watched interacting, and it is meant to be replaced by
 //! generated regions once they demonstrably work.
 //!
 //! **Sized from demand, not by eye.** Ashford and Bexley hold 68,000
@@ -61,16 +61,33 @@ pub enum Doctrine {
 }
 
 impl Doctrine {
-    /// Days for a crew to reach the fault, and days of work once there.
+    /// How far the crews are kept from the things they maintain.
     ///
-    /// Real restoration for a downed transmission line is two to four days
-    /// all in. A well-run region hits the bottom of that; a neglected one
-    /// takes a week and a half, because the crew starts far away and
-    /// arrives without the right parts.
-    fn response_times(self) -> (u64, u64) {
+    /// A utility serving towns of forty and twenty-six thousand keeps a
+    /// depot among them — crews reach a fault in under an hour. A
+    /// neglected one has closed the local depot and runs everything from
+    /// the regional capital, which is further but still a morning's drive.
+    /// Neither is days away; distance is not what makes a bad utility
+    /// slow.
+    fn depot_km(self) -> f64 {
         match self {
-            Doctrine::Prudent => (1, 2),
-            Doctrine::Negligent => (4, 6),
+            Doctrine::Prudent => 25.0,
+            Doctrine::Negligent => 240.0,
+        }
+    }
+
+    /// Days of work once on site.
+    ///
+    /// A downed transmission line is two to four days end to end in
+    /// reality. A trained crew arriving with the right conductor and an
+    /// emergency tower on the lorry manages two. A neglected utility takes
+    /// twice that: wrong parts, a second trip, nobody who has done it
+    /// recently. What separates them is competence and stores, not
+    /// mileage.
+    fn repair_days(self) -> u64 {
+        match self {
+            Doctrine::Prudent => 2,
+            Doctrine::Negligent => 4,
         }
     }
 
@@ -182,10 +199,10 @@ pub fn build(doctrine: Doctrine) -> Economy {
     ];
 
     // One road. The freight cost on it is what bounds the price gap
-    // between the two towns (spec A.7) â€” cutting it is an economic event,
+    // between the two towns (spec A.7) — cutting it is an economic event,
     // not just a nuisance.
     let routes = vec![Route {
-        name: "Ashfordâ€“Bexley road".into(),
+        name: "Ashford–Bexley road".into(),
         a: ASHFORD,
         b: BEXLEY,
         freight_cost: 45.0,
@@ -221,8 +238,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
         }],
     };
 
-    let (travel_days, repair_days) = doctrine.response_times();
-
     Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
@@ -232,12 +247,17 @@ pub fn build(doctrine: Doctrine) -> Economy {
         response: Response {
             comms_up: true,
             crews: doctrine.crews(),
-            travel_days,
-            repair_days,
+            depot_km: doctrine.depot_km(),
+            crew_speed_kmh: 60.0,
+            working_hours: 10.0,
+            repair_days: doctrine.repair_days(),
             spare_transformers: doctrine.spares(),
-            // Twelve to eighteen months to have one built. This is the
-            // number that makes a transformer worth attacking.
-            transformer_lead_days: 420,
+            // Built to order. Twelve to eighteen months is the honest
+            // figure for a region that has to wait its turn in a
+            // manufacturer's queue; emergency procurement or borrowing one
+            // from a neighbouring utility would beat it, and is the
+            // obvious next thing to model.
+            transformer_lead_days: 400,
             incidents: Vec::new(),
         },
         unserved_power: 0.0,

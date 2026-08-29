@@ -1,4 +1,4 @@
-//! Runs the vertical-slice scenario and prints what happens.
+﻿//! Runs the vertical-slice scenario and prints what happens.
 //!
 //!   cargo run --release --bin slice
 //!   cargo run --release --bin slice -- --doctrine prudent
@@ -83,13 +83,21 @@ fn main() {
 
     let peak = 40.0;
     println!(
-        "state: {:?} — {} line(s), N-1 {}, {} crew(s) {} days away, {} spare transformer(s)",
+        "state: {:?} — {} line(s), N-1 {}, {} crew(s) at a depot {:.0} km away, \
+         {} spare transformer(s)",
         args.doctrine,
         econ.grid.lines.len(),
         if econ.grid.survives_n1(peak) { "satisfied" } else { "NOT satisfied" },
         econ.response.crews,
-        econ.response.travel_days,
+        econ.response.depot_km,
         econ.response.spare_transformers,
+    );
+    println!(
+        "       depot is {}",
+        match econ.response.travel_days() {
+            0 => "close enough that crews arrive the same day".to_string(),
+            n => format!("far enough that crews spend {n} day(s) on the road"),
+        }
     );
     if args.comms_out {
         println!("comms are down — nothing can be reported");
@@ -103,8 +111,8 @@ fn main() {
         econ.routes[0].freight_cost,
     );
 
-    println!(" day │ food: Ashford   Bexley │ cover A  cover B │ haul │ power │ event");
-    println!("─────┼────────────────────────┼──────────────────┼──────┼───────┼─────────────────");
+    println!(" day | food: Ashford   Bexley | cover A  cover B | haul | power | event");
+    println!("-----+------------------------+------------------+------+-------+-----------------");
 
     let f = Commodity::ProcessedFood;
     let mut last_state = String::new();
@@ -156,7 +164,7 @@ fn main() {
         }
 
         println!(
-            "{:>4} │ {:>13.0} {:>8.0} │ {:>7.1} {:>8.1} │ {:>4} │ {:>5} │ {}",
+            "{:>4} | {:>13.0} {:>8.0} | {:>7.1} {:>8.1} | {:>4} | {:>5} | {}",
             day,
             econ.price(slice::ASHFORD, f),
             econ.price(slice::BEXLEY, f),

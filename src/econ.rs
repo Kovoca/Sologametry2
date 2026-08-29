@@ -632,10 +632,16 @@ pub struct Response {
     pub comms_up: bool,
     /// Crews the state maintains. Zero means nothing is ever repaired.
     pub crews: usize,
-    /// Days for a crew to reach the fault. A well-run region keeps crews
-    /// and depots close to what they maintain; a neglected one sends them
-    /// from the capital.
-    pub travel_days: u64,
+    /// Road distance from the depot that holds the crews to the things
+    /// they maintain. What doctrine really decides is *where the depot is*
+    /// — a well-run utility keeps one in the towns it serves, a neglected
+    /// one runs everything from the regional capital.
+    pub depot_km: f64,
+    /// Road speed of a crew lorry, km/h.
+    pub crew_speed_kmh: f64,
+    /// Working hours in a day. Beyond this the crew stops for the night,
+    /// which is what turns distance into whole days.
+    pub working_hours: f64,
     /// Days of work once there. Trained crews with the right parts on the
     /// lorry finish in two; improvised ones take much longer.
     pub repair_days: u64,
@@ -649,6 +655,18 @@ pub struct Response {
 }
 
 impl Response {
+    /// Whole days to reach the fault. Anything a lorry can cover inside a
+    /// working day arrives the same day — which is nearly everything
+    /// inside a settled region, and why real outages are measured from
+    /// when the crew starts work rather than when it sets off.
+    pub fn travel_days(&self) -> u64 {
+        let per_day = self.crew_speed_kmh * self.working_hours;
+        if per_day <= 0.0 {
+            return 0;
+        }
+        (self.depot_km / per_day).floor() as u64
+    }
+
     pub fn crews_busy(&self, day: u64) -> usize {
         self.incidents
             .iter()
@@ -762,7 +780,7 @@ impl Economy {
         // known the moment the job is assigned.
         let free = self.response.crews.saturating_sub(self.response.crews_busy(day));
         if free > 0 {
-            let travel = self.response.travel_days;
+            let travel = self.response.travel_days();
             let mut sent = 0;
             let mut order: Vec<usize> = (0..self.response.incidents.len()).collect();
             order.sort_by_key(|&i| self.response.incidents[i].reported.unwrap_or(u64::MAX));

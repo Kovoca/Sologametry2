@@ -131,12 +131,24 @@ households buy → shops restock → inter-market trade → prices. Shops sell
 
 **Nothing is repaired on a schedule.** A fault must be noticed, reported
 over working comms, assigned to a crew, and travelled to before any work
-starts. Cut comms and it is never fixed at all. Real restoration times:
-a downed line is 2-4 days; a destroyed **transformer** is about a week if
-a spare is in store and twelve to eighteen months if not, because they are
-built to order. That gap is why holding spares is the highest-leverage
-prudence decision on a grid, and why transformers are what grid attacks
-target. `Doctrine` (prudent/negligent) sets redundancy, crews, travel time
+starts. Cut comms and it is never fixed at all.
+
+Real restoration times, and they matter:
+- A downed line is **2-4 days**. Travel is almost never the reason — a
+  crew lorry covers ~600 km in a working day, and any region with towns in
+  it has a depot far closer than that. Distance is not what makes a bad
+  utility slow; competence and stores are.
+- A destroyed **transformer** is about a week *if a spare is in store* and
+  twelve to eighteen months if not, because they are built to order. That
+  gap is why holding spares is the highest-leverage prudence decision on a
+  grid and why transformers are what grid attacks target.
+
+**A routine fault must not produce a famine.** A working region absorbs an
+ordinary failure inside its stock buffers; if every fault cascades, the
+model is worthless. Catastrophe should require a real cause — a part that
+must be manufactured, or a region that cannot report its own emergency.
+
+`Doctrine` (prudent/negligent) sets redundancy, crew count, depot distance
 and spares together — one trait, four concrete purchases.
 
 Things that were wrong first time, and would be again:
