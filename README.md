@@ -30,6 +30,7 @@ is fast. It writes maps into `out/`:
 | `world_fertility.png` | Soil fertility (tan = barren, green = prime farmland) |
 | `world_resources.png` | Deposits — red metal ore, white coal, green petroleum |
 | `world_nations.png` | Political territories, one colour each; white dot = capital |
+| `world_settlements.png` | Cities and towns — gold capitals, orange cities, white towns |
 | `world.txt` | The biome map as ASCII (`+` river, `o` lake) |
 
 It also prints a land-percentage and biome breakdown to the terminal.
@@ -49,6 +50,8 @@ cargo run --release -- --seed 7 --size 768x432 --land 0.45
 - `--nations N` — roughly how many polities to seed, `1`–`400` (default
   `28`). The real count and every border emerge from the terrain. Low
   values give a world of great powers, high values a world of peers.
+- `--cities N` — roughly how many settlements to place, `1`–`20000`
+  (default `9000`). Sizes come from the land each one draws on.
 - `--out DIR` — where to write the images (default `out`).
 
 ## Tests
@@ -72,6 +75,7 @@ src/
   hydrology.rs depression fill, flow routing, erosion, river/lake extraction
   geology.rs   rock type, mineral & fossil deposits, soil fertility
   polity.rs    natural political fragmentation (runs after World, reads it)
+  settlement.rs cities and towns inside those territories
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs

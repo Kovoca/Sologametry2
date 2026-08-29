@@ -6,6 +6,7 @@
 
 use scale_sim::geology::Rock;
 use scale_sim::polity::{Polities, UNCLAIMED};
+use scale_sim::settlement::{Kind, Settlements};
 use scale_sim::world::{Biome, World};
 
 const OCEAN: usize = Biome::Ocean as usize;
@@ -230,6 +231,104 @@ fn state_sizes_are_skewed_not_uniform() {
             p.concentration(1) * 100.0
         );
     }
+}
+
+#[test]
+fn every_polity_gets_exactly_one_capital() {
+    let w = World::generate(256, 144, 20260828);
+    let p = Polities::partition(&w, 24);
+    let s = Settlements::place(&w, &p, 2000);
+
+    for (id, _) in p.ranked() {
+        let capitals = s
+            .list
+            .iter()
+            .filter(|t| t.polity == id && t.kind == Kind::Capital)
+            .count();
+        assert_eq!(capitals, 1, "polity {id} has {capitals} capitals");
+    }
+}
+
+#[test]
+fn settlements_stand_on_owned_land() {
+    let w = World::generate(256, 144, 20260828);
+    let p = Polities::partition(&w, 24);
+    let s = Settlements::place(&w, &p, 2000);
+
+    for t in &s.list {
+        assert!(
+            w.elevation.data[t.cell] >= w.sea_level,
+            "settlement at {} is under water",
+            t.cell
+        );
+        assert_ne!(
+            p.owner[t.cell], UNCLAIMED,
+            "settlement at {} stands on unclaimed land",
+            t.cell
+        );
+        assert!(
+            !matches!(w.biomes[t.cell], Biome::Ocean | Biome::Shallows | Biome::Snowcap),
+            "settlement at {} is on {:?}",
+            t.cell,
+            w.biomes[t.cell]
+        );
+    }
+}
+
+#[test]
+fn city_sizes_span_orders_of_magnitude() {
+    // Real settlement systems run from a handful of megacities down to
+    // thousands of small towns. If the largest is only a few times the
+    // median, the hinterland model has stopped biting.
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let p = Polities::partition(&w, 24);
+        let s = Settlements::place(&w, &p, 3000);
+        let ranked = s.ranked();
+        assert!(ranked.len() > 500, "seed {seed}: only {} placed", ranked.len());
+
+        let largest = ranked[0].population as f64;
+        let median = (ranked[ranked.len() / 2].population as f64).max(1.0);
+        let ratio = largest / median;
+        assert!(
+            (15.0..600.0).contains(&ratio),
+            "seed {seed}: largest/median is {ratio:.0}x (Earth is about 150x)"
+        );
+    }
+}
+
+#[test]
+fn urban_population_is_conserved() {
+    // Every person must land in exactly one settlement — the total is
+    // shared out, never invented.
+    let w = World::generate(256, 144, 20260828);
+    let p = Polities::partition(&w, 24);
+    let s = Settlements::place(&w, &p, 2000);
+
+    let total = s.total_population() as f64;
+    let expected = 8.0e9 * 0.57;
+    let drift = (total - expected).abs() / expected;
+    assert!(
+        drift < 0.01,
+        "urban population {total:.0} drifted {:.1}% from {expected:.0}",
+        drift * 100.0
+    );
+}
+
+#[test]
+fn settlement_placement_is_deterministic() {
+    let w = World::generate(192, 108, 555);
+    let p = Polities::partition(&w, 20);
+    let a = Settlements::place(&w, &p, 1500);
+    let b = Settlements::place(&w, &p, 1500);
+
+    let cells_a: Vec<usize> = a.list.iter().map(|s| s.cell).collect();
+    let cells_b: Vec<usize> = b.list.iter().map(|s| s.cell).collect();
+    assert_eq!(cells_a, cells_b, "same world placed settlements differently");
+
+    let pop_a: Vec<u32> = a.list.iter().map(|s| s.population).collect();
+    let pop_b: Vec<u32> = b.list.iter().map(|s| s.population).collect();
+    assert_eq!(pop_a, pop_b, "same world produced different populations");
 }
 
 #[test]

@@ -10,4 +10,5 @@ pub mod hydrology;
 pub mod noise;
 pub mod polity;
 pub mod rng;
+pub mod settlement;
 pub mod world;

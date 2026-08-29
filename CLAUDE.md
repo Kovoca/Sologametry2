@@ -87,8 +87,24 @@ seed count; the real count and all borders emerge.
 This is *not* the history sim. Consolidation of these into great powers is
 the history sim's job.
 
+`src/settlement.rs` runs after both, placing cities and towns inside each
+polity. Sites are chosen for food/water/harbour/minerals; every land cell
+is then assigned to its cheapest-to-reach settlement, and **population
+follows the size of that hinterland** — no rank-size rule is imposed, the
+distribution falls out. Tuned against Earth: largest city ~11-46M, median
+~300k, largest/median ~150x.
+
 Not built yet: water table, named-region detection, navigable-water
-routing, flora/fauna, settlement placement, history sim.
+routing and roads, flora/fauna, history sim.
+
+## Calibrate against reality, not against taste
+
+Several passes were tuned by eye toward a "feel" that turned out to be
+wrong. Look up the real numbers first — it has repeatedly saved rounds of
+pointless tuning:
+- Earth's largest state holds 12.7% of land; top 3 hold 27%, top 5 41%.
+- Earth's largest city is ~37M; median city over 100k is ~250k.
+- Earth is ~29% land, ~91% of it claimed, ~10% arable.
 
 ## Rules that already cost time to learn
 

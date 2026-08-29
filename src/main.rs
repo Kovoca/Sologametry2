@@ -1,4 +1,4 @@
-//! Command-line world generator.
+﻿//! Command-line world generator.
 //!
 //! Generates a planet and writes it out as PNG maps plus a text report, so
 //! the terrain can be looked at and tuned long before there is a game to
@@ -19,6 +19,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use scale_sim::geology::{Geology, Rock};
 use scale_sim::polity::{Polities, UNCLAIMED};
+use scale_sim::settlement::{Kind, Settlements};
 use scale_sim::world::{Biome, Params, World};
 
 /// Concentration at or above which a deposit is worth extracting. Used for
@@ -34,6 +35,8 @@ struct Args {
     /// Roughly how many polities to seed. The actual count and every border
     /// emerge from the terrain.
     nations: usize,
+    /// Roughly how many settlements to place across the world.
+    cities: usize,
 }
 
 /// A fresh seed from the clock, for when the user hasn't pinned one.
@@ -57,6 +60,7 @@ fn parse_args() -> Args {
         out: "out".to_string(),
         params: Params::default(),
         nations: 28,
+        cities: 9000,
     };
 
     let mut it = std::env::args().skip(1);
@@ -114,6 +118,16 @@ fn parse_args() -> Args {
                     }
                 }
             }
+            "--cities" => {
+                let v = it.next().unwrap_or_default();
+                match v.parse::<usize>() {
+                    Ok(k) if (1..=20_000).contains(&k) => args.cities = k,
+                    _ => {
+                        eprintln!("bad --cities value: {v:?} (expected 1..20000)");
+                        std::process::exit(2);
+                    }
+                }
+            }
             "--wind" => {
                 let v = it.next().unwrap_or_default();
                 match v.as_str() {
@@ -135,6 +149,7 @@ fn parse_args() -> Args {
                      --wind e|w    prevailing wind direction (default e)\n\
                      --nations N   how many polities to seed, 1..400 (default 28);\n\
                      \x20             the real count and all borders emerge from terrain\n\
+                     --cities N    roughly how many settlements, 1..20000 (default 9000)\n\
                      --out DIR     output directory (default out)"
                 );
                 std::process::exit(0);
@@ -164,6 +179,7 @@ fn main() {
     // Political geography runs after the world, reading it. `World` stays
     // pure terrain.
     let polities = Polities::partition(&world, args.nations);
+    let settlements = Settlements::place(&world, &polities, args.cities);
 
     let dir = Path::new(&args.out);
     fs::create_dir_all(dir).expect("create output directory");
@@ -184,10 +200,13 @@ fn main() {
         &dir.join("world_fertility.png"), scale, ramp_fertility);
     write_resource_png(&world, &dir.join("world_resources.png"), scale);
     write_polity_png(&world, &polities, &dir.join("world_nations.png"), scale);
+    write_settlement_png(&world, &polities, &settlements,
+        &dir.join("world_settlements.png"), scale);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
     print_polities(&world, &polities);
+    print_settlements(&settlements);
 }
 
 // --- PNG output ----------------------------------------------------------
@@ -390,6 +409,131 @@ fn write_polity_png(world: &World, pol: &Polities, path: &Path, scale: u32) {
     img.save(path).expect("write polity png");
 }
 
+/// Settlements over a muted territory map: capitals gold, cities orange,
+/// towns white, sized by population so the hierarchy reads at a glance.
+fn write_settlement_png(
+    world: &World,
+    pol: &Polities,
+    set: &Settlements,
+    path: &Path,
+    scale: u32,
+) {
+    let (w, h) = (world.width, world.height);
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+
+    // Muted base so the settlements stand out.
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.elevation.data[i] < world.sea_level {
+                [14, 20, 40]
+            } else if pol.owner[i] == UNCLAIMED {
+                [40, 42, 44]
+            } else {
+                let c = Polities::colour(pol.owner[i]);
+                [c[0] / 4 + 18, c[1] / 4 + 18, c[2] / 4 + 18]
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+
+    // At 9,000 settlements on a 768-wide map nearly a tenth of the land is
+    // a dot, and the picture turns to noise. The full set is still in the
+    // data — this draws only the places worth naming, plus every capital.
+    const DRAWN: usize = 900;
+    let ranked = set.ranked();
+    let mut ordered: Vec<_> = ranked
+        .iter()
+        .enumerate()
+        .filter(|(rank, s)| *rank < DRAWN || s.kind == Kind::Capital)
+        .map(|(_, s)| *s)
+        .collect();
+
+    // Smallest first, so the great cities paint over their neighbours.
+    ordered.reverse();
+    for s in ordered {
+        let radius = match s.population {
+            p if p >= 8_000_000 => 3,
+            p if p >= 3_000_000 => 2,
+            p if p >= 1_000_000 => 1,
+            _ => 0,
+        };
+        let colour = s.kind.colour();
+        let (cx, cy) = ((s.cell % w) as i32, (s.cell / w) as i32);
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                if dx * dx + dy * dy > radius * radius + 1 {
+                    continue;
+                }
+                let y = cy + dy;
+                if y < 0 || y >= h as i32 {
+                    continue;
+                }
+                let x = (cx + dx).rem_euclid(w as i32) as usize;
+                put_block(&mut img, x, y as usize, scale, colour);
+            }
+        }
+    }
+    img.save(path).expect("write settlement png");
+}
+
+fn fmt_pop(p: u32) -> String {
+    if p >= 1_000_000 {
+        format!("{:.1}M", p as f64 / 1.0e6)
+    } else if p >= 1_000 {
+        format!("{:.0}k", p as f64 / 1.0e3)
+    } else {
+        format!("{p}")
+    }
+}
+
+fn print_settlements(set: &Settlements) {
+    let ranked = set.ranked();
+    if ranked.is_empty() {
+        println!("no settlements placed");
+        return;
+    }
+    println!(
+        "settlements   {} placed   {} capitals, {} cities, {} towns",
+        ranked.len(),
+        set.count_of(Kind::Capital),
+        set.count_of(Kind::City),
+        set.count_of(Kind::Town),
+    );
+    println!(
+        "  urban population {:.2}B   largest {}   median {}",
+        set.total_population() as f64 / 1.0e9,
+        fmt_pop(ranked[0].population),
+        fmt_pop(ranked[ranked.len() / 2].population),
+    );
+
+    println!("  rank        pop  kind      hinterland  site");
+    for (rank, s) in ranked.iter().enumerate().take(10) {
+        let mut site = Vec::new();
+        if s.coastal {
+            site.push("port");
+        }
+        if s.on_water {
+            site.push("river");
+        }
+        println!(
+            "  {:>4}  {:>9}  {:<8}  {:>10}  {}",
+            rank + 1,
+            fmt_pop(s.population),
+            s.kind.name(),
+            s.catchment,
+            if site.is_empty() { "inland".into() } else { site.join("+") },
+        );
+    }
+    let ports = ranked.iter().filter(|s| s.coastal).count();
+    println!(
+        "  {ports} of {} on the coast ({:.0}%)",
+        ranked.len(),
+        ports as f32 / ranked.len() as f32 * 100.0
+    );
+    println!();
+}
+
 fn print_polities(world: &World, pol: &Polities) {
     let ranked = pol.ranked();
     if ranked.is_empty() {
@@ -565,7 +709,7 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     }
     print_geology(world);
 
-    println!("wrote 9 PNGs + world.txt to {out}/");
+    println!("wrote 10 PNGs + world.txt to {out}/");
     println!("re-generate this exact world with:  --seed {}", world.seed);
 }
 
