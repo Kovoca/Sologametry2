@@ -61,6 +61,50 @@ impl Geology {
     pub fn deposit_count(field: &Field, t: f32) -> usize {
         field.data.iter().filter(|&&v| v >= t).count()
     }
+
+    /// Contiguous runs of workable cells — the distinct *deposit provinces*
+    /// on the map. Returns each province's size in cells, largest first.
+    ///
+    /// This is the number that matters for settlement: what decides whether
+    /// a region can support its own industry is how many separate places
+    /// have ore, not what share of the planet's surface does.
+    pub fn deposit_provinces(field: &Field, t: f32) -> Vec<usize> {
+        let (w, h) = (field.width, field.height);
+        let n = w * h;
+        let mut seen = vec![false; n];
+        let mut sizes = Vec::new();
+        let mut stack = Vec::new();
+
+        for start in 0..n {
+            if seen[start] || field.data[start] < t {
+                continue;
+            }
+            let mut size = 0usize;
+            stack.push(start);
+            seen[start] = true;
+            while let Some(i) = stack.pop() {
+                size += 1;
+                let (x, y) = (i % w, i / w);
+                let mut visit = |j: usize| {
+                    if !seen[j] && field.data[j] >= t {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                };
+                visit(y * w + (x + w - 1) % w);
+                visit(y * w + (x + 1) % w);
+                if y > 0 {
+                    visit((y - 1) * w + x);
+                }
+                if y + 1 < h {
+                    visit((y + 1) * w + x);
+                }
+            }
+            sizes.push(size);
+        }
+        sizes.sort_unstable_by(|a, b| b.cmp(a));
+        sizes
+    }
 }
 
 #[inline]
@@ -188,10 +232,16 @@ pub fn generate(
     // Independent crustal noise: which province, and where the veins run.
     let mut province = fbm(w, h, 3, 2.4, rng);
     province.normalise();
+    // Three scales of structure. Regional belts say *where* a mineral
+    // district is; the fine field says which specific fields inside it are
+    // actually worth working. Without the fine scale a deposit smears
+    // across a whole rock province and one nation owns all the ore.
     let mut vein_a = fbm(w, h, 5, 7.0, rng);
     vein_a.normalise();
     let mut vein_b = fbm(w, h, 6, 12.0, rng);
     vein_b.normalise();
+    let mut vein_fine = fbm(w, h, 5, 26.0, rng);
+    vein_fine.normalise();
     let mut basin_noise = fbm(w, h, 4, 3.0, rng);
     basin_noise.normalise();
 
@@ -254,25 +304,34 @@ pub fn generate(
         // 0 at the coast, ~1 at the highest peak.
         let altitude = ((elev.data[i] - sea_level) / land_span).clamp(0.0, 1.0);
 
-        // --- Metal ore: igneous/metamorphic, upland, along veins ---
+        // --- Metal ore: richest in igneous/metamorphic uplands, but not
+        // absent elsewhere. Sedimentary basins carry their own deposits
+        // (banded iron, sedimentary copper, placer gold), and lowland ore
+        // is common enough that confining it to the highlands would leave
+        // most of the planet with nothing to mine.
         let host = match rock[i] {
-            Rock::Metamorphic => 0.9,
-            Rock::Igneous => 0.7,
-            Rock::Sedimentary => 0.08,
+            Rock::Metamorphic => 1.0,
+            Rock::Igneous => 0.85,
+            Rock::Sedimentary => 0.42,
         };
-        let veins = (vein_a.data[i] * vein_b.data[i]).powf(0.9);
-        ore.data[i] = host * (0.25 + 0.75 * altitude.sqrt()) * veins;
+        let veins = (vein_a.data[i] * vein_fine.data[i]).powf(1.5);
+        ore.data[i] = host * (0.55 + 0.45 * altitude.sqrt()) * veins;
 
         // --- Coal: sedimentary lowlands with a wet, temperate past ---
         let coal_host = if rock[i] == Rock::Sedimentary { 1.0 } else { 0.12 };
         let peat = bell(rain_rank.data[i], 0.68, 0.24) * bell(temperature.data[i], 0.55, 0.28);
-        coal.data[i] = coal_host * peat * (1.0 - altitude).powf(1.5) * vein_a.data[i].powf(2.2);
+        coal.data[i] = coal_host
+            * peat
+            * (1.0 - altitude).powf(1.5)
+            * (vein_a.data[i] * vein_fine.data[i]).powf(1.4);
 
         // --- Petroleum: sedimentary former shallow seas near the coast ---
         let pet_host = if rock[i] == Rock::Sedimentary { 1.0 } else { 0.1 };
         let shelf = bell(altitude, 0.06, 0.09); // coastal lowland shelf
-        petroleum.data[i] =
-            pet_host * shelf * province.data[i].powf(1.5) * vein_b.data[i].powf(2.2);
+        petroleum.data[i] = pet_host
+            * shelf
+            * province.data[i].powf(1.5)
+            * (vein_b.data[i] * vein_fine.data[i]).powf(1.4);
 
         // --- Fertility ---
         let parent = match rock[i] {

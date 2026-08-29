@@ -449,6 +449,52 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     println!("re-generate this exact world with:  --seed {}", world.seed);
 }
 
+/// Fraction of land within `reach` cells of any workable deposit.
+/// Chebyshev distance by repeated dilation; X wraps, Y clamps.
+fn land_within_reach(world: &World, reach: usize) -> f32 {
+    let (w, h) = (world.width, world.height);
+    let g = &world.geology;
+
+    let mut near: Vec<bool> = (0..w * h)
+        .map(|i| {
+            g.ore.data[i] >= WORKABLE
+                || g.coal.data[i] >= WORKABLE
+                || g.petroleum.data[i] >= WORKABLE
+        })
+        .collect();
+
+    for _ in 0..reach {
+        let src = near.clone();
+        for y in 0..h {
+            let ym = y.saturating_sub(1);
+            let yp = (y + 1).min(h - 1);
+            for x in 0..w {
+                if src[y * w + x] {
+                    continue;
+                }
+                let xm = (x + w - 1) % w;
+                let xp = (x + 1) % w;
+                near[y * w + x] = src[y * w + xm]
+                    || src[y * w + xp]
+                    || src[ym * w + x]
+                    || src[yp * w + x];
+            }
+        }
+    }
+
+    let mut land = 0usize;
+    let mut served = 0usize;
+    for i in 0..w * h {
+        if world.elevation.data[i] >= world.sea_level {
+            land += 1;
+            if near[i] {
+                served += 1;
+            }
+        }
+    }
+    served as f32 / land.max(1) as f32
+}
+
 fn print_geology(world: &World) {
     let g = &world.geology;
     let land: Vec<usize> = (0..world.biomes.len())
@@ -481,7 +527,8 @@ fn print_geology(world: &World) {
         prime as f32 / land_n * 100.0
     );
 
-    println!("deposits (% of land at workable concentration)");
+    println!("deposits            % land   provinces   largest");
+    let mut provinces_total = 0usize;
     for (name, f) in [
         ("metal ore", &g.ore),
         ("coal", &g.coal),
@@ -489,12 +536,26 @@ fn print_geology(world: &World) {
     ] {
         let n = Geology::deposit_count(f, WORKABLE);
         let pct = n as f32 / land_n * 100.0;
+        let prov = Geology::deposit_provinces(f, WORKABLE);
+        provinces_total += prov.len();
         println!(
-            "  {:<11} {:>5.2}%  {}",
+            "  {:<16} {:>5.2}%   {:>9}   {:>7}",
             name,
             pct,
-            "#".repeat((pct * 2.0).round().min(40.0) as usize)
+            prov.len(),
+            prov.first().copied().unwrap_or(0),
         );
     }
+
+    // What matters for settlement is not the share of the surface that is
+    // ore, but whether a place has any within working distance.
+    let reach = 5; // cells; ~82 km at 16.4 km per cell
+    let served = land_within_reach(world, reach);
+    println!(
+        "  {} provinces total; {:.0}% of land within {} cells of a deposit",
+        provinces_total,
+        served * 100.0,
+        reach
+    );
     println!();
 }
