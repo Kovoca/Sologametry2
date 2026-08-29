@@ -55,6 +55,24 @@ cargo run --release -- --seed 7 --size 768x432 --land 0.45
   (default `9000`). Sizes come from the land each one draws on.
 - `--out DIR` — where to write the images (default `out`).
 
+## The vertical slice
+
+A second binary runs the economy scenario: two towns, one road, a farm →
+mill → cannery chain and the power station that runs it.
+
+```
+cargo run --release --bin slice
+cargo run --release --bin slice -- --grid redundant
+cargo run --release --bin slice -- --days 120 --fail-on 30 --repair-on 90
+```
+
+The default run cuts a transmission line on day 20 and repairs it on day
+45. With `--grid minimal` (the default) there is no spare line, so the
+cannery stops, food stock runs down, prices climb, and a profitable haul
+between the towns appears — because the arithmetic changed, not because
+anything generated it. With `--grid redundant` the identical failure has
+no effect at all.
+
 ## Tests
 
 ```
@@ -78,6 +96,9 @@ src/
   polity.rs    natural political fragmentation (runs after World, reads it)
   settlement.rs cities and towns inside those territories
   network.rs   navigable waterways, roads by traffic, chokepoints
+  econ.rs      commodities, journal, ledger, production, markets, grid
+  slice.rs     the two-town vertical-slice scenario
+  bin/slice.rs runs it and prints what happens
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs

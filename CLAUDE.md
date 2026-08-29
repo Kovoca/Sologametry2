@@ -112,6 +112,32 @@ cells with no parallel route: bridges, passes). Routing is 8-connected;
 Not built yet: water table, named-region detection, rail/ports/airfields,
 flora/fauna, history sim.
 
+## The economy (`src/econ.rs`, `src/slice.rs`)
+
+First of the connective systems, per `state-and-economy-spec.md`.
+
+**The journal is the only write path.** `Ledger::apply` takes `&mut
+Journal` so there is no route that changes a stockpile without recording
+why. `assert_conserved` runs every tick in debug builds and is asserted
+explicitly in tests. This is spec A2.3 and it is not negotiable — it exists
+to make the "state quietly evaporates at a handoff" bug class impossible.
+
+Day order: generate power → allocate (shed by priority) → produce →
+households buy → shops restock → inter-market trade → prices. Shops sell
+*before* restocking, so the day's cover figure means days-in-hand.
+
+`cargo run --release --bin slice` runs the two-town scenario.
+`tests/economy.rs` is the spec's acceptance test as assertions.
+
+Things that were wrong first time, and would be again:
+- Price as `scarcity^(1/elasticity)` compounds to absurdity — it priced
+  food at 4000x cost. Elasticity relates a *proportional* shortfall to a
+  proportional price move: `1 + shortfall/|elasticity|`.
+- A town with no works of its own must be able to restock down the road,
+  not only through price-gap arbitrage, or it starves in the baseline.
+- Traders must not ship a market below its own target cover, or the two
+  towns just slosh stock back and forth forever.
+
 ## Calibrate against reality, not against taste
 
 Several passes were tuned by eye toward a "feel" that turned out to be
