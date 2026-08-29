@@ -6,13 +6,16 @@
 //! matter more than they look: when terrain comes out wrong the biome map
 //! alone rarely tells you which field caused it.
 //!
+//! Each run picks a random planet unless `--seed` pins one. The seed used is
+//! always printed, so any world can be reproduced.
+//!
 //!   cargo run --release
 //!   cargo run --release -- --seed 12345
 //!   cargo run --release -- --seed 7 --size 512x288 --out out
 
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use scale_sim::world::{Biome, Params, World};
 
@@ -24,9 +27,22 @@ struct Args {
     params: Params,
 }
 
+/// A fresh seed from the clock, for when the user hasn't pinned one.
+fn random_seed() -> u64 {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    // Scramble so consecutive runs don't produce near-identical seeds.
+    let mut z = nanos ^ 0x9E3779B97F4A7C15;
+    z = (z ^ (z >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94D049BB133111EB);
+    z ^ (z >> 31)
+}
+
 fn parse_args() -> Args {
     let mut args = Args {
-        seed: 20260828,
+        seed: random_seed(),
         width: 768,
         height: 432,
         out: "out".to_string(),
@@ -93,8 +109,8 @@ fn parse_args() -> Args {
                 println!(
                     "usage: worldgen [--seed N] [--size WxH] [--land F] [--wind e|w] [--out DIR]\n\
                      \n\
-                     --seed N      pick a planet (same seed = same world)\n\
-                     --size WxH    map size in tiles (default 512x288)\n\
+                     --seed N      pick a planet (default: random; the seed used is printed)\n\
+                     --size WxH    map size in tiles (default 768x432)\n\
                      --land F      land fraction 0.05..0.90 (default 0.34, Earth ~0.29)\n\
                      --wind e|w    prevailing wind direction (default e)\n\
                      --out DIR     output directory (default out)"
@@ -255,4 +271,5 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     }
     println!();
     println!("wrote 4 PNGs + world.txt to {out}/");
+    println!("re-generate this exact world with:  --seed {}", world.seed);
 }

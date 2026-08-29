@@ -36,9 +36,9 @@ cargo run --release -- --seed 12345
 cargo run --release -- --seed 7 --size 768x432 --land 0.45
 ```
 
-- `--seed N` — pick a specific planet. The same seed always rebuilds the
-  exact same world.
-- `--size WxH` — map dimensions in tiles (default `512x288`).
+- `--seed N` — pick a specific planet. Without it, each run is a random
+  planet; the seed used is always printed so you can reproduce it.
+- `--size WxH` — map dimensions in tiles (default `768x432`).
 - `--land F` — land fraction, `0.05`–`0.90` (default `0.34`; Earth is ~0.29).
 - `--wind e|w` — prevailing wind direction (default `e`, west-to-east).
 - `--out DIR` — where to write the images (default `out`).
