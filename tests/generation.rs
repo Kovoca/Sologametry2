@@ -5,6 +5,7 @@
 //! tests make that loud instead of silent.
 
 use scale_sim::geology::Rock;
+use scale_sim::polity::{Polities, UNCLAIMED};
 use scale_sim::world::{Biome, World};
 
 const OCEAN: usize = Biome::Ocean as usize;
@@ -145,6 +146,69 @@ fn deposits_are_localised() {
             .count();
         assert!(any > 0, "seed {seed}: no workable deposits anywhere");
     }
+}
+
+#[test]
+fn polities_claim_most_land_and_leave_a_frontier() {
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let p = Polities::partition(&w, 24);
+
+        let land = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .count() as f32;
+        let claimed = p.owner.iter().filter(|&&o| o != UNCLAIMED).count() as f32;
+        let share = claimed / land;
+
+        assert!(
+            (0.55..=0.995).contains(&share),
+            "seed {seed}: {:.0}% of land claimed — want most settled but some frontier left",
+            share * 100.0
+        );
+    }
+}
+
+#[test]
+fn polities_never_claim_water() {
+    let w = World::generate(256, 144, 20260828);
+    let p = Polities::partition(&w, 24);
+    for i in 0..w.biomes.len() {
+        if matches!(w.biomes[i], Biome::Ocean | Biome::Shallows) {
+            assert_eq!(p.owner[i], UNCLAIMED, "cell {i} is water but is owned");
+        }
+    }
+}
+
+#[test]
+fn nation_count_tracks_the_request() {
+    // The count emerges from terrain, so it need not match exactly — but
+    // asking for more must reliably produce more, or the knob is a lie.
+    let w = World::generate(256, 144, 20260828);
+    let few = Polities::partition(&w, 4).ranked().len();
+    let many = Polities::partition(&w, 40).ranked().len();
+    assert!(few <= 6, "asked for 4 nations, got {few}");
+    assert!(many > few * 3, "asked for 40 vs 4, got {many} vs {few}");
+}
+
+#[test]
+fn fewer_nations_means_more_concentration() {
+    // The whole point of the knob: few polities is a world of great powers,
+    // many is a world of peers.
+    let w = World::generate(256, 144, 20260828);
+    let concentrated = Polities::partition(&w, 4).concentration(3);
+    let fragmented = Polities::partition(&w, 40).concentration(3);
+    assert!(
+        concentrated > fragmented + 0.25,
+        "top-3 share barely moved: {concentrated:.2} at 4 nations vs {fragmented:.2} at 40"
+    );
+}
+
+#[test]
+fn polity_partition_is_deterministic() {
+    let w = World::generate(192, 108, 555);
+    let a = Polities::partition(&w, 20);
+    let b = Polities::partition(&w, 20);
+    assert_eq!(a.owner, b.owner, "same world produced different borders");
 }
 
 #[test]

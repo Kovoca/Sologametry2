@@ -18,6 +18,7 @@ use std::path::Path;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use scale_sim::geology::{Geology, Rock};
+use scale_sim::polity::{Polities, UNCLAIMED};
 use scale_sim::world::{Biome, Params, World};
 
 /// Concentration at or above which a deposit is worth extracting. Used for
@@ -30,6 +31,9 @@ struct Args {
     height: usize,
     out: String,
     params: Params,
+    /// Roughly how many polities to seed. The actual count and every border
+    /// emerge from the terrain.
+    nations: usize,
 }
 
 /// A fresh seed from the clock, for when the user hasn't pinned one.
@@ -52,6 +56,7 @@ fn parse_args() -> Args {
         height: 432,
         out: "out".to_string(),
         params: Params::default(),
+        nations: 28,
     };
 
     let mut it = std::env::args().skip(1);
@@ -99,6 +104,16 @@ fn parse_args() -> Args {
                     }
                 }
             }
+            "--nations" => {
+                let v = it.next().unwrap_or_default();
+                match v.parse::<usize>() {
+                    Ok(k) if (1..=400).contains(&k) => args.nations = k,
+                    _ => {
+                        eprintln!("bad --nations value: {v:?} (expected 1..400)");
+                        std::process::exit(2);
+                    }
+                }
+            }
             "--wind" => {
                 let v = it.next().unwrap_or_default();
                 match v.as_str() {
@@ -118,6 +133,8 @@ fn parse_args() -> Args {
                      --size WxH    map size in tiles (default 768x432)\n\
                      --land F      land fraction 0.05..0.90 (default 0.34, Earth ~0.29)\n\
                      --wind e|w    prevailing wind direction (default e)\n\
+                     --nations N   how many polities to seed, 1..400 (default 28);\n\
+                     \x20             the real count and all borders emerge from terrain\n\
                      --out DIR     output directory (default out)"
                 );
                 std::process::exit(0);
@@ -144,6 +161,10 @@ fn main() {
     let world = World::generate_with(args.width, args.height, args.seed, args.params);
     let gen_ms = start.elapsed().as_secs_f64() * 1000.0;
 
+    // Political geography runs after the world, reading it. `World` stays
+    // pure terrain.
+    let polities = Polities::partition(&world, args.nations);
+
     let dir = Path::new(&args.out);
     fs::create_dir_all(dir).expect("create output directory");
 
@@ -162,9 +183,11 @@ fn main() {
     write_land_ramp_png(&world, &world.geology.fertility.data,
         &dir.join("world_fertility.png"), scale, ramp_fertility);
     write_resource_png(&world, &dir.join("world_resources.png"), scale);
+    write_polity_png(&world, &polities, &dir.join("world_nations.png"), scale);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
+    print_polities(&world, &polities);
 }
 
 // --- PNG output ----------------------------------------------------------
@@ -319,6 +342,103 @@ fn write_resource_png(world: &World, path: &Path, scale: u32) {
     img.save(path).expect("write resource png");
 }
 
+/// Political territories, one colour per polity, with capitals marked and
+/// borders darkened so the shape of each state reads at a glance.
+fn write_polity_png(world: &World, pol: &Polities, path: &Path, scale: u32) {
+    let (w, h) = (world.width, world.height);
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let id = pol.owner[i];
+
+            let colour = if id == UNCLAIMED {
+                if world.elevation.data[i] < world.sea_level {
+                    [16, 24, 46] // sea
+                } else {
+                    [58, 58, 62] // unclaimed land: ice, high mountain
+                }
+            } else {
+                let base = Polities::colour(id);
+                // Darken a cell that touches another polity, so borders show.
+                let border = [
+                    (x + w - 1) % w + y * w,
+                    (x + 1) % w + y * w,
+                    x + y.saturating_sub(1) * w,
+                    x + (y + 1).min(h - 1) * w,
+                ]
+                .iter()
+                .any(|&j| pol.owner[j] != id && pol.owner[j] != UNCLAIMED);
+
+                if border {
+                    [base[0] / 2, base[1] / 2, base[2] / 2]
+                } else {
+                    base
+                }
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+
+    // Capitals, drawn last so nothing overpaints them.
+    for (_, p) in pol.ranked() {
+        let (cx, cy) = (p.core % w, p.core / w);
+        put_block(&mut img, cx, cy, scale, [250, 250, 250]);
+    }
+
+    img.save(path).expect("write polity png");
+}
+
+fn print_polities(world: &World, pol: &Polities) {
+    let ranked = pol.ranked();
+    if ranked.is_empty() {
+        println!("no polities formed");
+        return;
+    }
+    let claimed: usize = ranked.iter().map(|(_, p)| p.cells).sum();
+    let land = (world.land_fraction() * world.biomes.len() as f32).max(1.0);
+
+    println!(
+        "nations   {} formed   {:.0}% of land claimed",
+        ranked.len(),
+        claimed as f32 / land * 100.0
+    );
+    println!(
+        "  largest holds {:.0}% of claimed land; top 3 hold {:.0}%; top 5 hold {:.0}%",
+        pol.concentration(1) * 100.0,
+        pol.concentration(3) * 100.0,
+        pol.concentration(5) * 100.0,
+    );
+
+    println!("  rank    cells   food   ore  coal   oil  coast");
+    for (rank, (_, p)) in ranked.iter().enumerate().take(10) {
+        println!(
+            "  {:>4}  {:>7}  {:>5.0}  {:>4}  {:>4}  {:>4}   {}",
+            rank + 1,
+            p.cells,
+            p.food,
+            p.ore_cells,
+            p.coal_cells,
+            p.petroleum_cells,
+            if p.coastal { "yes" } else { "no" },
+        );
+    }
+    if ranked.len() > 10 {
+        println!("  ... and {} more", ranked.len() - 10);
+    }
+
+    let landlocked = ranked.iter().filter(|(_, p)| !p.coastal).count();
+    let no_deposits = ranked
+        .iter()
+        .filter(|(_, p)| p.workable_deposits() == 0)
+        .count();
+    println!(
+        "  {landlocked} landlocked; {no_deposits} with no workable deposits"
+    );
+    println!();
+}
+
 /// A scalar field over land only, stretched to its own land min/max. Ocean
 /// is drawn flat so it cannot dominate the ramp.
 fn write_land_ramp_png(
@@ -445,7 +565,7 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     }
     print_geology(world);
 
-    println!("wrote 8 PNGs + world.txt to {out}/");
+    println!("wrote 9 PNGs + world.txt to {out}/");
     println!("re-generate this exact world with:  --seed {}", world.seed);
 }
 

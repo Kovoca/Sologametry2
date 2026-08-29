@@ -76,8 +76,19 @@ the flow routing:
 `World` carries `elevation/temperature/rainfall/drainage` fields plus
 `flow_accum`, `river: Vec<bool>`, `lake: Vec<bool>`, and `geology`.
 
+`src/polity.rs` runs **after** `World::generate`, reading it — `World`
+stays pure geography. It scores habitability (fertility, fresh water,
+coast, minerals), seeds cores at the best spaced-out sites, and grows them
+by multi-source Dijkstra over a terrain expansion cost, with a reach budget
+so remote/hostile ground stays unclaimed. Borders emerge where two
+expansions cost the same: ridges, deserts, straits. `--nations N` sets the
+seed count; the real count and all borders emerge.
+
+This is *not* the history sim. Consolidation of these into great powers is
+the history sim's job.
+
 Not built yet: water table, named-region detection, navigable-water
-routing, flora/fauna, civilization placement, history sim.
+routing, flora/fauna, settlement placement, history sim.
 
 ## Rules that already cost time to learn
 
