@@ -46,19 +46,33 @@ Always benchmark generation with `--release`.
 
 ## Pipeline (current state)
 
-`src/world.rs` runs steps 1-3:
+`src/world.rs` runs the coarse pass (spec A1.3b); `src/hydrology.rs` holds
+the flow routing:
 
-1. **Elevation** — continental fBm mask (X-wrapping, polar falloff sinks the
-   poles) + ridged noise for mountain ranges. Sea level solved by percentile
-   to hit `TARGET_LAND`.
-2. **Climate fields**, generated independently — temperature (latitude +
-   lapse rate), rainfall (prevailing-wind moisture advection with orographic
-   lift), drainage (permeability + slope).
-3. **Biomes** — emergent, classified from percentile-ranked fields. Never
-   placed directly.
+1. **Base elevation** — continental fBm mask (X-wrapping, polar falloff
+   sinks the poles) + a carve field for multiple continents + ridged noise
+   for mountain ranges.
+2. **Smooth** — `diffuse_land` makes plains.
+3. **Provisional climate** — RNG-free latitude temp + moisture advection,
+   to weight erosion.
+4. **Erosion & rivers** — priority-flood depression fill, D8 flow routing,
+   flow accumulation, gentle stream-power incision into the elevation
+   field. Natural endorheic basins recorded here.
+5. **Re-smooth**, then re-resolve sea level by percentile on carved terrain.
+6. **Rainfall, final** — advection against the *carved* elevation + jitter.
+7. **Temperature, final** — latitude + altitude lapse, carved elevation.
+8. **Drainage / runoff** — permeability + slope.
+9. **Rivers & lakes** — final flow routing weighted by final rainfall;
+   `extract_water` picks river cells (top ~5% of land by accumulation, with
+   a real downhill neighbour) and lake cells (basins, sinks, pooled flow);
+   `despeckle` drops noise-scale fragments.
+10. **Biomes** — emergent, classified from percentile-ranked fields.
 
-Not built yet: hydrology (erosion, rivers, water table), flora/fauna,
-civilization placement, history sim.
+`World` carries `elevation/temperature/rainfall/drainage` fields plus
+`flow_accum`, `river: Vec<bool>`, `lake: Vec<bool>`.
+
+Not built yet: water table, named-region detection, soil/geology/minerals,
+navigable-water routing, flora/fauna, civilization placement, history sim.
 
 ## Rules that already cost time to learn
 

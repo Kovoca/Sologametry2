@@ -65,6 +65,61 @@ fn generation_is_deterministic() {
     let b = World::generate(160, 90, 12345);
     assert_eq!(a.biomes, b.biomes, "same seed produced different biomes");
     assert_eq!(a.sea_level, b.sea_level, "same seed produced different sea level");
+    assert_eq!(a.river, b.river, "same seed produced different rivers");
+    assert_eq!(a.lake, b.lake, "same seed produced different lakes");
+}
+
+#[test]
+fn hydrology_produces_a_river_network() {
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let land = (w.land_fraction() * w.biomes.len() as f32).max(1.0);
+
+        let rivers = w.river_count();
+        assert!(rivers > 0, "seed {seed}: no rivers at all");
+
+        // Fresh water should be a minor share of the land, not a flood.
+        let fresh = (rivers + w.lake_count()) as f32 / land;
+        assert!(
+            fresh < 0.20,
+            "seed {seed}: rivers+lakes are {:.0}% of land",
+            fresh * 100.0
+        );
+    }
+}
+
+#[test]
+fn rivers_flow_downhill() {
+    // Every river cell must have at least one neighbour that is lower or
+    // equal (somewhere for the water to go). A river cell that is a strict
+    // local maximum is a routing bug.
+    let w = World::generate(256, 144, 20260828);
+    let (width, height, e) = (w.width, w.height, &w.elevation.data);
+    for y in 0..height {
+        for x in 0..width {
+            let i = y * width + x;
+            if !w.river[i] {
+                continue;
+            }
+            let mut has_outlet = false;
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    if dx == 0 && dy == 0 {
+                        continue;
+                    }
+                    let ny = y as i32 + dy;
+                    if ny < 0 || ny >= height as i32 {
+                        continue;
+                    }
+                    let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
+                    if e[ny as usize * width + nx] <= e[i] + 1e-4 {
+                        has_outlet = true;
+                    }
+                }
+            }
+            assert!(has_outlet, "seed 20260828: river cell ({x},{y}) is a local peak");
+        }
+    }
 }
 
 #[test]

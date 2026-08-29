@@ -21,11 +21,12 @@ is fast. It writes maps into `out/`:
 
 | File | What it shows |
 |---|---|
-| `world_biomes.png` | The map — coloured by biome |
-| `world_elevation.png` | Raw heightmap (dark = low, light = high) |
+| `world_biomes.png` | The map — biomes, with rivers and lakes |
+| `world_elevation.png` | Heightmap after erosion (dark = low, light = high) |
 | `world_temperature.png` | Temperature (blue = cold, red = hot) |
 | `world_rainfall.png` | Rainfall (dark = dry, bright blue = wet) |
-| `world.txt` | The biome map as ASCII |
+| `world_rivers.png` | Drainage network — flow accumulation, brighter = bigger river |
+| `world.txt` | The biome map as ASCII (`+` river, `o` lake) |
 
 It also prints a land-percentage and biome breakdown to the terminal.
 
@@ -56,14 +57,17 @@ fraction, no single biome swallows the map, output is deterministic.
 
 ```
 src/
-  main.rs     CLI, image + report output
-  lib.rs      module list
-  rng.rs      deterministic PRNG (owned, not the `rand` crate)
-  field.rs    flat 2D scalar grid
-  noise.rs    value-noise fBm + ridged multifractal (X axis wraps)
-  world.rs    the pipeline: elevation -> climate -> biomes
+  main.rs      CLI, image + report output
+  lib.rs       module list
+  rng.rs       deterministic PRNG (owned, not the `rand` crate)
+  field.rs     flat 2D scalar grid
+  noise.rs     value-noise fBm + ridged multifractal (X axis wraps)
+  hydrology.rs depression fill, flow routing, erosion, river/lake extraction
+  world.rs     the pipeline: elevation -> erosion -> climate -> biomes
 tests/
   generation.rs
 docs/
-  scale-sim-design-doc.md
+  scale-sim-design-doc.md    the vision
+  design-review-triage.md    external review + how its gaps were triaged
+  implementation-spec.md     the settled decisions (A1-A4, B1-B7, C1)
 ```

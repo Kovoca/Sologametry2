@@ -152,6 +152,7 @@ fn main() {
         &dir.join("world_temperature.png"), scale, ramp_heat);
     write_ramp_png(&world.rainfall.data, world.width, world.height,
         &dir.join("world_rainfall.png"), scale, ramp_wet);
+    write_flow_png(&world, &dir.join("world_rivers.png"), scale);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
@@ -163,9 +164,19 @@ fn write_biome_png(world: &World, path: &Path, scale: u32) {
     let (w, h) = (world.width as u32, world.height as u32);
     let mut img = image::RgbImage::new(w * scale, h * scale);
 
+    const RIVER: [u8; 3] = [40, 90, 175];
+    const LAKE: [u8; 3] = [50, 105, 180];
+
     for y in 0..h {
         for x in 0..w {
-            let colour = world.biomes[(y * w + x) as usize].colour();
+            let i = (y * w + x) as usize;
+            let colour = if world.river[i] {
+                RIVER
+            } else if world.lake[i] {
+                LAKE
+            } else {
+                world.biomes[i].colour()
+            };
             for dy in 0..scale {
                 for dx in 0..scale {
                     img.put_pixel(x * scale + dx, y * scale + dy, image::Rgb(colour));
@@ -174,6 +185,38 @@ fn write_biome_png(world: &World, path: &Path, scale: u32) {
         }
     }
     img.save(path).expect("write biome png");
+}
+
+/// River network on land: brightness by log flow accumulation, so trunk
+/// rivers read heavier than headwater streams. Ocean stays dark.
+fn write_flow_png(world: &World, path: &Path, scale: u32) {
+    let (w, h) = (world.width, world.height);
+    let max_accum = world.flow_accum.data.iter().copied().fold(1.0f32, f32::max);
+    let ln_max = (max_accum + 1.0).ln();
+
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.biomes[i] == Biome::Ocean
+                || world.biomes[i] == Biome::Shallows
+            {
+                [8, 12, 28]
+            } else if world.lake[i] {
+                [70, 120, 200]
+            } else {
+                let v = (world.flow_accum.data[i] + 1.0).ln() / ln_max;
+                let c = (30.0 + v * 225.0) as u8;
+                [c / 3, (c as f32 * 0.7) as u8, c]
+            };
+            for dy in 0..scale {
+                for dx in 0..scale {
+                    img.put_pixel(x as u32 * scale + dx, y as u32 * scale + dy, image::Rgb(colour));
+                }
+            }
+        }
+    }
+    img.save(path).expect("write flow png");
 }
 
 /// Write a scalar field as a PNG, auto-stretched to its own min/max so a
@@ -234,7 +277,15 @@ fn write_ascii(world: &World, path: &Path) {
     let mut s = String::with_capacity((world.width + 1) * world.height);
     for y in 0..world.height {
         for x in 0..world.width {
-            s.push(world.biomes[y * world.width + x].glyph());
+            let i = y * world.width + x;
+            let ch = if world.river[i] {
+                '+'
+            } else if world.lake[i] {
+                'o'
+            } else {
+                world.biomes[i].glyph()
+            };
+            s.push(ch);
         }
         s.push('\n');
     }
@@ -250,6 +301,12 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
         "sea level {:.3}   land {:.1}%",
         world.sea_level,
         world.land_fraction() * 100.0
+    );
+    let land_cells = (world.land_fraction() * world.biomes.len() as f32).max(1.0);
+    println!(
+        "rivers {:.1}% of land   lakes {:.1}% of land",
+        world.river_count() as f32 / land_cells * 100.0,
+        world.lake_count() as f32 / land_cells * 100.0,
     );
     println!();
 
@@ -270,6 +327,6 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
         println!("  {} {:<10} {:>5.1}%  {}", biome.glyph(), biome.name(), pct, bar);
     }
     println!();
-    println!("wrote 4 PNGs + world.txt to {out}/");
+    println!("wrote 5 PNGs + world.txt to {out}/");
     println!("re-generate this exact world with:  --seed {}", world.seed);
 }
