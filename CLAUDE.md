@@ -17,9 +17,14 @@ judged.
 ```
 cargo run --release              # generate a world, write PNGs to out/
 cargo run --release -- --seed N   # specific planet
+cargo run --release -- --help     # all flags (--size, --land, --wind, --out)
 cargo test                        # regression guards
 cargo build                       # debug build (10-30x slower generation)
 ```
+
+Tunable generation parameters live in `world::Params`; add new knobs there
+rather than to function signatures. `World::generate` uses the defaults;
+`World::generate_with` takes an explicit `Params`.
 
 Always benchmark generation with `--release`.
 

@@ -14,21 +14,23 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use scale_sim::world::{Biome, World};
+use scale_sim::world::{Biome, Params, World};
 
 struct Args {
     seed: u64,
     width: usize,
     height: usize,
     out: String,
+    params: Params,
 }
 
 fn parse_args() -> Args {
     let mut args = Args {
         seed: 20260828,
-        width: 384,
-        height: 216,
+        width: 512,
+        height: 288,
         out: "out".to_string(),
+        params: Params::default(),
     };
 
     let mut it = std::env::args().skip(1);
@@ -66,8 +68,37 @@ fn parse_args() -> Args {
                     std::process::exit(2);
                 });
             }
+            "--land" => {
+                let v = it.next().unwrap_or_default();
+                match v.parse::<f32>() {
+                    Ok(f) if (0.05..=0.90).contains(&f) => args.params.target_land = f,
+                    _ => {
+                        eprintln!("bad --land value: {v:?} (expected 0.05..0.90, e.g. 0.34)");
+                        std::process::exit(2);
+                    }
+                }
+            }
+            "--wind" => {
+                let v = it.next().unwrap_or_default();
+                match v.as_str() {
+                    "e" | "east" | "1" => args.params.prevailing_wind = 1,
+                    "w" | "west" | "-1" => args.params.prevailing_wind = -1,
+                    _ => {
+                        eprintln!("bad --wind value: {v:?} (expected e or w)");
+                        std::process::exit(2);
+                    }
+                }
+            }
             "--help" | "-h" => {
-                println!("usage: worldgen [--seed N] [--size WxH] [--out DIR]");
+                println!(
+                    "usage: worldgen [--seed N] [--size WxH] [--land F] [--wind e|w] [--out DIR]\n\
+                     \n\
+                     --seed N      pick a planet (same seed = same world)\n\
+                     --size WxH    map size in tiles (default 512x288)\n\
+                     --land F      land fraction 0.05..0.90 (default 0.34, Earth ~0.29)\n\
+                     --wind e|w    prevailing wind direction (default e)\n\
+                     --out DIR     output directory (default out)"
+                );
                 std::process::exit(0);
             }
             other => {
@@ -89,19 +120,22 @@ fn main() {
     let args = parse_args();
 
     let start = Instant::now();
-    let world = World::generate(args.width, args.height, args.seed);
+    let world = World::generate_with(args.width, args.height, args.seed, args.params);
     let gen_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     let dir = Path::new(&args.out);
     fs::create_dir_all(dir).expect("create output directory");
 
-    write_biome_png(&world, &dir.join("world_biomes.png"), 4);
+    // Upscale small maps so pixels are visible; leave large maps near 1:1.
+    let scale = (1600 / world.width).clamp(1, 6) as u32;
+
+    write_biome_png(&world, &dir.join("world_biomes.png"), scale);
     write_ramp_png(&world.elevation.data, world.width, world.height,
-        &dir.join("world_elevation.png"), 4, ramp_grey);
+        &dir.join("world_elevation.png"), scale, ramp_grey);
     write_ramp_png(&world.temperature.data, world.width, world.height,
-        &dir.join("world_temperature.png"), 4, ramp_heat);
+        &dir.join("world_temperature.png"), scale, ramp_heat);
     write_ramp_png(&world.rainfall.data, world.width, world.height,
-        &dir.join("world_rainfall.png"), 4, ramp_wet);
+        &dir.join("world_rainfall.png"), scale, ramp_wet);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);

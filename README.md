@@ -33,12 +33,14 @@ It also prints a land-percentage and biome breakdown to the terminal.
 
 ```
 cargo run --release -- --seed 12345
-cargo run --release -- --seed 7 --size 512x288
+cargo run --release -- --seed 7 --size 768x432 --land 0.45
 ```
 
 - `--seed N` — pick a specific planet. The same seed always rebuilds the
   exact same world.
-- `--size WxH` — map dimensions in tiles (default `384x216`).
+- `--size WxH` — map dimensions in tiles (default `512x288`).
+- `--land F` — land fraction, `0.05`–`0.90` (default `0.34`; Earth is ~0.29).
+- `--wind e|w` — prevailing wind direction (default `e`, west-to-east).
 - `--out DIR` — where to write the images (default `out`).
 
 ## Tests

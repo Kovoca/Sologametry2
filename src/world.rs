@@ -13,12 +13,27 @@ use crate::field::Field;
 use crate::noise::{fbm, ridged};
 use crate::rng::Rng;
 
-/// Fraction of the map that should end up as land. Sea level is solved to
-/// hit this exactly, rather than guessed as an absolute height.
-pub const TARGET_LAND: f32 = 0.34;
+/// Tunable generation parameters. More knobs will land here as the pipeline
+/// grows; keeping them in one struct means adding one later doesn't churn
+/// every function signature.
+#[derive(Clone, Copy, Debug)]
+pub struct Params {
+    /// Fraction of the map that should end up as land. Sea level is solved
+    /// to hit this exactly, rather than guessed as an absolute height.
+    /// Earth is ~0.29.
+    pub target_land: f32,
+    /// Prevailing wind: `+1` blows west-to-east, `-1` east-to-west.
+    pub prevailing_wind: i32,
+}
 
-/// Prevailing wind: `+1` blows west-to-east, `-1` east-to-west.
-pub const PREVAILING_WIND: i32 = 1;
+impl Default for Params {
+    fn default() -> Self {
+        Self {
+            target_land: 0.34,
+            prevailing_wind: 1,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // 1. Elevation
@@ -101,11 +116,11 @@ fn generate_temperature(elev: &Field, sea: f32, rng: &mut Rng) -> Field {
 ///     continental interiors collapse to pure desert.
 ///   - Moisture is mixed between adjacent rows every step. Without it, each
 ///     row is an independent scanline and the map streaks vertically.
-fn generate_rainfall(elev: &Field, temp: &Field, sea: f32, rng: &mut Rng) -> Field {
+fn generate_rainfall(elev: &Field, temp: &Field, sea: f32, wind: i32, rng: &mut Rng) -> Field {
     let (w, h) = (elev.width, elev.height);
     let mut rain = Field::new(w, h);
 
-    let columns: Vec<usize> = if PREVAILING_WIND > 0 {
+    let columns: Vec<usize> = if wind > 0 {
         (0..w).collect()
     } else {
         (0..w).rev().collect()
@@ -358,7 +373,12 @@ pub struct World {
 }
 
 impl World {
+    /// Generate with the default parameters.
     pub fn generate(width: usize, height: usize, seed: u64) -> Self {
+        Self::generate_with(width, height, seed, Params::default())
+    }
+
+    pub fn generate_with(width: usize, height: usize, seed: u64, params: Params) -> Self {
         let mut rng = Rng::new(seed);
 
         // 1. Elevation.
@@ -367,11 +387,12 @@ impl World {
         // Resolve sea level by percentile so we hit the target land fraction
         // exactly, instead of guessing a height that shifts every time the
         // noise is retuned.
-        let sea_level = elevation.quantile(1.0 - TARGET_LAND);
+        let sea_level = elevation.quantile(1.0 - params.target_land);
 
         // 2. Climate fields, each generated independently.
         let temperature = generate_temperature(&elevation, sea_level, &mut rng);
-        let rainfall = generate_rainfall(&elevation, &temperature, sea_level, &mut rng);
+        let rainfall =
+            generate_rainfall(&elevation, &temperature, sea_level, params.prevailing_wind, &mut rng);
         let drainage = generate_drainage(&elevation, &mut rng);
 
         // Rank the climate fields against the other land tiles so the biome
