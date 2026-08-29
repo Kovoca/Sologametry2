@@ -126,8 +126,16 @@ Day order: generate power → allocate (shed by priority) → produce →
 households buy → shops restock → inter-market trade → prices. Shops sell
 *before* restocking, so the day's cover figure means days-in-hand.
 
-`cargo run --release --bin slice` runs the two-town scenario.
-`tests/economy.rs` is the spec's acceptance test as assertions.
+`src/region.rs` is the seam between the two halves: it reads a generated
+planet and produces an `Economy` for one of its nations. Farms are sized by
+the soil those cities actually draw on, the colliery exists only where the
+geology put coal (a nation without it imports fuel and gains a dependency
+that can be cut), and freight costs come from real distances and whether
+there is navigable water between the towns. Nothing here invents capacity.
+
+`cargo run --release --bin slice` runs the hand-built two-town scenario;
+`--bin region` runs a real nation off a generated planet. `tests/economy.rs`
+is the spec's acceptance test; `tests/region.rs` guards the seam.
 
 **Nothing is repaired on a schedule.** A fault must be noticed, reported
 over working comms, assigned to a crew, and travelled to before any work

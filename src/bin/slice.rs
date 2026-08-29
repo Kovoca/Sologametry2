@@ -122,11 +122,11 @@ fn main() {
         if day == args.fail_on {
             match args.fault {
                 FaultKind::Line => {
-                    econ.grid.fail_line("Kelling line A");
-                    note = "line A down".into();
+                    econ.grid.fail_line("main line");
+                    note = "line down".into();
                 }
                 FaultKind::Transformer => {
-                    econ.grid.fail_transformer("Kelling line A");
+                    econ.grid.fail_transformer("main line");
                     note = "transformer destroyed".into();
                 }
             }

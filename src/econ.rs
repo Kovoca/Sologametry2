@@ -220,6 +220,8 @@ impl Journal {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SiteKind {
     Farm,
+    /// Coal workings. Only exists where the geology put a deposit.
+    Mine,
     Mill,
     Factory,
     PowerPlant,
@@ -344,11 +346,23 @@ impl Ledger {
                 self.opening_total[i] + self.produced_total[i]
                     - self.consumed_total[i]
                     - self.spoiled_total[i];
+            // Tolerance is measured against total *flow*, not against what
+            // happens to be in store. Rounding error accumulates with the
+            // number and size of transactions, so a commodity that has
+            // moved ten million tonnes and now sits at zero can be a
+            // fraction of a tonne out without anything being wrong — while
+            // the same absolute drift in a commodity that has barely moved
+            // would be a genuine leak.
+            let gross = self.opening_total[i]
+                + self.produced_total[i]
+                + self.consumed_total[i]
+                + self.spoiled_total[i];
             let drift = (held - expected).abs();
-            let scale = expected.abs().max(1.0);
+            let scale = gross.abs().max(1.0);
             assert!(
-                drift / scale < 1e-9,
-                "conservation violated for {c}: holding {held:.6} but journal says {expected:.6}"
+                drift / scale < 1e-12,
+                "conservation violated for {c}: holding {held} but journal says {expected} \
+                 (drift {drift:e} against {gross:e} of gross flow)"
             );
         }
     }
@@ -378,7 +392,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 5] = [
+pub const RECIPES: [Recipe; 7] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -422,7 +436,43 @@ pub const RECIPES: [Recipe; 5] = [
         labour: 0.1,
         needs_water: false,
     },
+    // Coal has to come out of the ground somewhere. The hand-built slice
+    // simply gave its power station a heap of it, which is exactly the
+    // sort of thing that stops being tenable once the region is a real
+    // place with real geology.
+    Recipe {
+        name: "coal mine",
+        inputs: &[],
+        outputs: &[(Commodity::Coal, 1.0)],
+        power: 0.03,
+        labour: 1.5,
+        needs_water: false,
+    },
+    // Fuel bought from outside the region, landed at a port or railhead.
+    // A nation with no coal of its own does not simply go dark — it buys,
+    // and in doing so acquires a dependency that can be cut. That
+    // vulnerability is the interesting part, and it belongs to geography
+    // rather than to anything a designer chose.
+    Recipe {
+        name: "fuel imports",
+        inputs: &[],
+        outputs: &[(Commodity::Coal, 1.0)],
+        power: 0.01,
+        labour: 0.2,
+        needs_water: false,
+    },
 ];
+
+/// Indices into `RECIPES`, so scenarios read as places rather than numbers.
+pub mod recipe {
+    pub const FARM: usize = 0;
+    pub const MILL: usize = 1;
+    pub const CANNERY: usize = 2;
+    pub const POWER_PLANT: usize = 3;
+    pub const DEPOT: usize = 4;
+    pub const COAL_MINE: usize = 5;
+    pub const FUEL_IMPORTS: usize = 6;
+}
 
 // ---------------------------------------------------------------------------
 // Markets
@@ -494,6 +544,25 @@ pub struct Grid {
 }
 
 impl Grid {
+    /// A grid sized for `peak` load, built to this doctrine's standard.
+    pub fn for_doctrine(d: Doctrine, peak: f64) -> Self {
+        let line = |name: &str| Line {
+            name: name.into(),
+            capacity: peak * 1.25,
+            condition: 1.0,
+            up: true,
+            cause: None,
+        };
+        Grid {
+            lines: if d.redundant_grid() {
+                vec![line("main line"), line("reserve line")]
+            } else {
+                vec![line("main line")]
+            },
+            loss: 0.08,
+        }
+    }
+
     /// Capacity actually available right now.
     pub fn capacity(&self) -> f64 {
         self.lines
@@ -654,7 +723,93 @@ pub struct Response {
     pub incidents: Vec<Incident>,
 }
 
+/// How well the state that governs a region runs its infrastructure.
+///
+/// The prudent/negligent doctrine trait (spec C.3), expressed in the four
+/// places it actually shows up: whether the grid was built with a spare
+/// line, how many repair crews are kept, how far away their depot is, and
+/// whether there is a spare transformer in store. One trait, four concrete
+/// purchases, all of them readable on the ground by a player who looks.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Doctrine {
+    /// Bought N-1 redundancy, keeps crews and a parts depot locally, holds
+    /// a spare transformer against the day it is needed.
+    Prudent,
+    /// One line, one crew from the regional capital, nothing in store.
+    Negligent,
+}
+
+impl Doctrine {
+    /// How far the crews are kept from the things they maintain.
+    ///
+    /// A utility serving real towns keeps a depot among them — crews reach
+    /// a fault in under an hour. A neglected one has closed the local
+    /// depot and runs everything from the regional capital, which is
+    /// further but still a morning's drive. Neither is days away; distance
+    /// is not what makes a bad utility slow.
+    pub fn depot_km(self) -> f64 {
+        match self {
+            Doctrine::Prudent => 25.0,
+            Doctrine::Negligent => 240.0,
+        }
+    }
+
+    /// Days of work once on site. A downed transmission line is two to
+    /// four days end to end in reality: a trained crew arriving with the
+    /// right conductor and an emergency tower manages two, a neglected
+    /// utility takes twice that through wrong parts and second trips.
+    /// Competence and stores, not mileage.
+    pub fn repair_days(self) -> u64 {
+        match self {
+            Doctrine::Prudent => 2,
+            Doctrine::Negligent => 4,
+        }
+    }
+
+    pub fn crews(self) -> usize {
+        match self {
+            Doctrine::Prudent => 2,
+            Doctrine::Negligent => 1,
+        }
+    }
+
+    /// Spare transformers in store. The decision that matters most and
+    /// shows least: money sitting idle for years, and then the difference
+    /// between a week in the dark and a year.
+    pub fn spares(self) -> usize {
+        match self {
+            Doctrine::Prudent => 1,
+            Doctrine::Negligent => 0,
+        }
+    }
+
+    /// Whether the grid is built to survive losing any single line.
+    pub fn redundant_grid(self) -> bool {
+        self == Doctrine::Prudent
+    }
+}
+
 impl Response {
+    /// The response capacity a state of this doctrine funds.
+    pub fn for_doctrine(d: Doctrine) -> Self {
+        Response {
+            comms_up: true,
+            crews: d.crews(),
+            depot_km: d.depot_km(),
+            crew_speed_kmh: 60.0,
+            working_hours: 10.0,
+            repair_days: d.repair_days(),
+            spare_transformers: d.spares(),
+            // Built to order. Twelve to eighteen months is the honest
+            // figure for a region waiting its turn in a manufacturer's
+            // queue; emergency procurement or borrowing one from a
+            // neighbouring utility would beat it, and is the obvious next
+            // thing to model.
+            transformer_lead_days: 400,
+            incidents: Vec::new(),
+        }
+    }
+
     /// Whole days to reach the fault. Anything a lorry can cover inside a
     /// working day arrives the same day — which is nearly everything
     /// inside a settled region, and why real outages are measured from
@@ -919,10 +1074,14 @@ impl Economy {
         // them.
         wants.sort_by(|a, b| {
             let rank = |i: usize| match self.ledger.sites[i].kind {
-                SiteKind::Factory | SiteKind::Mill => 0,
-                SiteKind::Farm => 1,
-                SiteKind::Shop => 2,
-                _ => 3,
+                // The mine first: without coal nothing generates at all
+                // tomorrow, so starving it to keep a factory running today
+                // is how a grid talks itself into a blackout.
+                SiteKind::Mine => 0,
+                SiteKind::Factory | SiteKind::Mill => 1,
+                SiteKind::Farm => 2,
+                SiteKind::Shop => 3,
+                _ => 4,
             };
             rank(a.0)
                 .cmp(&rank(b.0))

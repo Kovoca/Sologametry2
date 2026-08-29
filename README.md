@@ -84,6 +84,24 @@ Note the shape of that: an ordinary fault is a nuisance a working region
 absorbs. Catastrophe needs a real cause — a part that has to be
 manufactured, or a region that cannot report its own emergency.
 
+## A real nation's economy
+
+The same economy, but derived from a generated planet instead of typed by
+hand:
+
+```
+cargo run --release --bin region
+cargo run --release --bin region -- --seed 20260828 --rank 3
+cargo run --release --bin region -- --rank 5 --fault transformer --days 90
+```
+
+`--rank K` picks a nation by size. Its cities, populations and names come
+from the settlement pass; its farms are sized by the soil those cities
+draw on; its colliery exists only if the geology put coal in the country
+(if not, it imports fuel — and acquires a dependency somebody can cut);
+its freight costs come from the real distances between its towns and
+whether there is navigable water between them.
+
 ## Tests
 
 ```
@@ -108,8 +126,9 @@ src/
   settlement.rs cities and towns inside those territories
   network.rs   navigable waterways, roads by traffic, chokepoints
   econ.rs      commodities, journal, ledger, production, markets, grid
-  slice.rs     the two-town vertical-slice scenario
-  bin/slice.rs runs it and prints what happens
+  slice.rs     the hand-built two-town scenario
+  region.rs    derives an economy from a generated nation
+  bin/slice.rs, bin/region.rs   run them and print what happens
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs

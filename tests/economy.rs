@@ -85,7 +85,7 @@ fn losing_the_only_line_starves_both_towns() {
     run(&mut econ, 20);
     let before = econ.price(slice::ASHFORD, FOOD);
 
-    assert!(econ.grid.fail_line("Kelling line A"));
+    assert!(econ.grid.fail_line("main line"));
     run(&mut econ, 3);
     assert!(
         econ.unserved_power > 0.0,
@@ -113,7 +113,7 @@ fn a_redundant_grid_absorbs_the_same_failure() {
     run(&mut econ, 20);
     let before = econ.price(slice::ASHFORD, FOOD);
 
-    assert!(econ.grid.fail_line("Kelling line A"));
+    assert!(econ.grid.fail_line("main line"));
     run(&mut econ, 25);
 
     assert_eq!(
@@ -136,7 +136,7 @@ fn the_world_repairs_itself_without_being_told() {
     run(&mut econ, 20);
     let baseline = econ.price(slice::ASHFORD, FOOD);
 
-    econ.grid.fail_line("Kelling line A");
+    econ.grid.fail_line("main line");
     run(&mut econ, 40);
 
     let inc = econ.response.incidents.first().expect("no incident raised");
@@ -166,7 +166,7 @@ fn a_prudent_region_never_notices_the_outage() {
     // shops at all.
     let mut econ = slice::build(Doctrine::Prudent);
     run(&mut econ, 20);
-    econ.grid.fail_line("Kelling line A");
+    econ.grid.fail_line("main line");
     run(&mut econ, 20);
 
     let inc = econ.response.incidents.first().expect("no incident raised");
@@ -185,7 +185,7 @@ fn a_spare_transformer_is_the_difference_between_days_and_never() {
     // in store turns a catastrophe into an inconvenience.
     let mut with_spare = slice::build(Doctrine::Prudent);
     run(&mut with_spare, 10);
-    with_spare.grid.fail_transformer("Kelling line A");
+    with_spare.grid.fail_transformer("main line");
     run(&mut with_spare, 40);
     let quick = with_spare.response.incidents[0]
         .resolved
@@ -199,7 +199,7 @@ fn a_spare_transformer_is_the_difference_between_days_and_never() {
 
     let mut without = slice::build(Doctrine::Negligent);
     run(&mut without, 10);
-    without.grid.fail_transformer("Kelling line A");
+    without.grid.fail_transformer("main line");
     run(&mut without, 120);
     assert!(
         without.response.incidents[0].resolved.is_none(),
@@ -218,7 +218,7 @@ fn nothing_is_fixed_when_nobody_can_report_it() {
     let mut econ = slice::build(Doctrine::Negligent);
     econ.response.comms_up = false;
     run(&mut econ, 20);
-    econ.grid.fail_line("Kelling line A");
+    econ.grid.fail_line("main line");
     run(&mut econ, 60);
 
     assert_eq!(econ.response.unreported(), 1, "the fault got reported somehow");
@@ -248,7 +248,7 @@ fn a_haul_contract_appears_because_the_arithmetic_changed() {
     // A mere line fault will not do it: crews fix that inside the four-day
     // food buffer and the shops never notice. It takes a transformer with
     // no spare in store — a fault the region genuinely cannot answer.
-    econ.grid.fail_transformer("Kelling line A");
+    econ.grid.fail_transformer("main line");
     let mut appeared = false;
     for _ in 0..40 {
         econ.step();
@@ -270,7 +270,7 @@ fn a_routine_fault_never_reaches_the_shops() {
     // fault produced a famine the model would be worthless.
     let mut econ = slice::build(Doctrine::Negligent);
     run(&mut econ, 20);
-    econ.grid.fail_line("Kelling line A");
+    econ.grid.fail_line("main line");
     run(&mut econ, 25);
 
     assert!(
@@ -346,8 +346,8 @@ fn the_slice_is_deterministic() {
         a.step();
         b.step();
     }
-    a.grid.fail_line("Kelling line A");
-    b.grid.fail_line("Kelling line A");
+    a.grid.fail_line("main line");
+    b.grid.fail_line("main line");
     run(&mut a, 20);
     run(&mut b, 20);
 

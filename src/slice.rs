@@ -16,8 +16,13 @@
 //! person per year that is 74.5 t a day, and the chain behind it is sized
 //! to match with a working margin.
 
+/// `Doctrine` describes how a state runs its infrastructure, not anything
+/// about this scenario, so it lives with `Response` in `econ`. Re-exported
+/// here because this is where callers first meet it.
+pub use crate::econ::Doctrine;
+
 use crate::econ::{
-    basket, Commodity, Economy, Grid, Journal, Ledger, Line, Market, Response, Route, Site,
+    basket, Commodity, Economy, Grid, Journal, Ledger, Market, Response, Route, Site,
     SiteKind, N_COMMODITIES,
 };
 
@@ -43,71 +48,6 @@ fn cap(pairs: &[(Commodity, f64)]) -> [f64; N_COMMODITIES] {
         b[c as usize] = v;
     }
     b
-}
-
-/// How well the state that governs this region does its job.
-///
-/// The prudent/negligent doctrine trait (spec C.3), expressed in the three
-/// places it actually shows up: whether the grid was built with a spare
-/// line, how many repair crews are kept, and how far away they are. One
-/// trait, three concrete purchases, all of them readable on the ground by
-/// a player who looks.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Doctrine {
-    /// Bought N-1 redundancy, keeps crews and a parts depot locally.
-    Prudent,
-    /// One line, one crew sent from the capital when someone complains.
-    Negligent,
-}
-
-impl Doctrine {
-    /// How far the crews are kept from the things they maintain.
-    ///
-    /// A utility serving towns of forty and twenty-six thousand keeps a
-    /// depot among them — crews reach a fault in under an hour. A
-    /// neglected one has closed the local depot and runs everything from
-    /// the regional capital, which is further but still a morning's drive.
-    /// Neither is days away; distance is not what makes a bad utility
-    /// slow.
-    fn depot_km(self) -> f64 {
-        match self {
-            Doctrine::Prudent => 25.0,
-            Doctrine::Negligent => 240.0,
-        }
-    }
-
-    /// Days of work once on site.
-    ///
-    /// A downed transmission line is two to four days end to end in
-    /// reality. A trained crew arriving with the right conductor and an
-    /// emergency tower on the lorry manages two. A neglected utility takes
-    /// twice that: wrong parts, a second trip, nobody who has done it
-    /// recently. What separates them is competence and stores, not
-    /// mileage.
-    fn repair_days(self) -> u64 {
-        match self {
-            Doctrine::Prudent => 2,
-            Doctrine::Negligent => 4,
-        }
-    }
-
-    fn crews(self) -> usize {
-        match self {
-            Doctrine::Prudent => 2,
-            Doctrine::Negligent => 1,
-        }
-    }
-
-    /// Spare transformers in store. This is the decision that matters
-    /// most and shows least: it looks like money sitting idle for years,
-    /// and then it is the difference between a week in the dark and a
-    /// year.
-    fn spares(self) -> usize {
-        match self {
-            Doctrine::Prudent => 1,
-            Doctrine::Negligent => 0,
-        }
-    }
 }
 
 pub fn build(doctrine: Doctrine) -> Economy {
@@ -212,54 +152,14 @@ pub fn build(doctrine: Doctrine) -> Economy {
 
     // Peak load is dominated by the cannery.
     let peak = cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0;
-    let lines = match doctrine {
-        Doctrine::Prudent => vec![
-            Line {
-                name: "Kelling line A".into(),
-                capacity: peak * 1.25,
-                condition: 1.0,
-                up: true,
-                cause: None,
-            },
-            Line {
-                name: "Kelling line B".into(),
-                capacity: peak * 1.25,
-                condition: 1.0,
-                up: true,
-                cause: None,
-            },
-        ],
-        Doctrine::Negligent => vec![Line {
-            name: "Kelling line A".into(),
-            capacity: peak * 1.25,
-            condition: 1.0,
-            up: true,
-            cause: None,
-        }],
-    };
 
     Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
         markets,
         routes,
-        grid: Grid { lines, loss: 0.08 },
-        response: Response {
-            comms_up: true,
-            crews: doctrine.crews(),
-            depot_km: doctrine.depot_km(),
-            crew_speed_kmh: 60.0,
-            working_hours: 10.0,
-            repair_days: doctrine.repair_days(),
-            spare_transformers: doctrine.spares(),
-            // Built to order. Twelve to eighteen months is the honest
-            // figure for a region that has to wait its turn in a
-            // manufacturer's queue; emergency procurement or borrowing one
-            // from a neighbouring utility would beat it, and is the
-            // obvious next thing to model.
-            transformer_lead_days: 400,
-            incidents: Vec::new(),
-        },
+        grid: Grid::for_doctrine(doctrine, peak),
+        response: Response::for_doctrine(doctrine),
         unserved_power: 0.0,
         unmet_demand: basket(),
     }
