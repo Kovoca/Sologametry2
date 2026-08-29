@@ -15,6 +15,12 @@ generation and expands outward.
   time), A2 (state model: ledger/journal/realization), A3 (belief/values/
   preferences), A4 (planner), B1–B7, C1 are resolved and written to be
   implemented one section at a time. Built code should conform to this.
+- `state-and-economy-spec.md` — commodities, recipes, stockpiles, supply
+  and demand, price formation and arbitrage, labour, freight;
+  infrastructure as graphs (power/water/comms) with condition and decay;
+  and how a government allocates its budget. Every figure is anchored to a
+  real-world value so output can be checked rather than eyeballed. Ends
+  with the vertical slice's acceptance test.
 
 Only world-gen (elevation → climate → biomes) is implemented so far; the
 spec's A1–A4 architecture and everything else is design, not code yet.

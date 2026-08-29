@@ -29,6 +29,15 @@ sections A1, A2, A3, A4, B1–B7, C1 are marked SETTLED there. This triage
 doc is kept as the record of *how* the review was categorised; the spec is
 the source of truth for *what was decided*.
 
+**Two of the `SPEC-LATER` items below are now written up** in
+[`state-and-economy-spec.md`](state-and-economy-spec.md): economic
+accounting (commodities, recipes, stockpiles, supply/demand, price
+formation, arbitrage, labour, freight) and infrastructure networks (power,
+water, comms, condition and decay). That document also adds a section the
+design was missing entirely — how a government allocates a finite budget
+across defence, infrastructure, maintenance and public goods — and closes
+with the vertical slice's acceptance test.
+
 Still open (tracked in the spec):
 - B3.6 — starting region rolled vs chosen (undecided).
 - A1.10 — `K` (the "relevant" region radius), z-level extent: pending
