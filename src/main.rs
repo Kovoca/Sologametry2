@@ -17,7 +17,12 @@ use std::fs;
 use std::path::Path;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use scale_sim::geology::{Geology, Rock};
 use scale_sim::world::{Biome, Params, World};
+
+/// Concentration at or above which a deposit is worth extracting. Used for
+/// both the resource map and the report.
+const WORKABLE: f32 = 0.45;
 
 struct Args {
     seed: u64,
@@ -153,6 +158,10 @@ fn main() {
     write_ramp_png(&world.rainfall.data, world.width, world.height,
         &dir.join("world_rainfall.png"), scale, ramp_wet);
     write_flow_png(&world, &dir.join("world_rivers.png"), scale);
+    write_rock_png(&world, &dir.join("world_rock.png"), scale);
+    write_land_ramp_png(&world, &world.geology.fertility.data,
+        &dir.join("world_fertility.png"), scale, ramp_fertility);
+    write_resource_png(&world, &dir.join("world_resources.png"), scale);
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
@@ -256,6 +265,114 @@ fn write_ramp_png(
     img.save(path).expect("write ramp png");
 }
 
+/// Rock type across the land; ocean left dark.
+fn write_rock_png(world: &World, path: &Path, scale: u32) {
+    let (w, h) = (world.width, world.height);
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.elevation.data[i] < world.sea_level {
+                [18, 26, 48]
+            } else {
+                world.geology.rock[i].colour()
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+    img.save(path).expect("write rock png");
+}
+
+/// The three extractive resources on one map: red = metal ore, grey = coal,
+/// green = petroleum. Brightness is concentration; only workable
+/// concentrations are drawn, so the map reads as deposits, not a gradient.
+fn write_resource_png(world: &World, path: &Path, scale: u32) {
+    let (w, h) = (world.width, world.height);
+    let g = &world.geology;
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.elevation.data[i] < world.sea_level {
+                [14, 20, 38]
+            } else {
+                let (o, c, p) = (g.ore.data[i], g.coal.data[i], g.petroleum.data[i]);
+                let best = o.max(c).max(p);
+                if best < WORKABLE {
+                    [42, 44, 46] // barren land
+                } else {
+                    let v = ((best - WORKABLE) / (1.0 - WORKABLE)).clamp(0.0, 1.0);
+                    let b = (90.0 + v * 165.0) as u8;
+                    if best == o {
+                        [b, (b as f32 * 0.30) as u8, (b as f32 * 0.25) as u8]
+                    } else if best == c {
+                        [b, b, b]
+                    } else {
+                        [(b as f32 * 0.25) as u8, b, (b as f32 * 0.45) as u8]
+                    }
+                }
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+    img.save(path).expect("write resource png");
+}
+
+/// A scalar field over land only, stretched to its own land min/max. Ocean
+/// is drawn flat so it cannot dominate the ramp.
+fn write_land_ramp_png(
+    world: &World,
+    data: &[f32],
+    path: &Path,
+    scale: u32,
+    ramp: fn(f32) -> [u8; 3],
+) {
+    let (w, h) = (world.width, world.height);
+    let mut lo = f32::INFINITY;
+    let mut hi = f32::NEG_INFINITY;
+    for i in 0..w * h {
+        if world.elevation.data[i] >= world.sea_level {
+            lo = lo.min(data[i]);
+            hi = hi.max(data[i]);
+        }
+    }
+    let range = (hi - lo).max(1e-12);
+
+    let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            let colour = if world.elevation.data[i] < world.sea_level {
+                [18, 26, 48]
+            } else {
+                ramp(((data[i] - lo) / range).clamp(0.0, 1.0))
+            };
+            put_block(&mut img, x, y, scale, colour);
+        }
+    }
+    img.save(path).expect("write land ramp png");
+}
+
+#[inline]
+fn put_block(img: &mut image::RgbImage, x: usize, y: usize, scale: u32, colour: [u8; 3]) {
+    for dy in 0..scale {
+        for dx in 0..scale {
+            img.put_pixel(x as u32 * scale + dx, y as u32 * scale + dy, image::Rgb(colour));
+        }
+    }
+}
+
+/// Barren tan through to deep green.
+fn ramp_fertility(v: f32) -> [u8; 3] {
+    let v = v.clamp(0.0, 1.0);
+    [
+        (200.0 - v * 165.0) as u8,
+        (170.0 - v * 40.0) as u8,
+        (110.0 - v * 45.0) as u8,
+    ]
+}
+
 fn ramp_grey(v: f32) -> [u8; 3] {
     let c = (v.clamp(0.0, 1.0) * 255.0) as u8;
     [c, c, c]
@@ -326,7 +443,58 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
         let bar = "#".repeat((pct / 2.0).round() as usize);
         println!("  {} {:<10} {:>5.1}%  {}", biome.glyph(), biome.name(), pct, bar);
     }
-    println!();
-    println!("wrote 5 PNGs + world.txt to {out}/");
+    print_geology(world);
+
+    println!("wrote 8 PNGs + world.txt to {out}/");
     println!("re-generate this exact world with:  --seed {}", world.seed);
+}
+
+fn print_geology(world: &World) {
+    let g = &world.geology;
+    let land: Vec<usize> = (0..world.biomes.len())
+        .filter(|&i| world.elevation.data[i] >= world.sea_level)
+        .collect();
+    if land.is_empty() {
+        return;
+    }
+    let land_n = land.len() as f32;
+
+    println!("rock");
+    for r in Rock::ALL {
+        let n = land.iter().filter(|&&i| g.rock[i] == r).count();
+        let pct = n as f32 / land_n * 100.0;
+        println!(
+            "  {:<13} {:>5.1}%  {}",
+            r.name(),
+            pct,
+            "#".repeat((pct / 3.0).round() as usize)
+        );
+    }
+    println!();
+
+    let mean_fert: f32 =
+        land.iter().map(|&i| g.fertility.data[i]).sum::<f32>() / land_n;
+    let prime = land.iter().filter(|&&i| g.fertility.data[i] > 0.55).count();
+    println!(
+        "soil     mean fertility {:.2}   prime farmland {:.1}% of land",
+        mean_fert,
+        prime as f32 / land_n * 100.0
+    );
+
+    println!("deposits (% of land at workable concentration)");
+    for (name, f) in [
+        ("metal ore", &g.ore),
+        ("coal", &g.coal),
+        ("petroleum", &g.petroleum),
+    ] {
+        let n = Geology::deposit_count(f, WORKABLE);
+        let pct = n as f32 / land_n * 100.0;
+        println!(
+            "  {:<11} {:>5.2}%  {}",
+            name,
+            pct,
+            "#".repeat((pct * 2.0).round().min(40.0) as usize)
+        );
+    }
+    println!();
 }

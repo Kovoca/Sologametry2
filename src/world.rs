@@ -20,6 +20,7 @@
 //! terrain water shaped, not the raw noise.
 
 use crate::field::Field;
+use crate::geology::{self, Geology};
 use crate::hydrology;
 use crate::noise::{fbm, ridged};
 use crate::rng::Rng;
@@ -430,6 +431,9 @@ pub struct World {
     pub lake: Vec<bool>,
 
     pub biomes: Vec<Biome>,
+
+    /// Rock type, soil fertility, and mineral / fossil-fuel concentrations.
+    pub geology: Geology,
 }
 
 impl World {
@@ -562,6 +566,12 @@ impl World {
             };
         }
 
+        // 11. Geology: rock provinces, mineral & fossil deposits, soil
+        // fertility. Civ placement and the economy read these.
+        let geology = geology::generate(
+            &elevation, sea_level, &rain_r, &drain_r, &temperature, &river, &lake, &mut rng,
+        );
+
         World {
             width,
             height,
@@ -575,6 +585,7 @@ impl World {
             river,
             lake,
             biomes,
+            geology,
         }
     }
 

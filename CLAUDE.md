@@ -67,12 +67,17 @@ the flow routing:
    a real downhill neighbour) and lake cells (basins, sinks, pooled flow);
    `despeckle` drops noise-scale fragments.
 10. **Biomes** — emergent, classified from percentile-ranked fields.
+11. **Geology** (`src/geology.rs`) — rock provinces (igneous / metamorphic
+    / sedimentary) from elevation, slope and crustal noise; metal ore, coal
+    and petroleum concentrations from rock type + climate history + vein
+    noise; soil fertility from rock parent material, rain, temperature,
+    slope, drainage and river proximity.
 
 `World` carries `elevation/temperature/rainfall/drainage` fields plus
-`flow_accum`, `river: Vec<bool>`, `lake: Vec<bool>`.
+`flow_accum`, `river: Vec<bool>`, `lake: Vec<bool>`, and `geology`.
 
-Not built yet: water table, named-region detection, soil/geology/minerals,
-navigable-water routing, flora/fauna, civilization placement, history sim.
+Not built yet: water table, named-region detection, navigable-water
+routing, flora/fauna, civilization placement, history sim.
 
 ## Rules that already cost time to learn
 
@@ -84,6 +89,11 @@ navigable-water routing, flora/fauna, civilization placement, history sim.
   *mask*. Ridged noise gives ranges.
 - Absolute biome thresholds are fragile. Rank fields over land tiles first
   (`rank_over_land`).
+- Same lesson in geology: classify rock by stretching scores over land then
+  cutting, and anchor deposit concentrations on a high percentile, never on
+  the raw max — one outlier cell otherwise squashes every real deposit.
+  Percentile *cuts* would force identical rock ratios on every world; use
+  stretch-then-fixed-cut so worlds genuinely differ.
 - Keep RNG and sorts deterministic — a seed must rebuild the same planet
   forever. Use `f32::total_cmp` + index tiebreak, never `sort_unstable` on
   bare floats.

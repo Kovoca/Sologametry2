@@ -4,6 +4,7 @@
 //! the whole map (the classic failure: everything turns to desert). These
 //! tests make that loud instead of silent.
 
+use scale_sim::geology::Rock;
 use scale_sim::world::{Biome, World};
 
 const OCEAN: usize = Biome::Ocean as usize;
@@ -67,6 +68,102 @@ fn generation_is_deterministic() {
     assert_eq!(a.sea_level, b.sea_level, "same seed produced different sea level");
     assert_eq!(a.river, b.river, "same seed produced different rivers");
     assert_eq!(a.lake, b.lake, "same seed produced different lakes");
+    assert_eq!(a.geology.rock, b.geology.rock, "same seed produced different rock");
+    assert_eq!(
+        a.geology.fertility.data, b.geology.fertility.data,
+        "same seed produced different fertility"
+    );
+    assert_eq!(
+        a.geology.ore.data, b.geology.ore.data,
+        "same seed produced different ore"
+    );
+}
+
+#[test]
+fn every_rock_type_appears() {
+    // A world made entirely of one rock type means the classifier's cuts
+    // have drifted — the failure mode that made everything sedimentary.
+    for seed in [1u64, 42, 20260828, 7, 3] {
+        let w = World::generate(256, 144, seed);
+        let land: Vec<usize> = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .collect();
+        let land_n = land.len() as f32;
+
+        for rock in Rock::ALL {
+            let share =
+                land.iter().filter(|&&i| w.geology.rock[i] == rock).count() as f32 / land_n;
+            assert!(
+                share > 0.02,
+                "seed {seed}: {} is only {:.1}% of land",
+                rock.name(),
+                share * 100.0
+            );
+            assert!(
+                share < 0.90,
+                "seed {seed}: {} swallowed {:.0}% of land",
+                rock.name(),
+                share * 100.0
+            );
+        }
+    }
+}
+
+#[test]
+fn deposits_are_localised() {
+    // Deposits should be a small share of the map. If a resource covers
+    // most of the land it has stopped being a deposit and become terrain.
+    for seed in [1u64, 42, 20260828, 7, 3] {
+        let w = World::generate(256, 144, seed);
+        let land: Vec<usize> = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .collect();
+        let land_n = land.len() as f32;
+
+        for (name, f) in [
+            ("ore", &w.geology.ore),
+            ("coal", &w.geology.coal),
+            ("petroleum", &w.geology.petroleum),
+        ] {
+            let workable =
+                land.iter().filter(|&&i| f.data[i] >= 0.45).count() as f32 / land_n;
+            assert!(
+                workable < 0.35,
+                "seed {seed}: workable {name} covers {:.0}% of land",
+                workable * 100.0
+            );
+        }
+
+        // ...but the world must not be barren of everything either.
+        let any = land
+            .iter()
+            .filter(|&&i| {
+                w.geology.ore.data[i] >= 0.45
+                    || w.geology.coal.data[i] >= 0.45
+                    || w.geology.petroleum.data[i] >= 0.45
+            })
+            .count();
+        assert!(any > 0, "seed {seed}: no workable deposits anywhere");
+    }
+}
+
+#[test]
+fn fertile_land_exists_and_is_not_everywhere() {
+    for seed in [1u64, 42, 20260828, 7, 3] {
+        let w = World::generate(256, 144, seed);
+        let land: Vec<usize> = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .collect();
+        let land_n = land.len() as f32;
+
+        let prime =
+            land.iter().filter(|&&i| w.geology.fertility.data[i] > 0.55).count() as f32 / land_n;
+        assert!(
+            (0.005..0.60).contains(&prime),
+            "seed {seed}: prime farmland is {:.1}% of land",
+            prime * 100.0
+        );
+    }
 }
 
 #[test]

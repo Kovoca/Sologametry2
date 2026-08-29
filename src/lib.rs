@@ -5,6 +5,7 @@
 //! past biome classification lives here yet.
 
 pub mod field;
+pub mod geology;
 pub mod hydrology;
 pub mod noise;
 pub mod rng;

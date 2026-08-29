@@ -26,6 +26,9 @@ is fast. It writes maps into `out/`:
 | `world_temperature.png` | Temperature (blue = cold, red = hot) |
 | `world_rainfall.png` | Rainfall (dark = dry, bright blue = wet) |
 | `world_rivers.png` | Drainage network — flow accumulation, brighter = bigger river |
+| `world_rock.png` | Rock type — tan sedimentary, purple metamorphic, red igneous |
+| `world_fertility.png` | Soil fertility (tan = barren, green = prime farmland) |
+| `world_resources.png` | Deposits — red metal ore, white coal, green petroleum |
 | `world.txt` | The biome map as ASCII (`+` river, `o` lake) |
 
 It also prints a land-percentage and biome breakdown to the terminal.
@@ -63,7 +66,8 @@ src/
   field.rs     flat 2D scalar grid
   noise.rs     value-noise fBm + ridged multifractal (X axis wraps)
   hydrology.rs depression fill, flow routing, erosion, river/lake extraction
-  world.rs     the pipeline: elevation -> erosion -> climate -> biomes
+  geology.rs   rock type, mineral & fossil deposits, soil fertility
+  world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs
 docs/
