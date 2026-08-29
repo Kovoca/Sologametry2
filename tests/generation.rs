@@ -73,3 +73,33 @@ fn different_seeds_differ() {
     let b = World::generate(160, 90, 2);
     assert_ne!(a.biomes, b.biomes, "two seeds produced an identical map");
 }
+
+#[test]
+fn east_west_edges_are_seamless() {
+    // The planet is a cylinder (implementation-spec A1.3): the elevation
+    // field must wrap in X with no visible seam. Measure the discontinuity
+    // between the first and last columns against the typical discontinuity
+    // between interior adjacent columns — it should be comparable, not a
+    // cliff.
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let (width, height) = (w.width, w.height);
+        let e = &w.elevation.data;
+
+        let mut seam = 0.0f32;
+        let mut interior = 0.0f32;
+        for y in 0..height {
+            seam += (e[y * width] - e[y * width + (width - 1)]).abs();
+            let mid = width / 2;
+            interior += (e[y * width + mid] - e[y * width + mid - 1]).abs();
+        }
+        seam /= height as f32;
+        interior /= height as f32;
+
+        assert!(
+            seam < interior * 3.0,
+            "seed {seed}: east-west seam discontinuity {seam:.4} is a cliff \
+             vs typical adjacent-column {interior:.4}"
+        );
+    }
+}

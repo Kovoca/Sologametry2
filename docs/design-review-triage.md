@@ -23,10 +23,19 @@ Decision Log says so.
 
 ## Decision Log
 
-_(empty — fill as items are ratified)_
+**Worked through 2026-08-29. All `DECIDE-NOW` and `RULE` items in Parts 1–3
+are now resolved in [`implementation-spec.md`](implementation-spec.md)** —
+sections A1, A2, A3, A4, B1–B7, C1 are marked SETTLED there. This triage
+doc is kept as the record of *how* the review was categorised; the spec is
+the source of truth for *what was decided*.
 
-| # | Decision | Date | Notes |
-|---|---|---|---|
+Still open (tracked in the spec):
+- B3.6 — starting region rolled vs chosen (undecided).
+- A1.10 — `K` (the "relevant" region radius), z-level extent: pending
+  measurement.
+- B4.8 — per-region live individuation cap: pending profiling.
+- Economy and infrastructure-network specs: still `SPEC-LATER`, needed
+  before the vertical slice.
 
 ---
 
