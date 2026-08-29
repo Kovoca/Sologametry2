@@ -204,6 +204,35 @@ fn fewer_nations_means_more_concentration() {
 }
 
 #[test]
+fn state_sizes_are_skewed_not_uniform() {
+    // "A few big nations and many smaller ones" is the target shape. If
+    // every state comes out the same size, the founding-advantage model
+    // has stopped doing anything.
+    for seed in [1u64, 42, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let p = Polities::partition(&w, 30);
+        let ranked = p.ranked();
+        assert!(ranked.len() >= 10, "seed {seed}: only {} states", ranked.len());
+
+        let largest = ranked[0].1.cells as f32;
+        let median = ranked[ranked.len() / 2].1.cells as f32;
+        // A uniform partition puts this ratio near 1.5; the skew should
+        // push it well clear of that.
+        assert!(
+            largest > median * 2.4,
+            "seed {seed}: largest {largest:.0} vs median {median:.0} — sizes too uniform"
+        );
+
+        // ...but no single state should swallow the planet.
+        assert!(
+            p.concentration(1) < 0.45,
+            "seed {seed}: largest holds {:.0}% of claimed land",
+            p.concentration(1) * 100.0
+        );
+    }
+}
+
+#[test]
 fn polity_partition_is_deterministic() {
     let w = World::generate(192, 108, 555);
     let a = Polities::partition(&w, 20);

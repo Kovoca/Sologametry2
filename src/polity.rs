@@ -19,6 +19,7 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
+use crate::rng::Rng;
 use crate::world::{Biome, World};
 
 /// No owner.
@@ -32,6 +33,11 @@ const WORKABLE: f32 = 0.45;
 pub struct Polity {
     /// Cell index of the founding site — the capital.
     pub core: usize,
+    /// Founding advantage: how rich and open the country around the capital
+    /// is, relative to the other capitals on this planet. Above 1 expands
+    /// further for the same effort; below 1 is hemmed in. This is what
+    /// makes some states great powers and others perpetual minors.
+    pub reach: f32,
     /// Territory size in cells.
     pub cells: usize,
     /// Total soil fertility held: the crude carrying-capacity proxy, and
@@ -227,6 +233,58 @@ fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
     cores
 }
 
+/// How much country each core has to grow into, relative to the others.
+///
+/// A capital in a wide fertile basin becomes a great power; one wedged onto
+/// a mountainous island stays small however good the site itself is. Sum the
+/// habitability of the surrounding country, normalise across all cores, and
+/// sharpen — real state sizes differ by orders of magnitude, not by a few
+/// percent, and a flat spacing rule gives every state the same size.
+fn core_reach(world: &World, score: &[f32], cores: &[usize], radius: f32, seed: u64) -> Vec<f32> {
+    let (w, h) = (world.width, world.height);
+    let r = radius.max(1.0) as i32;
+
+    let mut raw: Vec<f32> = cores
+        .iter()
+        .map(|&c| {
+            let (cx, cy) = ((c % w) as i32, (c / w) as i32);
+            let mut sum = 0.0;
+            for dy in -r..=r {
+                let y = cy + dy;
+                if y < 0 || y >= h as i32 {
+                    continue;
+                }
+                for dx in -r..=r {
+                    if dx * dx + dy * dy > r * r {
+                        continue;
+                    }
+                    let x = (cx + dx).rem_euclid(w as i32) as usize;
+                    sum += score[y as usize * w + x];
+                }
+            }
+            sum
+        })
+        .collect();
+
+    let mean = (raw.iter().sum::<f32>() / raw.len().max(1) as f32).max(1e-6);
+
+    // A little jitter so two equally-placed capitals do not end up
+    // identical — history is not purely geography.
+    let mut rng = Rng::new(seed ^ 0x9E37_79B9_7F4A_7C15);
+    for v in &mut raw {
+        let luck = 0.85 + 0.30 * rng.next_f32();
+        // Exponent and clamp are the dial between "one hegemon and a lot of
+        // scraps" and "everyone the same size". These give a spread of
+        // roughly an order of magnitude between largest and smallest, which
+        // is about what real state areas look like.
+        // Territory scales roughly with the *square* of reach, so this
+        // clamp is tighter than it looks — 0.7..1.45 already spreads areas
+        // by about 4x, on top of the variation terrain alone produces.
+        *v = ((*v / mean) * luck).powf(0.95).clamp(0.7, 1.45);
+    }
+    raw
+}
+
 impl Polities {
     /// Partition the world into roughly `target` polities. The actual count,
     /// and every border, emerges from the terrain.
@@ -248,6 +306,8 @@ impl Polities {
         let spacing = (land_cells as f32 / cores.len().max(1) as f32).sqrt();
         let budget = spacing * 4.5;
 
+        let reach = core_reach(world, &score, &cores, spacing * 0.9, world.seed);
+
         let mut owner = vec![UNCLAIMED; n];
         let mut best = vec![f32::INFINITY; n];
         let mut heap: BinaryHeap<Reverse<(Cost, usize, u16)>> = BinaryHeap::new();
@@ -266,8 +326,11 @@ impl Polities {
                 continue; // stale entry
             }
             owner[i] = id;
+            // A well-founded state covers ground more cheaply, so it wins
+            // the contested middle and pushes its border further out.
+            let ease = reach[id as usize];
             neighbours(i, w, h, |j| {
-                let nd = d + cost[j];
+                let nd = d + cost[j] / ease;
                 if nd < best[j] && nd <= budget {
                     best[j] = nd;
                     heap.push(Reverse((Cost(nd), j, id)));
@@ -286,8 +349,10 @@ impl Polities {
         let g = &world.geology;
         let mut list: Vec<Polity> = cores
             .iter()
-            .map(|&core| Polity {
+            .enumerate()
+            .map(|(id, &core)| Polity {
                 core,
+                reach: reach[id],
                 cells: 0,
                 food: 0.0,
                 ore_cells: 0,
