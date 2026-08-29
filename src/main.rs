@@ -27,8 +27,8 @@ struct Args {
 fn parse_args() -> Args {
     let mut args = Args {
         seed: 20260828,
-        width: 512,
-        height: 288,
+        width: 768,
+        height: 432,
         out: "out".to_string(),
         params: Params::default(),
     };

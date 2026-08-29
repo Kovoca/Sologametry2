@@ -44,7 +44,17 @@ impl Default for Params {
 /// one dome. A north/south falloff sinks the poles; the X axis wraps, so a
 /// continent can run the full width of the map and around the back.
 fn generate_elevation(width: usize, height: usize, rng: &mut Rng) -> Field {
-    let mut continents = fbm(width, height, 4, 3.0, rng);
+    // Two independent low-frequency fields. `continents` places the land;
+    // `carve` pushes some of it back under water. The product of two blobby
+    // fields breaks the map into several distinct, irregular landmasses
+    // instead of one or two big blobs.
+    let mut continents = fbm(width, height, 5, 6.5, rng);
+    continents.normalise();
+    let mut carve = fbm(width, height, 3, 3.0, rng);
+    carve.normalise();
+    for (c, k) in continents.data.iter_mut().zip(&carve.data) {
+        *c *= 0.5 + 0.5 * k;
+    }
     continents.normalise();
 
     let rolling = fbm(width, height, 6, 5.0, rng);
@@ -63,7 +73,7 @@ fn generate_elevation(width: usize, height: usize, rng: &mut Rng) -> Field {
     for y in 0..height {
         // 0 at the equator, 1 at each pole.
         let lat = ((y as f32 / (height - 1) as f32) * 2.0 - 1.0).abs();
-        let polar = (1.0 - ((lat - 0.70) / 0.30).clamp(0.0, 1.0).powf(1.5)).clamp(0.0, 1.0);
+        let polar = (1.0 - ((lat - 0.74) / 0.26).clamp(0.0, 1.0).powf(1.5)).clamp(0.0, 1.0);
 
         for x in 0..width {
             let i = y * width + x;
