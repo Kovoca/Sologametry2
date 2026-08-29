@@ -94,6 +94,14 @@ routing, flora/fauna, civilization placement, history sim.
   the raw max — one outlier cell otherwise squashes every real deposit.
   Percentile *cuts* would force identical rock ratios on every world; use
   stretch-then-fixed-cut so worlds genuinely differ.
+- A purely global deposit anchor leaves whole regions with nothing to mine.
+  Fix is a per-region *lift* applied after global normalisation (raise each
+  region's best ground over the workable line, capped), not a per-region
+  anchor — dividing by a local mean is self-defeating, because a deposit
+  raises the very bar it must clear. If you try it anyway, the averaging
+  window must be far larger than a deposit.
+- The map wraps, so apparently separate continents are usually one
+  connected landmass. Check `geology.landmasses` before assuming otherwise.
 - Keep RNG and sorts deterministic — a seed must rebuild the same planet
   forever. Use `f32::total_cmp` + index tiebreak, never `sort_unstable` on
   bare floats.

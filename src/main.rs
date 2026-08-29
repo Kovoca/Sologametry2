@@ -558,4 +558,41 @@ fn print_geology(world: &World) {
         reach
     );
     println!();
+
+    // Per landmass: does each significant body of land carry its own
+    // resource base, or is a whole continent left with nothing to mine?
+    println!("landmasses (>=50 cells)      cells    ore   coal    oil");
+    let mut shown = 0;
+    let mut complete = 0;
+    let mut significant = 0;
+    for m in &g.landmasses {
+        if m.cells.len() < 50 {
+            continue;
+        }
+        significant += 1;
+        let count = |f: &scale_sim::field::Field| {
+            m.cells.iter().filter(|&&i| f.data[i] >= WORKABLE).count()
+        };
+        let (o, c, p) = (count(&g.ore), count(&g.coal), count(&g.petroleum));
+        if o > 0 && c > 0 && p > 0 {
+            complete += 1;
+        }
+        if shown < 8 {
+            println!(
+                "  {:<24} {:>6}  {:>5}  {:>5}  {:>5}",
+                format!("#{}", shown + 1),
+                m.cells.len(),
+                o,
+                c,
+                p
+            );
+            shown += 1;
+        }
+    }
+    println!(
+        "  {complete} of {significant} carry all three; \
+         {} landmasses in total",
+        g.landmasses.len()
+    );
+    println!();
 }

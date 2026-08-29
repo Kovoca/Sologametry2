@@ -53,6 +53,9 @@ pub struct Geology {
     pub coal: Field,
     /// Oil & gas concentration, 0..1 (sparse).
     pub petroleum: Field,
+    /// Contiguous landmasses, largest first. Deposits are scaled per
+    /// landmass, and settlement and polity work read these too.
+    pub landmasses: Vec<Landmass>,
 }
 
 impl Geology {
@@ -125,23 +128,166 @@ fn land_quantile(scores: &[f32], idx: &[usize], q: f32) -> f32 {
     v[k]
 }
 
-/// Rescale a concentration field over land so the 99th-percentile land cell
-/// sits at 1.0. Anchoring on a high percentile rather than the raw maximum
-/// keeps the scale stable — one freak outlier cell would otherwise squash
-/// every real deposit on the map — while still letting a genuinely
-/// ore-poor or ore-rich world come out that way.
-fn normalise_over_land(f: &mut Field, land: &[usize]) {
+/// Rescale a concentration field so deposits are readable at a common
+/// threshold — **per landmass**, not globally.
+///
+/// A purely global anchor compares every cell against the planet's single
+/// richest district, so a continent that happens to be all sedimentary
+/// lowland comes out with no workable deposits at all. Real continents are
+/// not like that: prospectors work whatever the best local rock is. Each
+/// landmass is therefore scaled against its own best ground, blended toward
+/// the global anchor by how small it is — a major landmass gets its own
+/// mining districts, a rock in the ocean does not.
+///
+/// Anchoring on a high percentile rather than the raw maximum keeps the
+/// scale stable: one freak outlier cell would otherwise squash every real
+/// deposit around it.
+fn normalise_over_land(f: &mut Field, land: &[usize], region: usize) {
     if land.is_empty() {
         return;
     }
-    let anchor = land_quantile(&f.data, land, 0.995).max(1e-6);
+
+    // 1. Planet-wide scale. Anchoring on a high percentile rather than the
+    // raw maximum keeps this stable — one freak outlier cell would
+    // otherwise squash every real deposit around it. Squared afterwards
+    // because concentration falls away sharply from a deposit's core, so
+    // workable ground stays localised instead of smearing.
+    let global = land_quantile(&f.data, land, 0.995).max(1e-6);
     for &i in land {
-        // Squared after scaling: concentration falls away sharply from a
-        // deposit's core, so workable ground stays a small share of the map
-        // instead of a broad smear.
-        let v = (f.data[i] / anchor).clamp(0.0, 1.0);
+        let v = (f.data[i] / global).clamp(0.0, 1.0);
         f.data[i] = v * v;
     }
+
+    // 2. Lift the regions that came up empty. Prospectors work the best
+    // rock available to them, not the best rock on the planet — a region
+    // whose geology never produced a world-class district still has ground
+    // worth mining, and leaving whole regions with nothing would mean whole
+    // nations with no industry. Regions that already hold a deposit are
+    // untouched, so genuinely rich ground stays richer.
+    // The cap has to be generous: coal and oil are near-absent over most of
+    // a planet and spike hard, so a modest cap leaves whole hemispheres
+    // with none. It still bites — ground with no trace of a mineral cannot
+    // be lifted into a district, and lifting only ever raises a region's
+    // *best* cells over the line, so a poor region gets a small field, not
+    // a rich one.
+    const TARGET: f32 = 0.62; // comfortably over the workable threshold
+    const MAX_LIFT: f32 = 18.0;
+
+    let lift = region_lift(f, land, region, TARGET, MAX_LIFT);
+    for &i in land {
+        f.data[i] = (f.data[i] * lift.data[i]).clamp(0.0, 1.0);
+    }
+}
+
+/// Per-region multiplier that brings each region's best ground up to
+/// `target`, capped at `max_lift`, smoothly interpolated so no block seams
+/// show. Regions already at or above `target` get a multiplier of 1.
+fn region_lift(f: &Field, land: &[usize], block: usize, target: f32, max_lift: f32) -> Field {
+    let (w, h) = (f.width, f.height);
+    let block = block.max(1);
+    let (bw, bh) = (w.div_ceil(block), h.div_ceil(block));
+
+    // Best ground in each block, and how much land the block holds.
+    let mut best = vec![0.0f32; bw * bh];
+    let mut count = vec![0u32; bw * bh];
+    for &i in land {
+        let (x, y) = (i % w, i / w);
+        let b = (y / block) * bw + (x / block);
+        best[b] = best[b].max(f.data[i]);
+        count[b] += 1;
+    }
+
+    let coarse: Vec<f32> = best
+        .iter()
+        .zip(&count)
+        .map(|(&m, &c)| {
+            // Open ocean is not a region. A block holding even a modest
+            // island still is — an island with no minerals at all is a
+            // place no one can industrialise.
+            if c < 20 || m <= 1e-6 {
+                1.0
+            } else {
+                (target / m).clamp(1.0, max_lift)
+            }
+        })
+        .collect();
+
+    // Bilinear upsample. X wraps with the cylinder; Y clamps at the poles.
+    let mut out = Field::new(w, h);
+    for y in 0..h {
+        let fy = (y as f32 + 0.5) / block as f32 - 0.5;
+        let y0f = fy.floor();
+        let ty = (fy - y0f).clamp(0.0, 1.0);
+        let y0 = (y0f as i32).clamp(0, bh as i32 - 1) as usize;
+        let y1 = (y0 + 1).min(bh - 1);
+
+        for x in 0..w {
+            let fx = (x as f32 + 0.5) / block as f32 - 0.5;
+            let x0f = fx.floor();
+            let tx = fx - x0f;
+            let x0 = (x0f as i32).rem_euclid(bw as i32) as usize;
+            let x1 = (x0 + 1) % bw;
+
+            let top = coarse[y0 * bw + x0] * (1.0 - tx) + coarse[y0 * bw + x1] * tx;
+            let bot = coarse[y1 * bw + x0] * (1.0 - tx) + coarse[y1 * bw + x1] * tx;
+            out.data[y * w + x] = top * (1.0 - ty) + bot * ty;
+        }
+    }
+    out
+}
+
+/// One contiguous body of land.
+pub struct Landmass {
+    pub cells: Vec<usize>,
+    /// 0 for a speck, rising to 1 for anything continent-sized. Decides how
+    /// far this landmass is scaled against its own geology rather than the
+    /// planet's.
+    pub significance: f32,
+}
+
+/// Label contiguous landmasses. 4-connected; X wraps, Y clamps.
+pub fn find_landmasses(elev: &Field, sea_level: f32) -> Vec<Landmass> {
+    let (w, h) = (elev.width, elev.height);
+    let n = w * h;
+    let is_land = |i: usize| elev.data[i] >= sea_level;
+
+    // A landmass this size is treated as fully continental. ~300 cells is
+    // roughly 80,000 km² at 16.4 km per cell — a country, not an island.
+    const FULLY_SIGNIFICANT: f32 = 300.0;
+
+    let mut seen = vec![false; n];
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+
+    for start in 0..n {
+        if seen[start] || !is_land(start) {
+            continue;
+        }
+        let mut cells = Vec::new();
+        stack.push(start);
+        seen[start] = true;
+        while let Some(i) = stack.pop() {
+            cells.push(i);
+            let (x, y) = (i % w, i / w);
+            let mut visit = |j: usize| {
+                if !seen[j] && is_land(j) {
+                    seen[j] = true;
+                    stack.push(j);
+                }
+            };
+            visit(y * w + (x + w - 1) % w);
+            visit(y * w + (x + 1) % w);
+            if y > 0 {
+                visit((y - 1) * w + x);
+            }
+            if y + 1 < h {
+                visit((y + 1) * w + x);
+            }
+        }
+        let significance = (cells.len() as f32 / FULLY_SIGNIFICANT).min(1.0);
+        out.push(Landmass { cells, significance });
+    }
+    out
 }
 
 /// Rescale `scores` over the given cells to span 0..1. Preserves the shape
@@ -363,9 +509,16 @@ pub fn generate(
 
     // Put every deposit field on a common scale so "workable" means the
     // same thing regardless of how the raw products happened to fall out.
-    normalise_over_land(&mut ore, &land);
-    normalise_over_land(&mut coal, &land);
-    normalise_over_land(&mut petroleum, &land);
+    // Region size in cells for the empty-region lift — scaled to the map so
+    // a "region" is the same real distance at any resolution (~800 km at
+    // the 768-wide default: a large country, or a province of a big one).
+    let region_size = (w / 20).max(6);
+    normalise_over_land(&mut ore, &land, region_size);
+    normalise_over_land(&mut coal, &land, region_size);
+    normalise_over_land(&mut petroleum, &land, region_size);
+
+    let mut masses = find_landmasses(elev, sea_level);
+    masses.sort_by(|a, b| b.cells.len().cmp(&a.cells.len()));
 
     Geology {
         rock,
@@ -373,5 +526,6 @@ pub fn generate(
         ore,
         coal,
         petroleum,
+        landmasses: masses,
     }
 }
