@@ -1194,6 +1194,38 @@ impl Economy {
         }
     }
 
+    /// For each market, every market reachable from it over open routes,
+    /// itself included. Cutting a route splits a component, which is what
+    /// makes severing the network an economic act rather than a delay.
+    fn market_components(&self) -> Vec<Vec<usize>> {
+        let n = self.markets.len();
+        let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+        for r in self.routes.iter().filter(|r| r.open) {
+            adj[r.a].push(r.b);
+            adj[r.b].push(r.a);
+        }
+
+        (0..n)
+            .map(|start| {
+                let mut seen = vec![false; n];
+                let mut stack = vec![start];
+                seen[start] = true;
+                let mut out = Vec::new();
+                while let Some(m) = stack.pop() {
+                    out.push(m);
+                    for &j in &adj[m] {
+                        if !seen[j] {
+                            seen[j] = true;
+                            stack.push(j);
+                        }
+                    }
+                }
+                out.sort_unstable();
+                out
+            })
+            .collect()
+    }
+
     /// Move finished goods from the works that made them to the shops that
     /// sell them, and inputs along the production chain.
     ///
@@ -1202,6 +1234,14 @@ impl Economy {
     /// stockbuilding demand of spec A.4, and it is what makes a shortage
     /// self-reinforcing when cover falls everywhere at once.
     fn distribute(&mut self) {
+        // Which markets each market can be supplied from: everywhere the
+        // open route network reaches, not merely its direct neighbours.
+        // Goods transship — a town at the end of a chain is supplied
+        // through the towns between, and only becomes isolated when the
+        // network is actually severed. Restricting supply to one hop makes
+        // outlying towns starve for want of a road that exists.
+        let reach = self.market_components();
+
         for dst in 0..self.ledger.sites.len() {
             let kind = self.ledger.sites[dst].kind;
             let market = self.ledger.sites[dst].market;
@@ -1248,23 +1288,11 @@ impl Economy {
                 // first, then anywhere an open route reaches. A town with
                 // no works of its own is supplied down the road, which is
                 // the ordinary case and is why cutting the road starves it.
-                let reachable: Vec<usize> = std::iter::once(market)
-                    .chain(self.routes.iter().filter(|r| r.open).filter_map(|r| {
-                        if r.a == market {
-                            Some(r.b)
-                        } else if r.b == market {
-                            Some(r.a)
-                        } else {
-                            None
-                        }
-                    }))
-                    .collect();
-
                 for src in 0..self.ledger.sites.len() {
                     if short <= 1e-9 {
                         break;
                     }
-                    if src == dst || !reachable.contains(&self.ledger.sites[src].market) {
+                    if src == dst || !reach[market].contains(&self.ledger.sites[src].market) {
                         continue;
                     }
                     let Some(r) = self.ledger.sites[src].recipe else {

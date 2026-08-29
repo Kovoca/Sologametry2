@@ -266,42 +266,60 @@ impl Region {
             });
         }
 
-        // --- Mill and cannery at the largest town ---
-        let mill_rate = food_day * 1.12 * 0.9;
-        let cannery_rate = food_day * 1.12;
+        // --- Mills and canneries, one set per market, sized to that
+        // market's own population ---
+        //
+        // Food processing sits near where the food is eaten. Putting a
+        // nation's every mill and cannery in its capital would mean hauling
+        // the whole population's bread hundreds of kilometres, and would
+        // make that one city a single point of failure for everybody — an
+        // artefact of the model rather than anything about the country.
+        let total_mill = food_day * 1.12 * 0.9;
+        let total_cannery = food_day * 1.12;
+        for m in 0..towns.len() {
+            let share = markets[m].population / total_pop.max(1.0);
+            let mill_rate = total_mill * share;
+            let cannery_rate = total_cannery * share;
+            if cannery_rate < 0.5 {
+                continue;
+            }
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} mill"),
+                kind: SiteKind::Mill,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Grain, mill_rate * 1.35 * 3.0),
+                    (Commodity::Flour, mill_rate * 3.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Grain, mill_rate * 1.35 * 12.0),
+                    (Commodity::Flour, mill_rate * 12.0),
+                ]),
+                recipe: Some(recipe::MILL),
+                throughput: mill_rate,
+                powered: true,
+            });
+            sites.push(Site {
+                name: format!("{name} cannery"),
+                kind: SiteKind::Factory,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Flour, cannery_rate * 0.9 * 3.0),
+                    (Commodity::ProcessedFood, cannery_rate * 3.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Flour, cannery_rate * 0.9 * 12.0),
+                    (Commodity::ProcessedFood, cannery_rate * 12.0),
+                ]),
+                recipe: Some(recipe::CANNERY),
+                throughput: cannery_rate,
+                powered: true,
+            });
+        }
+        let mill_rate = total_mill;
+        let cannery_rate = total_cannery;
         let capital_name = markets[0].name.clone();
-        sites.push(Site {
-            name: format!("{capital_name} mill"),
-            kind: SiteKind::Mill,
-            market: 0,
-            stock: cap(&[
-                (Commodity::Grain, mill_rate * 1.35 * 3.0),
-                (Commodity::Flour, mill_rate * 3.0),
-            ]),
-            capacity: cap(&[
-                (Commodity::Grain, mill_rate * 1.35 * 12.0),
-                (Commodity::Flour, mill_rate * 12.0),
-            ]),
-            recipe: Some(recipe::MILL),
-            throughput: mill_rate,
-            powered: true,
-        });
-        sites.push(Site {
-            name: format!("{capital_name} cannery"),
-            kind: SiteKind::Factory,
-            market: 0,
-            stock: cap(&[
-                (Commodity::Flour, cannery_rate * 0.9 * 3.0),
-                (Commodity::ProcessedFood, cannery_rate * 3.0),
-            ]),
-            capacity: cap(&[
-                (Commodity::Flour, cannery_rate * 0.9 * 12.0),
-                (Commodity::ProcessedFood, cannery_rate * 12.0),
-            ]),
-            recipe: Some(recipe::CANNERY),
-            throughput: cannery_rate,
-            powered: true,
-        });
 
         // --- Coal and generation, only where the geology allows ---
         //
