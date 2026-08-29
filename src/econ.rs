@@ -462,6 +462,17 @@ impl Market {
 // Power grid
 // ---------------------------------------------------------------------------
 
+/// What took a line out of service. The distinction matters enormously
+/// for how long it stays out.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Cause {
+    /// Conductor, tower, insulator — crews carry replacements.
+    Conductor,
+    /// The substation transformer. Nothing can be done without one, and
+    /// one either sits in a store or is a year away.
+    Transformer,
+}
+
 /// A transmission line. Spec B.2.
 pub struct Line {
     pub name: String,
@@ -471,6 +482,8 @@ pub struct Line {
     /// failure threshold it starts tripping.
     pub condition: f64,
     pub up: bool,
+    /// Why it is down, if it is.
+    pub cause: Option<Cause>,
 }
 
 pub struct Grid {
@@ -506,9 +519,20 @@ impl Grid {
 
     /// Take a line out of service by name. Returns whether it was found.
     pub fn fail_line(&mut self, name: &str) -> bool {
+        self.fail(name, Cause::Conductor)
+    }
+
+    /// Destroy the substation transformer feeding a line — the same
+    /// blackout, a completely different recovery.
+    pub fn fail_transformer(&mut self, name: &str) -> bool {
+        self.fail(name, Cause::Transformer)
+    }
+
+    fn fail(&mut self, name: &str, cause: Cause) -> bool {
         for l in self.lines.iter_mut() {
             if l.name == name && l.up {
                 l.up = false;
+                l.cause = Some(cause);
                 return true;
             }
         }
@@ -520,6 +544,7 @@ impl Grid {
             if l.name == name && !l.up {
                 l.up = true;
                 l.condition = 1.0;
+                l.cause = None;
                 return true;
             }
         }
@@ -547,6 +572,100 @@ pub struct Route {
 }
 
 // ---------------------------------------------------------------------------
+// Incidents and response
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Fault {
+    /// A transmission line is down. Crews carry emergency restoration
+    /// towers and conductor; nothing has to be manufactured.
+    Line(String),
+    /// A substation transformer is destroyed. **The repair time depends
+    /// entirely on whether a spare is in store**: with one, it is a swap
+    /// measured in days; without one, it is a custom build with a lead
+    /// time measured in months. That gap is why utilities hold spares at
+    /// all, and it makes the size of the spares store the single most
+    /// consequential prudence decision a state makes about its grid.
+    Transformer(String),
+}
+
+/// Something broke, and what has happened about it since.
+///
+/// **Response is not automatic.** A fault sits unreported until somebody
+/// notices it and has a working way to tell someone — that is the design
+/// doc's rule, and it is why cutting comms is an attack in its own right.
+/// After that a crew has to travel, which takes real days along a real
+/// road, and during those days it can be helped or stopped.
+#[derive(Clone, Debug)]
+pub struct Incident {
+    pub what: Fault,
+    pub occurred: u64,
+    pub reported: Option<u64>,
+    pub dispatched: Option<u64>,
+    /// Day the crew reaches the fault. While `dispatched` is set and this
+    /// day has not arrived, the crew is on the road and interceptable.
+    pub arrives: Option<u64>,
+    /// Days of work once on site. Fixed at dispatch, because whether a
+    /// spare part is on the shelf is known the moment the job is assigned.
+    pub work_days: u64,
+    pub resolved: Option<u64>,
+}
+
+impl Incident {
+    pub fn in_transit(&self, day: u64) -> bool {
+        self.dispatched.is_some()
+            && self.resolved.is_none()
+            && self.arrives.is_some_and(|a| day < a)
+    }
+}
+
+/// The region's capacity to answer an incident. Funded by the state, so
+/// these numbers are where the prudent/negligent doctrine shows up in
+/// whether the lights come back on.
+///
+/// **Real restoration times.** A downed line is back in two to four days.
+/// A destroyed transformer is a swap of about a week *if a spare is in
+/// store*, and a twelve-to-eighteen-month wait if not — they are built to
+/// order. Everything about grid resilience turns on that difference.
+pub struct Response {
+    /// Are communications working? With comms down, nothing gets reported.
+    pub comms_up: bool,
+    /// Crews the state maintains. Zero means nothing is ever repaired.
+    pub crews: usize,
+    /// Days for a crew to reach the fault. A well-run region keeps crews
+    /// and depots close to what they maintain; a neglected one sends them
+    /// from the capital.
+    pub travel_days: u64,
+    /// Days of work once there. Trained crews with the right parts on the
+    /// lorry finish in two; improvised ones take much longer.
+    pub repair_days: u64,
+    /// Spare transformers in store. Holding these is expensive and looks
+    /// like waste right up until the day it does not.
+    pub spare_transformers: usize,
+    /// Days to have a new transformer built when the store is empty.
+    /// Twelve to eighteen months in reality.
+    pub transformer_lead_days: u64,
+    pub incidents: Vec<Incident>,
+}
+
+impl Response {
+    pub fn crews_busy(&self, day: u64) -> usize {
+        self.incidents
+            .iter()
+            .filter(|i| i.dispatched.is_some() && i.resolved.is_none_or(|r| r > day))
+            .count()
+    }
+
+    /// Incidents still waiting for someone to notice them.
+    pub fn unreported(&self) -> usize {
+        self.incidents
+            .iter()
+            .filter(|i| i.reported.is_none() && i.resolved.is_none())
+            .count()
+    }
+}
+
+// ---------------------------------------------------------------------------
 // The running economy
 // ---------------------------------------------------------------------------
 
@@ -556,6 +675,7 @@ pub struct Economy {
     pub markets: Vec<Market>,
     pub routes: Vec<Route>,
     pub grid: Grid,
+    pub response: Response,
     /// Electricity that could not be supplied today — the load shed.
     pub unserved_power: f64,
     /// Household demand that could not be met, per commodity. This is
@@ -569,6 +689,7 @@ impl Economy {
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
 
+        self.run_response();
         self.generate_power();
         self.allocate_power();
         self.produce();
@@ -585,6 +706,116 @@ impl Economy {
 
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
+    }
+
+    /// Notice faults, report them, dispatch crews, complete repairs.
+    ///
+    /// Each stage can fail independently, which is the point: a fault
+    /// nobody reports is never fixed, a report with no crew to send goes
+    /// nowhere, and a crew on the road has not arrived yet.
+    fn run_response(&mut self) {
+        let day = self.ledger.day;
+
+        // Notice any line that is down and not already on the books.
+        let downed: Vec<Fault> = self
+            .grid
+            .lines
+            .iter()
+            .filter(|l| !l.up)
+            .map(|l| match l.cause {
+                Some(Cause::Transformer) => Fault::Transformer(l.name.clone()),
+                _ => Fault::Line(l.name.clone()),
+            })
+            .filter(|fault| {
+                !self
+                    .response
+                    .incidents
+                    .iter()
+                    .any(|i| i.what == *fault && i.resolved.is_none())
+            })
+            .collect();
+        for fault in downed {
+            self.response.incidents.push(Incident {
+                what: fault,
+                occurred: day,
+                reported: None,
+                dispatched: None,
+                arrives: None,
+                work_days: 0,
+                resolved: None,
+            });
+        }
+
+        // Reporting needs a witness with a working way to tell someone.
+        // With comms down the fault is simply not known about, however
+        // obvious its effects.
+        if self.response.comms_up {
+            for inc in self.response.incidents.iter_mut() {
+                if inc.reported.is_none() && inc.resolved.is_none() {
+                    inc.reported = Some(day);
+                }
+            }
+        }
+
+        // Dispatch, oldest report first, as far as crews allow. The work
+        // time is decided here, because whether a spare is on the shelf is
+        // known the moment the job is assigned.
+        let free = self.response.crews.saturating_sub(self.response.crews_busy(day));
+        if free > 0 {
+            let travel = self.response.travel_days;
+            let mut sent = 0;
+            let mut order: Vec<usize> = (0..self.response.incidents.len()).collect();
+            order.sort_by_key(|&i| self.response.incidents[i].reported.unwrap_or(u64::MAX));
+
+            for i in order {
+                if sent >= free {
+                    break;
+                }
+                if self.response.incidents[i].reported.is_none()
+                    || self.response.incidents[i].dispatched.is_some()
+                    || self.response.incidents[i].resolved.is_some()
+                {
+                    continue;
+                }
+
+                let work = match &self.response.incidents[i].what {
+                    Fault::Line(_) => self.response.repair_days,
+                    Fault::Transformer(_) => {
+                        if self.response.spare_transformers > 0 {
+                            self.response.spare_transformers -= 1;
+                            self.response.repair_days + 5 // fit the spare
+                        } else {
+                            // Nothing in store: wait for one to be built.
+                            self.response.transformer_lead_days
+                        }
+                    }
+                };
+
+                let inc = &mut self.response.incidents[i];
+                inc.dispatched = Some(day);
+                inc.arrives = Some(day + travel);
+                inc.work_days = work;
+                sent += 1;
+            }
+        }
+
+        // Arrivals and completed work.
+        let mut restored: Vec<String> = Vec::new();
+        for inc in self.response.incidents.iter_mut() {
+            if inc.resolved.is_some() {
+                continue;
+            }
+            let Some(arrives) = inc.arrives else { continue };
+            if day >= arrives + inc.work_days {
+                inc.resolved = Some(day);
+                match &inc.what {
+                    Fault::Line(name) | Fault::Transformer(name) => restored.push(name.clone()),
+                }
+            }
+        }
+        for name in restored {
+            self.grid.restore_line(&name);
+        }
     }
 
     /// Power plants burn fuel and generate. Limited by what the grid can

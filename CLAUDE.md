@@ -129,6 +129,16 @@ households buy → shops restock → inter-market trade → prices. Shops sell
 `cargo run --release --bin slice` runs the two-town scenario.
 `tests/economy.rs` is the spec's acceptance test as assertions.
 
+**Nothing is repaired on a schedule.** A fault must be noticed, reported
+over working comms, assigned to a crew, and travelled to before any work
+starts. Cut comms and it is never fixed at all. Real restoration times:
+a downed line is 2-4 days; a destroyed **transformer** is about a week if
+a spare is in store and twelve to eighteen months if not, because they are
+built to order. That gap is why holding spares is the highest-leverage
+prudence decision on a grid, and why transformers are what grid attacks
+target. `Doctrine` (prudent/negligent) sets redundancy, crews, travel time
+and spares together — one trait, four concrete purchases.
+
 Things that were wrong first time, and would be again:
 - Price as `scarcity^(1/elasticity)` compounds to absurdity — it priced
   food at 4000x cost. Elasticity relates a *proportional* shortfall to a

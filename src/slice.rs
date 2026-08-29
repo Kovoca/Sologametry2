@@ -1,4 +1,4 @@
-//! The vertical slice scenario.
+﻿//! The vertical slice scenario.
 //!
 //! Two towns joined by one road. Ashford has the farm, mill, cannery and
 //! the power station that runs them; Bexley across the road has a shop and
@@ -7,8 +7,8 @@
 //! and nothing more.
 //!
 //! Hand-placed on purpose. This is the smallest world in which the
-//! connective systems — production, distribution, prices, freight, the
-//! grid — can be watched interacting, and it is meant to be replaced by
+//! connective systems â€” production, distribution, prices, freight, the
+//! grid â€” can be watched interacting, and it is meant to be replaced by
 //! generated regions once they demonstrably work.
 //!
 //! **Sized from demand, not by eye.** Ashford and Bexley hold 68,000
@@ -17,8 +17,8 @@
 //! to match with a working margin.
 
 use crate::econ::{
-    basket, Commodity, Economy, Grid, Journal, Ledger, Line, Market, Route, Site, SiteKind,
-    N_COMMODITIES,
+    basket, Commodity, Economy, Grid, Journal, Ledger, Line, Market, Response, Route, Site,
+    SiteKind, N_COMMODITIES,
 };
 
 pub mod site {
@@ -45,20 +45,55 @@ fn cap(pairs: &[(Commodity, f64)]) -> [f64; N_COMMODITIES] {
     b
 }
 
-/// Whether the region's grid was built with a spare line.
+/// How well the state that governs this region does its job.
 ///
-/// The prudent/negligent doctrine trait made concrete (spec B.2, C.4):
-/// N-1 redundancy costs real money, and a state that declined to buy it
-/// blacks out its industry the first time a line goes down.
+/// The prudent/negligent doctrine trait (spec C.3), expressed in the three
+/// places it actually shows up: whether the grid was built with a spare
+/// line, how many repair crews are kept, and how far away they are. One
+/// trait, three concrete purchases, all of them readable on the ground by
+/// a player who looks.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum GridPlan {
-    /// Two lines, either of which carries the load alone.
-    Redundant,
-    /// One line. Cheaper, and one failure away from darkness.
-    Minimal,
+pub enum Doctrine {
+    /// Bought N-1 redundancy, keeps crews and a parts depot locally.
+    Prudent,
+    /// One line, one crew sent from the capital when someone complains.
+    Negligent,
 }
 
-pub fn build(plan: GridPlan) -> Economy {
+impl Doctrine {
+    /// Days for a crew to reach the fault, and days of work once there.
+    ///
+    /// Real restoration for a downed transmission line is two to four days
+    /// all in. A well-run region hits the bottom of that; a neglected one
+    /// takes a week and a half, because the crew starts far away and
+    /// arrives without the right parts.
+    fn response_times(self) -> (u64, u64) {
+        match self {
+            Doctrine::Prudent => (1, 2),
+            Doctrine::Negligent => (4, 6),
+        }
+    }
+
+    fn crews(self) -> usize {
+        match self {
+            Doctrine::Prudent => 2,
+            Doctrine::Negligent => 1,
+        }
+    }
+
+    /// Spare transformers in store. This is the decision that matters
+    /// most and shows least: it looks like money sitting idle for years,
+    /// and then it is the difference between a week in the dark and a
+    /// year.
+    fn spares(self) -> usize {
+        match self {
+            Doctrine::Prudent => 1,
+            Doctrine::Negligent => 0,
+        }
+    }
+}
+
+pub fn build(doctrine: Doctrine) -> Economy {
     use Commodity::*;
 
     // Daily food demand, and the chain that has to supply it.
@@ -147,10 +182,10 @@ pub fn build(plan: GridPlan) -> Economy {
     ];
 
     // One road. The freight cost on it is what bounds the price gap
-    // between the two towns (spec A.7) — cutting it is an economic event,
+    // between the two towns (spec A.7) â€” cutting it is an economic event,
     // not just a nuisance.
     let routes = vec![Route {
-        name: "Ashford–Bexley road".into(),
+        name: "Ashfordâ€“Bexley road".into(),
         a: ASHFORD,
         b: BEXLEY,
         freight_cost: 45.0,
@@ -160,28 +195,33 @@ pub fn build(plan: GridPlan) -> Economy {
 
     // Peak load is dominated by the cannery.
     let peak = cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0;
-    let lines = match plan {
-        GridPlan::Redundant => vec![
+    let lines = match doctrine {
+        Doctrine::Prudent => vec![
             Line {
                 name: "Kelling line A".into(),
                 capacity: peak * 1.25,
                 condition: 1.0,
                 up: true,
+                cause: None,
             },
             Line {
                 name: "Kelling line B".into(),
                 capacity: peak * 1.25,
                 condition: 1.0,
                 up: true,
+                cause: None,
             },
         ],
-        GridPlan::Minimal => vec![Line {
+        Doctrine::Negligent => vec![Line {
             name: "Kelling line A".into(),
             capacity: peak * 1.25,
             condition: 1.0,
             up: true,
+            cause: None,
         }],
     };
+
+    let (travel_days, repair_days) = doctrine.response_times();
 
     Economy {
         ledger: Ledger::new(sites),
@@ -189,6 +229,17 @@ pub fn build(plan: GridPlan) -> Economy {
         markets,
         routes,
         grid: Grid { lines, loss: 0.08 },
+        response: Response {
+            comms_up: true,
+            crews: doctrine.crews(),
+            travel_days,
+            repair_days,
+            spare_transformers: doctrine.spares(),
+            // Twelve to eighteen months to have one built. This is the
+            // number that makes a transformer worth attacking.
+            transformer_lead_days: 420,
+            incidents: Vec::new(),
+        },
         unserved_power: 0.0,
         unmet_demand: basket(),
     }

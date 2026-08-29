@@ -1,51 +1,69 @@
 //! Runs the vertical-slice scenario and prints what happens.
 //!
 //!   cargo run --release --bin slice
-//!   cargo run --release --bin slice -- --grid minimal --days 60
+//!   cargo run --release --bin slice -- --doctrine prudent
+//!   cargo run --release --bin slice -- --fault transformer --days 200
 //!
-//! The default run cuts a transmission line on day 20 and repairs it on
-//! day 45, so the whole cascade from spec Part D's acceptance test is
-//! visible in one table.
+//! Something is broken on the chosen day. Nothing is repaired on a
+//! schedule: a fault has to be noticed, reported over working comms,
+//! assigned to a crew, and travelled to before any work starts — so how
+//! long the lights are out is a consequence of how the region is run.
 
-use scale_sim::econ::{Commodity, Economy};
-use scale_sim::slice::{self, GridPlan};
+use scale_sim::econ::{Commodity, Economy, Fault};
+use scale_sim::slice::{self, Doctrine};
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum FaultKind {
+    Line,
+    Transformer,
+}
 
 struct Args {
     days: u64,
-    plan: GridPlan,
+    doctrine: Doctrine,
+    fault: FaultKind,
     fail_on: u64,
-    repair_on: u64,
+    comms_out: bool,
 }
 
 fn parse_args() -> Args {
     let mut args = Args {
-        days: 70,
-        plan: GridPlan::Minimal,
+        days: 90,
+        doctrine: Doctrine::Negligent,
+        fault: FaultKind::Line,
         fail_on: 20,
-        repair_on: 45,
+        comms_out: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--days" => args.days = it.next().and_then(|v| v.parse().ok()).unwrap_or(70),
-            "--grid" => {
-                args.plan = match it.next().as_deref() {
-                    Some("redundant") => GridPlan::Redundant,
-                    Some("minimal") | None => GridPlan::Minimal,
-                    Some(other) => {
-                        eprintln!("bad --grid value: {other:?} (expected redundant or minimal)");
+            "--days" => args.days = it.next().and_then(|v| v.parse().ok()).unwrap_or(90),
+            "--fail-on" => args.fail_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(20),
+            "--comms-out" => args.comms_out = true,
+            "--doctrine" => {
+                args.doctrine = match it.next().as_deref() {
+                    Some("prudent") => Doctrine::Prudent,
+                    Some("negligent") | None => Doctrine::Negligent,
+                    Some(o) => {
+                        eprintln!("bad --doctrine {o:?} (expected prudent or negligent)");
                         std::process::exit(2);
                     }
                 }
             }
-            "--fail-on" => args.fail_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(20),
-            "--repair-on" => {
-                args.repair_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(45)
+            "--fault" => {
+                args.fault = match it.next().as_deref() {
+                    Some("transformer") => FaultKind::Transformer,
+                    Some("line") | None => FaultKind::Line,
+                    Some(o) => {
+                        eprintln!("bad --fault {o:?} (expected line or transformer)");
+                        std::process::exit(2);
+                    }
+                }
             }
             "--help" | "-h" => {
                 println!(
-                    "usage: slice [--days N] [--grid redundant|minimal] \
-                     [--fail-on DAY] [--repair-on DAY]"
+                    "usage: slice [--days N] [--doctrine prudent|negligent]\n\
+                     \x20            [--fault line|transformer] [--fail-on DAY] [--comms-out]"
                 );
                 std::process::exit(0);
             }
@@ -60,22 +78,24 @@ fn parse_args() -> Args {
 
 fn main() {
     let args = parse_args();
-    let mut econ = slice::build(args.plan);
+    let mut econ = slice::build(args.doctrine);
+    econ.response.comms_up = !args.comms_out;
 
-    let peak = 40.0; // rough daily peak load for the N-1 report
+    let peak = 40.0;
     println!(
-        "grid: {} line(s), {:.0} MWh/day deliverable, N-1 {}",
+        "state: {:?} — {} line(s), N-1 {}, {} crew(s) {} days away, {} spare transformer(s)",
+        args.doctrine,
         econ.grid.lines.len(),
-        econ.grid.capacity(),
-        if econ.grid.survives_n1(peak) {
-            "satisfied"
-        } else {
-            "NOT satisfied — one failure blacks out industry"
-        }
+        if econ.grid.survives_n1(peak) { "satisfied" } else { "NOT satisfied" },
+        econ.response.crews,
+        econ.response.travel_days,
+        econ.response.spare_transformers,
     );
+    if args.comms_out {
+        println!("comms are down — nothing can be reported");
+    }
     println!(
-        "towns: {} ({:.0}k people), {} ({:.0}k people), joined by one road \
-         at {:.0}/unit freight\n",
+        "towns: {} ({:.0}k), {} ({:.0}k), one road at {:.0}/unit freight\n",
         econ.markets[0].name,
         econ.markets[0].population / 1000.0,
         econ.markets[1].name,
@@ -83,34 +103,54 @@ fn main() {
         econ.routes[0].freight_cost,
     );
 
-    println!(
-        " day │ food: Ashford   Bexley │ cover A  cover B │ haul │ power │ event"
-    );
-    println!("─────┼────────────────────────┼──────────────────┼──────┼───────┼──────────────");
+    println!(" day │ food: Ashford   Bexley │ cover A  cover B │ haul │ power │ event");
+    println!("─────┼────────────────────────┼──────────────────┼──────┼───────┼─────────────────");
+
+    let f = Commodity::ProcessedFood;
+    let mut last_state = String::new();
 
     for day in 0..args.days {
         let mut note = String::new();
-        if day == args.fail_on && econ.grid.fail_line("Kelling line A") {
-            note = "line A fails".into();
-        }
-        if day == args.repair_on && econ.grid.restore_line("Kelling line A") {
-            note = "line A repaired".into();
+        if day == args.fail_on {
+            match args.fault {
+                FaultKind::Line => {
+                    econ.grid.fail_line("Kelling line A");
+                    note = "line A down".into();
+                }
+                FaultKind::Transformer => {
+                    econ.grid.fail_transformer("Kelling line A");
+                    note = "transformer destroyed".into();
+                }
+            }
         }
 
         econ.step();
 
-        let f = Commodity::ProcessedFood;
-        let pa = econ.price(slice::ASHFORD, f);
-        let pb = econ.price(slice::BEXLEY, f);
-        let arb = econ.arbitrage(0, f);
-        let shed = econ.unserved_power;
+        // Report the moment the response chain changes state.
+        if let Some(inc) = econ.response.incidents.last() {
+            let state = if inc.resolved.is_some() {
+                "repaired"
+            } else if inc.in_transit(econ.ledger.day) {
+                "crew travelling"
+            } else if inc.dispatched.is_some() {
+                "crew on site"
+            } else if inc.reported.is_some() {
+                "reported, waiting"
+            } else {
+                "unreported"
+            };
+            if state != last_state {
+                if note.is_empty() {
+                    note = state.to_string();
+                } else {
+                    note = format!("{note} — {state}");
+                }
+                last_state = state.to_string();
+            }
+        }
 
-        // Only print days worth looking at: the start, anything eventful,
-        // and a weekly sample.
-        let interesting = !note.is_empty()
-            || day < 3
-            || day % 7 == 0
-            || day + 1 == args.days;
+        let interesting =
+            !note.is_empty() || day < 2 || day % 14 == 0 || day + 1 == args.days;
         if !interesting {
             continue;
         }
@@ -118,12 +158,12 @@ fn main() {
         println!(
             "{:>4} │ {:>13.0} {:>8.0} │ {:>7.1} {:>8.1} │ {:>4} │ {:>5} │ {}",
             day,
-            pa,
-            pb,
+            econ.price(slice::ASHFORD, f),
+            econ.price(slice::BEXLEY, f),
             econ.markets[slice::ASHFORD].cover[f as usize],
             econ.markets[slice::BEXLEY].cover[f as usize],
-            if arb > 0.0 { "yes" } else { "-" },
-            if shed > 0.01 { "SHED" } else { "ok" },
+            if econ.arbitrage(0, f) > 0.0 { "yes" } else { "-" },
+            if econ.unserved_power > 0.01 { "SHED" } else { "ok" },
             note,
         );
     }
@@ -150,9 +190,26 @@ fn summary(econ: &Economy) {
         );
     }
 
+    for inc in &econ.response.incidents {
+        let what = match &inc.what {
+            Fault::Line(n) => format!("line {n}"),
+            Fault::Transformer(n) => format!("transformer at {n}"),
+        };
+        match (inc.reported, inc.resolved) {
+            (None, _) => println!("  {what}: still unreported after {} days", econ.ledger.day - inc.occurred),
+            (Some(_), None) => println!("  {what}: reported, still out"),
+            (Some(_), Some(done)) => println!(
+                "  {what}: out for {} days ({} to notice and reach it, {} to fix)",
+                done - inc.occurred,
+                inc.arrives.unwrap_or(done) - inc.occurred,
+                inc.work_days,
+            ),
+        }
+    }
+
     let hungry = econ.unmet_demand[Commodity::ProcessedFood as usize];
     if hungry > 0.01 {
-        println!("  {hungry:.1} t of food demand went unmet today — people going without");
+        println!("  {hungry:.1} t of food demand went unmet today");
     }
     println!("  {} journal entries", econ.journal.len());
     econ.ledger.assert_conserved();

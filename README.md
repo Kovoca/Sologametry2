@@ -62,16 +62,23 @@ mill → cannery chain and the power station that runs it.
 
 ```
 cargo run --release --bin slice
-cargo run --release --bin slice -- --grid redundant
-cargo run --release --bin slice -- --days 120 --fail-on 30 --repair-on 90
+cargo run --release --bin slice -- --doctrine prudent
+cargo run --release --bin slice -- --fault transformer --days 200
+cargo run --release --bin slice -- --comms-out --days 80
 ```
 
-The default run cuts a transmission line on day 20 and repairs it on day
-45. With `--grid minimal` (the default) there is no spare line, so the
-cannery stops, food stock runs down, prices climb, and a profitable haul
-between the towns appears — because the arithmetic changed, not because
-anything generated it. With `--grid redundant` the identical failure has
-no effect at all.
+Something breaks on day 20. **Nothing is repaired on a schedule** — the
+fault has to be noticed, reported over working comms, assigned to a crew,
+and travelled to before any work starts, so how long the lights stay off
+falls out of how the region is run:
+
+| Run | Outcome |
+|---|---|
+| `--doctrine negligent` (default) | no spare line; 10 days dark; food hits 5× cost, people go without, a profitable haul appears between the towns |
+| `--doctrine prudent` | spare line, crews nearby; 3 days; nobody notices |
+| `--fault transformer --doctrine prudent` | spare in store; 8 days |
+| `--fault transformer` (negligent) | none in store; built to order; still dark a year later |
+| `--comms-out` | nobody can report it; never fixed at all |
 
 ## Tests
 
