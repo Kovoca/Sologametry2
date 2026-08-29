@@ -1,7 +1,7 @@
-//! Natural political fragmentation.
+﻿//! Natural political fragmentation.
 //!
 //! Partitions the land into the territories a planet's geography *wants*.
-//! This is not the history simulation and it places nothing by hand — it
+//! This is not the history simulation and it places nothing by hand â€” it
 //! answers the prior question the history sim needs answered: given this
 //! terrain, where do people settle, and where do the borders fall?
 //!
@@ -9,7 +9,7 @@
 //!   1. Score every land cell for habitability (food, water, minerals).
 //!   2. Seed cores at the best sites, spaced apart.
 //!   3. Grow each core outward at a cost set by the terrain, until the
-//!      territories meet. Borders land where expansion got expensive —
+//!      territories meet. Borders land where expansion got expensive â€”
 //!      mountain crests, deserts, straits.
 //!
 //! Runs *after* `World::generate` on purpose. `World` stays pure geography;
@@ -31,12 +31,11 @@ const WORKABLE: f32 = 0.45;
 
 #[derive(Clone, Debug)]
 pub struct Polity {
-    /// Cell index of the founding site — the capital.
+    /// Cell index of the founding site â€” the capital.
     pub core: usize,
-    /// Founding advantage: how rich and open the country around the capital
-    /// is, relative to the other capitals on this planet. Above 1 expands
-    /// further for the same effort; below 1 is hemmed in. This is what
-    /// makes some states great powers and others perpetual minors.
+    /// State capacity — how effectively this polity projects power, above
+    /// or below the average. The part of state size that is history rather
+    /// than geography.
     pub reach: f32,
     /// Territory size in cells.
     pub cells: usize,
@@ -46,7 +45,7 @@ pub struct Polity {
     pub ore_cells: usize,
     pub coal_cells: usize,
     pub petroleum_cells: usize,
-    /// Holds at least one coastal cell — can trade and project by sea.
+    /// Holds at least one coastal cell â€” can trade and project by sea.
     pub coastal: bool,
 }
 
@@ -93,8 +92,8 @@ fn neighbours(i: usize, w: usize, h: usize, mut f: impl FnMut(usize)) {
     }
 }
 
-/// How attractive a cell is to settle. Food first — every real settlement
-/// pattern is built on what can be eaten locally — then fresh water, then
+/// How attractive a cell is to settle. Food first â€” every real settlement
+/// pattern is built on what can be eaten locally â€” then fresh water, then
 /// the sea, then minerals.
 fn habitability(world: &World) -> Vec<f32> {
     let (w, h) = (world.width, world.height);
@@ -155,7 +154,7 @@ fn habitability(world: &World) -> Vec<f32> {
 }
 
 /// Cost of expanding into a cell. Cheap on flat, watered, temperate ground;
-/// dear across mountains, desert, ice, and open water — which is where
+/// dear across mountains, desert, ice, and open water â€” which is where
 /// borders end up sitting.
 fn expansion_cost(world: &World) -> Vec<f32> {
     let n = world.width * world.height;
@@ -189,10 +188,68 @@ fn expansion_cost(world: &World) -> Vec<f32> {
     cost
 }
 
-/// Pick founding sites: the best-scoring cells, each at least `spacing`
-/// cells from the ones already chosen. Greedy, deterministic.
+/// Regional average of a per-cell field â€” block means, smoothly
+/// interpolated. Ocean is excluded so a coastal region is not dragged down
+/// by the water beside it.
+fn regional_average(world: &World, field: &[f32], block: usize) -> Vec<f32> {
+    let (w, h) = (world.width, world.height);
+    let block = block.max(1);
+    let (bw, bh) = (w.div_ceil(block), h.div_ceil(block));
+
+    let mut sum = vec![0.0f32; bw * bh];
+    let mut count = vec![0u32; bw * bh];
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if world.elevation.data[i] < world.sea_level {
+                continue;
+            }
+            let b = (y / block) * bw + (x / block);
+            sum[b] += field[i];
+            count[b] += 1;
+        }
+    }
+    let coarse: Vec<f32> = sum
+        .iter()
+        .zip(&count)
+        .map(|(&s, &c)| if c > 0 { s / c as f32 } else { 0.0 })
+        .collect();
+
+    let mut out = vec![0.0f32; w * h];
+    for y in 0..h {
+        let fy = (y as f32 + 0.5) / block as f32 - 0.5;
+        let y0f = fy.floor();
+        let ty = (fy - y0f).clamp(0.0, 1.0);
+        let y0 = (y0f as i32).clamp(0, bh as i32 - 1) as usize;
+        let y1 = (y0 + 1).min(bh - 1);
+
+        for x in 0..w {
+            let fx = (x as f32 + 0.5) / block as f32 - 0.5;
+            let x0f = fx.floor();
+            let tx = fx - x0f;
+            let x0 = (x0f as i32).rem_euclid(bw as i32) as usize;
+            let x1 = (x0 + 1) % bw;
+
+            let top = coarse[y0 * bw + x0] * (1.0 - tx) + coarse[y0 * bw + x1] * tx;
+            let bot = coarse[y1 * bw + x0] * (1.0 - tx) + coarse[y1 * bw + x1] * tx;
+            out[y * w + x] = top * (1.0 - ty) + bot * ty;
+        }
+    }
+    out
+}
+
+/// Pick founding sites: the best-scoring cells, each far enough from the
+/// ones already chosen. Greedy, deterministic.
 ///
-/// Returns fewer than `target` when the land cannot hold that many — a
+/// **Spacing varies with how good the country is.** Rich regions carry more
+/// people, more people means more competing centres of power, and competing
+/// centres means many small states â€” Europe, the Indian subcontinent, the
+/// Chinese warring states. Marginal country supports few centres, so one
+/// state ends up spanning enormous distances almost unopposed â€” Russia,
+/// Canada, the Sahara. Spacing the cores evenly instead makes every state
+/// the same size, which is the one shape real political maps never take.
+///
+/// Returns fewer than `target` when the land cannot hold that many â€” a
 /// fragmented archipelago genuinely supports fewer separated cores than a
 /// supercontinent of the same area, and that is the honest answer.
 fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
@@ -205,16 +262,42 @@ fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
     // Deterministic: score descending, index as tiebreak.
     candidates.sort_by(|&a, &b| score[b].total_cmp(&score[a]).then(a.cmp(&b)));
 
-    // Spread the target count over the habitable area, then leave headroom
-    // so terrain — not the spacing rule — is what actually limits the count.
-    let spacing = ((candidates.len() as f32 / target as f32).sqrt() * 0.62).max(2.0);
-    let sp2 = spacing * spacing;
+    // Regional prosperity, on a scale much larger than a single good valley.
+    let regional = regional_average(world, score, (w / 16).max(4));
+    let mut sorted: Vec<f32> = candidates.iter().map(|&i| regional[i]).collect();
+    sorted.sort_by(f32::total_cmp);
+    let lo = sorted[sorted.len() / 10];
+    let hi = sorted[sorted.len() * 9 / 10];
+    let span = (hi - lo).max(1e-6);
+
+    // Rich regions pack cores tightly; poor regions hold them apart.
+    let multiplier = |i: usize| {
+        let prosperity = ((regional[i] - lo) / span).clamp(0.0, 1.0);
+        1.85 - 1.25 * prosperity
+    };
+
+    // Scale the base spacing so the *whole map* holds about `target` cores.
+    //
+    // Without this the rich regions swallow every core before the greedy
+    // pass ever reaches marginal country â€” a tight local spacing means high
+    // local capacity, and capacity is consumed in score order. The result is
+    // all the cores crowded into the good land and then Voronoi-ing out into
+    // equal-sized states, which is exactly the uniformity this is meant to
+    // break. Summing 1/multiplierÂ² over the land gives the map's capacity at
+    // unit spacing; solving for `target` yields the scale.
+    let inv_sq: f32 = candidates.iter().map(|&i| 1.0 / multiplier(i).powi(2)).sum();
+    // 0.72 is the packing efficiency of a Poisson-disc sample; without it
+    // the greedy pass falls short of the requested count.
+    let base = ((inv_sq / target as f32).sqrt() * 0.72).max(1.5);
 
     let mut cores: Vec<usize> = Vec::with_capacity(target);
     for &i in &candidates {
         if cores.len() >= target {
             break;
         }
+        let sp = base * multiplier(i);
+        let sp2 = sp * sp;
+
         let (xi, yi) = ((i % w) as f32, (i / w) as f32);
         let far_enough = cores.iter().all(|&c| {
             let (xc, yc) = ((c % w) as f32, (c / w) as f32);
@@ -233,56 +316,28 @@ fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
     cores
 }
 
-/// How much country each core has to grow into, relative to the others.
+/// How effectively each state projects power, relative to the others.
 ///
-/// A capital in a wide fertile basin becomes a great power; one wedged onto
-/// a mountainous island stays small however good the site itself is. Sum the
-/// habitability of the surrounding country, normalise across all cores, and
-/// sharpen — real state sizes differ by orders of magnitude, not by a few
-/// percent, and a flat spacing rule gives every state the same size.
-fn core_reach(world: &World, score: &[f32], cores: &[usize], radius: f32, seed: u64) -> Vec<f32> {
-    let (w, h) = (world.width, world.height);
-    let r = radius.max(1.0) as i32;
-
-    let mut raw: Vec<f32> = cores
-        .iter()
-        .map(|&c| {
-            let (cx, cy) = ((c % w) as i32, (c / w) as i32);
-            let mut sum = 0.0;
-            for dy in -r..=r {
-                let y = cy + dy;
-                if y < 0 || y >= h as i32 {
-                    continue;
-                }
-                for dx in -r..=r {
-                    if dx * dx + dy * dy > r * r {
-                        continue;
-                    }
-                    let x = (cx + dx).rem_euclid(w as i32) as usize;
-                    sum += score[y as usize * w + x];
-                }
-            }
-            sum
-        })
-        .collect();
-
-    let mean = (raw.iter().sum::<f32>() / raw.len().max(1) as f32).max(1e-6);
-
-    // A little jitter so two equally-placed capitals do not end up
-    // identical — history is not purely geography.
+/// Deliberately **not** derived from the quality of the surrounding
+/// country. Geography already decides state size twice over â€” through core
+/// spacing, which packs rivals close together in rich regions, and through
+/// the terrain expansion cost. Feeding habitability in here a third time
+/// cancels the first: a capital in marginal country would get a low reach
+/// and stay small, when the whole point is that it has no rivals for a
+/// thousand miles and should sprawl.
+///
+/// So this is state capacity â€” the part that is history rather than
+/// geography. Skewed, because most polities are unremarkable and a few are
+/// exceptionally well-run. Territory scales with roughly the square of
+/// reach, so the range is tighter than it looks.
+fn core_reach(count: usize, seed: u64) -> Vec<f32> {
     let mut rng = Rng::new(seed ^ 0x9E37_79B9_7F4A_7C15);
-    for v in &mut raw {
-        let luck = 0.85 + 0.30 * rng.next_f32();
-        // Exponent and clamp are the dial between "one hegemon and a lot of
-        // scraps" and "everyone the same size". These give a spread of
-        // roughly an order of magnitude between largest and smallest, which
-        // is about what real state areas look like.
-        // Territory scales roughly with the *square* of reach, so this
-        // clamp is tighter than it looks — 0.7..1.45 already spreads areas
-        // by about 4x, on top of the variation terrain alone produces.
-        *v = ((*v / mean) * luck).powf(0.95).clamp(0.7, 1.45);
-    }
-    raw
+    (0..count)
+        .map(|_| {
+            let r = rng.next_f32();
+            0.78 + 0.72 * r * r
+        })
+        .collect()
 }
 
 impl Polities {
@@ -294,11 +349,12 @@ impl Polities {
 
         let score = habitability(world);
         let cost = expansion_cost(world);
+
         let cores = choose_cores(world, &score, target);
 
         // How far a polity can hold territory before distance and terrain
         // defeat it. Without a limit every ice cap and desert interior ends
-        // up owned, and a planet with three states on it has no frontier —
+        // up owned, and a planet with three states on it has no frontier â€”
         // which is not how thinly-settled worlds work.
         let land_cells = (0..n)
             .filter(|&i| world.elevation.data[i] >= world.sea_level)
@@ -306,7 +362,7 @@ impl Polities {
         let spacing = (land_cells as f32 / cores.len().max(1) as f32).sqrt();
         let budget = spacing * 4.5;
 
-        let reach = core_reach(world, &score, &cores, spacing * 0.9, world.seed);
+        let reach = core_reach(cores.len(), world.seed);
 
         let mut owner = vec![UNCLAIMED; n];
         let mut best = vec![f32::INFINITY; n];
@@ -318,7 +374,7 @@ impl Polities {
         }
 
         // Multi-source Dijkstra. Every cell falls to whichever core can
-        // reach it most cheaply — so a polity's reach is set by the terrain
+        // reach it most cheaply â€” so a polity's reach is set by the terrain
         // between it and its neighbours, and borders settle on the ridges,
         // deserts and straits where two expansions cost the same.
         while let Some(Reverse((Cost(d), i, id))) = heap.pop() {
