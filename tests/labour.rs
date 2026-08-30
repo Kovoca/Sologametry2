@@ -5,10 +5,10 @@
 //! are not working, so they cannot buy food. Every test here guards one
 //! link of it.
 
-use scale_sim::econ::{Doctrine, SiteKind, DAYS_PER_YEAR, RECIPES};
+use scale_sim::econ::{Commodity, Doctrine, SiteKind, DAYS_PER_YEAR, RECIPES};
 use scale_sim::labour::{HOURS_PER_WORKING_YEAR, NATURAL_UNEMPLOYMENT};
 use scale_sim::network::Network;
-use scale_sim::person::{self, Person, State, Trade};
+use scale_sim::person::{self, Person, Trade, FOOD_PER_DAY};
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
@@ -83,29 +83,86 @@ fn a_working_region_is_near_full_employment() {
 }
 
 #[test]
-fn a_dead_power_station_puts_people_out_of_work() {
-    // **The whole point of the module.** Before this, a blackout was an
-    // inconvenience to a stockpile; it did not happen to anybody.
+fn a_blackout_idles_the_works_but_not_the_farms() {
+    // Spec A.2: a blackout stops the factory, a broken irrigation main
+    // stops the farm. Gating every site on the grid made a dead
+    // transformer idle a nation's agriculture, which is both wrong and
+    // much too convenient a way to arrange a famine.
     let mut r = a_nation(Doctrine::Negligent);
     for _ in 0..40 {
         r.economy.step();
     }
-    let before: f64 = r.economy.workforce.iter().map(|w| w.unemployment).sum::<f64>()
-        / r.economy.workforce.len() as f64;
-
-    // Destroyed, with no spare in store: built to order, so months.
     r.economy.grid.fail_transformer("main line");
-    for _ in 0..120 {
+    for _ in 0..60 {
         r.economy.step();
     }
-    let after: f64 = r.economy.workforce.iter().map(|w| w.unemployment).sum::<f64>()
-        / r.economy.workforce.len() as f64;
+
+    let mut farms_running = 0;
+    for site in r.economy.ledger.sites.iter() {
+        match site.kind {
+            SiteKind::Farm => {
+                if site.ran > 0.0 {
+                    farms_running += 1;
+                }
+            }
+            SiteKind::Mill | SiteKind::Factory => assert!(
+                site.ran <= 0.0,
+                "{} kept milling two months into a blackout",
+                site.name
+            ),
+            _ => {}
+        }
+    }
+    assert!(
+        farms_running > 0,
+        "a grid fault stopped every farm in the country — tractors run on diesel"
+    );
+}
+
+#[test]
+fn a_blackout_is_paid_for_in_wages_not_in_corpses() {
+    // **What a supply shock actually does to a working man.**
+    //
+    // Not kill him — keep him poor. Bread quintuples in a fortnight and
+    // his pay takes months to catch up, because nominal wages are reset
+    // once a year and not every morning. That lag *is* the damage.
+    //
+    // Anchoring pay to today's food price erased it entirely: prices and
+    // wages quintupled the same week and the blackout cost nobody
+    // anything. Shutting the farms instead swung it the other way and
+    // starved him outright. Neither is what happens.
+    let run = |doctrine: Doctrine, fault: bool| {
+        let mut r = a_nation(doctrine);
+        let mut hal = Person::new("Hal", Trade::Labourer, 0, 60.0);
+        for n in 0..400u64 {
+            if fault && n == 30 {
+                r.economy.grid.fail_transformer("main line");
+            }
+            r.economy.step();
+            let day = r.economy.ledger.day;
+            person::live_a_day(&mut hal, &mut r.economy, day);
+        }
+        // **In days of food, not in money.**
+        //
+        // Comparing nominal balances across an inflation says nothing: he
+        // finished the blackout year holding half again as much cash and
+        // very much worse off, because bread had quintupled underneath it.
+        // What a wage is worth is what it buys.
+        let bread = r.economy.price(hal.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+        let alive = hal.alive();
+        (alive, hal.money / bread.max(1e-9))
+    };
+
+    let (sound_alive, sound) = run(Doctrine::Negligent, false);
+    let (stricken_alive, stricken) = run(Doctrine::Negligent, true);
 
     assert!(
-        after > before + 0.10,
-        "the grid went down for four months and unemployment went {:.0}% -> {:.0}%",
-        before * 100.0,
-        after * 100.0
+        sound_alive && stricken_alive,
+        "a transformer failure is not supposed to be fatal to a man in work"
+    );
+    assert!(
+        stricken < sound * 0.9,
+        "the grid was down for a year and it left him no worse off:          {stricken:.0} days of food against {sound:.0}"
     );
 }
 
@@ -152,33 +209,6 @@ fn wages_sag_where_hands_are_idle_but_do_not_collapse() {
             w.wage_index
         );
     }
-}
-
-#[test]
-fn losing_the_grid_can_starve_a_man() {
-    // End to end, in one life: the transformer that nobody kept a spare
-    // for takes the mill down, the mill sheds its hands, and a man with no
-    // savings runs out of food. This is the sentence the whole simulation
-    // exists to be able to say.
-    let mut r = a_nation(Doctrine::Negligent);
-    let mut hal = Person::new("Hal", Trade::Labourer, 0, 40.0);
-
-    for day_n in 0..400u64 {
-        if day_n == 30 {
-            r.economy.grid.fail_transformer("main line");
-        }
-        r.economy.step();
-        let day = r.economy.ledger.day;
-        person::live_a_day(&mut hal, &mut r.economy, day);
-        if hal.state == State::Dead {
-            break;
-        }
-    }
-
-    assert!(
-        hal.days_hungry > 0 || hal.state == State::Dead,
-        "the grid was down for a year and it never cost him a meal"
-    );
 }
 
 #[test]

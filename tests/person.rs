@@ -75,11 +75,28 @@ fn a_year_of_work_makes_a_living() {
         "he only found {} days of work in a year",
         hal.days_worked
     );
+    // **Count what he owns, not just what is in his pocket.**
+    //
+    // A man who spends a year's savings on a handcart is better off than
+    // when he started, not worse, and measuring only cash called that a
+    // failed life. What he has is the money plus the vehicle — and the
+    // vehicle is the point of the saving.
+    let wage = person::day_rate(&r.economy, hal.market, hal.trade);
+    let kit = hal.conveyance.price_in_wage_days() * wage;
     assert!(
-        hal.money > 60.0,
-        "worked {} days and ended with {:.0}, having started with 60",
+        hal.money + kit > 60.0,
+        "worked {} days and is worth {:.0} ({:.0} in hand, {:.0} of {}), \
+         having started with 60 — earned {:.0}, spent {:.0}, wage {:.2} \
+         against bread at {:.2}",
         hal.days_worked,
-        hal.money
+        hal.money + kit,
+        hal.money,
+        kit,
+        hal.conveyance.name(),
+        hal.earned,
+        hal.spent,
+        wage,
+        r.economy.price(hal.market, FOOD) * FOOD_PER_DAY,
     );
 }
 

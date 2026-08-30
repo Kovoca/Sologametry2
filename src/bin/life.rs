@@ -194,8 +194,8 @@ fn main() {
     }
     println!();
 
-    println!("yr:day | state    | money | food | cond | happening");
-    println!("-------+----------+-------+------+------+--------------------------------");
+    println!("yr:day | state    | money | food | cond | bread | happening");
+    println!("-------+----------+-------+------+------+-------+-------------------------");
 
     let mut last_log = 0;
     let mut last_unemployment = region.economy.workforce[hal.market].unemployment;
@@ -212,7 +212,7 @@ fn main() {
             }
             if args.fault.is_some() {
                 println!(
-                    "{:>6} |          |       |      |      | *** {} fails ***",
+                    "{:>6} |          |       |      |      |       | *** {} fails ***",
                     "",
                     args.fault.unwrap()
                 );
@@ -227,7 +227,7 @@ fn main() {
         let u = region.economy.workforce[hal.market].unemployment;
         if (u - last_unemployment).abs() > 0.05 {
             println!(
-                "{:>6} |          |       |      |      | {} is {:.0}% out of work",
+                "{:>6} |          |       |      |      |       | {} is {:.0}% out of work",
                 format!("{}:{:03}", day / DAYS_PER_YEAR, day % DAYS_PER_YEAR),
                 region.economy.markets[hal.market].name,
                 u * 100.0,
@@ -241,7 +241,7 @@ fn main() {
         for line in &happened {
             let what = line.splitn(2, ": ").nth(1).unwrap_or(line);
             println!(
-                "{:>6} | {:<8} | {:>5.0} | {:>4.1} | {:>4.2} | {}",
+                "{:>6} | {:<8} | {:>5.0} | {:>4.1} | {:>4.2} | {:>5.2} | {}",
                 format!("{}:{:03}", day / DAYS_PER_YEAR, day % DAYS_PER_YEAR),
                 match hal.state {
                     State::Idle => "idle",
@@ -251,6 +251,7 @@ fn main() {
                 hal.money,
                 hal.larder,
                 hal.condition,
+                region.economy.price(hal.market, FOOD) * person::FOOD_PER_DAY,
                 what,
             );
         }
@@ -266,6 +267,17 @@ fn main() {
             "After {} days {} is alive with {:.0} in hand, having worked {} days, \
              earned {:.0} and spent {:.0} on food and vehicles.",
             args.days, hal.name, hal.money, hal.days_worked, hal.earned, hal.spent,
+        );
+        // **In days of food, because money moves.**
+        //
+        // A blackout year ends with more cash in his pocket and him very
+        // much worse off, since bread quintupled underneath it. Nominal
+        // balances are not comparable across a price shock; what a purse
+        // is worth is what it buys.
+        let bread = region.economy.price(hal.market, FOOD) * person::FOOD_PER_DAY;
+        println!(
+            "  which is {:.0} days of food at today's price of {bread:.2}.",
+            hal.money / bread.max(1e-9),
         );
         println!(
             "He ends up with {} — {:.0} kg at a time.",

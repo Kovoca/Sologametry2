@@ -196,6 +196,8 @@ pub struct Person {
     /// What has happened to them. The beginning of B4's memory log.
     pub log: Vec<String>,
     pub days_hungry: u64,
+    /// Days since he last had work. What actually drives someone to move.
+    pub days_idle: u64,
     pub days_worked: u64,
     /// Gross takings: wages, and the profit on ventures after their costs.
     pub earned: f64,
@@ -220,6 +222,7 @@ impl Person {
             job: None,
             log: Vec::new(),
             days_hungry: 0,
+            days_idle: 0,
             days_worked: 0,
             earned: 0.0,
             spent: 0.0,
@@ -258,13 +261,33 @@ pub fn day_rate(econ: &Economy, market: usize, trade: Trade) -> f64 {
 
 fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
     // Anchored to what a day's food costs, which is what a wage has to
-    // cover before anything else.
-    let food = econ.price(market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+    // cover before anything else — but to the *settled* cost, not this
+    // morning's. Pay is renegotiated once a year, so it lags a price
+    // shock by months, and that lag is how a shock actually makes people
+    // poorer. Tying it to today's price meant bread and wages quintupled
+    // together in a blackout and nobody noticed one.
+    let food = econ
+        .workforce
+        .get(market)
+        .map(|w| w.food_anchor)
+        .filter(|a| *a > 0.0)
+        .unwrap_or_else(|| econ.price(market, Commodity::ProcessedFood) * FOOD_PER_DAY);
+    // **Real low-wage work buys six to ten days of food for a day's
+    // labour**, which is the same thing as saying the poorest households
+    // spend something like a tenth to a sixth of their income on eating.
+    // These sat at 2.6 and 3.2 — a third of the real figure, and the note
+    // recording the real one had been in the project file the whole time.
+    //
+    // It is not a cosmetic error. At 2.6 a labourer who gets work three
+    // days in five cannot feed himself working flat out, so nobody ever
+    // saved for anything and every life ended a little poorer than it
+    // began. Being *at* subsistence is the historical condition; being
+    // permanently below it is not, or there would be nobody left.
     let multiple = match trade {
         // Driving is entry-level freight work; a shift at a works pays a
         // little less for less risk and no lorry.
-        Trade::Haulier => 3.2,
-        Trade::Labourer => 2.6,
+        Trade::Haulier => 7.0,
+        Trade::Labourer => 6.0,
     };
     food * multiple
 }
@@ -476,10 +499,20 @@ pub fn work_available(
     // not — which is the whole reason the workforce is modelled.
     for s in 0..econ.ledger.sites.len() {
         let site = &econ.ledger.sites[s];
-        if site.market != market || site.recipe.is_none() || !site.powered {
+        if site.market != market || site.recipe.is_none() {
             continue;
         }
-        if site.ran <= 0.0 {
+        // **A farm is not the grid's to shut, and neither are its jobs.**
+        //
+        // Two gates said otherwise and both were wrong the same way. A
+        // works with no power offers no shifts, true — but a farm does not
+        // stop for a blackout (spec A.2: its dependency is water), and it
+        // has hands on it all year whether or not anything is being cut.
+        // Between them these left a farm labourer with no work for months
+        // when in fact there was plenty, and made a grid fault look like a
+        // famine by a route that does not exist.
+        let is_farm = site.kind == crate::econ::SiteKind::Farm;
+        if !is_farm && (!site.powered || site.ran <= 0.0) {
             continue;
         }
         out.push(Contract {
@@ -821,6 +854,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                     && c.stake() <= (person.money - reserve).max(0.0)
             });
             if let Some(c) = taken {
+                person.days_idle = 0;
                 person.money -= c.stake();
                 person.note(day, format!("took work: {}", c.describe(econ)));
                 person.state = State::Working {
@@ -828,10 +862,123 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 };
                 person.days_worked += c.days.ceil() as u64;
                 person.job = Some(c);
-            } else if person.days_hungry > 0 {
-                person.note(day, "found no work");
+            } else {
+                // **When a town stops working, people leave it.**
+                //
+                // He sat in a place at 89% unemployment and starved over
+                // six weeks with a road out of it and the fare in his
+                // pocket. That is not what anybody does. Migration is the
+                // oldest response to a dead local economy and leaving it
+                // out made the simulation quietly cruel in a way real life
+                // is not — famine happens to people who *cannot* leave.
+                //
+                // He goes when work here has dried up and somewhere in
+                // reach is visibly better, and he has to be able to afford
+                // to get there and eat when he arrives. Somebody with
+                // nothing is trapped, which is the real shape of it.
+                person.days_idle += 1;
+                let here = econ
+                    .workforce
+                    .get(person.market)
+                    .map(|w| w.unemployment)
+                    .unwrap_or(0.0);
+
+                // **What actually drives somebody out is the bread price,
+                // not the unemployment rate.**
+                //
+                // Nobody sees a statistic. What a man notices is that
+                // there is no work this week and a loaf costs what a day
+                // used to pay — and by the time an unemployment figure has
+                // worked its way through three weeks of labour stickiness,
+                // he is already too poor to buy his way out. Triggering on
+                // the number he cannot see trapped him in a dying town
+                // with the fare still in his pocket.
+                let wage = day_rate(econ, person.market, person.trade);
+                let bread = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+                let desperate = here > 0.25 || bread * 3.0 > wage || person.days_idle > 10;
+                let moved = if desperate && person.condition > 0.35 {
+                    leave_town(person, econ, day)
+                } else {
+                    false
+                };
+                if !moved && (person.days_idle == 3 || person.days_idle % 21 == 0) {
+                    person.note(
+                        day,
+                        format!(
+                            "{} days without work, bread at {bread:.2} against a wage of {wage:.2}",
+                            person.days_idle
+                        ),
+                    );
+                }
             }
         }
         State::Dead => {}
     }
+}
+
+/// Try to walk to a town with work in it. Returns whether he set off.
+///
+/// The journey is real: it takes as long as his own legs or wheels need,
+/// and he eats on the way. That is what makes it a decision rather than a
+/// teleport — a man who leaves it too late cannot afford the road.
+fn leave_town(person: &mut Person, econ: &Economy, day: u64) -> bool {
+    let food = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+    let mut best: Option<(usize, f64, f64, String)> = None;
+
+    for r in econ.routes.iter() {
+        if !r.usable() || (r.a != person.market && r.b != person.market) {
+            continue;
+        }
+        let there = if r.a == person.market { r.b } else { r.a };
+        let Some(speed) = person.conveyance.km_per_day(r.surface) else {
+            continue;
+        };
+        let days = (r.km / speed).max(1.0).ceil();
+        // He must be able to eat the whole way and still land with a few
+        // days in hand, or the journey kills him rather than saving him.
+        let fare = food * days * 1.5 + person.conveyance.upkeep_in_wage_days(true)
+            * day_rate(econ, person.market, Trade::Haulier)
+            * days;
+        if fare > person.money {
+            continue;
+        }
+        let Some(w) = econ.workforce.get(there) else {
+            continue;
+        };
+        // Worth the trip only if it is meaningfully better than here.
+        // He knows what a person could know: whether that town's works are
+        // running, and what they charge for bread there — the second is
+        // the thing travellers have always actually carried news of.
+        let gain = econ.workforce[person.market].unemployment - w.unemployment;
+        let cheaper = (food - econ.price(there, Commodity::ProcessedFood) * FOOD_PER_DAY)
+            / food.max(1e-9);
+        if gain < 0.15 && cheaper < 0.20 {
+            continue;
+        }
+        let score = (gain + cheaper) / days;
+        if best.as_ref().is_none_or(|(_, s, _, _)| score > *s) {
+            best = Some((there, score, days, econ.markets[there].name.clone()));
+        }
+    }
+
+    let Some((there, _, days, name)) = best else {
+        return false;
+    };
+    let fare = food * days * 1.5;
+    person.money -= fare;
+    person.spent += fare;
+    person.market = there;
+    person.larder = (person.larder + days * 0.5).min(7.0);
+    person.state = State::Working {
+        until: day + days as u64,
+    };
+    person.job = None;
+    person.note(
+        day,
+        format!(
+            "left for {name} — {days:.0} days on the road, {:.0} in hand",
+            person.money
+        ),
+    );
+    true
 }

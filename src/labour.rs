@@ -25,7 +25,19 @@
 //! get a shift at the cannery is unemployed in the sense that matters to
 //! him, and that is the sense the simulation can honestly speak to.
 
-use crate::econ::{Economy, SiteKind, RECIPES};
+use crate::econ::{Commodity, Economy, SiteKind, RECIPES};
+
+/// Days over which pay catches up with the cost of living *(real)*.
+///
+/// Wages are reset annually in most of the world, and studies of nominal
+/// rigidity put the typical adjustment at nine to eighteen months. Four
+/// months is the fast end of honest, and keeps a shock legible inside a
+/// single year of play.
+const WAGE_CATCHUP_DAYS: f64 = 120.0;
+
+/// What one person eats a day, in tonnes. Same real figure the markets and
+/// `person` use: 0.40 t of processed food a year.
+const FOOD_PER_DAY: f64 = 0.40 / 365.0;
 
 /// Hours in a working year *(real)*. The OECD average is about 1,750;
 /// the US runs 1,791 and Germany nearer 1,340. 1,800 is an honest figure
@@ -64,6 +76,16 @@ pub struct Workforce {
     /// What a day's work fetches here, relative to a market at its natural
     /// rate. Below 1 where hands are idle, above 1 where they are scarce.
     pub wage_index: f64,
+    /// **The cost of living that wages are actually set against.**
+    ///
+    /// A slow average of what a day's food costs, not today's price.
+    /// Nominal wages are famously sticky — they are renegotiated once a
+    /// year, not every morning — so when prices jump, pay lags and the
+    /// *real* wage falls. That lag is the whole mechanism by which a
+    /// supply shock makes people poorer, and anchoring pay to the
+    /// current price erased it: bread went up fivefold in a blackout and
+    /// wages went up fivefold the same week, so nobody felt a thing.
+    pub food_anchor: f64,
 }
 
 impl Default for Workforce {
@@ -74,6 +96,7 @@ impl Default for Workforce {
             hands: 0.0,
             unemployment: NATURAL_UNEMPLOYMENT,
             wage_index: 1.0,
+            food_anchor: 0.0,
         }
     }
 }
@@ -153,15 +176,16 @@ pub fn update(econ: &mut Economy) {
             // of two between slack season and harvest, with extra hands
             // taken on to get the crop in — so a floor, not a collapse.
             SiteKind::Farm => {
-                let floor = site.throughput * 0.45;
-                (
-                    site.throughput,
-                    if site.powered {
-                        site.ran.max(floor)
-                    } else {
-                        site.ran
-                    },
-                )
+                // The floor is high on purpose. `posts` is rated at the
+                // *peak* of the harvest, and a farm keeps very nearly all
+                // of its people the rest of the year — real agricultural
+                // employment swings by something like a quarter between
+                // slack season and harvest, not by half. A floor of 0.45
+                // read as a permanent agricultural depression: a farm
+                // labourer was turned away well over half the days of the
+                // year and could not feed himself working full time.
+                let floor = site.throughput * 0.80;
+                (site.throughput, site.ran.max(floor))
             }
             _ => (site.throughput, site.ran),
         };
@@ -170,6 +194,9 @@ pub fn update(econ: &mut Economy) {
         working[site.market] += hands_for(actual, labour);
     }
 
+    let food_price: Vec<f64> = (0..n)
+        .map(|m| econ.price(m, Commodity::ProcessedFood) * FOOD_PER_DAY)
+        .collect();
     let drift = WORKFORCE_DRIFT_PER_YEAR / 365.0;
     for m in 0..n {
         let w = &mut econ.workforce[m];
@@ -217,5 +244,14 @@ pub fn update(econ: &mut Economy) {
         // the smaller, second-order squeeze on top.
         let slack = (NATURAL_UNEMPLOYMENT / w.unemployment.max(1e-4)).powf(0.35);
         w.wage_index = slack.clamp(0.75, 1.40);
+
+        // Pay follows the cost of living at a walk, not a run.
+        let today = food_price[m];
+        w.food_anchor = if w.food_anchor <= 0.0 {
+            today
+        } else {
+            let a = 1.0 / WAGE_CATCHUP_DAYS;
+            w.food_anchor * (1.0 - a) + today * a
+        };
     }
 }

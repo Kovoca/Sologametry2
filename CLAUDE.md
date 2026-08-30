@@ -279,8 +279,8 @@ the price gap open, so the same job is offered for ever. Deliveries go
 through the journal like every other change, so conservation covers a
 person's work too.
 
-Calibration: a day's work buys 1.5-12 days of food (real low-wage work is
-6-10x); starvation takes about 45 days, but hunger stops someone taking
+Calibration: a day's work buys 6-10 days of food, which is the real figure
+for low-wage work; starvation takes about 45 days, but hunger stops someone taking
 heavy work long before that, which is what makes poverty a trap rather
 than a timer.
 
@@ -391,6 +391,56 @@ Result worth having: with a spare transformer in store, a man survives the
 failure and buys a handcart. Without one, unemployment climbs from day
 274, he goes hungry on 279 and is dead on 323. **The fault alone did not
 kill him — the fault plus winter did.**
+
+### What a blackout actually does to a man
+
+The first version starved him, and that was wrong in three separate ways.
+All three came from the same habit — making a fault bite by breaking
+something it does not really break.
+
+- **A blackout stops the factory, not the farm.** Spec A.2 says so and it
+  is right: a grid failure shuts a mill within the hour while the tractors
+  run on diesel. `produce()` gated every site on power, so a dead
+  transformer idled a nation's agriculture. `needs_water` had been sitting
+  unused since it was written; this is what it was for. The *shift offer*
+  had the same two gates and had to be fixed with it.
+- **Wages must lag prices.** Pay was anchored to today's food price, so
+  bread quintupled in a blackout and wages quintupled the same week and
+  nobody felt a thing. Nominal wages are renegotiated once a year
+  *(studies of nominal rigidity: 9-18 months)*; that lag *is* how a supply
+  shock makes people poorer. `Workforce::food_anchor` is a ~120-day
+  average of the cost of living, and pay is set against that.
+- **Compare in days of food, never in money.** He finished a blackout year
+  holding half again as much cash and much worse off. Nominal balances are
+  not comparable across a price shock.
+
+The real result, on one nation: with a spare transformer the run is
+byte-identical to no fault at all. Without one, his wage stands still
+while bread goes 0.99 -> 4.93, and a year later he is still walking
+because the handcart never became affordable. **A supply shock does not
+kill a working man, it keeps him poor.**
+
+### A wage buys 6-10 days of food, and ours bought 2.6
+
+This note ("real low-wage work is 6-10x") sat in this file while the code
+paid 2.6 and 3.2. It is not cosmetic: at 2.6 a labourer who gets work
+three days in five cannot feed himself working flat out, so nobody ever
+saved for anything and every life ended poorer than it began. Being *at*
+subsistence is the historical condition; being permanently below it is
+not, or there would be nobody left.
+
+Same shape as the farm floor — 0.45 of peak headcount meant a farm shed
+more than half its people out of harvest, which reads as a permanent
+agricultural depression. Real farm employment swings about a quarter
+season to season, so the floor is 0.80.
+
+**Known gap this made visible: firms do not pay wages.** Money is not
+conserved, so there is no counterweight to a wage. Over 400 days with the
+fault live the squeeze is right and he is clearly worse off; run it to 730
+and the repair lets prices fall faster than the wage anchor, and he comes
+out ahead. Real disinflation with sticky wages causes *unemployment* for
+exactly this reason — firms cannot afford the real wage — and we cannot
+model that until a wage is somebody's cost. That is the money-ledger job.
 
 ### Getting there is not free (`src/travel.rs`)
 

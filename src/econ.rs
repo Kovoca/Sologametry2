@@ -1519,10 +1519,24 @@ impl Economy {
                 continue;
             }
             let Some(r) = s.recipe else { continue };
-            if !s.powered {
+            let recipe = &RECIPES[r];
+            // **A blackout stops the factory; it does not stop the farm.**
+            //
+            // Spec A.2 is explicit that the farm's critical dependency is
+            // water rather than power, and it is right: a grid failure
+            // shuts a mill within the hour, while the tractors run on
+            // diesel and the harvest comes in regardless. Gating every
+            // site on the grid made a dead transformer idle a nation's
+            // agriculture, which is both wrong and much too convenient a
+            // way to cause a famine.
+            //
+            // What ought to stop a farm is an irrigation main, and there
+            // is no water network yet — so for now a farm is simply not
+            // the grid's to switch off. `needs_water` has been sitting
+            // unused since it was written; this is what it was for.
+            if !s.powered && !recipe.needs_water {
                 continue; // no power, no production
             }
-            let recipe = &RECIPES[r];
 
             // A farm does not produce evenly through the year: it produces
             // when the crop is ready. Everything else runs flat.
