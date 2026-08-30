@@ -184,3 +184,104 @@ fn the_tiles_agree_with_the_real_width() {
         );
     }
 }
+
+#[test]
+fn a_village_is_a_street_and_a_city_is_a_grid() {
+    // **What a place looks like turns on whether it was surveyed at once
+    // or simply grew.** A grid is what an authority lays out before
+    // anybody builds — Roman colonies, the Laws of the Indies, the US Land
+    // Ordinance, Manhattan's Commissioners' Plan. An irregular town is
+    // what you get when the routes came first. Size correlates because a
+    // large city has almost certainly been planned or replanned: you
+    // cannot run water, sewers, trams and freight through a tangle.
+    use scale_sim::townplan::{Pattern, Plan};
+    use scale_sim::world::Biome;
+
+    let of = |pop: f64| Plan::lay_out_on(20260828, 4242, pop, 40, Biome::Grassland);
+    let village = of(900.0);
+    let town = of(18_000.0);
+    let city = of(400_000.0);
+
+    assert_eq!(village.pattern, Pattern::Linear);
+    assert_eq!(town.pattern, Pattern::Organic);
+    assert_eq!(city.pattern, Pattern::Grid);
+
+    // How many full-length through-routes there are is the whole
+    // difference: a village has one, a grid has one every few plots.
+    let through = |p: &Plan| {
+        (0..p.width).filter(|&x| p.col_class(x).is_some()).count()
+            + (0..p.height).filter(|&y| p.row_class(y).is_some()).count()
+    };
+    assert_eq!(through(&village), 1, "a village with more than one street");
+    assert!(
+        through(&town) < through(&city) / 2,
+        "a town that grew has {} through-routes against a grid's {}",
+        through(&town),
+        through(&city)
+    );
+
+    // **A grid is anisotropic.** Manhattan's blocks are 80 m by 274,
+    // Chicago's about 100 by 200: a block wants a long side of frontage
+    // and a short walk across. Square blocks are the giveaway of a grid
+    // nobody measured.
+    let cols = (0..city.width).filter(|&x| city.col_class(x).is_some()).count();
+    let rows = (0..city.height).filter(|&y| city.row_class(y).is_some()).count();
+    assert!(
+        cols as f64 > rows as f64 * 1.8 || rows as f64 > cols as f64 * 1.8,
+        "{cols} streets one way and {rows} the other is a square grid"
+    );
+}
+
+#[test]
+fn nobody_builds_upward_where_land_is_cheap() {
+    // Flats need a central site *and* a place big enough for land to be
+    // worth anything. Judging on centrality alone put twenty-one blocks of
+    // flats in a village of nine hundred people. Real apartment blocks are
+    // all but absent below about 20,000 and dominant over half a million.
+    use scale_sim::townplan::{Lot, Plan};
+    use scale_sim::world::Biome;
+    let of = |pop: f64| Plan::lay_out_on(20260828, 4242, pop, 40, Biome::Grassland);
+
+    let village = of(900.0);
+    let flats = village.count(Lot::Flats) as f64;
+    let houses = village.count(Lot::House) as f64;
+    assert!(
+        flats < houses * 0.05,
+        "{flats} blocks of flats against {houses} houses in a village"
+    );
+
+    let city = of(2_000_000.0);
+    assert!(
+        city.count(Lot::Flats) > city.count(Lot::House),
+        "a city of two million housed mostly in detached houses"
+    );
+}
+
+#[test]
+fn a_bigger_place_is_denser_and_not_just_wider() {
+    // A fixed people-per-km² meant the radius was the only thing that
+    // changed with population, so a village and a megacity had identical
+    // central density. Real mean densities: Los Angeles 3,200/km², London
+    // 5,700, New York 11,000, Paris 20,000 — they are not the same number.
+    use scale_sim::townplan::{Plan, METRES_PER_PLOT};
+    use scale_sim::world::Biome;
+    let density = |pop: f64| {
+        let p = Plan::lay_out_on(20260828, 4242, pop, 32, Biome::Grassland);
+        p.housed() / (32.0 * METRES_PER_PLOT / 1000.0).powi(2)
+    };
+    let (village, town, city) = (density(900.0), density(18_000.0), density(400_000.0));
+    assert!(
+        village < town && town < city,
+        "village {village:.0}, town {town:.0}, city {city:.0} per km² is not a gradient"
+    );
+    // Against the real figures: a town in the low thousands, a city centre
+    // in the high thousands.
+    assert!(
+        (1_500.0..6_000.0).contains(&town),
+        "a town of 18,000 at {town:.0} per km²"
+    );
+    assert!(
+        (4_000.0..15_000.0).contains(&city),
+        "the middle of a city of 400,000 at {city:.0} per km²"
+    );
+}

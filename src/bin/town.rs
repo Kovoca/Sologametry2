@@ -37,6 +37,10 @@ fn main() {
     let mut rank = 3usize;
     let mut which = 4usize; // smallest of the five modelled towns
     let mut size = 72usize;
+    // **A village has to be askable for**, because the world has none:
+    // the two-thousandth settlement still holds a quarter of a million
+    // people, which is a hole in `settlement.rs` and not in the layout.
+    let mut pop_override: Option<f64> = None;
 
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -45,8 +49,9 @@ fn main() {
             "--rank" => rank = it.next().and_then(|v| v.parse().ok()).unwrap_or(3).max(1),
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--size" => size = it.next().and_then(|v| v.parse().ok()).unwrap_or(72).clamp(16, 200),
+            "--pop" => pop_override = it.next().and_then(|v| v.parse().ok()),
             "--help" | "-h" => {
-                println!("usage: town [--seed N] [--rank K] [--which 0-4] [--size N]");
+                println!("usage: town [--seed N] [--rank K] [--which 0-4] [--size N] [--pop N]");
                 std::process::exit(0);
             }
             other => {
@@ -75,15 +80,16 @@ fn main() {
 
     let m = which.min(region.economy.markets.len() - 1);
     let name = &region.economy.markets[m].name;
-    let pop = region.economy.markets[m].population;
+    let pop = pop_override.unwrap_or(region.economy.markets[m].population);
     let cell = settlements.list[region.settlement_of_market[m]].cell;
 
     let plan = Plan::lay_out(seed, cell, pop, size);
 
     println!();
     println!(
-        "{name} — {} people, laid out at {:.0} m to the plot",
+        "{name} — {} people, {}, at {:.0} m to the plot",
         fmt_pop(pop),
+        plan.pattern.name(),
         METRES_PER_PLOT
     );
     println!(
@@ -94,7 +100,7 @@ fn main() {
     println!();
     print!("{}", plan.render());
     println!();
-    println!("  # street   h house   H flats   S shop   W works   , park   . open");
+    println!("  . lane  - road  = dual  # motorway   h house  H flats  S shop  W works  , park");
     println!();
 
     let houses = plan.count(Lot::House) + plan.count(Lot::Flats);

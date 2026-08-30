@@ -49,6 +49,20 @@ pub const HOUSEHOLD: f64 = 2.4;
 /// kilometre where a street of houses holds 2,500.
 pub const HOUSEHOLDS_PER_BLOCK: f64 = 8.0;
 
+/// **Households on one plot of houses, which depends on the form.**
+///
+/// A 32 m frontage is not one house. Real frontages: a terraced house is
+/// 4.5-6 m, a semi 8-9, a detached 10-15 — so the same plot holds five
+/// terraces, three semis or one detached house, and *that* is what makes
+/// a terraced street four times denser than a suburb of the same plots.
+/// One dwelling per plot regardless housed a village of nine hundred with
+/// two hundred and seventy-four.
+///
+/// The resulting gross densities are real: a terrace at 5 households comes
+/// to ~11,700/km² *(Islington runs 10-13,000)* and a detached plot to
+/// ~2,300 *(detached suburbs 1,500-3,000)*.
+pub const HOUSEHOLDS_PER_TERRACE: f64 = 5.0;
+
 /// **How big a road is, which is decided by what uses it.**
 ///
 /// Real cross-sections, and the reason a town does not look like a grid of
@@ -245,6 +259,56 @@ impl Clearance {
     }
 }
 
+/// **How a settlement is laid out**, which turns on whether it was
+/// surveyed at once or simply grew.
+///
+/// A grid is what you get when an authority lays out land before anybody
+/// builds on it: Roman colonies, the Laws of the Indies, the US Land
+/// Ordinance, Manhattan's Commissioners' Plan, Barcelona's Eixample. An
+/// irregular town is what you get when the routes came first and the
+/// buildings followed them.
+///
+/// Size correlates strongly, which is the useful part: a large city has
+/// almost certainly been planned or replanned, because you cannot run
+/// water, sewers, trams and freight through a medieval tangle. A village
+/// never needed to be.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Pattern {
+    /// **One street**, buildings either side, fields behind. The commonest
+    /// village form there is, and it is not a grid in any sense.
+    Linear,
+    /// Routes meeting, and lanes wandering off them. Nothing was surveyed,
+    /// so the lanes do not line up and most of them go nowhere.
+    Organic,
+    /// Laid out at once by somebody with a ruler, and **anisotropic**:
+    /// Manhattan's blocks are 80 m by 274, so the avenues are three and a
+    /// half times further apart than the streets.
+    Grid,
+}
+
+impl Pattern {
+    /// **Real thresholds** *(UK convention: a village is under ~2,500; a
+    /// place is a town to about 100,000)*. Grid planning is what
+    /// nineteenth-century city expansion did almost everywhere.
+    pub fn for_population(population: f64) -> Pattern {
+        if population < 2_500.0 {
+            Pattern::Linear
+        } else if population < 100_000.0 {
+            Pattern::Organic
+        } else {
+            Pattern::Grid
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Pattern::Linear => "a single street",
+            Pattern::Organic => "grown, not planned",
+            Pattern::Grid => "laid out on a grid",
+        }
+    }
+}
+
 /// What stands on one plot./// What stands on one plot.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Lot {
@@ -296,6 +360,8 @@ pub struct Plan {
     /// streets meet, the bigger one runs through and the lesser one stops.
     pub col_class: Vec<Option<StreetClass>>,
     pub row_class: Vec<Option<StreetClass>>,
+    /// How it was laid out, which follows from how big it is.
+    pub pattern: Pattern,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -341,34 +407,109 @@ impl Plan {
         // thousand at 4,000 to the square kilometre covers 25 km², which
         // is a touch under 3 km across. Bigger towns spread further, and
         // the falloff means the edge is ragged rather than a wall.
-        const PEOPLE_PER_KM2: f64 = 4_000.0;
-        let area_km2 = population / PEOPLE_PER_KM2;
+        // **Bigger places are denser, not just wider.** A fixed figure
+        // here meant a village and a megacity had the identical central
+        // density and differed only in extent, which is the same error as
+        // every nation growing 125% of what it ate. Real mean densities:
+        // a village 500-2,000/km², a small town 2,000-4,000, Los Angeles
+        // 3,200, London 5,700, New York 11,000, Paris 20,000.
+        let people_per_km2 = (1_000.0 * (population / 1_000.0).powf(0.21)).clamp(600.0, 12_000.0);
+        let area_km2 = population / people_per_km2;
         let radius_km = (area_km2 / std::f64::consts::PI).sqrt();
         let radius_plots = radius_km * 1000.0 / METRES_PER_PLOT;
 
         // --- Streets ---
         //
-        // A grid of through-roads with wandering spacing, plus the two
-        // main streets that cross at the centre and are what the town grew
-        // along in the first place.
-        let mut x = 0usize;
-        while x < size {
-            for y in 0..size {
-                lots[y * size + x] = Lot::Street;
-            }
-            // Blocks of 4-8 plots: 100-200 m, which is what a real street
-            // grid runs at.
-            x += 4 + (rng.next_f32() * 5.0) as usize;
+        // **What the place looks like depends on whether it was laid out
+        // or grew.** All three patterns start the same way, because every
+        // settlement that exists is on a route: two through-roads crossing
+        // near the middle, which are the roads the town is there for.
+        let pattern = Pattern::for_population(population);
+        let spine_x = (size / 2).saturating_sub(1 + (rng.next_f32() * 3.0) as usize);
+        let spine_y = (size / 2).saturating_sub(1 + (rng.next_f32() * 3.0) as usize);
+        for y in 0..size {
+            lots[y * size + spine_x] = Lot::Street;
         }
-        let mut y = 0usize;
-        while y < size {
+        if pattern != Pattern::Linear {
             for x in 0..size {
-                lots[y * size + x] = Lot::Street;
+                lots[spine_y * size + x] = Lot::Street;
             }
-            y += 4 + (rng.next_f32() * 5.0) as usize;
+        }
+
+        match pattern {
+            // A village is one street. Everything fronts it and the fields
+            // start behind the back gardens.
+            Pattern::Linear => {}
+
+            // **Lanes that go nowhere.** What makes a place look grown
+            // rather than planned is not irregular *spacing* — jittering a
+            // grid still reads as a grid — it is that the lanes do not run
+            // through. They come off the main road, serve a few houses and
+            // stop, and they do not line up with the lane opposite.
+            Pattern::Organic => {
+                let mut y = 0usize;
+                while y < size {
+                    // Off one side or the other, never both, and only part
+                    // of the way across.
+                    let from_left = rng.next_f32() < 0.5;
+                    let run = 3 + (rng.next_f32() * (size as f32 * 0.45)) as usize;
+                    for k in 0..run {
+                        let x = if from_left { k } else { size - 1 - k };
+                        if x >= size {
+                            break;
+                        }
+                        lots[y * size + x] = Lot::Street;
+                    }
+                    y += 3 + (rng.next_f32() * 4.0) as usize;
+                }
+                let mut x = 0usize;
+                while x < size {
+                    let from_top = rng.next_f32() < 0.5;
+                    let run = 3 + (rng.next_f32() * (size as f32 * 0.45)) as usize;
+                    for k in 0..run {
+                        let y = if from_top { k } else { size - 1 - k };
+                        if y >= size {
+                            break;
+                        }
+                        lots[y * size + x] = Lot::Street;
+                    }
+                    x += 3 + (rng.next_f32() * 4.0) as usize;
+                }
+            }
+
+            // **Regular, and anisotropic.** Manhattan's blocks are 80 m by
+            // 274, Chicago's about 100 by 200: streets close together one
+            // way, avenues far apart the other, because a block wants a
+            // long side of frontage and a short walk across. Making them
+            // square is the giveaway of a grid nobody measured.
+            Pattern::Grid => {
+                // 3 plots is 96 m, 8 plots is 256 m.
+                let (close, far) = (3usize, 8usize);
+                let (dx, dy) = if rng.next_f32() < 0.5 {
+                    (far, close)
+                } else {
+                    (close, far)
+                };
+                let mut x = spine_x % dx;
+                while x < size {
+                    for y in 0..size {
+                        lots[y * size + x] = Lot::Street;
+                    }
+                    x += dx;
+                }
+                let mut y = spine_y % dy;
+                while y < size {
+                    for x in 0..size {
+                        lots[y * size + x] = Lot::Street;
+                    }
+                    y += dy;
+                }
+            }
         }
 
         // --- What fills the blocks ---
+        let radius_m = (radius_plots * METRES_PER_PLOT).max(METRES_PER_PLOT);
+        let dear_land = (population / 250_000.0).sqrt().min(1.0);
         for y in 0..size {
             for x in 0..size {
                 let i = y * size + x;
@@ -382,7 +523,21 @@ impl Plan {
                 // Clark's law: density decays exponentially with distance
                 // from the centre. Real cities follow this closely, which
                 // is why the edge of a town is a gradient and not a line.
-                let built = (-d / radius_plots.max(1.0)).exp();
+                let mut built = (-d / radius_plots.max(1.0)).exp();
+
+                // **Everything fronts a road**, because a building needs
+                // to be got at. Without this a village of nine hundred was
+                // scattered evenly over a square mile with no relation to
+                // its own street — Clark's law decays from the centre, and
+                // a linear village decays from the road.
+                // **A reach, not a decay.** As a decay it thinned every
+                // block from the edge inward and left a city of 400,000 at
+                // a fifth of the density it should have. What is true is
+                // simpler: a plot more than about 90 m from a road cannot
+                // be got at, and one within it is ordinary building land.
+                if street_distance(&lots, size, x, y) > 3 {
+                    continue;
+                }
                 if rng.next_f32() as f64 > built {
                     continue; // open country, or the gap between suburbs
                 }
@@ -413,8 +568,14 @@ impl Plan {
                     Lot::Works
                 } else if rng.next_f32() < 0.06 {
                     Lot::Park
-                } else if (rng.next_f32() as f64) < (-d_m / 600.0).exp() {
-                    // Built upward where land is dear, which is the middle.
+                } else if (rng.next_f32() as f64) < dear_land * (-d_m / (radius_m * 0.45)).exp() {
+                    // **Built upward where land is dear**, which needs both
+                    // a central site *and* a place big enough for land to
+                    // be worth anything. Land value alone put twenty-one
+                    // blocks of flats in a village of nine hundred: nobody
+                    // raises four storeys where a field is cheap. Real
+                    // apartment blocks are all but absent below about
+                    // 20,000 people and dominant over half a million.
                     Lot::Flats
                 } else {
                     Lot::House
@@ -451,13 +612,34 @@ impl Plan {
         }
         lines.sort_by(|a, b| a.2.total_cmp(&b.2).then(a.0.cmp(&b.0)).then(b.1.cmp(&a.1)));
 
-        let of_rank = |r: usize| match r {
-            // A trunk route only goes through somewhere big enough to be
-            // worth going through.
-            0 if population > 500_000.0 => StreetClass::Motorway,
-            0 | 1 => StreetClass::Dual,
-            2 | 3 => StreetClass::Road,
-            _ => StreetClass::Lane,
+        // **Traffic decides, not rank.** Ranking alone gave an 18,000
+        // town a dual carriageway, which is the identical mistake
+        // `network.rs` had to unlearn: percentiles force the same
+        // hierarchy on every settlement however big or small it is.
+        //
+        // The busiest street in a place scales with about the square root
+        // of its population — a village on a B-road sees a couple of
+        // thousand vehicles a day, a town of twenty thousand about eight,
+        // a city of half a million forty *(all real)* — and it caps,
+        // because no single road carries more than about 120,000.
+        let main_vpd = (60.0 * population.sqrt()).min(120_000.0);
+        // Traffic is very concentrated: in the UK motorways are 1% of road
+        // length and 21% of traffic, A-roads 12% and 44%. Each rank down
+        // carries about a third of the one above.
+        let of_rank = |r: usize| {
+            let vpd = main_vpd * 0.35_f64.powi(r as i32);
+            // The same absolute thresholds the road network already uses:
+            // a 7.3 m single carriageway wants dualling around 13,000, and
+            // below about a thousand a street is residential access.
+            if vpd >= 40_000.0 {
+                StreetClass::Motorway
+            } else if vpd >= 13_000.0 {
+                StreetClass::Dual
+            } else if vpd >= 1_000.0 {
+                StreetClass::Road
+            } else {
+                StreetClass::Lane
+            }
         };
 
         let mut col = vec![None; size];
@@ -496,6 +678,7 @@ impl Plan {
             classes,
             col_class: col,
             row_class: row,
+            pattern,
             ground,
         }
     }
@@ -522,9 +705,54 @@ impl Plan {
 
     /// People the housing here would hold.
     pub fn housed(&self) -> f64 {
-        (self.count(Lot::House) as f64
-            + self.count(Lot::Flats) as f64 * HOUSEHOLDS_PER_BLOCK)
-            * HOUSEHOLD
+        let mut households = self.count(Lot::Flats) as f64 * HOUSEHOLDS_PER_BLOCK;
+        for y in 0..self.height {
+            for x in 0..self.width {
+                if self.at(x, y) != Lot::House {
+                    continue;
+                }
+                households += if self.terraced(x, y) {
+                    HOUSEHOLDS_PER_TERRACE
+                } else {
+                    1.0
+                };
+            }
+        }
+        households * HOUSEHOLD
+    }
+
+    /// **Whether this plot's building shares walls with its neighbours.**
+    ///
+    /// Not a type but a consequence: a building whose neighbours along the
+    /// street are also built is joined to them, and one whose neighbours
+    /// are fields stands alone. Used both for how many households fit and
+    /// for how the building sits on the ground.
+    pub fn terraced(&self, x: usize, y: usize) -> bool {
+        let built = |dx: i64, dy: i64| -> bool {
+            let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+            nx >= 0
+                && ny >= 0
+                && (nx as usize) < self.width
+                && (ny as usize) < self.height
+                && matches!(
+                    self.at(nx as usize, ny as usize),
+                    Lot::House | Lot::Flats | Lot::Shop
+                )
+        };
+        let street = |dx: i64, dy: i64| -> bool {
+            let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+            nx >= 0
+                && ny >= 0
+                && (nx as usize) < self.width
+                && (ny as usize) < self.height
+                && self.at(nx as usize, ny as usize) == Lot::Street
+        };
+        // The front faces the street; a terrace runs along it.
+        if street(0, -1) || street(0, 1) {
+            built(-1, 0) && built(1, 0)
+        } else {
+            built(0, -1) && built(0, 1)
+        }
     }
 
     /// The plan as text, the way both games draw it.
@@ -548,6 +776,28 @@ impl Plan {
         }
         out
     }
+}
+
+/// How many plots to the nearest street. A building has to be got at, so
+/// this is what decides whether a plot can be built on at all.
+fn street_distance(lots: &[Lot], size: usize, x: usize, y: usize) -> usize {
+    for r in 0..6 {
+        for dy in -(r as i64)..=r as i64 {
+            for dx in -(r as i64)..=r as i64 {
+                if dx.abs().max(dy.abs()) != r as i64 {
+                    continue;
+                }
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                if nx < 0 || ny < 0 || nx >= size as i64 || ny >= size as i64 {
+                    continue;
+                }
+                if lots[ny as usize * size + nx as usize] == Lot::Street {
+                    return r;
+                }
+            }
+        }
+    }
+    6
 }
 
 /// What unbuilt ground looks like, which is whatever country the town was

@@ -12,6 +12,12 @@ fn a_town() -> Plan {
     Plan::lay_out_on(20260828, 4242, 400_000.0, 32, Biome::Grassland)
 }
 
+/// Small enough that its streets have houses on them rather than an
+/// unbroken wall of flats, which is what the footway figures need.
+fn a_small_town() -> Plan {
+    Plan::lay_out_on(20260828, 4242, 18_000.0, 32, Biome::Grassland)
+}
+
 fn a_city() -> Plan {
     // Big enough to have a trunk route driven through it.
     Plan::lay_out_on(20260828, 4242, 2_500_000.0, 32, Biome::Grassland)
@@ -20,7 +26,7 @@ fn a_city() -> Plan {
 /// **Walk across a street and count what is under your feet.** Returns the
 /// running surface and the footway, in metres, for a plain stretch of the
 /// given class — not a junction, which legitimately carries both roads.
-fn walk_across(plan: &Plan, class: StreetClass) -> (usize, usize) {
+fn walk_across(plan: &Plan, class: StreetClass, plain_frontage: bool) -> (usize, usize) {
     let t = TILES_PER_PLOT as i64;
     for y in 1..plan.height - 1 {
         for x in 1..plan.width - 1 {
@@ -32,10 +38,12 @@ fn walk_across(plan: &Plan, class: StreetClass) -> (usize, usize) {
             if ns == ew {
                 continue; // a crossroads, or a stub going nowhere
             }
-            // Away from dense frontage, where the footway runs all the way
-            // to the building line and the cross-section is not the whole
-            // story.
-            if [(0i64, -1i64), (0, 1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| {
+            // Away from dense frontage — where the footway runs to the
+            // building line and the cross-section is not the whole story —
+            // but only when the footway is what is being measured. A dual
+            // or a motorway exists only in a city, where every street has
+            // frontage, so insisting on it there finds nothing at all.
+            if plain_frontage && [(0i64, -1i64), (0, 1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| {
                 let (nx, ny) = (x as i64 + dx, y as i64 + dy);
                 nx >= 0
                     && ny >= 0
@@ -98,7 +106,7 @@ fn a_street_is_not_thirty_two_metres_of_tarmac() {
     // **A residential carriageway is five or six metres** with pavements
     // either side; the rest of the plot is verge and frontage. Paving the
     // whole plot gave every lane the footprint of a dual carriageway.
-    let plan = a_town();
+    let plan = a_small_town();
     // **Not a crossroads.** One of those legitimately carries both roads
     // and is more than half made surface; a plain lane is not.
     let t = TILES_PER_PLOT as i64;
@@ -246,11 +254,17 @@ fn a_road_is_as_big_as_what_uses_it() {
     // the UK is about 1% motorway, 12% A-road and 87% minor, and the
     // widths are not close: a residential lane is 5 m of shared surface, a
     // motorway is 33 m of corridor.
-    let town = a_town();
-    let (lane, lane_foot) = walk_across(&town, StreetClass::Lane);
-    let (road, road_foot) = walk_across(&town, StreetClass::Road);
-    let (dual, _) = walk_across(&town, StreetClass::Dual);
-    let (motorway, motorway_foot) = walk_across(&a_city(), StreetClass::Motorway);
+    // **Where each class is measured matters.** In a city of 400,000
+    // every street has flats or shops on it, so every stretch is paved
+    // kerb to building line and the footway figure is not the
+    // cross-section's — the small town is where a footway is a footway.
+    // Duals and motorways only exist somewhere big.
+    let town = a_small_town();
+    let city = a_city();
+    let (lane, lane_foot) = walk_across(&town, StreetClass::Lane, true);
+    let (road, road_foot) = walk_across(&town, StreetClass::Road, true);
+    let (dual, _) = walk_across(&city, StreetClass::Dual, false);
+    let (motorway, motorway_foot) = walk_across(&city, StreetClass::Motorway, false);
 
     assert!(
         lane < road && road < dual && dual < motorway,

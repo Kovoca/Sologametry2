@@ -794,14 +794,61 @@ and the shop `building.rs` fitted out stood nowhere in particular.
 the settlement's cell, so walking away and back rebuilds it identically.
 One plot is 25 m — a house and its garden, a shop front, or a lane.
 
+**A place is laid out or it grew, and that decides the shape.** A grid is
+what an authority surveys before anybody builds — Roman colonies, the Laws
+of the Indies, the US Land Ordinance, Manhattan's Commissioners' Plan,
+Barcelona's Eixample. An irregular town is what you get when the routes
+came first and the buildings followed. Size correlates because a large
+city has almost certainly been planned or replanned: you cannot run water,
+sewers, trams and freight through a medieval tangle.
+
+- **Linear** under 2,500 — one street, buildings fronting it, fields
+  behind. The commonest village form there is.
+- **Organic** to 100,000 — what makes a place look grown is not irregular
+  *spacing* (jittering a grid still reads as a grid) but that **the lanes
+  do not run through**: they come off the main road, serve a few houses
+  and stop, and do not line up with the lane opposite.
+- **Grid** above that, and **anisotropic** — Manhattan's blocks are 80 m
+  by 274, Chicago's ~100 by 200. Square blocks are the giveaway of a grid
+  nobody measured.
+
 Real figures that make a town the size and shape it is:
 - Households of **2.4**; blocks **80-200 m** between streets.
 - **Clark's law** — density decays exponentially from the centre, which
   holds across cities and centuries and is why a town edge is a gradient.
 - **Density comes from building upward**, not from smaller plots. A
   European tenement is four storeys of two dwellings; houses alone gave a
-  capital of 16M the density of an American suburb. The centre now runs
-  ~10,000/km², which is central London.
+  capital of 16M the density of an American suburb.
+- **A bigger place is denser, not just wider.** A fixed 4,000/km² meant
+  radius was the only thing population changed, so a village and a
+  megacity had identical central density — the same error as every nation
+  growing 125% of what it ate. Mean density now scales as
+  `1000 x (pop/1000)^0.21`: LA 3,200/km², London 5,700, NYC 11,000,
+  Paris 20,000 are not the same number. Results: a village 370, a town of
+  18k 3,600, a city of 400k 6,900, one of 8M 8,300.
+- **Nobody builds upward where land is cheap.** Judging flats on
+  centrality alone put 21 blocks of them in a village of 900. Flats need a
+  central site *and* a settlement big enough for land to be worth
+  something — real apartment blocks are all but absent below ~20,000 and
+  dominant over half a million.
+- **A 32 m frontage is five houses, not one.** Real frontages: terrace
+  4.5-6 m, semi 8-9, detached 10-15, so the same plot holds five terraces
+  or one detached house — and *that* is what makes a terraced street four
+  times denser than a suburb of identical plots. One dwelling per plot
+  housed a village of 900 with 274 people. Gross densities that fall out
+  are real: a terrace ~11,700/km² *(Islington runs 10-13,000)*, a detached
+  plot ~2,300 *(suburbs 1,500-3,000)*.
+- **Every building has to be got at**, and that is a *reach*, not a decay.
+  As a decay it thinned every block from the edge inward and left a city
+  of 400,000 at a fifth of its density. A plot over ~90 m from a road
+  cannot be reached; one within it is ordinary building land.
+- **A town's street classes come from traffic, not rank.** Ranking alone
+  gave an 18,000 town a dual carriageway — the identical mistake
+  `network.rs` unlearned. The busiest street scales as ~`60 x sqrt(pop)`
+  and caps at 120,000 *(a village on a B-road sees a couple of thousand
+  vehicles a day, a town of 20k about eight, a city of 500k about forty)*;
+  each rank down carries about a third of the one above, because traffic
+  is concentrated *(UK motorways: 1% of length, 21% of traffic)*.
 - **Shops face the street and crowd the middle** — retail density falls
   off inside a few hundred metres. Sprinkled evenly they gave one shop per
   five houses everywhere, which is a bazaar and not a town.

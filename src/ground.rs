@@ -260,10 +260,29 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
                     return tile;
                 }
             }
-            // A short spur off the grid, serving a few houses.
+            // **A lane that is not a through-route**, which in a town
+            // that grew rather than being laid out is most of them. It
+            // still runs one way: take the direction from the neighbouring
+            // plots, because the stub formula makes a square patch of
+            // tarmac where a lane should be a strip.
             if roads.is_empty() {
-                let across = (ix - mid).abs().max((iy - mid).abs());
-                if let Some(tile) = cross_section(StreetClass::Lane, across, gx, false) {
+                let lot_at = |dx: i64, dy: i64| -> Lot {
+                    let (nx, ny) = (px + dx, py + dy);
+                    if nx < 0 || ny < 0 || nx >= plan.width as i64 || ny >= plan.height as i64 {
+                        Lot::Open
+                    } else {
+                        plan.at(nx as usize, ny as usize)
+                    }
+                };
+                let ns = lot_at(0, -1) == Lot::Street || lot_at(0, 1) == Lot::Street;
+                let ew = lot_at(-1, 0) == Lot::Street || lot_at(1, 0) == Lot::Street;
+                let (across, along) = match (ns, ew) {
+                    (true, true) => ((iy - mid).abs().min((ix - mid).abs()), gx),
+                    (true, false) => ((ix - mid).abs(), gy),
+                    (false, true) => ((iy - mid).abs(), gx),
+                    (false, false) => ((ix - mid).abs().max((iy - mid).abs()), gx),
+                };
+                if let Some(tile) = cross_section(StreetClass::Lane, across, along, ns && ew) {
                     return tile;
                 }
             }
@@ -366,32 +385,11 @@ struct Footprint {
 }
 
 fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
-    let built = |dx: i64, dy: i64| -> bool {
-        let (nx, ny) = (px + dx, py + dy);
-        if nx < 0 || ny < 0 || nx >= plan.width as i64 || ny >= plan.height as i64 {
-            return false;
-        }
-        matches!(
-            plan.at(nx as usize, ny as usize),
-            Lot::House | Lot::Flats | Lot::Shop
-        )
-    };
-    // Which way is the street? That is the front, and the two plots along
-    // it are the ones a terrace shares walls with.
-    let street = |dx: i64, dy: i64| -> bool {
-        let (nx, ny) = (px + dx, py + dy);
-        nx >= 0
-            && ny >= 0
-            && nx < plan.width as i64
-            && ny < plan.height as i64
-            && plan.at(nx as usize, ny as usize) == Lot::Street
-    };
-    let fronts_ns = street(0, -1) || street(0, 1);
-    let neighbours = if fronts_ns {
-        built(-1, 0) && built(1, 0)
-    } else {
-        built(0, -1) && built(0, 1)
-    };
+    let neighbours = px >= 0
+        && py >= 0
+        && px < plan.width as i64
+        && py < plan.height as i64
+        && plan.terraced(px as usize, py as usize);
 
     match lot {
         // A shopfront is on the back of the pavement, because a shop set
@@ -440,15 +438,34 @@ fn building_tile(
         return open_ground(seed, plan.ground, gx, gy);
     }
 
-    let on_wall = ix == lo_x
+    // **A 32 m frontage is five houses, not one.** A terrace is divided
+    // by party walls every 6 m or so — real terraced frontages are 4.5 to
+    // 6 m — and without them a street of houses was a single building the
+    // width of the plot with one front door.
+    let party = f.terraced
+        && lot == Lot::House
+        && ix % 6 == 0
+        && ix != lo_x
+        && ix != hi_x;
+    let on_wall = party
+        || ix == lo_x
         || iy == lo_y
         || iy == hi_y
         // A terrace's high flank is closed by next door's party wall.
         || (ix == hi_x && !f.terraced);
     if on_wall {
+        // Every house in the terrace gets its own front door.
         let mid = (lo_x + hi_x) / 2;
-        if iy == lo_y && (ix - mid).abs() <= 1 {
+        let own_door = if f.terraced && lot == Lot::House {
+            iy == lo_y && ix % 6 == 3
+        } else {
+            iy == lo_y && (ix - mid).abs() <= 1
+        };
+        if own_door {
             return Tile::Door;
+        }
+        if party {
+            return Tile::Wall;
         }
         let corner = (ix == lo_x || ix == hi_x) && (iy == lo_y || iy == hi_y);
         if !corner && hash(seed, gx, gy, 4) < 0.35 {
@@ -547,7 +564,7 @@ fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) ->
 /// the way out. Aisles of shelving through the middle. Stockroom racking
 /// along the back wall, where the lorries come to. This is `building.rs`'s
 /// fixture list given somewhere to stand.
-fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -> Tile {
+fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -> Tile {
     // **Front and depth are different axes.** They were the same while
     // every building was a square inset in the middle of its plot; once a
     // shop ran the full width of a terrace they came apart, and passing
