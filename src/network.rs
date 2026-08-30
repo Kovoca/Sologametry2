@@ -296,29 +296,53 @@ impl Network {
             }
         }
 
-        // Classify by what each stretch actually ended up carrying.
-        let mut carried: Vec<f64> = traffic.iter().copied().filter(|&t| t > 0.0).collect();
-        carried.sort_by(f64::total_cmp);
-        let road = if carried.is_empty() {
-            vec![Road::None; n]
-        } else {
-            let hi = carried[carried.len() * 92 / 100];
-            let mid = carried[carried.len() * 65 / 100];
-            traffic
-                .iter()
-                .map(|&t| {
-                    if t <= 0.0 {
-                        Road::None
-                    } else if t >= hi {
-                        Road::Highway
-                    } else if t >= mid {
-                        Road::Road
-                    } else {
-                        Road::Track
-                    }
-                })
-                .collect()
-        };
+        // Classify by what each stretch actually ended up carrying,
+        // against **real traffic thresholds** rather than against the rest
+        // of this particular map.
+        //
+        // Ranking the map's own stretches and cutting at percentiles gives
+        // every world the same 8% highway and 65% track no matter how rich
+        // or empty it is, which is the identical mistake the geology pass
+        // had to unlearn. Roads are not built because a stretch is busier
+        // than average; they are built when the traffic crossing them
+        // passes an absolute figure that pays for the work. A near-empty
+        // country should be all dirt, and a dense one mostly paved, and
+        // that only happens with fixed cuts.
+        //
+        // The figures are the standard ones from highway economics:
+        //
+        // - **Paving a dirt road pays at roughly 200-400 vehicles a day.**
+        //   Below that the surface cannot be worn out fast enough to be
+        //   worth the capital, and grading gravel is cheaper than laying
+        //   pavement. This is the World Bank's long-standing rule of thumb
+        //   and it is why most of the world's road length is unpaved.
+        // - **A single carriageway carries to about 13,000 vehicles a day**
+        //   before congestion justifies dualling; motorway standard is
+        //   bought above that, at several times the cost per kilometre.
+        //
+        // Traffic here is people whose journeys cross the cell. Turning
+        // that into vehicles: on an inter-urban corridor something like 2%
+        // of the population served makes a trip on a given day, which puts
+        // a corridor serving ten million at a couple of hundred thousand
+        // vehicles — the right order for a real motorway.
+        const TRIPS_PER_HEAD_PER_DAY: f64 = 0.02;
+        const DUAL_CARRIAGEWAY_VPD: f64 = 13_000.0;
+        const WORTH_PAVING_VPD: f64 = 300.0;
+        let road: Vec<Road> = traffic
+            .iter()
+            .map(|&t| {
+                let vpd = t * TRIPS_PER_HEAD_PER_DAY;
+                if t <= 0.0 {
+                    Road::None
+                } else if vpd >= DUAL_CARRIAGEWAY_VPD {
+                    Road::Highway
+                } else if vpd >= WORTH_PAVING_VPD {
+                    Road::Road
+                } else {
+                    Road::Track
+                }
+            })
+            .collect();
 
         let chokepoints = find_chokepoints(world, &road, w, h);
 

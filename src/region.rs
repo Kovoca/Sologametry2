@@ -14,7 +14,7 @@
 
 use crate::econ::{
     basket, recipe, Commodity, Crossing, Doctrine, Economy, Grid, Journal, Ledger, Market,
-    Response, Route, Site, SiteKind, DAYS_PER_YEAR, N_COMMODITIES,
+    Response, Route, Site, SiteKind, Surface, DAYS_PER_YEAR, N_COMMODITIES,
 };
 use crate::geology::Geology;
 use crate::network::{Network, Road};
@@ -162,6 +162,7 @@ fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
     // whether the pass survives February.
     let mut summit = vec![0.0f64; w * h];
     let mut coldest = vec![1.0f64; w * h];
+    let mut worst = vec![0u8; w * h];
     let mut heap: BinaryHeap<Reverse<(C, usize)>> = BinaryHeap::new();
     best[from] = 0.0;
     km[from] = 0.0;
@@ -203,6 +204,11 @@ fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
                 km[j] = km[i] + step_km;
                 summit[j] = summit[i].max(world.elevation.data[j] as f64);
                 coldest[j] = coldest[i].min(world.temperature.data[j] as f64);
+                // The worst stretch anywhere along the cheapest path. An
+                // average hides it, and the average is not what stops a
+                // lorry: one unmade mile in three hundred stops it just as
+                // dead as three hundred unmade miles would.
+                worst[j] = worst[i].max(class_of(net.road[j], navigable));
                 heap.push(Reverse((C(nd), j)));
             }
         }
@@ -212,6 +218,31 @@ fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
         km,
         summit,
         coldest,
+        worst,
+    }
+}
+
+/// Road classes ranked worst-first, so a Dijkstra can carry the worst
+/// stretch of a path forward with a `max`.
+fn class_of(road: Road, navigable: bool) -> u8 {
+    if navigable {
+        return 0;
+    }
+    match road {
+        Road::Highway => 1,
+        Road::Road => 2,
+        Road::Track => 3,
+        Road::None => 4,
+    }
+}
+
+fn surface_of(rank: u8) -> Surface {
+    match rank {
+        0 => Surface::Water,
+        1 => Surface::Highway,
+        2 => Surface::Road,
+        3 => Surface::Track,
+        _ => Surface::Open,
     }
 }
 
@@ -221,6 +252,8 @@ struct Field4 {
     km: Vec<f64>,
     summit: Vec<f64>,
     coldest: Vec<f64>,
+    /// Worst road class met on the way here.
+    worst: Vec<u8>,
 }
 
 /// Decide how a route gets over what is in its way.
@@ -393,6 +426,7 @@ impl Region {
                 recipe: None,
                 throughput: 0.0,
                 powered: true,
+                ran: 0.0,
             });
         }
 
@@ -452,6 +486,7 @@ impl Region {
                 recipe: Some(recipe::FARM),
                 throughput: rate,
                 powered: true,
+                ran: 0.0,
             });
         }
 
@@ -488,6 +523,7 @@ impl Region {
                 recipe: Some(recipe::MILL),
                 throughput: mill_rate,
                 powered: true,
+                ran: 0.0,
             });
             sites.push(Site {
                 name: format!("{name} cannery"),
@@ -504,6 +540,7 @@ impl Region {
                 recipe: Some(recipe::CANNERY),
                 throughput: cannery_rate,
                 powered: true,
+                ran: 0.0,
             });
         }
         let mill_rate = total_mill;
@@ -557,6 +594,7 @@ impl Region {
                     recipe: Some(recipe::COAL_MINE),
                     throughput: coal_day * 1.1,
                     powered: true,
+                    ran: 0.0,
                 });
                 sites.push(Site {
                     name: format!("{name} power station"),
@@ -567,6 +605,7 @@ impl Region {
                     recipe: Some(recipe::POWER_PLANT),
                     throughput: 1e9,
                     powered: true,
+                    ran: 0.0,
                 });
                 notes.push(format!(
                     "{} coalfield cells in the nation; nearest workings {:.0} km from {}, \
@@ -591,6 +630,7 @@ impl Region {
                     recipe: Some(recipe::FUEL_IMPORTS),
                     throughput: coal_day * 1.1,
                     powered: true,
+                    ran: 0.0,
                 });
                 sites.push(Site {
                     name: format!("{name} power station"),
@@ -604,6 +644,7 @@ impl Region {
                     recipe: Some(recipe::POWER_PLANT),
                     throughput: 1e9,
                     powered: true,
+                    ran: 0.0,
                 });
                 notes.push(format!(
                     "no workable coal in this nation — every tonne it burns is landed at {} \
@@ -634,6 +675,7 @@ impl Region {
             recipe: Some(recipe::DEPOT),
             throughput: goods_day * 1.1,
             powered: true,
+            ran: 0.0,
         });
 
         // --- Routes, following the roads the country actually built ---
@@ -732,6 +774,8 @@ impl Region {
                     b,
                     freight_cost: cost,
                     sound_cost: cost,
+                    km: along,
+                    surface: surface_of(fields[a].worst[cell]),
                     crossing,
                     snowed_in: false,
                     // Real domestic freight runs to something like 24
@@ -939,6 +983,8 @@ impl Nations {
                     b: mb,
                     freight_cost: km * rate,
                     sound_cost: km * rate,
+                    km,
+                    surface: if by_sea { Surface::Water } else { Surface::Road },
                     crossing: Crossing::Level,
                     snowed_in: false,
                     // International trade is a fraction of what a country

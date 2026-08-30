@@ -8,6 +8,7 @@
 use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
 use scale_sim::network::Network;
 use scale_sim::person::{self, Person, State, Trade, FOOD_PER_DAY};
+use scale_sim::travel::Conveyance;
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
@@ -147,7 +148,7 @@ fn nothing_is_offered_that_the_economy_does_not_want() {
     r.economy.step();
 
     let day = r.economy.ledger.day;
-    let offers = person::work_available(&r.economy, 0, day, 500.0);
+    let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Lorry);
     assert!(
         !offers.iter().any(|c| c.trade == Trade::Haulier),
         "haulage was offered with every road closed"
@@ -229,12 +230,23 @@ fn a_trader_is_not_a_money_printer() {
         "two years of hauling turned 60 into {:.0} — that is a printer, not a trade",
         hal.money
     );
-    // And what he holds has to be what he actually made.
+    // **His books must close.** What he holds is what he started with,
+    // plus what he made, less what he ate and what he bought to work with.
+    // Nothing else may appear or vanish — and the failures that made this
+    // worth asserting were exactly that: a venture settled on cargo that
+    // was never loaded, and a journey whose fodder was charged against the
+    // profit but never taken out of the purse.
+    // A trader caught mid-journey has his money in the cargo rather than
+    // in his hand, and that is not a leak.
+    let staked = hal.job.as_ref().map(|c| c.stake()).unwrap_or(0.0);
+    let closes = 60.0 + hal.earned - hal.spent - staked;
     assert!(
-        (hal.money - (60.0 + hal.earned)).abs() < hal.money.abs() * 0.5 + 100.0,
-        "he holds {:.0} but claims to have earned {:.0} on a stake of 60",
+        (hal.money - closes).abs() < 0.01_f64.max(hal.money.abs() * 1e-9),
+        "he holds {:.2} but the books say {closes:.2} \
+         (earned {:.2}, spent {:.2}, {staked:.2} staked on the road)",
         hal.money,
-        hal.earned
+        hal.earned,
+        hal.spent
     );
 }
 
@@ -251,7 +263,7 @@ fn routine_haulage_exists_when_nothing_is_mispriced() {
     let day = r.economy.ledger.day;
     let mut found = 0;
     for m in 0..r.economy.markets.len() {
-        let offers = person::work_available(&r.economy, m, day, 0.0);
+        let offers = person::work_available(&r.economy, m, day, 0.0, Conveyance::Lorry);
         if offers.iter().any(|c| c.trade == Trade::Haulier) {
             found += 1;
         }

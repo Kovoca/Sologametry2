@@ -248,6 +248,12 @@ pub struct Site {
     /// Whether the site currently has the power it needs. Set by the grid;
     /// a site without power cannot run its recipe.
     pub powered: bool,
+    /// Batches actually run today, against `throughput` rated.
+    ///
+    /// A works standing idle for want of power, inputs or somewhere to put
+    /// the output still has its people; how long it keeps them is a
+    /// different question, and this is the number that decides it.
+    pub ran: f64,
 }
 
 /// Authoritative state. Spec A2: a materialised view of the journal, and
@@ -760,6 +766,19 @@ pub struct Route {
     /// What the haul costs on a road in good repair. `freight_cost` is
     /// this, worsened by however far the surface has been let go.
     pub sound_cost: f64,
+    /// Kilometres along the road, which is not the gap between the towns.
+    ///
+    /// Bulk freight only cares what a tonne costs, but a person has to
+    /// actually go, and how long that takes is distance divided by whatever
+    /// they are travelling on. Forty-nine kilometres is nothing in a lorry
+    /// and two days on foot with a load.
+    pub km: f64,
+    /// The worst stretch of road anywhere along it.
+    ///
+    /// Not the average. A lorry is stopped by the one unmade mile, not by
+    /// the mean quality of the three hundred either side of it, and this is
+    /// the number that decides both what can travel and how fast.
+    pub surface: Surface,
     /// How this route gets over whatever is in its way.
     pub crossing: Crossing,
     /// True while a pass is shut by snow. Set each day from the season.
@@ -774,6 +793,29 @@ impl Route {
     /// principle but under four metres of snow carries nothing.
     pub fn usable(&self) -> bool {
         self.open && !self.snowed_in
+    }
+}
+
+/// What somebody is travelling over. Speed depends on it far more than
+/// freight cost does.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Surface {
+    Water,
+    Highway,
+    Road,
+    Track,
+    Open,
+}
+
+impl Surface {
+    pub fn name(self) -> &'static str {
+        match self {
+            Surface::Water => "water",
+            Surface::Highway => "highway",
+            Surface::Road => "road",
+            Surface::Track => "track",
+            Surface::Open => "open country",
+        }
     }
 }
 
@@ -1453,6 +1495,9 @@ impl Economy {
     /// inputs, power and storage allow.
     fn produce(&mut self) {
         for site in 0..self.ledger.sites.len() {
+            self.ledger.sites[site].ran = 0.0;
+        }
+        for site in 0..self.ledger.sites.len() {
             let s = &self.ledger.sites[site];
             if s.kind == SiteKind::PowerPlant {
                 continue;
@@ -1482,6 +1527,7 @@ impl Economy {
             if batches <= 1e-9 {
                 continue;
             }
+            self.ledger.sites[site].ran = batches;
 
             // Power is drawn from the plants that generated it.
             let draw = recipe.power * batches;

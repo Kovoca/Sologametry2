@@ -350,18 +350,49 @@ fn roads_stay_on_land_and_form_a_hierarchy() {
         }
 
         let highway = net.count(Road::Highway);
-        let road = net.count(Road::Road);
-        let track = net.count(Road::Track);
         assert!(highway > 0, "seed {seed}: no trunk routes at all");
-        // Trunk routes are the exception, not the rule. If highways
-        // outnumber tracks the traffic model has stopped discriminating.
-        assert!(
-            highway < track,
-            "seed {seed}: {highway} highway cells vs {track} track cells"
-        );
-        assert!(road > 0, "seed {seed}: no intermediate roads");
 
-        let paved = (highway + road + track) as f32;
+        // **Class must follow the real traffic thresholds, not this map's
+        // own percentiles.**
+        //
+        // Ranking a world's own stretches and cutting at fixed percentiles
+        // hands every planet the same proportions of highway and track
+        // however rich or empty it is, which is exactly the mistake the
+        // geology pass had to unlearn. What is actually true is that
+        // paving pays at a few hundred vehicles a day and dualling at
+        // about thirteen thousand, and a country either clears those bars
+        // or does not.
+        //
+        // So the invariant is that the rule was applied, and that class
+        // never falls as traffic rises.
+        const TRIPS: f64 = 0.02;
+        for i in 0..net.road.len() {
+            let vpd = net.traffic[i] * TRIPS;
+            match net.road[i] {
+                Road::Highway => assert!(
+                    vpd >= 13_000.0,
+                    "seed {seed}: motorway standard on {vpd:.0} vehicles a day"
+                ),
+                Road::Road => assert!(
+                    (300.0..13_000.0).contains(&vpd),
+                    "seed {seed}: paved single carriageway on {vpd:.0} vehicles a day"
+                ),
+                Road::Track => assert!(
+                    vpd < 300.0,
+                    "seed {seed}: left unpaved under {vpd:.0} vehicles a day"
+                ),
+                Road::None => assert!(net.traffic[i] <= 0.0),
+            }
+        }
+
+        // Note for whoever reads a road map and wonders where the lanes
+        // are: this world has no villages. Its two-thousandth settlement
+        // still holds a quarter of a million people, so every link between
+        // any two of them earns its pavement honestly. Tracks will appear
+        // when the settlement pass grows a tail of hamlets, and not
+        // before — which is a gap in `settlement.rs`, not in this rule.
+
+        let paved = (highway + net.count(Road::Road) + net.count(Road::Track)) as f32;
         let land = (w.land_fraction() * w.biomes.len() as f32).max(1.0);
         let share = paved / land;
         assert!(

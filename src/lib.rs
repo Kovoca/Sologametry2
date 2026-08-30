@@ -17,4 +17,5 @@ pub mod region;
 pub mod rng;
 pub mod settlement;
 pub mod slice;
+pub mod travel;
 pub mod world;

@@ -70,6 +70,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: Some(0),
             throughput: farm_rate,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Ashford mill".into(),
@@ -80,6 +81,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: Some(1),
             throughput: mill_rate,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Ashford cannery".into(),
@@ -90,6 +92,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: Some(2),
             throughput: cannery_rate,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Kelling power station".into(),
@@ -100,6 +103,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: Some(3),
             throughput: 1e9,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Ashford depot".into(),
@@ -110,6 +114,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: Some(4),
             throughput: goods_per_day * 1.1,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Ashford market hall".into(),
@@ -120,6 +125,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: None,
             throughput: 0.0,
             powered: true,
+            ran: 0.0,
         },
         Site {
             name: "Bexley general store".into(),
@@ -130,6 +136,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             recipe: None,
             throughput: 0.0,
             powered: true,
+            ran: 0.0,
         },
     ];
 
@@ -147,6 +154,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         b: BEXLEY,
         freight_cost: 45.0,
         sound_cost: 45.0,
+        km: 173.0,
+        surface: crate::econ::Surface::Road,
         crossing: crate::econ::Crossing::Level,
         snowed_in: false,
         capacity: 150.0,

@@ -348,6 +348,62 @@ something that did not happen.
   mountain port 1,200 km of road from the grain belt, at $0.26/t-km, is
   *supposed* to pay three times as much for grain.
 
+### Getting there is not free (`src/travel.rs`)
+
+Freight cost answers what a *tonne* costs. It says nothing about how one
+man crosses a pass with something to sell, and skipping that let a trader
+with 60 in hand quietly shift 24-tonne lorry-loads.
+
+**What you can carry is a thing you own.** Real payloads and speeds, and
+the ladder falls out of them rather than being asserted:
+
+| | payload | speed | price |
+|---|---|---|---|
+| on foot | 35 kg | 28 km/day | - |
+| handcart | 150 kg | 22 | 25 wage-days |
+| pack mule | 90 kg | 28 | 120 |
+| wagon | 800 kg | 32 | 300 |
+| lorry | 24 t | 550 | 700 |
+
+- **There is no fixed ladder, and coding one was wrong.** A mule carries
+  less than a barrow, so on a made road it is four months' wages *spent to
+  get worse*. Its niche is where wheels stop working — pick the best by
+  `payload x speed` on the surface actually being worked, net of upkeep,
+  and the mule correctly never gets bought on a paved country.
+- An animal eats whether it works or not; a lorry's running costs several
+  times its driver's wage. Both must leave the purse. Charging running
+  cost against profit while never deducting it is free diesel.
+- A wage haul is driving the *firm's* lorry, so it is not limited by what
+  the driver owns. Only a venture is.
+
+### Road class comes from real traffic, not from percentiles
+
+Ranking a map's own stretches and cutting at percentiles gives every
+world the same 8% highway and 65% track however rich or empty it is —
+the identical mistake geology had to unlearn. Use absolute figures:
+
+- **Paving pays at ~300 vehicles/day** *(World Bank rule of thumb: 200-400)*.
+  Below it, grading gravel beats laying pavement, which is why most road
+  length on Earth is unpaved.
+- **Dualling pays at ~13,000 vehicles/day** on a single carriageway.
+- Traffic here is population served; ~2% of it makes an inter-urban trip
+  on a given day.
+
+Consequence worth having: a 2.3M nation came out with a town 1,092 km
+away over **open country — 71 days on foot, and no lorry gets through at
+all**. That is C1.3's "difficult terrain" arriving on its own.
+
+**Known gap this exposed: there are no villages.** The 2,000th settlement
+still holds 260k people, so every link between any two of them earns its
+pavement honestly and `Road::Track` never appears. That is a hole in
+`settlement.rs`, not in the rule.
+
+### A person's books must close
+
+`money == start + earned - spent - staked`, asserted. `spent` is food and
+vehicles; `staked` is cargo still on the road, which is not a leak. Every
+money printer so far was caught by this identity failing.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

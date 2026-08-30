@@ -131,6 +131,36 @@ fn main() {
     println!(
         "A day's work pays about {wage:.1}; a day's food costs {food_day:.1}.",
     );
+    println!(
+        "He travels {} and can carry {:.0} kg of his own.",
+        hal.conveyance.name(),
+        hal.conveyance.payload() * 1000.0,
+    );
+    println!();
+    println!("the roads out of here");
+    for r in &region.economy.routes {
+        if r.a != start && r.b != start {
+            continue;
+        }
+        let s = r.surface;
+        let on_foot = scale_sim::travel::Conveyance::OnFoot
+            .km_per_day(s)
+            .map(|v| format!("{:.0} days on foot", (r.km / v).max(1.0)))
+            .unwrap_or_else(|| "impassable on foot".into());
+        let lorry = scale_sim::travel::Conveyance::Lorry
+            .km_per_day(s)
+            .map(|v| format!("{:.0} by lorry", (r.km / v).max(1.0)))
+            .unwrap_or_else(|| "no lorry gets through".into());
+        println!(
+            "  {} to {}: {:.0} km of {} ({:.0}/t, {:.3}/t-km) — {on_foot}, {lorry}",
+            region.economy.markets[r.a].name,
+            region.economy.markets[r.b].name,
+            r.km,
+            s.name(),
+            r.sound_cost,
+            r.sound_cost / r.km.max(1.0),
+        );
+    }
     println!();
 
     println!("yr:day | state    | money | food | cond | happening");
@@ -170,10 +200,22 @@ fn main() {
     let day = region.economy.ledger.day;
     if hal.alive() {
         println!(
-            "After {} days {} is alive with {:.0} in hand, having worked {} days and \
-             earned {:.0}.",
-            args.days, hal.name, hal.money, hal.days_worked, hal.earned,
+            "After {} days {} is alive with {:.0} in hand, having worked {} days, \
+             earned {:.0} and spent {:.0} on food and vehicles.",
+            args.days, hal.name, hal.money, hal.days_worked, hal.earned, hal.spent,
         );
+        println!(
+            "He ends up with {} — {:.0} kg at a time.",
+            hal.conveyance.name(),
+            hal.conveyance.payload() * 1000.0,
+        );
+        // What he is holding is not all he is worth: a trader caught
+        // mid-journey has his money in the cargo, and the books only
+        // balance once that is counted back in.
+        let staked = hal.job.as_ref().map(|c| c.stake()).unwrap_or(0.0);
+        if staked > 0.0 {
+            println!("  and {staked:.0} more tied up in a load still on the road.");
+        }
         if hal.money < 20.0 {
             println!("Not much of a living.");
         }

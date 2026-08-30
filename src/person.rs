@@ -22,6 +22,7 @@
 //! and eating. Those are specced (A3, B1, B6) and unbuilt.
 
 use crate::econ::{Commodity, Economy};
+use crate::travel::Conveyance;
 
 /// Days a person can go hungry before it kills them.
 ///
@@ -92,8 +93,13 @@ pub enum Job {
         tonnes: f64,
         from_market: usize,
         to_market: usize,
-        /// What the load cost, paid on setting out.
+        /// What the load cost, paid on setting out. Refundable in the sense
+        /// that goods never loaded were never paid for.
         outlay: f64,
+        /// Fodder, fuel and wear for the journey. Spent whether or not
+        /// there turned out to be anything to carry, which is exactly what
+        /// makes a wasted trip hurt.
+        running: f64,
     },
     /// A shift at a works that has orders to fill.
     Shift { site: usize, market: usize },
@@ -138,9 +144,16 @@ impl Contract {
     }
 
     /// Money that must be found before the work can be taken.
+    ///
+    /// The cargo *and* the journey. You need the fodder before you set off,
+    /// not after you arrive — and charging the running cost against the
+    /// profit while never taking it out of the purse handed him free
+    /// diesel, which is the same money printer wearing a different hat.
     pub fn stake(&self) -> f64 {
         match &self.kind {
-            Job::Venture { outlay, .. } => *outlay,
+            Job::Venture {
+                outlay, running, ..
+            } => *outlay + *running,
             _ => 0.0,
         }
     }
@@ -170,13 +183,27 @@ pub struct Person {
     /// 0 (starving) to 1 (fed). Falls when there is nothing to eat.
     pub condition: f64,
     pub state: State,
+    /// **What they can move goods with, and therefore what they can trade.**
+    ///
+    /// A wage haul is driving somebody else's lorry, so it does not depend
+    /// on this. Trading on your own account entirely does: a man on foot
+    /// carries 35 kg over the pass, not twenty-four tonnes, and the road
+    /// out of that is to buy a better vehicle rather than to find a better
+    /// price.
+    pub conveyance: Conveyance,
     /// The contract in hand, if any.
     pub job: Option<Contract>,
     /// What has happened to them. The beginning of B4's memory log.
     pub log: Vec<String>,
     pub days_hungry: u64,
     pub days_worked: u64,
+    /// Gross takings: wages, and the profit on ventures after their costs.
     pub earned: f64,
+    /// Everything that went out and did not come back — food eaten, and
+    /// the vehicles bought. With these two, `money` reconciles exactly to
+    /// what he started with, which is the nearest thing to a money ledger
+    /// a person has yet.
+    pub spent: f64,
 }
 
 impl Person {
@@ -189,11 +216,13 @@ impl Person {
             larder: 3.0,
             condition: 1.0,
             state: State::Idle,
+            conveyance: Conveyance::OnFoot,
             job: None,
             log: Vec::new(),
             days_hungry: 0,
             days_worked: 0,
             earned: 0.0,
+            spent: 0.0,
         }
     }
 
@@ -246,7 +275,13 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
 /// cargo costs what it costs — it is the plain fact that you cannot trade
 /// on your own account with empty pockets. A man with nothing sees only
 /// wages, which is the point.
-pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Vec<Contract> {
+pub fn work_available(
+    econ: &Economy,
+    market: usize,
+    day: u64,
+    purse: f64,
+    conveyance: Conveyance,
+) -> Vec<Contract> {
     let mut out = Vec::new();
 
     // Hauls: the arbitrage the trade system is already finding, offered as
@@ -256,6 +291,7 @@ pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Ve
         if !route.usable() || (route.a != market && route.b != market) {
             continue;
         }
+        let surface = route.surface;
         for &c in Commodity::ALL.iter() {
             if !c.storable() {
                 continue;
@@ -269,18 +305,24 @@ pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Ve
             } else {
                 (route.b, route.a)
             };
-            // A lorry-load, not a shipload. The rest of the arbitrage is
-            // somebody else's to take — but only out of what the sending
-            // town will actually part with, or the job is a wage for
-            // driving an empty lorry over a hill.
-            let tonnes = 24.0f64
+            // A wage haul is driving the firm's lorry, so it moves a
+            // lorry-load and travels at a lorry's speed whatever the driver
+            // personally owns. The rest of the arbitrage is somebody
+            // else's to take — and only out of what the sending town will
+            // actually part with, or the job is a wage for driving an
+            // empty lorry over a hill.
+            let tonnes = Conveyance::Lorry
+                .payload()
                 .min(route.capacity * 0.02)
                 .min(econ.surplus(from, c))
                 .max(0.0);
             if tonnes < 0.2 {
                 continue;
             }
-            let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
+            let Some(speed) = Conveyance::Lorry.km_per_day(surface) else {
+                continue; // no lorry gets over this
+            };
+            let days = (route.km / speed).clamp(1.0, 60.0);
 
             // **The driver is paid a wage, not the margin.**
             //
@@ -315,23 +357,40 @@ pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Ve
                 trade: Trade::Haulier,
             });
 
-            // The same journey on your own account. Anyone with the money
-            // to buy a load takes the margin instead of the wage — and the
-            // risk of the price having moved by the time they arrive.
+            // The same journey on your own account. The margin is yours
+            // instead of the wage — and so is the risk of the price having
+            // moved by the time you arrive.
             //
-            // How much load is what the purse buys, which is why this
-            // starts as a sack on a cart and becomes a lorry only after
-            // years of wages. The progression is the capital.
-            // You can only buy what is actually for sale. A market quotes
-            // a price for everything, including things it has none of and
-            // things it is holding back, and offering a venture against
-            // either stakes money on a cargo that will never be loaded.
+            // **Two things bind, and both are real.** The purse says what
+            // you can buy. The vehicle says what you can carry, and it is
+            // usually the binding one: a man on foot takes 35 kg over the
+            // pass however rich he is, and 35 kg of grain will not make
+            // anybody's fortune. That is why the ladder out is a handcart
+            // and then a mule and then a lorry, and why most people never
+            // get past the first rung.
+            //
+            // You can also only buy what is actually for sale. A market
+            // quotes a price for everything, including things it has none
+            // of and things it is holding back, and offering a venture
+            // against either stakes money on a cargo never loaded.
             let for_sale = econ.surplus(from, c);
+            let Some(own_speed) = conveyance.km_per_day(surface) else {
+                continue; // he cannot get there with what he has
+            };
+            let own_days = (route.km / own_speed).clamp(1.0, 120.0);
 
             let unit = econ.price(from, c).max(1e-6);
-            let affordable = (purse / unit).min(tonnes).min(for_sale);
-            if affordable >= 0.2 {
+            let affordable = (purse / unit)
+                .min(conveyance.payload())
+                .min(for_sale);
+            // Getting there costs something even before the cargo: fodder
+            // for an animal that eats whether it earns or not, diesel for
+            // a lorry that costs several times its driver's wage to run.
+            let wage = day_rate_for_food(econ, market, Trade::Haulier);
+            let running = conveyance.upkeep_in_wage_days(true) * wage * own_days;
+            if affordable >= 0.005 {
                 let outlay = unit * affordable;
+                let days = own_days;
                 out.push(Contract {
                     kind: Job::Venture {
                         route: r,
@@ -340,6 +399,7 @@ pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Ve
                         from_market: from,
                         to_market: to,
                         outlay,
+                        running,
                     },
                     posted: day,
                     expires: day + 7,
@@ -521,12 +581,14 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
         let week = price * FOOD_PER_DAY * 7.0;
         if person.money >= week {
             person.money -= week;
+            person.spent += week;
             person.larder += 7.0;
             person.larder -= 1.0;
             person.condition = (person.condition + 0.08).min(1.0);
             person.days_hungry = 0;
         } else if person.money >= price * FOOD_PER_DAY {
             person.money -= price * FOOD_PER_DAY;
+            person.spent += price * FOOD_PER_DAY;
             person.condition = (person.condition + 0.04).min(1.0);
             person.days_hungry = 0;
         } else {
@@ -580,6 +642,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                         from_market,
                         to_market,
                         outlay,
+                        running,
                         ..
                     } => {
                         // Only what was actually carried can be sold, and
@@ -592,6 +655,9 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                         // venture into free money.
                         let carried = deliver(econ, commodity, tonnes, from_market, to_market);
                         let unfilled = 1.0 - (carried / tonnes.max(1e-9)).clamp(0.0, 1.0);
+                        // The cargo comes back as money if it was never
+                        // loaded. The journey does not: the fodder was
+                        // eaten and the fuel was burned getting there.
                         person.money += outlay * unfilled;
                         // **Sold at whatever the market gives today**, not
                         // at the price that made the trip look worth
@@ -600,7 +666,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                         // account, and it can go either way.
                         let got = econ.price(to_market, commodity) * carried;
                         person.money += got;
-                        let spent = outlay * (1.0 - unfilled);
+                        let spent = outlay * (1.0 - unfilled) + running;
                         let profit = got - spent;
                         person.earned += profit;
                         person.market = to_market;
@@ -638,8 +704,57 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             let reserve_for_food = econ.price(person.market, Commodity::ProcessedFood)
                 * FOOD_PER_DAY
                 * 30.0;
+
+            // --- Buy a better vehicle, if it is clearly worth it ---
+            //
+            // **This is the ladder.** Not a bigger purse: a bigger load.
+            // A man on foot who saves for a barrow quadruples what he can
+            // carry, and a man with a barrow who saves for years can buy a
+            // lorry and carry a hundred and sixty times as much. The rungs
+            // are far apart on purpose, because they are far apart in life.
+            //
+            // He buys only when he can pay for it and still keep a month's
+            // food behind him, which is why the careful get there and the
+            // desperate never do.
+            {
+                let wage = day_rate(econ, person.market, Trade::Haulier);
+                let budget = (person.money - reserve_for_food * 2.0).max(0.0);
+                // The ground he would actually be working. The worst road
+                // out of this town, because that is the one that decides
+                // whether wheels are any use.
+                let surface = econ
+                    .routes
+                    .iter()
+                    .filter(|r| r.usable() && (r.a == person.market || r.b == person.market))
+                    .map(|r| r.surface)
+                    .max_by_key(|s| *s as usize)
+                    .unwrap_or(crate::econ::Surface::Road);
+                let rate = econ
+                    .routes
+                    .iter()
+                    .find(|r| r.a == person.market || r.b == person.market)
+                    .map(|r| r.sound_cost / r.km.max(1.0))
+                    .unwrap_or(0.26);
+                if let Some((better, price)) =
+                    Conveyance::best_upgrade(person.conveyance, budget, wage, surface, rate)
+                {
+                    person.money -= price;
+                    person.spent += price;
+                    person.conveyance = better;
+                    person.note(
+                        day,
+                        format!(
+                            "bought {} for {price:.0} — carries {:.0} kg now, {:.0} in hand",
+                            better.name(),
+                            better.payload() * 1000.0,
+                            person.money
+                        ),
+                    );
+                }
+            }
+
             let stakeable = (person.money - reserve_for_food).max(0.0);
-            let offers = work_available(econ, person.market, day, stakeable);
+            let offers = work_available(econ, person.market, day, stakeable, person.conveyance);
             // Take the best work this person is trained for, can afford to
             // stake, and is well enough to do. Never stake so much that a
             // bad trip leaves nothing to eat with — which is what keeps a
