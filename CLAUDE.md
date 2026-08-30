@@ -159,6 +159,23 @@ must be manufactured, or a region that cannot report its own emergency.
 `Doctrine` (prudent/negligent) sets redundancy, crew count, depot distance
 and spares together — one trait, four concrete purchases.
 
+**Seasons.** A calendar, a harvest curve (most of the year's grain lands in
+about six weeks, peaking in early autumn), and a weather multiplier redrawn
+each year. Southern-hemisphere regions run six months out of step. Farms
+follow the curve; nothing else does.
+
+The important thing learned building it: **in a well-provisioned economy,
+seasons do not move prices, and that is correct.** Granaries exist to turn
+a burst harvest into steady eating, and real bread prices do not swing.
+The seasonal signal lives in *grain*, which is why intermediate commodities
+must be priced off industrial demand rather than household demand — price
+only what people buy directly and grain has no price at all and the whole
+cycle is invisible.
+
+There is a genuine tension: enough farm slack to survive a bad year is
+enough buffer to flatten the seasonal price signal. Both are real. Marginal
+nations show a visible grain cycle; comfortable ones do not.
+
 Things that were wrong first time, and would be again:
 - Price as `scarcity^(1/elasticity)` compounds to absurdity — it priced
   food at 4000x cost. Elasticity relates a *proportional* shortfall to a
@@ -167,6 +184,18 @@ Things that were wrong first time, and would be again:
   not only through price-gap arbitrage, or it starves in the baseline.
 - Traders must not ship a market below its own target cover, or the two
   towns just slosh stock back and forth forever.
+- Distribution must prefer local suppliers. Scanning sites in index order
+  meant every mill in the country drained the capital's granary before
+  touching its own, so the capital read as famine-struck while the
+  provinces sat on full silos.
+- Price a stored staple off a *slow average* of cover, not today's silo
+  reading. Grain stock legitimately halves between harvest and midsummer;
+  tracking that directly gave a 10x annual price swing, which no stored
+  staple has, because merchants buying at harvest damp the very swing they
+  are betting on.
+- Size farms against what is actually eaten, not against the mills' rated
+  capacity. Multiplying by the mills' headroom too gave a permanent 14%
+  surplus and a floored price.
 
 ## Calibrate against reality, not against taste
 

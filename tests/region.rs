@@ -171,6 +171,88 @@ fn populations_are_the_ones_the_world_generated() {
 }
 
 #[test]
+fn the_farming_year_has_a_shape() {
+    // Crops arrive in a burst and are eaten all year. If output is flat,
+    // seasons are decorative.
+    let p = planet(20260828);
+    let Some(r) = region_of(&p, 0, Doctrine::Prudent) else {
+        panic!("no region");
+    };
+    let mut peak: f64 = 0.0;
+    let mut trough = f64::INFINITY;
+    let mut seasons = std::collections::BTreeSet::new();
+    let mut e = r.economy;
+    for _ in 0..scale_sim::econ::DAYS_PER_YEAR {
+        e.step();
+        let h = e.harvest_today();
+        peak = peak.max(h);
+        trough = trough.min(h);
+        seasons.insert(e.season().name());
+    }
+    assert_eq!(seasons.len(), 4, "the year did not pass through four seasons");
+    assert!(
+        peak > trough * 20.0,
+        "harvest peaked at {peak:.2} against a trough of {trough:.2} — too flat to be a crop"
+    );
+}
+
+#[test]
+fn grain_is_dear_before_the_harvest_and_cheap_after() {
+    // The seasonal signal a trader would learn. It lives in grain, not in
+    // the loaf: shops and mills buffer the processed end, which is why
+    // real bread prices barely move while grain prices do.
+    let p = planet(20260828);
+    let Some(r) = region_of(&p, 0, Doctrine::Prudent) else {
+        panic!("no region");
+    };
+    let mut e = r.economy;
+    let grain = Commodity::Grain;
+
+    // Settle through a full year first, then watch the next one.
+    for _ in 0..scale_sim::econ::DAYS_PER_YEAR {
+        e.step();
+    }
+    let mut cheapest = f64::INFINITY;
+    let mut dearest: f64 = 0.0;
+    for _ in 0..scale_sim::econ::DAYS_PER_YEAR {
+        e.step();
+        let p = e.price(0, grain);
+        cheapest = cheapest.min(p);
+        dearest = dearest.max(p);
+    }
+    assert!(
+        dearest > cheapest * 1.3,
+        "grain ran {cheapest:.0} to {dearest:.0} over a year — no seasonal signal at all"
+    );
+    assert!(
+        dearest < cheapest * 12.0,
+        "grain ran {cheapest:.0} to {dearest:.0} — a swing no stored staple has"
+    );
+}
+
+#[test]
+fn seasons_do_not_starve_anyone() {
+    // The counterpart. A harvest cycle is a rhythm, not a crisis: granaries
+    // exist precisely so that eating is steady while growing is not.
+    for seed in [1u64, 42, 20260828] {
+        let p = planet(seed);
+        let Some(r) = region_of(&p, 0, Doctrine::Prudent) else {
+            continue;
+        };
+        let mut e = r.economy;
+        for _ in 0..(scale_sim::econ::DAYS_PER_YEAR * 3) {
+            e.step();
+            assert!(
+                e.unmet_demand[FOOD as usize] == 0.0,
+                "seed {seed}: people went hungry on day {} with nothing wrong",
+                e.ledger.day
+            );
+        }
+        e.ledger.assert_conserved();
+    }
+}
+
+#[test]
 fn extraction_is_deterministic() {
     let p = planet(777);
     let a = region_of(&p, 0, Doctrine::Negligent).expect("no region");

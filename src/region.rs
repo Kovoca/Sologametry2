@@ -14,7 +14,7 @@
 
 use crate::econ::{
     basket, recipe, Commodity, Doctrine, Economy, Grid, Journal, Ledger, Market, Response, Route,
-    Site, SiteKind, N_COMMODITIES,
+    Site, SiteKind, DAYS_PER_YEAR, N_COMMODITIES,
 };
 use crate::geology::Geology;
 use crate::network::Network;
@@ -249,7 +249,26 @@ impl Region {
             } else {
                 0.0
             };
-            let rate = grain_needed * 1.12 * share;
+            // Solved, not guessed. The harvest curve averages about 0.93 of
+            // rated output over a year and weather another 0.97, so a farm
+            // rated at bare demand delivers only ~0.90 of it. 1/0.90 is
+            // 1.11, and the mill takes 1.35 t of grain per tonne of flour
+            // against the 1.215 already in `grain_needed`, which together
+            // put the balance point near 1.24. A couple of points above
+            // that gives enough carryover to rebuild after a poor year
+            // without the silos filling up and the price floored forever.
+            // Sized against what is actually milled, which is set by what
+            // people eat, not by the mills' rated capacity — that headroom
+            // is never used, and multiplying the farms by it too left the
+            // country with a permanent surplus and a floored price.
+            //
+            // 1/0.90 covers the average harvest curve and weather. The rest
+            // is slack for the bad years: sized to the average, a country
+            // that draws a poor season simply runs out, and no real farming
+            // sector is planned that tightly. A nation that still cannot
+            // feed itself ought to import, as it already does with fuel —
+            // that is the honest fix and is not built yet.
+            let rate = grain_needed * 1.25 * share;
             if rate < 0.5 {
                 continue;
             }
@@ -258,8 +277,13 @@ impl Region {
                 name: format!("{name} farms"),
                 kind: SiteKind::Farm,
                 market: m,
-                stock: cap(&[(Commodity::Grain, rate * 5.0)]),
-                capacity: cap(&[(Commodity::Grain, rate * 30.0)]),
+                // Silo capacity is finite, and that is what makes weather
+                // matter: a country able to store several years of grain
+                // would never notice a bad harvest. Real cereal carryover
+                // runs to a few months, so good years fill the silos and
+                // stop, and poor ones draw them down where it can be felt.
+                stock: cap(&[(Commodity::Grain, rate * 170.0)]),
+                capacity: cap(&[(Commodity::Grain, rate * 260.0)]),
                 recipe: Some(recipe::FARM),
                 throughput: rate,
                 powered: true,
@@ -479,16 +503,27 @@ impl Region {
             });
         }
 
-        let economy = Economy {
+        // The farming year runs six months out of step below the equator.
+        let capital_cell = settlements.list[towns[0]].cell;
+        let southern = capital_cell / world.width > world.height / 2;
+
+        let mut economy = Economy {
             ledger: Ledger::new(sites),
             journal: Journal::new(),
             markets,
             routes,
             grid: Grid::for_doctrine(doctrine, peak_power),
             response: Response::for_doctrine(doctrine),
+            southern,
+            harvest_quality: 1.0,
+            weather_seed: world.seed ^ (polity as u64).wrapping_mul(0x517C_C1B7_2722_0A95),
             unserved_power: 0.0,
             unmet_demand: basket(),
         };
+        // Start mid-harvest rather than in the depths of winter, so a
+        // short run is not looking at an unrepresentative slice of the
+        // year.
+        economy.ledger.day = (DAYS_PER_YEAR as f64 * 0.62) as u64;
 
         let held = polities.list[polity as usize].cells;
         notes.push(format!(

@@ -166,8 +166,12 @@ fn main() {
 
     // Run it.
     let e = &mut region.economy;
-    println!(" day | food price   cover | haul | power | event");
-    println!("-----+--------------------+------+-------+------------------");
+    println!(
+        " day | season | harvest |  grain | grain cover | food | food cover | haul | event"
+    );
+    println!(
+        "-----+--------+---------+--------+-------------+------+------------+------+---------"
+    );
 
     let mut last = String::new();
     for day in 0..args.days {
@@ -209,13 +213,18 @@ fn main() {
         let haul = (0..e.routes.len()).any(|r| e.arbitrage(r, FOOD) > 0.0);
 
         if !note.is_empty() || day < 2 || day % 20 == 0 || day + 1 == args.days {
+            let grain = Commodity::Grain;
             println!(
-                "{:>4} | {:>10.0} {:>7.1} | {:>4} | {:>5} | {}",
+                "{:>4} | {:<6} | {:>7.2} | {:>6.0} | {:>11.0} | {:>4.0} | {:>10.1} | {:>4} | {}{}",
                 day,
+                e.season().name(),
+                e.harvest_today(),
+                e.price(0, grain),
+                e.markets[0].cover[grain as usize],
                 e.price(0, FOOD),
                 e.markets[0].cover[FOOD as usize],
                 if haul { "yes" } else { "-" },
-                if e.unserved_power > 0.01 { "SHED" } else { "ok" },
+                if e.unserved_power > 0.01 { "SHED " } else { "" },
                 note,
             );
         }

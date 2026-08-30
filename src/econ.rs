@@ -101,7 +101,10 @@ impl Commodity {
             Commodity::Electricity => 0.0,
             Commodity::ProcessedFood => 4.0,
             Commodity::Flour => 10.0,
-            Commodity::Grain => 30.0,
+            // Grain is harvested once and eaten for twelve months, so a
+            // working stock is months rather than weeks. Judging it against
+            // a few weeks' cover prices it as a catastrophe every spring.
+            Commodity::Grain => 150.0,
             Commodity::Coal => 20.0,
             Commodity::RetailGoods => 14.0,
         }
@@ -485,6 +488,9 @@ pub struct Market {
     pub price: Basket,
     /// Days of cover currently held, for reporting.
     pub cover: Basket,
+    /// Cover as the market *sees* it: a slow average rather than today's
+    /// reading. See `update_prices`.
+    pub expected_cover: Basket,
 }
 
 impl Market {
@@ -493,11 +499,16 @@ impl Market {
         for (i, c) in Commodity::ALL.iter().enumerate() {
             price[i] = c.base_cost();
         }
+        let mut expected = basket();
+        for (i, c) in Commodity::ALL.iter().enumerate() {
+            expected[i] = c.target_cover_days();
+        }
         Market {
             name: name.into(),
             population,
             price,
             cover: basket(),
+            expected_cover: expected,
         }
     }
 
@@ -638,6 +649,78 @@ pub struct Route {
     /// Units per day the route can carry.
     pub capacity: f64,
     pub open: bool,
+}
+
+// ---------------------------------------------------------------------------
+// The calendar
+// ---------------------------------------------------------------------------
+
+pub const DAYS_PER_YEAR: u64 = 365;
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Season {
+    Spring,
+    Summer,
+    Autumn,
+    Winter,
+}
+
+impl Season {
+    pub fn name(self) -> &'static str {
+        match self {
+            Season::Spring => "spring",
+            Season::Summer => "summer",
+            Season::Autumn => "autumn",
+            Season::Winter => "winter",
+        }
+    }
+
+    /// Season on day `day` at a given latitude sign. The southern
+    /// hemisphere is six months out of step with the northern, which is
+    /// why a planet can feed itself year-round while any one country
+    /// cannot.
+    pub fn on(day: u64, southern: bool) -> Season {
+        let mut d = day % DAYS_PER_YEAR;
+        if southern {
+            d = (d + DAYS_PER_YEAR / 2) % DAYS_PER_YEAR;
+        }
+        match d * 4 / DAYS_PER_YEAR {
+            0 => Season::Spring,
+            1 => Season::Summer,
+            2 => Season::Autumn,
+            _ => Season::Winter,
+        }
+    }
+}
+
+/// The farming year.
+///
+/// Crops are not produced evenly. Ground is prepared and sown, the crop
+/// grows, and then almost the whole year's grain arrives inside a few
+/// weeks — after which the country lives on what it stored. That shape is
+/// what makes food prices move, gives a trader something to anticipate,
+/// and makes a bad harvest matter for twelve months rather than one.
+///
+/// Returns a multiplier on a farm's rated output for the day.
+pub fn harvest_curve(day: u64, southern: bool) -> f64 {
+    let mut d = (day % DAYS_PER_YEAR) as f64;
+    if southern {
+        d = (d + DAYS_PER_YEAR as f64 / 2.0) % DAYS_PER_YEAR as f64;
+    }
+    // Peak in early autumn, the way a real cereal harvest falls.
+    let peak = DAYS_PER_YEAR as f64 * 0.62;
+    let mut gap = (d - peak).abs();
+    if gap > DAYS_PER_YEAR as f64 / 2.0 {
+        gap = DAYS_PER_YEAR as f64 - gap;
+    }
+    // Narrow bell: most of the year's crop lands within about six weeks,
+    // and a trickle the rest of the time from other produce.
+    let width = 26.0;
+    let z = gap / width;
+    let bell = (-z * z).exp();
+    // Scaled so a full year integrates to roughly one year of rated
+    // output, which keeps annual supply matched to annual demand.
+    0.06 + 6.9 * bell
 }
 
 // ---------------------------------------------------------------------------
@@ -849,6 +932,15 @@ pub struct Economy {
     pub routes: Vec<Route>,
     pub grid: Grid,
     pub response: Response,
+    /// True if this region sits in the southern hemisphere, so its
+    /// farming year runs six months out of step with a northern one.
+    pub southern: bool,
+    /// This year's growing conditions as a multiplier on the harvest.
+    /// Redrawn each year: weather is the largest thing in farming that
+    /// nobody controls.
+    pub harvest_quality: f64,
+    /// Seeds the weather, so a world replays identically.
+    pub weather_seed: u64,
     /// Electricity that could not be supplied today — the load shed.
     pub unserved_power: f64,
     /// Household demand that could not be met, per commodity. This is
@@ -862,6 +954,7 @@ impl Economy {
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
 
+        self.turn_of_the_year();
         self.run_response();
         self.generate_power();
         self.allocate_power();
@@ -879,6 +972,48 @@ impl Economy {
 
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
+    }
+
+    /// Draw the coming year's weather, once, on the day the growing year
+    /// turns.
+    ///
+    /// Real yields vary by roughly a fifth from year to year in a
+    /// temperate country, with a long tail of genuinely bad years —
+    /// drought, a wet harvest, a late frost. Modelled as a multiplier
+    /// skewed low, because good years cluster near average while bad ones
+    /// can be very bad.
+    fn turn_of_the_year(&mut self) {
+        let day = self.ledger.day;
+        if day % DAYS_PER_YEAR != 0 {
+            return;
+        }
+        let year = day / DAYS_PER_YEAR;
+        let mut z = self
+            .weather_seed
+            .wrapping_add(year.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^= z >> 31;
+        let u = ((z >> 11) as f64) / ((1u64 << 53) as f64); // 0..1
+
+        // Roughly 0.78..1.15, mean near 0.97, with the low tail longer
+        // than the high one. Real cereal yields vary by ten to twenty per
+        // cent year on year; a fifth down is a bad year a country rides out
+        // on its reserves, not a catastrophe. Making the spread wider than
+        // reality produces a famine every few years, which is neither true
+        // nor interesting.
+        self.harvest_quality = 0.78 + 0.37 * u.powf(0.7);
+    }
+
+    /// Season where this region's farms are.
+    pub fn season(&self) -> Season {
+        Season::on(self.ledger.day, self.southern)
+    }
+
+    /// Today's harvest multiplier: where the year is, times how the year
+    /// has turned out.
+    pub fn harvest_today(&self) -> f64 {
+        harvest_curve(self.ledger.day, self.southern) * self.harvest_quality
     }
 
     /// Notice faults, report them, dispatch crews, complete repairs.
@@ -1124,7 +1259,12 @@ impl Economy {
             }
             let recipe = &RECIPES[r];
 
+            // A farm does not produce evenly through the year: it produces
+            // when the crop is ready. Everything else runs flat.
             let mut batches = self.site_capacity(site);
+            if s.kind == SiteKind::Farm {
+                batches *= self.harvest_today();
+            }
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
             }
@@ -1288,7 +1428,21 @@ impl Economy {
                 // first, then anywhere an open route reaches. A town with
                 // no works of its own is supplied down the road, which is
                 // the ordinary case and is why cutting the road starves it.
-                for src in 0..self.ledger.sites.len() {
+                // Local suppliers first, then anywhere the network reaches.
+                // Without the local pass, sites are drawn on in whatever
+                // order they happen to sit in the list, so every mill in
+                // the country empties the capital's granary before touching
+                // the one next door — and the capital reads as famine-struck
+                // while the provinces sit on full silos.
+                let order: Vec<usize> = (0..self.ledger.sites.len())
+                    .filter(|&s| self.ledger.sites[s].market == market)
+                    .chain(
+                        (0..self.ledger.sites.len())
+                            .filter(|&s| self.ledger.sites[s].market != market),
+                    )
+                    .collect();
+
+                for src in order {
                     if short <= 1e-9 {
                         break;
                     }
@@ -1437,24 +1591,65 @@ impl Economy {
     }
 
     /// Price from stock cover against demand. Spec A.6.
+    ///
+    /// Demand is household *plus* industrial: a mill wanting grain is as
+    /// real a buyer as a family wanting bread, and for the goods nobody
+    /// eats directly it is the only buyer there is. Pricing on household
+    /// demand alone leaves grain and flour with no price at all, and hides
+    /// the whole seasonal signal — which lives in what the mill pays at
+    /// harvest versus what it pays in spring, not in the price of a loaf.
     fn update_prices(&mut self) {
         for m in 0..self.markets.len() {
             for &c in Commodity::ALL.iter() {
-                let demand = self.markets[m].daily_household_demand(c);
+                let industrial: f64 = (0..self.ledger.sites.len())
+                    .filter(|&s| self.ledger.sites[s].market == m)
+                    .filter_map(|s| {
+                        let r = self.ledger.sites[s].recipe?;
+                        let per = RECIPES[r]
+                            .inputs
+                            .iter()
+                            .find(|&&(ic, _)| ic == c)
+                            .map(|&(_, q)| q)?;
+                        Some(per * self.ledger.sites[s].throughput)
+                    })
+                    .sum();
+
+                let demand = self.markets[m].daily_household_demand(c) + industrial;
                 if demand <= 0.0 {
                     self.markets[m].cover[c as usize] = f64::INFINITY;
                     continue;
                 }
+
+                // Stock held anywhere in the market, not only in shops:
+                // grain sitting in a granary is grain the mill can buy.
+                let shop_only = c.per_capita_annual() > 0.0 && industrial <= 0.0;
                 let stock: f64 = (0..self.ledger.sites.len())
                     .filter(|&s| {
                         self.ledger.sites[s].market == m
-                            && self.ledger.sites[s].kind == SiteKind::Shop
+                            && (!shop_only || self.ledger.sites[s].kind == SiteKind::Shop)
                     })
                     .map(|s| self.ledger.stock(s, c))
                     .sum();
 
                 let cover = stock / demand;
                 self.markets[m].cover[c as usize] = cover;
+
+                // Price the crop year, not today's silo reading.
+                //
+                // A grain stock legitimately swings by half between harvest
+                // and midsummer, and if price tracked that reading it would
+                // swing several-fold every year — which real grain prices
+                // do not, because merchants buy at harvest precisely
+                // because they expect a better price later, and the buying
+                // damps the very swing they are betting on. Averaging cover
+                // over a period as long as the commodity keeps is the cheap
+                // way to get that behaviour without modelling speculators:
+                // a perishable reacts within days, grain over months.
+                let window = c.target_cover_days().max(1.0);
+                let alpha = 1.0 / window;
+                let seen = self.markets[m].expected_cover[c as usize];
+                let cover = seen * (1.0 - alpha) + cover * alpha;
+                self.markets[m].expected_cover[c as usize] = cover;
 
                 // Elasticity relates a *proportional* shortfall to a
                 // proportional price move: a 20% shortfall in a good with
@@ -1464,8 +1659,12 @@ impl Economy {
                 // version of this priced food at four thousand times cost.
                 let target = c.target_cover_days().max(0.5);
                 let gap = (target - cover) / target;
+                // The floor is well above zero: a glut is a bad price, not
+                // a free good. Producers stop selling long before that, and
+                // in a real surplus the crop is stored or exported rather
+                // than given away.
                 let multiplier =
-                    (1.0 + gap / c.elasticity().abs()).clamp(0.4, 8.0);
+                    (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
                 self.markets[m].price[c as usize] = c.base_cost() * multiplier;
             }
         }

@@ -57,7 +57,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     let food_per_day = (ASHFORD_POP + BEXLEY_POP) * ProcessedFood.per_capita_annual() / 365.0;
     let cannery_rate = food_per_day * 1.15; // a working margin
     let mill_rate = cannery_rate * 0.9; // cannery takes 0.9 t flour per t
-    let farm_rate = mill_rate * 1.35; // mill takes 1.35 t grain per t
+    let farm_rate = mill_rate * 1.35 * 1.12; // mill ratio, plus slack for lean years
     let goods_per_day = (ASHFORD_POP + BEXLEY_POP) * RetailGoods.per_capita_annual() / 365.0;
 
     let sites = vec![
@@ -65,8 +65,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             name: "Ashford farm".into(),
             kind: SiteKind::Farm,
             market: ASHFORD,
-            stock: cap(&[(Grain, 400.0)]),
-            capacity: cap(&[(Grain, 4000.0)]),
+            stock: cap(&[(Grain, farm_rate * 120.0)]),
+            capacity: cap(&[(Grain, farm_rate * 480.0)]),
             recipe: Some(0),
             throughput: farm_rate,
             powered: true,
@@ -160,6 +160,9 @@ pub fn build(doctrine: Doctrine) -> Economy {
         routes,
         grid: Grid::for_doctrine(doctrine, peak),
         response: Response::for_doctrine(doctrine),
+        southern: false,
+        harvest_quality: 1.0,
+        weather_seed: 0x5EED_C0FF_EE15_600D,
         unserved_power: 0.0,
         unmet_demand: basket(),
     }
