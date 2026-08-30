@@ -147,6 +147,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         b: BEXLEY,
         freight_cost: 45.0,
         sound_cost: 45.0,
+        crossing: crate::econ::Crossing::Level,
+        snowed_in: false,
         capacity: 150.0,
         open: true,
     }];

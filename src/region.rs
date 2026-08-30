@@ -13,8 +13,8 @@
 //! honest answer and the one that makes trade matter.
 
 use crate::econ::{
-    basket, recipe, Commodity, Doctrine, Economy, Grid, Journal, Ledger, Market, Response, Route,
-    Site, SiteKind, DAYS_PER_YEAR, N_COMMODITIES,
+    basket, recipe, Commodity, Crossing, Doctrine, Economy, Grid, Journal, Ledger, Market,
+    Response, Route, Site, SiteKind, DAYS_PER_YEAR, N_COMMODITIES,
 };
 use crate::geology::Geology;
 use crate::network::{Network, Road};
@@ -126,7 +126,7 @@ fn rate_for(road: Road, navigable: bool) -> f64 {
 /// the cost between two towns is what the country's actual roads charge
 /// rather than the distance a crow would fly. Water is impassable to a
 /// lorry; navigable rivers are cheap.
-fn freight_field(world: &World, net: &Network, from: usize) -> (Vec<f64>, Vec<f64>) {
+fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
     use crate::world::Biome;
@@ -151,9 +151,16 @@ fn freight_field(world: &World, net: &Network, from: usize) -> (Vec<f64>, Vec<f6
     // shortest path: a longer run on a highway beats a short scramble over
     // a col, and reporting the road distance is what shows the detour.
     let mut km = vec![f64::INFINITY; w * h];
+    // The high point of the cheapest path, and how cold it gets up there.
+    // A route's summit is what decides whether it is a road or a pass, and
+    // whether the pass survives February.
+    let mut summit = vec![0.0f64; w * h];
+    let mut coldest = vec![1.0f64; w * h];
     let mut heap: BinaryHeap<Reverse<(C, usize)>> = BinaryHeap::new();
     best[from] = 0.0;
     km[from] = 0.0;
+    summit[from] = world.elevation.data[from] as f64;
+    coldest[from] = world.temperature.data[from] as f64;
     heap.push(Reverse((C(0.0), from)));
 
     const D: [(i32, i32); 8] = [
@@ -188,11 +195,65 @@ fn freight_field(world: &World, net: &Network, from: usize) -> (Vec<f64>, Vec<f6
             if nd < best[j] {
                 best[j] = nd;
                 km[j] = km[i] + step_km;
+                summit[j] = summit[i].max(world.elevation.data[j] as f64);
+                coldest[j] = coldest[i].min(world.temperature.data[j] as f64);
                 heap.push(Reverse((C(nd), j)));
             }
         }
     }
-    (best, km)
+    Field4 {
+        cost: best,
+        km,
+        summit,
+        coldest,
+    }
+}
+
+/// What a Dijkstra sweep learned about every destination.
+struct Field4 {
+    cost: Vec<f64>,
+    km: Vec<f64>,
+    summit: Vec<f64>,
+    coldest: Vec<f64>,
+}
+
+/// Decide how a route gets over what is in its way.
+///
+/// This is the engineer's choice, and it turns on traffic. A col carrying
+/// a few carts is left as a pass: cheap, because it follows the ground,
+/// and shut every winter. A col carrying a nation's freight gets bored
+/// through, at tens of millions a kilometre, precisely because a seasonal
+/// hole in the trunk route is not survivable. Both exist in real mountain
+/// country, side by side, for exactly this reason.
+fn choose_crossing(
+    summit: f64,
+    sea_level: f64,
+    coldest: f64,
+    tonnes_per_day: f64,
+    can_afford: bool,
+) -> Crossing {
+    // Height above the sea, as a share of the land's relief.
+    let relief = ((summit - sea_level) / (1.0 - sea_level).max(1e-3)).clamp(0.0, 1.0);
+    if relief < 0.55 {
+        return Crossing::Level;
+    }
+
+    // Tunnelling is bought when the traffic justifies it and the state can
+    // find the money. Real bored tunnel runs to tens of millions a
+    // kilometre; a few kilometres of it is a national project.
+    const TUNNEL_COST_PER_KM: f64 = 90.0; // millions
+    let bore_km = 4.0 + 16.0 * relief;
+    let capital = TUNNEL_COST_PER_KM * bore_km;
+
+    let heavy = tonnes_per_day > 8_000.0;
+    if heavy && can_afford {
+        Crossing::Tunnel { capital }
+    } else {
+        Crossing::Pass {
+            summit: relief,
+            cold: coldest,
+        }
+    }
 }
 
 /// Shortest distance between two cells on the cylinder, in kilometres.
@@ -584,12 +645,13 @@ impl Region {
         // economy is the shape of the roads.
         let mut routes = Vec::new();
         if towns.len() > 1 {
-            let fields: Vec<(Vec<f64>, Vec<f64>)> = towns
+            let fields: Vec<Field4> = towns
                 .iter()
                 .map(|&t| freight_field(world, network, settlements.list[t].cell))
                 .collect();
-            let cost = |a: usize, b: usize| fields[a].0[settlements.list[towns[b]].cell];
-            let road_km = |a: usize, b: usize| fields[a].1[settlements.list[towns[b]].cell];
+            let at = |b: usize| settlements.list[towns[b]].cell;
+            let cost = |a: usize, b: usize| fields[a].cost[at(b)];
+            let road_km = |a: usize, b: usize| fields[a].km[at(b)];
 
             // Prim's algorithm: grow one connected network from the capital
             // outward, always adding the town that is cheapest to reach
@@ -624,15 +686,48 @@ impl Region {
                     world.width,
                 );
                 let along = road_km(a, b);
+                let cell = settlements.list[towns[b]].cell;
+                // Traffic on this link, roughly: the smaller end's daily
+                // food demand stands for how much moves along it.
+                let traffic = markets[a]
+                    .daily_household_demand(Commodity::ProcessedFood)
+                    .min(markets[b].daily_household_demand(Commodity::ProcessedFood));
+                let crossing = choose_crossing(
+                    fields[a].summit[cell],
+                    world.sea_level as f64,
+                    fields[a].coldest[cell],
+                    traffic,
+                    doctrine == Doctrine::Prudent,
+                );
+
+                // A tunnel is flat and straight; a pass is neither, and
+                // heavy freight crawls over it.
+                let cost = match crossing {
+                    Crossing::Tunnel { .. } => c * 0.8,
+                    Crossing::Pass { summit, .. } => c * (1.0 + 0.5 * summit),
+                    Crossing::Level => c,
+                };
+
+                let how = match crossing {
+                    Crossing::Level => String::new(),
+                    Crossing::Pass { summit, .. } => {
+                        format!(", over a pass at {:.0}% of relief", summit * 100.0)
+                    }
+                    Crossing::Tunnel { capital } => {
+                        format!(", tunnelled at a cost of {capital:.0}M")
+                    }
+                };
                 routes.push(Route {
                     name: format!(
-                        "{} to {} ({:.0} km of road for a {:.0} km gap)",
+                        "{} to {} ({:.0} km of road for a {:.0} km gap{how})",
                         markets[a].name, markets[b].name, along, straight
                     ),
                     a,
                     b,
-                    freight_cost: c,
-                    sound_cost: c,
+                    freight_cost: cost,
+                    sound_cost: cost,
+                    crossing,
+                    snowed_in: false,
                     capacity: food_day * 2.0,
                     open: true,
                 });
@@ -826,6 +921,8 @@ impl Nations {
                     b: mb,
                     freight_cost: km * rate,
                     sound_cost: km * rate,
+                    crossing: Crossing::Level,
+                    snowed_in: false,
                     // International trade is a fraction of what a country
                     // moves internally, not a firehose.
                     capacity: volume * 0.5,

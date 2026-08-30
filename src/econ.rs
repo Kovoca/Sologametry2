@@ -688,6 +688,65 @@ impl Grid {
 /// A physical link between two markets. Spec A.7 — the freight cost on
 /// this route is what bounds the price gap between the markets it joins,
 /// and cutting it is therefore an economic event, not just a nuisance.
+/// How a road gets past a mountain barrier — the decision an engineer
+/// actually faces, and the one that separates a trunk route from a track.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Crossing {
+    /// Open country. Nothing in the way worth naming.
+    Level,
+    /// Over the top. Cheap to build because it follows the ground, but it
+    /// means steep grades, slow heavy traffic, and **snow closes it every
+    /// winter** — which is why an economy that depends on one has a
+    /// seasonal hole in it.
+    Pass {
+        /// Height of the summit, 0..1 of the world's relief.
+        summit: f64,
+        /// Coldest temperature on the crossing, 0..1. Colder closes for
+        /// longer.
+        cold: f64,
+    },
+    /// Bored through. Enormous capital cost — tens of millions a kilometre
+    /// against two for a road on the flat — bought because a pass cannot
+    /// carry the freight. Flat, fast, and open in February.
+    Tunnel {
+        /// Capital cost, in millions.
+        capital: f64,
+    },
+}
+
+impl Crossing {
+    pub fn name(self) -> &'static str {
+        match self {
+            Crossing::Level => "level",
+            Crossing::Pass { .. } => "pass",
+            Crossing::Tunnel { .. } => "tunnel",
+        }
+    }
+
+    /// Whether snow shuts this crossing on a given day.
+    ///
+    /// A pass high enough and cold enough is simply gone for the winter.
+    /// Real alpine passes close for four to six months; lower ones only in
+    /// the worst weeks.
+    pub fn shut_by_snow(self, season: Season, cold: f64) -> bool {
+        let _ = cold;
+        match self {
+            Crossing::Pass { cold, summit } => {
+                // How much of the year it is lost, from how cold and high
+                // it is. A high, bitter col is shut all winter and half of
+                // spring; a low one only at the depth of it.
+                let severity = (1.0 - cold) * summit;
+                match season {
+                    Season::Winter => severity > 0.18,
+                    Season::Spring | Season::Autumn => severity > 0.34,
+                    Season::Summer => false,
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
 pub struct Route {
     pub name: String,
     pub a: usize,
@@ -701,9 +760,21 @@ pub struct Route {
     /// What the haul costs on a road in good repair. `freight_cost` is
     /// this, worsened by however far the surface has been let go.
     pub sound_cost: f64,
+    /// How this route gets over whatever is in its way.
+    pub crossing: Crossing,
+    /// True while a pass is shut by snow. Set each day from the season.
+    pub snowed_in: bool,
     /// Units per day the route can carry.
     pub capacity: f64,
     pub open: bool,
+}
+
+impl Route {
+    /// Whether anything can move along this today. A road that is open in
+    /// principle but under four metres of snow carries nothing.
+    pub fn usable(&self) -> bool {
+        self.open && !self.snowed_in
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1028,6 +1099,7 @@ impl Economy {
         self.unmet_demand = basket();
 
         self.turn_of_the_year();
+        self.close_the_passes();
         self.run_response();
         self.generate_power();
         self.allocate_power();
@@ -1116,6 +1188,25 @@ impl Economy {
                 .unwrap_or(1.0)
                 .min(self.road_condition.get(nb).copied().unwrap_or(1.0));
             r.freight_cost = r.sound_cost * (1.0 + 0.8 * (1.0 - worst));
+        }
+    }
+
+    /// Shut every pass the snow has taken, and reopen those it has left.
+    ///
+    /// A country whose trunk route crosses a col has a hole in its economy
+    /// every winter, and one that paid for the tunnel does not. That is
+    /// the whole argument for the tunnel, and it is why the decision is
+    /// worth modelling rather than averaging away into a cost per
+    /// kilometre.
+    fn close_the_passes(&mut self) {
+        let day = self.ledger.day;
+        for r in self.routes.iter_mut() {
+            // The season at the end that has the winter.
+            let season = self.markets[r.a].season(day);
+            let other = self.markets[r.b].season(day);
+            let shut = r.crossing.shut_by_snow(season, 0.0)
+                || r.crossing.shut_by_snow(other, 0.0);
+            r.snowed_in = shut;
         }
     }
 
@@ -1453,7 +1544,7 @@ impl Economy {
     fn market_components(&self) -> Vec<Vec<usize>> {
         let n = self.markets.len();
         let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
-        for r in self.routes.iter().filter(|r| r.open) {
+        for r in self.routes.iter().filter(|r| r.usable()) {
             adj[r.a].push(r.b);
             adj[r.b].push(r.a);
         }
@@ -1633,7 +1724,7 @@ impl Economy {
     /// decouple.
     fn trade(&mut self) {
         for r in 0..self.routes.len() {
-            if !self.routes[r].open {
+            if !self.routes[r].usable() {
                 continue;
             }
             let (a, b) = (self.routes[r].a, self.routes[r].b);

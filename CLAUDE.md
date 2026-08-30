@@ -144,6 +144,21 @@ more per kilometre *and* holds fewer people to pay for it, which is why
 remote regions stay poorly connected and why C1.3's "difficult terrain"
 is an opportunity for anyone who does not want to be governed.
 
+**Over, through, or around** — the engineer's actual choice, not just a
+cost per kilometre. Where a route's summit clears 55% of the land's
+relief it becomes a crossing, and the state picks:
+
+- **Pass** — cheap, because it follows the ground. Steep, so heavy freight
+  crawls (+50% at a high col), and **snow shuts it every winter**. An
+  economy that depends on one has a seasonal hole in it.
+- **Tunnel** — ~90M a kilometre, so a few kilometres is a national
+  project. Flat, 20% cheaper to haul, and open in February.
+
+Bought when the traffic justifies it and the state can find the money,
+which is why real mountain country has both side by side. On one test
+nation: over the pass 310/t and closed each winter, or tunnelled for
+1,308M and 187/t all year.
+
 **The maintenance deficit runs end to end.** Doctrine sets what share of
 upkeep is funded (prudent 100%, negligent 55%); the shortfall decays road
 condition by ~6%/yr of the gap; freight cost scales with condition. A

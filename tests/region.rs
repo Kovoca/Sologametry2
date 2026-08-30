@@ -231,6 +231,115 @@ fn road_hauls_are_never_shorter_than_the_crow_flies() {
 }
 
 #[test]
+fn a_pass_shuts_for_the_winter_and_a_tunnel_does_not() {
+    // The whole argument for boring through a mountain rather than going
+    // over it. A pass follows the ground and costs little; it is also gone
+    // for months, and an economy that depends on one has a seasonal hole.
+    use scale_sim::econ::Crossing;
+
+    let p = planet(20260828);
+    let mut found_pass = false;
+
+    for rank in 0..8 {
+        let Some(r) = region_of(&p, rank, Doctrine::Negligent) else {
+            continue;
+        };
+        if !r
+            .economy
+            .routes
+            .iter()
+            .any(|rt| matches!(rt.crossing, Crossing::Pass { .. }))
+        {
+            continue;
+        }
+        found_pass = true;
+
+        let mut e = r.economy;
+        let mut shut_days = 0;
+        for _ in 0..scale_sim::econ::DAYS_PER_YEAR {
+            e.step();
+            if e.routes.iter().any(|rt| rt.snowed_in) {
+                shut_days += 1;
+            }
+        }
+        assert!(
+            shut_days > 0,
+            "nation {rank} has a pass and it never closed in a whole year"
+        );
+        assert!(
+            shut_days < scale_sim::econ::DAYS_PER_YEAR as usize,
+            "nation {rank}'s pass was shut the entire year — that is not a pass"
+        );
+        break;
+    }
+    assert!(found_pass, "no nation on this planet routes over a pass");
+}
+
+#[test]
+fn tunnels_are_bought_only_where_the_traffic_pays_for_them() {
+    // A col carrying a few carts is left as a pass; one carrying a
+    // nation's freight is bored through. Both exist in real mountain
+    // country side by side, and which one a state builds is a decision
+    // about money, not about geology.
+    use scale_sim::econ::Crossing;
+
+    let p = planet(20260828);
+    let mut tunnels_when_funded = 0;
+    let mut tunnels_when_not = 0;
+
+    for rank in 0..8 {
+        for (doctrine, count) in [
+            (Doctrine::Prudent, &mut tunnels_when_funded),
+            (Doctrine::Negligent, &mut tunnels_when_not),
+        ] {
+            let Some(r) = region_of(&p, rank, doctrine) else {
+                continue;
+            };
+            *count += r
+                .economy
+                .routes
+                .iter()
+                .filter(|rt| matches!(rt.crossing, Crossing::Tunnel { .. }))
+                .count();
+        }
+    }
+
+    assert!(
+        tunnels_when_funded > tunnels_when_not,
+        "a state that can afford tunnels built {tunnels_when_funded} and one that \
+         cannot built {tunnels_when_not}"
+    );
+}
+
+#[test]
+fn a_tunnel_hauls_cheaper_than_the_pass_it_replaces() {
+    use scale_sim::econ::Crossing;
+
+    let p = planet(20260828);
+    for rank in 0..8 {
+        let (Some(rich), Some(poor)) = (
+            region_of(&p, rank, Doctrine::Prudent),
+            region_of(&p, rank, Doctrine::Negligent),
+        ) else {
+            continue;
+        };
+        for (a, b) in rich.economy.routes.iter().zip(poor.economy.routes.iter()) {
+            if matches!(a.crossing, Crossing::Tunnel { .. })
+                && matches!(b.crossing, Crossing::Pass { .. })
+            {
+                assert!(
+                    a.freight_cost < b.freight_cost,
+                    "the tunnel at {:.0}/t is dearer than the pass at {:.0}/t",
+                    a.freight_cost,
+                    b.freight_cost
+                );
+                return;
+            }
+        }
+    }
+}
+
+#[test]
 fn populations_are_the_ones_the_world_generated() {
     // The economy must run on the world's numbers, not on numbers of its
     // own. If these drift apart, the two halves are only pretending to be
