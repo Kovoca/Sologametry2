@@ -9,6 +9,7 @@ use scale_sim::econ::{Commodity, Doctrine, SiteKind, DAYS_PER_YEAR, RECIPES};
 use scale_sim::labour::{HOURS_PER_WORKING_YEAR, NATURAL_UNEMPLOYMENT};
 use scale_sim::network::Network;
 use scale_sim::person::{self, Person, Trade, FOOD_PER_DAY};
+use scale_sim::travel::Conveyance;
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
@@ -302,5 +303,98 @@ fn shop_work_is_steady_work() {
         hal.days_worked > (DAYS_PER_YEAR * 2) as u64 * 6 / 10,
         "he found only {} days of shop work in two years",
         hal.days_worked
+    );
+}
+
+#[test]
+fn a_small_shop_has_no_manager_and_a_big_one_has_several() {
+    // **The owner works the till.**
+    //
+    // A corner shop has a proprietor who serves, orders, sweeps up and
+    // does the books; inventing a separate manager for him gives you three
+    // staff of whom two are supervising. The hats only come apart once
+    // there are enough hands to need it.
+    use scale_sim::building::Building;
+
+    let corner = Building::shop(1.0, 4.0);
+    assert_eq!(
+        corner.supervisors(),
+        0.0,
+        "a corner shop with {:.1} hands has a supervisor",
+        corner.floor_staff()
+    );
+    assert_eq!(corner.managers(), 0.0, "and a manager as well");
+
+    let supermarket = Building::shop(75.0, 4.0);
+    assert!(
+        supermarket.supervisors() >= 1.0 && supermarket.managers() >= 1.0,
+        "a supermarket of {:.0} hands runs itself",
+        supermarket.floor_staff()
+    );
+    // Span of control: overheads should land near a tenth to a seventh,
+    // which is what real organisations run at.
+    let overhead = (supermarket.supervisors() + supermarket.managers())
+        / supermarket.floor_staff();
+    assert!(
+        (0.05..0.30).contains(&overhead),
+        "{:.0}% of a supermarket is management",
+        overhead * 100.0
+    );
+}
+
+#[test]
+fn a_quiet_shop_puts_fewer_people_on() {
+    // Thirty checkouts, eight of them open on a wet Tuesday. About a third
+    // of the floor's hours are fixed and the rest are rostered against the
+    // till receipts, which is exactly why shop work is part-time and the
+    // hours are never guaranteed. The managers are in regardless.
+    use scale_sim::building::Building;
+
+    let shop = Building::shop(75.0, 4.0);
+    let flat_out = shop.staff_today(1.0);
+    let quiet = shop.staff_today(0.1);
+    assert!(
+        quiet < flat_out * 0.85,
+        "a shop at a tenth of its trade rosters {quiet:.0} against {flat_out:.0}"
+    );
+    assert!(
+        quiet > flat_out * 0.3,
+        "a quiet day emptied the place: {quiet:.0} against {flat_out:.0}"
+    );
+}
+
+#[test]
+fn the_floor_is_the_only_way_up() {
+    // Supervising is the one promotion this economy contains, and it is
+    // gated the way promotions are: a man off the street is not made a
+    // chargehand. Real promotion to supervisor runs two to three years in.
+    let mut r = a_nation(Doctrine::Prudent);
+    let mut green = Person::new("Green", Trade::Shopworker, 0, 60.0);
+    let day = r.economy.ledger.day;
+    r.economy.step();
+    let offers = person::work_available(&r.economy, 0, day, 0.0, Conveyance::OnFoot);
+    assert!(
+        offers.iter().any(|c| c.trade == Trade::Supervisor),
+        "nowhere in a nation is anybody supervising anything"
+    );
+    person::live_a_day(&mut green, &mut r.economy, day);
+    assert_eq!(
+        green.trade,
+        Trade::Shopworker,
+        "made chargehand on his first morning"
+    );
+
+    // And with the years in, he is.
+    let mut old_hand = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    for _ in 0..(DAYS_PER_YEAR * 4) {
+        r.economy.step();
+        let d = r.economy.ledger.day;
+        person::live_a_day(&mut old_hand, &mut r.economy, d);
+    }
+    assert_eq!(
+        old_hand.trade,
+        Trade::Supervisor,
+        "four years on the floor and never made up, having worked {} days",
+        old_hand.days_worked
     );
 }

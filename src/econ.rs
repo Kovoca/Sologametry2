@@ -1820,6 +1820,9 @@ impl Economy {
                             reason: Use::Household,
                         },
                     );
+                    // What the shop actually sold today. A shop is busy or
+                    // it is not, and how many tills it opens follows.
+                    self.ledger.sites[site].ran += take;
                     left -= take;
                 }
                 self.unmet_demand[c as usize] += left;

@@ -45,6 +45,12 @@ pub enum Trade {
     Haulier,
     /// Works a shift at a mill or cannery.
     Labourer,
+    /// **Sees that the others are doing as directed.** A chargehand over
+    /// a shift, or the manager over them.
+    ///
+    /// Not a job anybody starts in: it is what a floor hand is promoted
+    /// to, and the only way up that this economy contains.
+    Supervisor,
     /// **Works in a shop** — on the checkouts, filling shelves, or in the
     /// stockroom taking the lorries in. The single biggest employer in
     /// the economy, and until now it employed nobody, because a shop was
@@ -58,6 +64,7 @@ impl Trade {
             Trade::Haulier => "haulier",
             Trade::Labourer => "labourer",
             Trade::Shopworker => "shop worker",
+            Trade::Supervisor => "supervisor",
         }
     }
 }
@@ -336,6 +343,10 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // it needs no licence, no ticket and no strength, so anybody can
         // do it and the wage knows it.
         Trade::Shopworker => 5.0,
+        // A chargehand is paid a third again over the people watched,
+        // which is about the real premium and about what makes it worth
+        // the aggravation.
+        Trade::Supervisor => 8.5,
     };
     food * multiple
 }
@@ -610,6 +621,40 @@ pub fn work_available(
                 trade: Trade::Shopworker,
             });
         }
+    }
+
+    // **Supervising.** There is one of these for every ten on the floor,
+    // and they exist wherever the floor is big enough to need watching.
+    //
+    // It is the only promotion in the economy, and it is gated the way
+    // promotions are: you have to have done the job. A man off the street
+    // is not made a chargehand.
+    for s in 0..econ.ledger.sites.len() {
+        let site = &econ.ledger.sites[s];
+        if site.market != market {
+            continue;
+        }
+        let posts = match &site.fitted {
+            Some(b) => b.supervisors() + b.managers(),
+            None => {
+                if site.ran <= 0.0 {
+                    continue;
+                }
+                // A works of any size has chargehands over the shifts.
+                (site.throughput / 500.0).ceil().min(20.0)
+            }
+        };
+        if posts < 1.0 {
+            continue;
+        }
+        out.push(Contract {
+            kind: Job::Shift { site: s, market },
+            posted: day,
+            expires: day + 3,
+            pay: day_rate(econ, market, Trade::Supervisor) * 6.0,
+            days: 6.0,
+            trade: Trade::Supervisor,
+        });
     }
 
     // Shifts: a works that **is running** wants hands.
@@ -1006,14 +1051,34 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 .map(|w| w.chance_of_work())
                 .unwrap_or(1.0);
             let drawn = draw(&person.name, day);
+            // **The only way up.** A man who has put in a couple of years
+            // on the floor can be made a chargehand; a man off the street
+            // cannot. Real promotion to supervisor runs two to three years
+            // in, which is about where this sits.
+            const YEARS_BEFORE_THEY_TRUST_YOU: u64 = 500;
+            let promotable = person.trade != Trade::Supervisor
+                && person.days_worked >= YEARS_BEFORE_THEY_TRUST_YOU;
             let taken = offers.into_iter().find(|c| {
                 let hired = c.stake() > 0.0 || drawn < hiring;
-                c.trade == person.trade
+                let qualified = c.trade == person.trade
+                    || (c.trade == Trade::Supervisor && promotable);
+                qualified
                     && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
                     && c.stake() <= (person.money - reserve).max(0.0)
             });
             if let Some(c) = taken {
+                // Take the stripes and you keep them.
+                if c.trade == Trade::Supervisor && person.trade != Trade::Supervisor {
+                    person.note(
+                        day,
+                        format!(
+                            "made up to chargehand after {} days on the floor",
+                            person.days_worked
+                        ),
+                    );
+                    person.trade = Trade::Supervisor;
+                }
                 person.days_idle = 0;
                 if c.stake() > 0.0 {
                     person.days_trading += c.days.ceil() as u64;

@@ -118,6 +118,24 @@ impl Fixture {
     }
 }
 
+/// **How many people one person can actually supervise** *(real)*.
+///
+/// Span of control runs about eight to fifteen in retail and light
+/// manufacturing — fewer where the work is skilled or dangerous, more
+/// where it is repetitive and in one room. Managers and supervisors
+/// together come to something like a tenth to a seventh of employment,
+/// which is what a span of ten produces once it is applied twice.
+pub const SPAN_OF_CONTROL: f64 = 10.0;
+
+/// Below this many hands, nobody is a full-time anything.
+///
+/// **The owner works the till.** A corner shop has a proprietor who
+/// serves, orders, sweeps up and does the books, and inventing a separate
+/// manager for him is how you end up with three staff and two of them
+/// supervising. Real small businesses are one person wearing every hat,
+/// and the hats only separate once there are enough hands to need it.
+const SMALL_ENOUGH_TO_RUN_YOURSELF: f64 = 6.0;
+
 /// A building: a count of each fixture in it.
 #[derive(Clone, Debug, Default)]
 pub struct Building {
@@ -163,9 +181,61 @@ impl Building {
         self.fixtures.iter().map(|&(fx, n)| f(fx) * n).sum()
     }
 
-    /// **How many people work here.** The whole reason this module exists.
-    pub fn staff(&self) -> f64 {
+    /// Hands on the floor: tills, shelves, the dock. Not the people
+    /// watching them.
+    pub fn floor_staff(&self) -> f64 {
         self.sum(|f| f.staff())
+    }
+
+    /// **How many people work here, at full stretch.**
+    ///
+    /// The floor, plus the people who see that the floor is doing what it
+    /// was told, plus whoever answers for the lot of them.
+    pub fn staff(&self) -> f64 {
+        self.floor_staff() + self.supervisors() + self.managers()
+    }
+
+    /// Supervisors: one per span of hands, and none at all in a place
+    /// small enough that the owner can see the whole of it from the door.
+    pub fn supervisors(&self) -> f64 {
+        let floor = self.floor_staff();
+        if floor < SMALL_ENOUGH_TO_RUN_YOURSELF {
+            return 0.0;
+        }
+        (floor / SPAN_OF_CONTROL).ceil()
+    }
+
+    /// Managers, including the one who owns it.
+    ///
+    /// **One person can be both**, and in a small place is. A shop with
+    /// three staff has a proprietor who serves on the till; a shop with
+    /// three hundred has a store manager, a deputy and a department head
+    /// for each corner of it, and an owner who is somewhere else
+    /// entirely.
+    pub fn managers(&self) -> f64 {
+        let floor = self.floor_staff();
+        if floor < SMALL_ENOUGH_TO_RUN_YOURSELF {
+            // The owner. He is also the manager, and the cashier.
+            return 0.0;
+        }
+        (self.supervisors() / SPAN_OF_CONTROL).ceil().max(1.0) + 1.0
+    }
+
+    /// **How many are needed today**, against how busy the place is.
+    ///
+    /// A supermarket has thirty checkouts and opens eight of them on a wet
+    /// Tuesday morning. Roughly a third of retail labour is fixed — the
+    /// stockroom, opening and closing, the managers who are there whether
+    /// anybody comes in or not — and the rest is rostered against the
+    /// trade, which is exactly why the work is part-time and the hours are
+    /// never guaranteed.
+    pub fn staff_today(&self, utilisation: f64) -> f64 {
+        let u = utilisation.clamp(0.0, 1.0);
+        const FIXED_SHARE: f64 = 0.33;
+        let floor = self.floor_staff() * (FIXED_SHARE + (1.0 - FIXED_SHARE) * u);
+        // The people in charge are there whether it is busy or not; that
+        // is most of what being in charge is.
+        floor + self.supervisors() + self.managers()
     }
 
     /// Staff doing one particular job, so a person can look for that work.

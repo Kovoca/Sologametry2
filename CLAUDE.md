@@ -545,9 +545,27 @@ mines, which is roughly 1.5% of real employment, and gave a city of
 sixteen million shops that employed **nobody at all**. Retail is around
 10%. The missing half was the big one.
 
+**Staffed to the trade it is doing today.** A supermarket has thirty
+checkouts and opens eight on a wet Tuesday. About a third of the floor's
+hours are fixed and the rest are rostered against the till receipts, which
+is exactly why shop work is part-time and the hours are never guaranteed.
+
+**Somebody has to see the work is done.** Span of control is 8-15 in
+retail and light manufacturing *(real)*; at ten, applied twice, management
+comes to a tenth to a seventh of employment, which is what real
+organisations run at. Works get chargehands too — leaving them out
+understated industrial employment and left nowhere to be promoted to.
+
+**Below about six hands the owner works the till.** A corner shop has a
+proprietor who serves, orders, sweeps up and does the books; invent a
+separate manager for him and you get three staff of whom two supervise.
+The hats only come apart once there are enough hands to need it.
+
 Consequences worth having: a shop worker works ~85% of days, which is what
-steady retail looks like, and a town's unemployment stops swinging 20%
-with the harvest because retail has no season.
+steady retail looks like; a town's unemployment stops swinging 20% with
+the harvest because retail has no season; and **supervising is the one
+promotion the economy contains**, gated at ~500 days on the floor *(real
+promotion runs two to three years in)* and paying a third more.
 
 Not built yet: the walkable tile interior, the wall/floor layers, and the
 electrical and water nodes hung off them. Fixtures first, the same way

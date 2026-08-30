@@ -25,6 +25,7 @@
 //! get a shift at the cannery is unemployed in the sense that matters to
 //! him, and that is the sense the simulation can honestly speak to.
 
+use crate::building::SPAN_OF_CONTROL;
 use crate::econ::{Commodity, Economy, SiteKind, RECIPES};
 
 /// Days over which pay catches up with the cost of living *(real)*.
@@ -159,14 +160,26 @@ pub fn update(econ: &mut Economy) {
         // small half. The headcount comes off the fixtures: somebody has
         // to work each till, fill each shelf and unload each lorry.
         if let Some(b) = &site.fitted {
-            let hands = b.staff();
-            posts[site.market] += hands;
-            // A shop shuts when there is nothing on the shelves, and not
-            // before. Stock is what keeps it open, not a recipe.
+            posts[site.market] += b.staff();
+            // **Staffed to the trade it is doing today.**
+            //
+            // A supermarket has thirty checkouts and opens eight of them
+            // on a wet Tuesday. Roughly a third of the floor's hours are
+            // fixed and the rest are rostered against the till receipts,
+            // which is exactly why shop work is part-time and the hours
+            // are never guaranteed. The managers are in whether anybody
+            // comes through the door or not.
+            let rated: f64 = b
+                .fixtures
+                .iter()
+                .filter(|(fx, _)| fx.throughput_t() > 0.0)
+                .map(|&(fx, n)| fx.throughput_t() * n)
+                .sum();
+            let busy = if rated > 0.0 { site.ran / rated } else { 0.0 };
             let stocked = Commodity::ALL
                 .iter()
                 .any(|&c| site.stock[c as usize] > 0.0);
-            working[site.market] += if stocked { hands } else { 0.0 };
+            working[site.market] += if stocked { b.staff_today(busy) } else { 0.0 };
         }
         let Some(r) = site.recipe else { continue };
         let labour = RECIPES[r].labour;
@@ -207,8 +220,22 @@ pub fn update(econ: &mut Economy) {
             _ => (site.throughput, site.ran),
         };
 
-        posts[site.market] += hands_for(rated, labour);
-        working[site.market] += hands_for(actual, labour);
+        // **Somebody has to see that the work is being done.**
+        //
+        // A works is not a heap of hands; it has chargehands over the
+        // shifts and a manager over them, at a span of about ten. Leaving
+        // them out understated industrial employment by a seventh and left
+        // nowhere for anybody to be promoted to.
+        let with_charge = |floor: f64| {
+            if floor < 6.0 {
+                floor
+            } else {
+                let sup = (floor / SPAN_OF_CONTROL).ceil();
+                floor + sup + (sup / SPAN_OF_CONTROL).ceil().max(1.0)
+            }
+        };
+        posts[site.market] += with_charge(hands_for(rated, labour));
+        working[site.market] += with_charge(hands_for(actual, labour));
     }
 
     let food_price: Vec<f64> = (0..n)
