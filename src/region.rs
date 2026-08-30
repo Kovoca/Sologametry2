@@ -52,8 +52,38 @@ pub struct Region {
 
 /// What a settlement's hinterland can supply.
 struct Hinterland {
+    /// Sum of soil fertility over the catchment. A relative measure, used
+    /// to apportion between towns.
     food_capacity: f64,
+    /// **Tonnes of grain a year the land could actually yield.**
+    ///
+    /// Not a share of anything — an absolute figure, from real yields on
+    /// the real acreage. This is what makes a nation rich or poor in food
+    /// rather than merely differently arranged internally.
+    grain_potential: f64,
 }
+
+/// Hectares in one cell of the coarse map: 16.384 km square.
+const HECTARES_PER_CELL: f64 = KM_PER_CELL * KM_PER_CELL * 100.0;
+
+/// Share of prime ground that is actually under crops *(real)*.
+///
+/// About 10% of Earth's land is cropland, against roughly 38% in
+/// agricultural use once pasture is counted. Even the best farming country
+/// is not wall-to-wall wheat — there are woods, towns, roads and rivers in
+/// it — so a perfect cell tops out near a third under the plough, which
+/// puts a world of average fertility near Earth's ten percent.
+const ARABLE_SHARE_OF_PRIME: f64 = 0.35;
+
+/// Grain a hectare yields in a year, from bare to prime *(real)*.
+///
+/// Wheat runs about 8 t/ha in France and the UK, 3.5 t/ha as a world
+/// average, and under 1 t/ha on marginal ground. That eightfold spread is
+/// the single fact that decides which nations feed others and which are
+/// fed, and it was doing no work at all while farms were sized by
+/// population.
+const YIELD_MARGINAL_T_PER_HA: f64 = 1.0;
+const YIELD_PRIME_T_PER_HA: f64 = 8.0;
 
 /// What the nation as a whole has under it.
 ///
@@ -314,6 +344,7 @@ fn hinterlands(world: &World, set: &Settlements, g: &Geology) -> Vec<Hinterland>
     let mut out: Vec<Hinterland> = (0..set.list.len())
         .map(|_| Hinterland {
             food_capacity: 0.0,
+            grain_potential: 0.0,
         })
         .collect();
 
@@ -322,12 +353,44 @@ fn hinterlands(world: &World, set: &Settlements, g: &Geology) -> Vec<Hinterland>
         if s == NO_SETTLEMENT {
             continue;
         }
-        out[s as usize].food_capacity += g.fertility.data[i] as f64;
+        let f = g.fertility.data[i] as f64;
+        out[s as usize].food_capacity += f;
+        // Both the acreage worth ploughing and the yield off it rise with
+        // the soil, which is why good farming country is not a little
+        // better than bad but several times better.
+        let cropland = HECTARES_PER_CELL * f * ARABLE_SHARE_OF_PRIME;
+        let yield_t =
+            YIELD_MARGINAL_T_PER_HA + (YIELD_PRIME_T_PER_HA - YIELD_MARGINAL_T_PER_HA) * f;
+        out[s as usize].grain_potential += cropland * yield_t;
     }
     out
 }
 
 /// Minerals under the whole of a polity's territory.
+/// Grain a whole nation's land could yield in a year.
+///
+/// **Over the entire territory, not the catchments of the few towns being
+/// modelled.** A nation of nine hundred settlements is represented here by
+/// five, and those five stand for the whole country — its farms, its
+/// people and its appetite. Counting only the land within reach of the
+/// five put every nation at a quarter of its own needs, which is not a
+/// famine, it is an accounting error.
+fn national_grain_potential(world: &World, pol: &Polities, polity: u16) -> f64 {
+    let g = &world.geology;
+    let mut total = 0.0;
+    for i in 0..world.biomes.len() {
+        if pol.owner[i] != polity {
+            continue;
+        }
+        let f = g.fertility.data[i] as f64;
+        let cropland = HECTARES_PER_CELL * f * ARABLE_SHARE_OF_PRIME;
+        let yield_t =
+            YIELD_MARGINAL_T_PER_HA + (YIELD_PRIME_T_PER_HA - YIELD_MARGINAL_T_PER_HA) * f;
+        total += cropland * yield_t;
+    }
+    total
+}
+
 fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endowment {
     let g = &world.geology;
     let mut e = Endowment {
@@ -436,38 +499,62 @@ impl Region {
 
         // --- Farms, sized by the soil each town actually draws on ---
         //
-        // A hinterland's fertility sum is a carrying-capacity proxy, not a
-        // tonnage, so it is scaled to what the region has to eat and then
-        // apportioned. A region whose land cannot feed it will come up
-        // short here, and should.
-        let region_fertility: f64 = towns.iter().map(|&t| hinter[t].food_capacity).sum();
+        // **The land decides, not the appetite.**
+        //
+        // This used to apportion a nation's own grain requirement between
+        // its towns by fertility, which meant the shares always summed to
+        // one and *every* nation grew exactly 125% of what it ate. A
+        // country of 153 million on the worst ground per head on the
+        // planet fed itself precisely as comfortably as one with fifteen
+        // times the soil per person. Fertility decided where the farms
+        // sat and nothing whatever about whether the nation was rich or
+        // poor in food, so nobody was ever short of anything and there was
+        // nothing for trade to do.
+        //
+        // Now the potential is absolute — real yields on real acreage —
+        // and a nation lands where its land puts it.
+        let potential = national_grain_potential(world, polities, polity) / 365.0;
         let grain_needed = food_day * 0.9 * 1.35; // cannery then mill ratios
+
+        // Farms are built for a market, not to the limit of the soil.
+        //
+        // **Even the great exporters do not farm every acre they could.**
+        // Argentina runs at about three times its own grain needs, Canada
+        // near two and a half, France about one and a half. Nobody
+        // ploughs a prairie to grow twenty times what anyone will buy.
+        //
+        // And **export agriculture follows the sea.** Grain is the classic
+        // bulk cargo: cheap per tonne and hopeless to move far overland at
+        // 0.26 a tonne-kilometre, so the great grain exporters are the
+        // ones with a coast or a navigable river to put it on. A fertile
+        // country with no way to ship grows what it eats and grazes the
+        // rest, which is why landlocked fertile regions have always been
+        // rich in food and poor in money.
+        let can_export = has_coastline(world, polities, polity);
+        let most_it_will_grow = if can_export { 3.0 } else { 1.25 };
+        // 1/0.90 covers the average harvest curve and weather; the rest is
+        // slack for the bad years. Sized to the average, a country that
+        // draws a poor season simply runs out, and no real farming sector
+        // is planned that tightly.
+        let wanted = grain_needed * most_it_will_grow;
+        let built = potential.min(wanted);
+        // Fertility still decides *where* the farms are, which is the job
+        // it is actually good for.
+        let region_fertility: f64 = towns.iter().map(|&x| hinter[x].food_capacity).sum();
+        let fertility_share: Vec<f64> = towns
+            .iter()
+            .map(|&t| {
+                if region_fertility > 0.0 {
+                    hinter[t].food_capacity / region_fertility
+                } else {
+                    0.0
+                }
+            })
+            .collect();
         for (m, &t) in towns.iter().enumerate() {
-            let share = if region_fertility > 0.0 {
-                hinter[t].food_capacity / region_fertility
-            } else {
-                0.0
-            };
-            // Solved, not guessed. The harvest curve averages about 0.93 of
-            // rated output over a year and weather another 0.97, so a farm
-            // rated at bare demand delivers only ~0.90 of it. 1/0.90 is
-            // 1.11, and the mill takes 1.35 t of grain per tonne of flour
-            // against the 1.215 already in `grain_needed`, which together
-            // put the balance point near 1.24. A couple of points above
-            // that gives enough carryover to rebuild after a poor year
-            // without the silos filling up and the price floored forever.
-            // Sized against what is actually milled, which is set by what
-            // people eat, not by the mills' rated capacity — that headroom
-            // is never used, and multiplying the farms by it too left the
-            // country with a permanent surplus and a floored price.
-            //
-            // 1/0.90 covers the average harvest curve and weather. The rest
-            // is slack for the bad years: sized to the average, a country
-            // that draws a poor season simply runs out, and no real farming
-            // sector is planned that tightly. A nation that still cannot
-            // feed itself ought to import, as it already does with fuel —
-            // that is the honest fix and is not built yet.
-            let rate = grain_needed * 1.25 * share;
+            let share = fertility_share[m];
+            let _ = t;
+            let rate = built * share;
             if rate < 0.5 {
                 continue;
             }
@@ -490,6 +577,7 @@ impl Region {
             });
         }
 
+
         // --- Mills and canneries, one set per market, sized to that
         // market's own population ---
         //
@@ -498,7 +586,11 @@ impl Region {
         // the whole population's bread hundreds of kilometres, and would
         // make that one city a single point of failure for everybody — an
         // artefact of the model rather than anything about the country.
-        let total_mill = food_day * 1.12 * 0.9;
+        // Mills are built with headroom over what is actually eaten —
+        // real plant is not run flat out — and that spare capacity must
+        // not be mistaken for demand when deciding what to import.
+        const MILL_HEADROOM: f64 = 1.12;
+        let total_mill = food_day * MILL_HEADROOM * 0.9;
         let total_cannery = food_day * 1.12;
         for m in 0..towns.len() {
             let share = markets[m].population / total_pop.max(1.0);
@@ -545,15 +637,80 @@ impl Region {
         }
         let mill_rate = total_mill;
         let cannery_rate = total_cannery;
+        // --- Grain the land cannot grow ---
+        //
+        // **Each town imports what its own mills need and its own fields
+        // cannot grow.**
+        //
+        // Farms are placed by fertility and mills by population, so a town
+        // on poor ground with a lot of mouths is permanently short even in
+        // a country with plenty — which is exactly what a city is. Sizing
+        // this against the *nation's* balance left the smallest town of a
+        // well-fed country with an empty shop and its mill stopped, its
+        // own harvest carted off to the capital before it could be milled.
+        //
+        // The dependency is the point. A country living off an imported
+        // harvest can be strangled by anybody who can close the sea lane,
+        // which is the oldest lever in strategy and now exists in the
+        // model because the soil put it there.
+        let mut imported = 0.0;
+        for m in 0..towns.len() {
+            let grinds: f64 = sites
+                .iter()
+                .filter(|x| x.market == m && x.recipe == Some(recipe::MILL))
+                .map(|x| x.throughput * 1.35)
+                .sum();
+            let grows: f64 = sites
+                .iter()
+                .filter(|x| x.market == m && x.recipe == Some(recipe::FARM))
+                .map(|x| x.throughput)
+                .sum();
+            // Milled at the rate people actually eat, not the mill's rated
+            // ceiling — that headroom is never used, and buying against it
+            // would leave the country permanently awash.
+            let short = grinds / MILL_HEADROOM * 1.25 - grows;
+            if short <= 0.01 {
+                continue;
+            }
+            imported += short;
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} grain terminal"),
+                kind: SiteKind::Mine,
+                market: m,
+                stock: cap(&[(Commodity::Grain, short * 20.0)]),
+                capacity: cap(&[(Commodity::Grain, short * 60.0)]),
+                recipe: Some(recipe::GRAIN_IMPORTS),
+                throughput: short * 1.1,
+                powered: true,
+                ran: 0.0,
+            });
+        }
+        if imported > 0.5 {
+            notes.push(format!(
+                "its land grows {:.0}% of the grain it eats; {:.0}% is brought in",
+                built / grain_needed * 100.0,
+                imported / (grain_needed * 1.25) * 100.0,
+            ));
+        }
+
         let capital_name = markets[0].name.clone();
 
         // --- Coal and generation, only where the geology allows ---
         //
         // Peak load has to be known before the mine can be sized, because
         // the mine exists to feed the station.
+        // **Sized against the farms that were actually built**, not the
+        // ones a nation would need to feed itself. Now that good land
+        // grows for export a farming country can run three times the
+        // acreage its own mouths require, and pricing the grid off the
+        // old figure left the station unable to carry them: a town would
+        // sit on three thousand tonnes of grain with its mill shut,
+        // which reads as a famine and is a blackout.
         let peak_power = cannery_rate * 0.35
             + mill_rate * 0.08
-            + grain_needed * 1.12 * 0.05
+            + built * 0.05
+            + imported * 0.02
             + goods_day * 0.02
             + 5.0;
         let coal_day = peak_power * 0.38; // station burns 0.38 t per MWh

@@ -414,7 +414,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 7] = [
+pub const RECIPES: [Recipe; 8] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -483,6 +483,21 @@ pub const RECIPES: [Recipe; 7] = [
         labour: 0.2,
         needs_water: false,
     },
+    // Grain bought from outside the region and landed at a port.
+    //
+    // **A nation whose land cannot feed it does not simply starve.** It
+    // buys, as it already does with fuel, and in doing so acquires the
+    // oldest dependency there is: the grain fleet. Every empire that
+    // outgrew its own fields has lived on one, and every one of them has
+    // been strangled by somebody who understood that.
+    Recipe {
+        name: "grain imports",
+        inputs: &[],
+        outputs: &[(Commodity::Grain, 1.0)],
+        power: 0.02,
+        labour: 0.05,
+        needs_water: false,
+    },
 ];
 
 /// Indices into `RECIPES`, so scenarios read as places rather than numbers.
@@ -494,6 +509,7 @@ pub mod recipe {
     pub const DEPOT: usize = 4;
     pub const COAL_MINE: usize = 5;
     pub const FUEL_IMPORTS: usize = 6;
+    pub const GRAIN_IMPORTS: usize = 7;
 }
 
 // ---------------------------------------------------------------------------

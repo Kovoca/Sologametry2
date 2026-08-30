@@ -442,6 +442,42 @@ out ahead. Real disinflation with sticky wages causes *unemployment* for
 exactly this reason — firms cannot afford the real wage — and we cannot
 model that until a wage is somebody's cost. That is the money-ledger job.
 
+### The land decides what a nation grows
+
+Farms used to be sized by apportioning a nation's own grain requirement
+between its towns by fertility. The shares always summed to one, so **every
+nation on every planet grew exactly 125% of what it ate** — a country of
+153M on the worst ground per head fed itself as comfortably as one with
+fifteen times the soil per person. Fertility decided where the farms sat
+and nothing about whether the nation was rich or poor in food, which is
+why nobody was ever short of anything and trade had nothing to do.
+
+Now the potential is absolute, from real figures:
+- **8 t/ha** on prime ground, **3.5** world average, **under 1** on
+  marginal. That eightfold spread is the whole point.
+- **35% of prime ground under crops**, which puts a world of average
+  fertility near Earth's 10% cropland.
+- A nation builds to **3x its own need if it can export by sea**, 1.25x if
+  landlocked — Argentina runs ~3x, Canada ~2.5x, France ~1.5x, and export
+  agriculture has always followed the ports because grain is a bulk cargo.
+
+A town short of grain buys it (`recipe::GRAIN_IMPORTS`), landed against
+**its own mills' draw, not the nation's balance** — farms sit by fertility
+and mills by population, so a town on poor ground with many mouths is
+permanently short even in a country with plenty. That is what a city is.
+
+Watch for: **the grid is sized off the farms actually built.** Pricing it
+off the old figure left a station unable to carry a country's fields, and
+a town sat on 3,000 t of grain with its mill shut — which reads as a
+famine and is a blackout.
+
+**Known gap, named in `seasons_do_not_starve_anyone`:** the smallest town
+of one seed's nation is drained. Its fields and terminal made 10,324 t in
+a day, both ended holding none, and its mill got 3,122 and stopped. A
+producer hands over everything it makes without first covering the works
+next door. It never showed while every town's farms matched its own mills.
+The fix belongs in `econ::distribute`, not in this seam.
+
 ### A vehicle you cannot use is a way to go broke slowly
 
 Four separate bugs, all from the same blind spot: **a wage haul uses the

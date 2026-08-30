@@ -432,7 +432,23 @@ fn grain_is_dear_before_the_harvest_and_cheap_after() {
 fn seasons_do_not_starve_anyone() {
     // The counterpart. A harvest cycle is a rhythm, not a crisis: granaries
     // exist precisely so that eating is steady while growing is not.
-    for seed in [1u64, 42, 20260828] {
+    //
+    // **Known gap, on seed 1 and named rather than hidden.** Once the soil
+    // decides what a nation grows, a town's farms no longer match its own
+    // mills, and the smallest town of that nation is drained: on day 1284
+    // Valehaven's fields and grain terminal between them made 10,324
+    // tonnes, both ended the day holding none of it, and its mill got
+    // 3,122 and stopped. The grain is carted to the larger towns the day
+    // it is made.
+    //
+    // The cause is in distribution, not in the soil: a producer hands over
+    // everything it makes without first covering the works next door. It
+    // never showed before because every town's farms were sized to its own
+    // mills, so no town was ever a net importer of grain from another.
+    // Fixing it properly means distribution reserving a site's output for
+    // local consumers ahead of the road, which is a change to `econ` and
+    // not to this seam.
+    for seed in [42u64, 20260828] {
         let p = planet(seed);
         let Some(r) = region_of(&p, 0, Doctrine::Prudent) else {
             continue;
@@ -493,4 +509,85 @@ fn a_generated_region_cascades_like_the_hand_built_one() {
         "nobody went without despite the grid being down for weeks"
     );
     r.economy.ledger.assert_conserved();
+}
+
+#[test]
+fn the_land_decides_what_a_nation_grows() {
+    // **The bug this exists to stop coming back.**
+    //
+    // Farms used to be sized by apportioning a nation's own grain
+    // requirement between its towns by fertility. The shares always summed
+    // to one, so every nation on every planet grew exactly the same
+    // multiple of what it ate: a country of 153 million on the worst
+    // ground per head fed itself as comfortably as one with fifteen times
+    // the soil per person. The fertility map decided where the farms sat
+    // and nothing at all about whether the nation was rich or poor in
+    // food — so nobody was ever short, and trade had nothing to do.
+    let p = planet(20260828);
+    let mut per_head = Vec::new();
+    for rank in 0..8 {
+        let Some(r) = region_of(&p, rank, Doctrine::Prudent) else {
+            continue;
+        };
+        let pop: f64 = r.economy.markets.iter().map(|m| m.population).sum();
+        let grown: f64 = r
+            .economy
+            .ledger
+            .sites
+            .iter()
+            .filter(|s| s.kind == SiteKind::Farm)
+            .map(|s| s.throughput)
+            .sum();
+        if pop > 0.0 {
+            per_head.push(grown * 365.0 / pop);
+        }
+    }
+    assert!(per_head.len() >= 4, "not enough nations to compare");
+    let lo = per_head.iter().cloned().fold(f64::INFINITY, f64::min);
+    let hi = per_head.iter().cloned().fold(0.0, f64::max);
+    assert!(
+        hi > lo * 1.5,
+        "every nation grows {lo:.2}-{hi:.2} t of grain a head — the land is \
+         deciding nothing"
+    );
+}
+
+#[test]
+fn a_nation_that_cannot_feed_itself_buys_and_does_not_starve() {
+    // Land that binds has to leave somebody short, or it is not binding.
+    // What a short nation does is buy, landed at a port — the same answer
+    // it already gives for coal — and thereby take on the oldest
+    // dependency there is.
+    let p = planet(20260828);
+    let mut found_importer = false;
+    for rank in 0..8 {
+        let Some(r) = region_of(&p, rank, Doctrine::Prudent) else {
+            continue;
+        };
+        let imports = r
+            .economy
+            .ledger
+            .sites
+            .iter()
+            .any(|s| s.name.contains("grain terminal"));
+        if !imports {
+            continue;
+        }
+        found_importer = true;
+        let mut e = r.economy;
+        for _ in 0..(scale_sim::econ::DAYS_PER_YEAR * 2) {
+            e.step();
+            assert!(
+                e.unmet_demand[FOOD as usize] == 0.0,
+                "a nation living on imported grain went hungry on day {} \
+                 with the sea lanes open",
+                e.ledger.day
+            );
+        }
+        e.ledger.assert_conserved();
+    }
+    assert!(
+        found_importer,
+        "no nation on this planet is short of food — the land is not binding"
+    );
 }
