@@ -93,6 +93,75 @@ impl StreetClass {
         }
     }
 
+    /// **How wide one lane is.** 3.65 m is the standard everywhere it
+    /// matters; 2.75 m is the narrowest anybody lays and is what you get
+    /// on a residential street where the two directions share the surface
+    /// and give way to each other.
+    pub fn lane_width_m(self) -> f64 {
+        match self {
+            StreetClass::Lane => 2.75,
+            StreetClass::Road | StreetClass::Dual | StreetClass::Motorway => 3.65,
+        }
+    }
+
+    /// Lanes in one direction.
+    pub fn lanes_each_way(self) -> usize {
+        match self {
+            StreetClass::Lane | StreetClass::Road => 1,
+            StreetClass::Dual => 2,
+            StreetClass::Motorway => 3,
+        }
+    }
+
+    /// **The surface something over-wide can actually use.**
+    ///
+    /// On a lane or a road you can take the whole width, because closing
+    /// it to oncoming traffic is a thing that happens. On a dual or a
+    /// motorway you cannot: the other side is behind a reserve and might
+    /// as well be a different road.
+    pub fn usable_m(self) -> f64 {
+        match self {
+            StreetClass::Lane => 5.5,
+            StreetClass::Road => 7.3,
+            StreetClass::Dual => 7.3,
+            StreetClass::Motorway => 10.95,
+        }
+    }
+
+    /// **What this road says about something that wide.**
+    ///
+    /// The bands are the real ones *(UK Special Types order)*, and they are
+    /// the reason an army moves tanks on transporters rather than driving
+    /// them, and why a grid operator cannot simply deliver a replacement
+    /// transformer to a substation.
+    ///
+    /// For scale: a lorry is 2.55 m — the European legal maximum — and is
+    /// ordinary traffic; a main battle tank is 3.5-3.9 m and lands
+    /// squarely in the escorted band; a large power transformer is
+    /// 3.5-4.5 m and often needs the order.
+    pub fn clearance_for(self, width_m: f64) -> Clearance {
+        let usable = self.usable_m();
+        let permission = if width_m > 4.3 {
+            Permission::SpecialOrder
+        } else if width_m > 3.5 {
+            Permission::Escorted
+        } else if width_m > 2.9 {
+            Permission::Notifiable
+        } else {
+            Permission::Ordinary
+        };
+        // **Can anything come the other way?** One rule for every class:
+        // the load, a car beside it and a metre of air have to fit on the
+        // surface. Below that somebody stops and waits, which is what a
+        // lorry in a village actually is — and it is the only part of this
+        // that depends on which road you are standing on.
+        Clearance {
+            permission,
+            blocks_the_road: width_m + 1.8 + 1.0 > usable,
+            will_not_fit: width_m > usable,
+        }
+    }
+
     /// Bigger is bigger. Used where two roads meet and one has to win.
     pub fn size(self) -> u8 {
         match self {
@@ -123,7 +192,60 @@ impl StreetClass {
     }
 }
 
-/// What stands on one plot.
+/// **What has to be arranged before something this wide moves**, which is
+/// a question about the load and not about any particular road.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Permission {
+    /// Ordinary traffic. Nothing to arrange.
+    Ordinary,
+    /// Over 2.9 m — the police want two clear days' notice.
+    Notifiable,
+    /// Over 3.5 m — escorted, at a walking pace, on a route surveyed in
+    /// advance for bridges and pinch points.
+    Escorted,
+    /// Over 4.3 m — an order from the highway authority, which takes
+    /// weeks. **Paperwork, not physics**, and it is a large part of why a
+    /// replacement transformer is not simply driven to the substation.
+    SpecialOrder,
+}
+
+/// **What a given road says about something of a given width.**
+///
+/// Two facts that do not collapse into one scale, which is the mistake
+/// worth not making: what you must arrange before you set off is a
+/// property of the load, and whether anything can get past you is a
+/// property of the road. A tank needs an escort on a motorway and on a
+/// village lane alike — but on the motorway the traffic still flows, and
+/// on the lane everybody behind it waits.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Clearance {
+    pub permission: Permission,
+    /// Nothing can come the other way while it is here.
+    pub blocks_the_road: bool,
+    /// It is wider than the running surface. No notice helps.
+    pub will_not_fit: bool,
+}
+
+impl Clearance {
+    pub fn name(self) -> String {
+        if self.will_not_fit {
+            return "will not physically fit".into();
+        }
+        let p = match self.permission {
+            Permission::Ordinary => "ordinary traffic",
+            Permission::Notifiable => "notifiable: two days' notice to the police",
+            Permission::Escorted => "escorted, at walking pace, on a surveyed route",
+            Permission::SpecialOrder => "an order from the highway authority: weeks",
+        };
+        if self.blocks_the_road {
+            format!("{p}; nothing gets past it")
+        } else {
+            p.into()
+        }
+    }
+}
+
+/// What stands on one plot./// What stands on one plot.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Lot {
     /// Nothing built: fields, scrub, whatever the region says is there.

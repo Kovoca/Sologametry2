@@ -142,10 +142,29 @@ fn main() {
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {
         println!(
-            "  the nearest street is a {} — {} m of running surface",
+            "  a {}: {} lane{} each way of {:.2} m, {:.1} m of usable surface",
             c.name(),
-            c.carriageway_half_m() * 2 + 1
+            c.lanes_each_way(),
+            if c.lanes_each_way() == 1 { "" } else { "s" },
+            c.lane_width_m(),
+            c.usable_m(),
         );
+        println!();
+        println!("  what it admits:");
+        for (what, w) in [
+            ("a car", 1.80),
+            ("a van", Vehicle::van().width_m),
+            ("an artic", Vehicle::artic().width_m),
+            ("a battle tank", 3.90),
+            ("a grid transformer", 4.50),
+        ] {
+            println!(
+                "    {:<20} {:.2} m   {}",
+                what,
+                w,
+                c.clearance_for(w).name()
+            );
+        }
         println!();
     }
     print!("{}", g.render(Some(centre)));

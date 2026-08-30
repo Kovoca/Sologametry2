@@ -269,14 +269,24 @@ pub struct Vehicle {
     pub parts: Vec<(Part, i32, i32)>,
     /// 1.0 as it left the works, falling as it wears.
     pub condition: f64,
+    /// **How wide it really is**, in metres.
+    ///
+    /// The one measurement that is not read off the tile grid, because a
+    /// metre is too coarse for it: an artic is 2.55 m — the European legal
+    /// maximum — and rounds up to three tiles, and 3.0 m would put an
+    /// ordinary lorry over the 2.9 m line where the police want notice.
+    /// The tiles say where it sits on the road; this says whether it fits.
+    /// A test holds the two together, so a layout cannot drift from it.
+    pub width_m: f64,
 }
 
 impl Vehicle {
-    fn of(name: &'static str, parts: Vec<(Part, i32, i32)>) -> Self {
+    fn of(name: &'static str, parts: Vec<(Part, i32, i32)>, width_m: f64) -> Self {
         Vehicle {
             name,
             parts,
             condition: 1.0,
+            width_m,
         }
     }
 
@@ -355,6 +365,7 @@ impl Vehicle {
                 (Part::Wheel { heavy: false }, 1, 0),
                 (Part::Wheel { heavy: false }, 1, 0),
             ],
+            0.8, // a cargo trailer is wider than the handlebars
         )
     }
 
@@ -383,7 +394,7 @@ impl Vehicle {
             }
         }
         p.push((Part::CargoBay(1200), 4, 0));
-        Vehicle::of("a second-hand van", p)
+        Vehicle::of("a second-hand van", p, 2.0)
     }
 
     /// **A rigid box truck** — 8 m by 2.5, so 8 tiles by 3.
@@ -407,7 +418,7 @@ impl Vehicle {
         }
         p.push((Part::CargoBay(1800), 4, 1));
         p.push((Part::CargoBay(1800), 6, 1));
-        Vehicle::of("a box truck", p)
+        Vehicle::of("a box truck", p, 2.5)
     }
 
     /// **An artic** — 16.5 m by 2.55, so 17 tiles by 3. Forty-four tonnes
@@ -437,7 +448,7 @@ impl Vehicle {
         for i in 0..8 {
             p.push((Part::CargoBay(3000), 5 + i, 1));
         }
-        Vehicle::of("an artic", p)
+        Vehicle::of("an artic", p, 2.55)
     }
 
     /// **A refrigerated artic.** The same lorry with a fridge on the front
@@ -451,6 +462,9 @@ impl Vehicle {
         // comes nowhere near 12 kW around the clock.
         v.parts.push((Part::Alternator(42_000), 4, 0));
         v.parts.push((Part::Battery(20), 4, 2));
+        // Insulation costs you width: a refrigerated body is allowed 2.6 m
+        // where a dry one is held to 2.55.
+        v.width_m = 2.6;
         v
     }
 

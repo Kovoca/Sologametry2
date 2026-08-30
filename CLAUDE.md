@@ -677,6 +677,22 @@ tiles on foot, 288 in a vehicle.
   solid, the line between lanes is not; the dash lengthens with speed
   (2 m mark / 7 m gap on a centre line). Painting them all solid turns a
   road into a set of rails. Nothing is painted through a junction.
+- **A lorry fills its lane, and that is not a rounding artefact.** A
+  2.55 m artic — the European legal maximum — in a 3.65 m lane has 55 cm
+  either side, which is finer than a metre grid can express. Vehicle width
+  is therefore the one measurement *not* read off the tiles: 3.0 m would
+  put an ordinary lorry over the 2.9 m line where the police want notice.
+  A test holds `width_m` and the tile footprint together.
+- **What you must arrange is a property of the load; whether anything can
+  get past you is a property of the road.** Folding them into one scale
+  gave every class of street the same verdict, which is the tell that the
+  road had stopped mattering. Real bands *(UK Special Types order)*:
+  **2.9 m** two days' notice to the police, **3.5 m** escort at walking
+  pace on a surveyed route, **4.3 m** an order that takes weeks. A tank at
+  3.5-3.9 m is escorted everywhere — but it stops a village lane dead and
+  a motorway not at all. A grid transformer at 3.5-4.5 m needs the order,
+  which is a real reason a substation stays dark on top of the twelve to
+  eighteen months to build one.
 - **Size comes from rank among the through-routes, not from distance to
   the middle.** The street grid is deliberately irregular, so "within a
   plot of centre" matched nothing on most towns and silently gave every
