@@ -109,9 +109,15 @@ fn a_man_with_nothing_and_no_work_dies() {
     let mut hal = Person::new("Hal", Trade::Haulier, 0, 0.0);
     hal.larder = 0.0;
 
-    // No work of his trade exists if there is nowhere to haul to.
+    // A genuinely workless place: every road shut *and* every works
+    // stopped. Closing the roads alone is not enough any more, and should
+    // not be — most haulage is carting about inside a town, and that goes
+    // on whether or not the road to the next town is open.
     for route in r.economy.routes.iter_mut() {
         route.open = false;
+    }
+    for site in r.economy.ledger.sites.iter_mut() {
+        site.throughput = 0.0;
     }
 
     let mut died_on = None;
@@ -153,8 +159,10 @@ fn work_moves_real_goods_and_conserves() {
 #[test]
 fn nothing_is_offered_that_the_economy_does_not_want() {
     // Spec A4.1: opportunities are side-effects of other lives, not gifts.
-    // With every route shut there is no haulage to be done, and a haulier
-    // is simply out of luck — no work appears because he needs some.
+    // With every route shut, nothing can be carried *between towns* — and
+    // no long haul is offered however badly a haulier needs one. Carting
+    // about inside the town carries on, because a closed road does not
+    // stop the grain going from the farm to the mill.
     let mut r = a_nation(20260828);
     for _ in 0..60 {
         r.economy.step();
@@ -167,8 +175,11 @@ fn nothing_is_offered_that_the_economy_does_not_want() {
     let day = r.economy.ledger.day;
     let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Lorry);
     assert!(
-        !offers.iter().any(|c| c.trade == Trade::Haulier),
-        "haulage was offered with every road closed"
+        !offers.iter().any(|c| matches!(
+            c.kind,
+            scale_sim::person::Job::Haul { .. } | scale_sim::person::Job::Venture { .. }
+        )),
+        "a haul between towns was offered with every road closed"
     );
 }
 

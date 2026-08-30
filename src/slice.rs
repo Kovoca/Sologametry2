@@ -159,6 +159,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         crossing: crate::econ::Crossing::Level,
         snowed_in: false,
         capacity: 150.0,
+        moved: None,
         open: true,
     }];
 

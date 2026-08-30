@@ -180,30 +180,79 @@ impl Conveyance {
     /// Capability is tonne-kilometres a day, valued at what freight
     /// fetches; upkeep is subtracted because an animal eats whether it
     /// works or not.
-    pub fn worth_per_day(self, surface: Surface, wage: f64, freight_rate: f64) -> f64 {
+    /// What this is worth per day to somebody with `cargo_money` to fill
+    /// it, working `surface`.
+    ///
+    /// **An empty lorry earns nothing.** Capacity you cannot afford to
+    /// load is not capacity, it is a standing cost — so the payload that
+    /// counts is the lesser of what the vehicle holds and what the purse
+    /// will buy.
+    pub fn worth_per_day(
+        self,
+        surface: Surface,
+        wage: f64,
+        freight_rate: f64,
+        cargo_money: f64,
+        goods_price: f64,
+        // Share of days actually spent carrying your own cargo. A vehicle
+        // earns only on those; it eats on all of them.
+        usage: f64,
+    ) -> f64 {
         let Some(speed) = self.km_per_day(surface) else {
             return f64::NEG_INFINITY; // cannot go at all
         };
-        self.payload() * speed * freight_rate - self.upkeep_in_wage_days(true) * wage
+        let can_fill = (cargo_money / goods_price.max(1e-9)).min(self.payload());
+        // **The keep is paid every day; the earning is not.**
+        //
+        // A horse eats on the days it stands in the field, and most of a
+        // haulier's days are spent driving somebody else's lorry for a
+        // wage that owes nothing to what he owns. Costing only the
+        // travelling upkeep had him buy a wagon in year three and spend
+        // the next seven years feeding it: ten years' work, and twenty-four
+        // days of food at the end of it.
+        let usage = usage.clamp(0.0, 1.0);
+        let keep = self.upkeep_in_wage_days(false)
+            + self.upkeep_in_wage_days(true) * usage;
+        can_fill * speed * freight_rate * usage - keep * wage
     }
 
     /// The best thing `budget` will buy for work over `surface`, if it
     /// beats what is already owned.
+    ///
+    /// **Judged on what is left after buying it.** A man who spends every
+    /// penny on a lorry owns a lorry and no cargo, and a haulier's wage
+    /// does not depend on what he owns — so he earns exactly what he did
+    /// before, minus the upkeep. Ten years of saving went that way once,
+    /// and the year after buying it he was poorer than the year before.
+    /// It is the classic way an owner-driver goes bust and it should be
+    /// possible, but not compulsory.
     pub fn best_upgrade(
         current: Conveyance,
         budget: f64,
         wage: f64,
         surface: Surface,
         freight_rate: f64,
+        goods_price: f64,
+        usage: f64,
     ) -> Option<(Conveyance, f64)> {
-        let have = current.worth_per_day(surface, wage, freight_rate);
+        let have =
+            current.worth_per_day(surface, wage, freight_rate, budget, goods_price, usage);
         let mut best: Option<(Conveyance, f64, f64)> = None;
         for &c in Conveyance::ALL.iter() {
+            // **Never pay to downgrade.** Scoring on the load he can
+            // afford to fill made a cheaper vehicle look better once his
+            // savings had gone into a dearer one, so he bought a wagon in
+            // year four and a handcart in year five, and again, and again.
+            // Nobody sells the wagon to buy a barrow.
+            if c.payload() <= current.payload() {
+                continue;
+            }
             let price = c.price_in_wage_days() * wage;
             if price > budget {
                 continue;
             }
-            let worth = c.worth_per_day(surface, wage, freight_rate);
+            let left = budget - price;
+            let worth = c.worth_per_day(surface, wage, freight_rate, left, goods_price, usage);
             if worth <= have {
                 continue;
             }

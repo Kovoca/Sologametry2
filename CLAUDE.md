@@ -442,6 +442,45 @@ out ahead. Real disinflation with sticky wages causes *unemployment* for
 exactly this reason — firms cannot afford the real wage — and we cannot
 model that until a wage is somebody's cost. That is the money-ledger job.
 
+### A vehicle you cannot use is a way to go broke slowly
+
+Four separate bugs, all from the same blind spot: **a wage haul uses the
+firm's lorry**, so owning one adds nothing to it. A vehicle only earns on
+a venture, and ventures are occasional.
+
+- **Judge it on the load you can afford to fill.** He saved ten years,
+  bought a lorry for 3,625, had 71 left to buy cargo with, and his income
+  did not change at all — he ended the decade poorer than year eight.
+- **Charge the keep on the days it earns nothing.** A horse eats standing
+  in a field. Costing only travelling upkeep let him own a wagon for free
+  on the days he drove somebody else's.
+- **Weight the earning by how often he actually trades.** With the keep
+  charged daily and the benefit assumed daily, he bought a wagon and spent
+  seven years feeding it: ten years' work, twenty-four days of food left.
+  `days_trading / days_lived` is the honest factor.
+- **Never pay to downgrade.** Scoring on affordable load made a barrow look
+  better than the wagon he had just spent his savings on, so he bought one.
+  And then another.
+
+### Haulage work is local, because the towns are self-sufficient
+
+A driver in a city of sixteen million found seventeen days of work in three
+years once inter-town freight had to be real. That is not a bug in the
+person — **every town in `region.rs` has its own farm, mill and cannery**,
+so almost nothing needs to move between them. Real economies specialise;
+this one replicates the chain everywhere.
+
+Most freight is local anyway — grain to the mill, flour to the cannery,
+tins to the shops — and that is now where a haulier's living comes from.
+Inter-town hauls exist only where the economy genuinely shipped something,
+recorded on `Route::moved`.
+
+Two ways of inventing loads instead, both wrong: "whatever this town has
+most spare" shuttled the same grain back and forth for a decade; gating on
+a stock gap starved him, because a city of 16M always holds more tonnes
+than a town of 2M so freight flowed one way and never back. **Compare days
+of cover, never tonnes** — but the real answer was to stop inventing.
+
 ### Getting there is not free (`src/travel.rs`)
 
 Freight cost answers what a *tonne* costs. It says nothing about how one

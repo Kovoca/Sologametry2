@@ -198,6 +198,9 @@ fn main() {
     println!("-------+----------+-------+------+------+-------+-------------------------");
 
     let mut last_log = 0;
+    let mut last_shape = String::new();
+    let mut prev_shape = String::new();
+    let mut repeats = 0usize;
     let mut last_unemployment = region.economy.workforce[hal.market].unemployment;
     for elapsed in 0..args.days {
         if elapsed == args.fault_on {
@@ -235,11 +238,36 @@ fn main() {
             last_unemployment = u;
         }
 
-        // Print only when something happened to them.
+        // Print only when something happened to them — and **not the same
+        // thing over and over**. A decade of an honest working life is
+        // four thousand identical lines of "hauled grain, paid 5", which
+        // buries every event that matters in it.
         let happened: Vec<String> = hal.log[last_log..].to_vec();
         last_log = hal.log.len();
         for line in &happened {
             let what = line.splitn(2, ": ").nth(1).unwrap_or(line);
+            // Strip the running total so repeats of the same job match.
+            let shape: String = what
+                .split(" — ")
+                .next()
+                .unwrap_or(what)
+                .chars()
+                .filter(|c| !c.is_ascii_digit())
+                .collect();
+            // Work and rest alternate, so a repeating life is a repeating
+            // *pair* of lines, not a repeating one.
+            if shape == last_shape || shape == prev_shape {
+                repeats += 1;
+                prev_shape = std::mem::replace(&mut last_shape, shape);
+                continue;
+            }
+            if repeats > 0 {
+                println!(
+                    "       |          |       |      |      |       |                      ... and {repeats} more like that"
+                );
+                repeats = 0;
+            }
+            prev_shape = std::mem::replace(&mut last_shape, shape);
             println!(
                 "{:>6} | {:<8} | {:>5.0} | {:>4.1} | {:>4.2} | {:>5.2} | {}",
                 format!("{}:{:03}", day / DAYS_PER_YEAR, day % DAYS_PER_YEAR),

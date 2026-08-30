@@ -786,6 +786,15 @@ pub struct Route {
     /// Units per day the route can carry.
     pub capacity: f64,
     pub open: bool,
+    /// What the economy itself shipped along here today, and which way.
+    ///
+    /// **This is where haulage work comes from.** A driver does not invent
+    /// a cargo; he drives the freight that firms are already moving, and
+    /// they move it for their own reasons. Inventing loads from inventory
+    /// gaps instead had a man shuttling the same grain between the same
+    /// two towns for a decade, and tightening the rule to stop that left
+    /// him with no work at all.
+    pub moved: Option<(Commodity, usize, f64)>,
 }
 
 impl Route {
@@ -1148,6 +1157,9 @@ impl Economy {
 
         for site in self.ledger.sites.iter_mut() {
             site.ran = 0.0;
+        }
+        for route in self.routes.iter_mut() {
+            route.moved = None;
         }
 
         self.turn_of_the_year();
@@ -1875,6 +1887,10 @@ impl Economy {
                             qty,
                         },
                     );
+                    let carried = self.routes[r].moved.map_or(0.0, |(_, _, t)| t);
+                    if qty > carried {
+                        self.routes[r].moved = Some((c, to_m, qty));
+                    }
                     budget -= qty;
                 }
             }

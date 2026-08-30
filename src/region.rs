@@ -791,6 +791,7 @@ impl Region {
                     // 49 km and 13/t of freight away, for years.
                     capacity: markets[a].population.min(markets[b].population)
                         * (FREIGHT_TONNES_PER_HEAD_YEAR / DAYS_PER_YEAR as f64),
+                    moved: None,
                     open: true,
                 });
             }
@@ -992,6 +993,7 @@ impl Nations {
                     // International trade is a fraction of what a country
                     // moves internally, not a firehose.
                     capacity: volume * 0.5,
+                    moved: None,
                     open: true,
                 });
             }

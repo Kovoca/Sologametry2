@@ -136,6 +136,10 @@ impl Contract {
             )
             .replace("  ", " ")
                 + &format!(" — from {}", econ.markets[*from_market].name),
+            Job::Shift { site, market } if *site == usize::MAX => format!(
+                "a day carting about {} — {:.0}",
+                econ.markets[*market].name, self.pay,
+            ),
             Job::Shift { site, .. } => format!(
                 "a shift at {} — {:.0} for {:.1} days",
                 econ.ledger.sites[*site].name, self.pay, self.days,
@@ -199,6 +203,10 @@ pub struct Person {
     /// Days since he last had work. What actually drives someone to move.
     pub days_idle: u64,
     pub days_worked: u64,
+    /// Days spent carrying his own cargo. What decides whether a vehicle
+    /// is worth its keep — one that earns on twelve days a year and eats
+    /// on three hundred and sixty-five is a way to go broke slowly.
+    pub days_trading: u64,
     /// Gross takings: wages, and the profit on ventures after their costs.
     pub earned: f64,
     /// Everything that went out and did not come back — food eaten, and
@@ -224,6 +232,7 @@ impl Person {
             days_hungry: 0,
             days_idle: 0,
             days_worked: 0,
+            days_trading: 0,
             earned: 0.0,
             spent: 0.0,
         }
@@ -461,20 +470,26 @@ pub fn work_available(
         if !route.usable() || (route.a != market && route.b != market) {
             continue;
         }
-        let other = if route.a == market { route.b } else { route.a };
+        // **The cargo is whatever the economy actually shipped today.**
+        //
+        // Not something chosen from inventory: firms move their own stock
+        // for their own reasons, and a driver is hired to drive it. Making
+        // up loads from the biggest surplus had him shuttling the same
+        // grain between the same two towns for a decade, out on Monday and
+        // back on Tuesday, paid both ways and nobody any better off.
+        let Some((c, to, shipped)) = route.moved else {
+            continue;
+        };
+        if to == market {
+            continue; // today's freight is coming *here*, not going
+        }
+        let other = to;
         let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
         let rate = day_rate(econ, market, Trade::Haulier);
-
-        // Whatever this town has most to spare of, in the judgement of the
-        // people who own it.
-        let load = Commodity::ALL
-            .iter()
-            .copied()
-            .filter(|c| c.storable())
-            .map(|c| (c, econ.surplus(market, c).min(24.0)))
-            .filter(|&(_, t)| t >= 0.2)
-            .max_by(|a, b| a.1.total_cmp(&b.1).then((b.0 as usize).cmp(&(a.0 as usize))));
-        let Some((c, tonnes)) = load else { continue };
+        let tonnes = shipped.min(Conveyance::Lorry.payload());
+        if tonnes < 0.2 {
+            continue;
+        }
 
         out.push(Contract {
             kind: Job::Haul {
@@ -488,6 +503,40 @@ pub fn work_available(
             expires: day + 7,
             pay: rate * days,
             days,
+            trade: Trade::Haulier,
+        });
+    }
+
+    // **Carting about the town.**
+    //
+    // Most freight is local and always was: grain from the farm to the
+    // mill, flour from the mill to the cannery, tins from the cannery to
+    // the shops. It is short, dull, and it is the bulk of what a lorry
+    // actually does — a country moves several times more tonnage inside
+    // its towns than between them.
+    //
+    // Leaving it out was why a haulier in a city of sixteen million could
+    // find seventeen days of work in three years. Inter-town freight is
+    // genuinely rare here, because every town in this economy has its own
+    // farm and mill and cannery and so has little need of its neighbours —
+    // which is a real gap in `region.rs`, not something to paper over with
+    // invented long-distance loads.
+    let working_town = econ
+        .ledger
+        .sites
+        .iter()
+        .any(|s| s.market == market && s.ran > 0.0);
+    if working_town {
+        let rate = day_rate(econ, market, Trade::Haulier);
+        out.push(Contract {
+            kind: Job::Shift {
+                site: usize::MAX,
+                market,
+            },
+            posted: day,
+            expires: day + 1,
+            pay: rate,
+            days: 1.0,
             trade: Trade::Haulier,
         });
     }
@@ -671,6 +720,22 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
         }
     }
 
+    // --- Keep what you own ---
+    //
+    // **A vehicle costs money on the days it earns none.** An animal eats
+    // whether it works or not and a lorry has to be housed, taxed and
+    // maintained; charging upkeep only while travelling let a man own a
+    // lorry for nothing on the days he was driving somebody else's.
+    {
+        let standing = person.conveyance.upkeep_in_wage_days(false)
+            * day_rate(econ, person.market, Trade::Haulier);
+        if standing > 0.0 {
+            let paid = standing.min(person.money.max(0.0));
+            person.money -= paid;
+            person.spent += paid;
+        }
+    }
+
     // --- Work, or look for it ---
     match person.state {
         State::Working { until } if day < until => {}
@@ -801,9 +866,27 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                     .find(|r| r.a == person.market || r.b == person.market)
                     .map(|r| r.sound_cost / r.km.max(1.0))
                     .unwrap_or(0.26);
-                if let Some((better, price)) =
-                    Conveyance::best_upgrade(person.conveyance, budget, wage, surface, rate)
-                {
+                // What a cargo costs, so a vehicle is judged on the load
+                // he could actually put in it.
+                let goods = econ.price(person.market, Commodity::Grain).max(1e-6);
+                // How much of his life he actually spends trading on his
+                // own account. A man three months into the job has no
+                // record, so give him the benefit of a modest doubt.
+                let seen = (person.days_worked + person.days_idle).max(1) as f64;
+                let usage = if seen < 90.0 {
+                    0.25
+                } else {
+                    person.days_trading as f64 / seen
+                };
+                if let Some((better, price)) = Conveyance::best_upgrade(
+                    person.conveyance,
+                    budget,
+                    wage,
+                    surface,
+                    rate,
+                    goods,
+                    usage,
+                ) {
                     person.money -= price;
                     person.spent += price;
                     person.conveyance = better;
@@ -855,6 +938,9 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             });
             if let Some(c) = taken {
                 person.days_idle = 0;
+                if c.stake() > 0.0 {
+                    person.days_trading += c.days.ceil() as u64;
+                }
                 person.money -= c.stake();
                 person.note(day, format!("took work: {}", c.describe(econ)));
                 person.state = State::Working {
