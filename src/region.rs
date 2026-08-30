@@ -33,6 +33,12 @@ pub const KM_PER_CELL: f64 = 16.384;
 const ROAD_COST_PER_TKM: f64 = 0.26;
 const WATER_COST_PER_TKM: f64 = 0.04;
 
+/// Domestic freight moved per head per year *(real)*. The UK moves about
+/// 1.6bn tonnes for 67M people; the US and the larger EU economies land in
+/// the same 20-25 tonne band. Most of it is bulk, which is why it dwarfs
+/// what a population eats.
+const FREIGHT_TONNES_PER_HEAD_YEAR: f64 = 24.0;
+
 /// A region lifted out of a generated world, with the economy that its
 /// geography can actually support.
 pub struct Region {
@@ -728,7 +734,19 @@ impl Region {
                     sound_cost: cost,
                     crossing,
                     snowed_in: false,
-                    capacity: food_day * 2.0,
+                    // Real domestic freight runs to something like 24
+                    // tonnes per person per year in a developed economy
+                    // (the UK moves ~1.6bn tonnes across 67M people), and
+                    // it is dominated by bulk — grain, coal, aggregates —
+                    // not by the finished goods at the end of the chain.
+                    //
+                    // Sizing a trunk road at twice a town's *food* demand
+                    // made it narrower than one town's daily grain draw, so
+                    // a city that grew nothing could never be supplied and
+                    // its grain price sat at three times its neighbour's,
+                    // 49 km and 13/t of freight away, for years.
+                    capacity: markets[a].population.min(markets[b].population)
+                        * (FREIGHT_TONNES_PER_HEAD_YEAR / DAYS_PER_YEAR as f64),
                     open: true,
                 });
             }

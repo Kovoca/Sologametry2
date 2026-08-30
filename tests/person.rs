@@ -147,7 +147,7 @@ fn nothing_is_offered_that_the_economy_does_not_want() {
     r.economy.step();
 
     let day = r.economy.ledger.day;
-    let offers = person::work_available(&r.economy, 0, day);
+    let offers = person::work_available(&r.economy, 0, day, 500.0);
     assert!(
         !offers.iter().any(|c| c.trade == Trade::Haulier),
         "haulage was offered with every road closed"
@@ -176,6 +176,91 @@ fn a_hungry_man_cannot_take_heavy_work() {
             job.days
         );
     }
+}
+
+#[test]
+fn nobody_can_buy_a_towns_last_reserve() {
+    // The rule that stopped ventures being a money printer. A market holds
+    // back a working reserve, and that applies to a man with a lorry as
+    // much as to a firm — otherwise the most profitable trade in the
+    // country is always to strip whichever town is shortest of something
+    // and carry it over the hill.
+    let mut r = a_nation(20260828);
+    for _ in 0..60 {
+        r.economy.step();
+    }
+    for m in 0..r.economy.markets.len() {
+        for &c in Commodity::ALL.iter() {
+            if !c.storable() {
+                continue;
+            }
+            let held: f64 = (0..r.economy.ledger.sites.len())
+                .filter(|&s| r.economy.ledger.sites[s].market == m)
+                .map(|s| r.economy.ledger.stock(s, c))
+                .sum();
+            let keep = r.economy.daily_draw(m, c) * c.target_cover_days();
+            let surplus = r.economy.surplus(m, c);
+            assert!(
+                surplus <= (held - keep).max(0.0) + 1e-6,
+                "{} would sell more {c} than it has to spare",
+                r.economy.markets[m].name
+            );
+        }
+    }
+}
+
+#[test]
+fn a_trader_is_not_a_money_printer() {
+    // Two years of the best trading he can find must look like a trade and
+    // not like compound interest on nothing. The failures this guards are
+    // real ones that both shipped: settling a venture on the tonnage he
+    // *meant* to carry rather than what was loaded, and being charged for
+    // a cargo the warehouse never handed over.
+    let mut r = a_nation(20260828);
+    let mut hal = Person::new("Hal", Trade::Haulier, 0, 60.0);
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let day = r.economy.ledger.day;
+        person::live_a_day(&mut hal, &mut r.economy, day);
+        r.economy.ledger.assert_conserved();
+    }
+    assert!(
+        hal.money < 60.0 * 10_000.0,
+        "two years of hauling turned 60 into {:.0} — that is a printer, not a trade",
+        hal.money
+    );
+    // And what he holds has to be what he actually made.
+    assert!(
+        (hal.money - (60.0 + hal.earned)).abs() < hal.money.abs() * 0.5 + 100.0,
+        "he holds {:.0} but claims to have earned {:.0} on a stake of 60",
+        hal.money,
+        hal.earned
+    );
+}
+
+#[test]
+fn routine_haulage_exists_when_nothing_is_mispriced() {
+    // A driver in a city of millions is not idle for four months because
+    // no arbitrage happens to be open. Most freight is a firm moving its
+    // own stock, with no price gap involved at all — and offering only the
+    // arbitrage hauls starved him.
+    let mut r = a_nation(20260828);
+    for _ in 0..120 {
+        r.economy.step();
+    }
+    let day = r.economy.ledger.day;
+    let mut found = 0;
+    for m in 0..r.economy.markets.len() {
+        let offers = person::work_available(&r.economy, m, day, 0.0);
+        if offers.iter().any(|c| c.trade == Trade::Haulier) {
+            found += 1;
+        }
+    }
+    assert!(
+        found >= r.economy.markets.len() - 1,
+        "only {found} of {} markets had any haulage at all",
+        r.economy.markets.len()
+    );
 }
 
 #[test]

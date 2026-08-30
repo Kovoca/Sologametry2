@@ -1777,20 +1777,7 @@ impl Economy {
                 // this the two towns simply slosh stock back and forth.
                 // Measured against the market's own total draw, household
                 // and industrial, since for grain the mills are the buyers.
-                let industrial: f64 = (0..self.ledger.sites.len())
-                    .filter(|&s| self.ledger.sites[s].market == from_m)
-                    .filter_map(|s| {
-                        let r = self.ledger.sites[s].recipe?;
-                        let per = RECIPES[r]
-                            .inputs
-                            .iter()
-                            .find(|&&(ic, _)| ic == c)
-                            .map(|&(_, q)| q)?;
-                        Some(per * self.ledger.sites[s].throughput)
-                    })
-                    .sum();
-                let daily = self.markets[from_m].daily_household_demand(c) + industrial;
-                let keep = daily * c.target_cover_days();
+                let keep = self.daily_draw(from_m, c) * c.target_cover_days();
                 for src in source {
                     if budget <= 1e-9 {
                         break;
@@ -1926,6 +1913,43 @@ impl Economy {
     /// Price of `c` in market `m`.
     pub fn price(&self, m: usize, c: Commodity) -> f64 {
         self.markets[m].price[c as usize]
+    }
+
+    /// Everything market `m` draws down of `c` in a day — households at the
+    /// counter and works at the gate both. For the goods nobody buys over a
+    /// counter the industrial draw is the only demand there is, so leaving
+    /// it out makes grain look unwanted.
+    pub fn daily_draw(&self, m: usize, c: Commodity) -> f64 {
+        let industrial: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].market == m)
+            .filter_map(|s| {
+                let r = self.ledger.sites[s].recipe?;
+                let per = RECIPES[r]
+                    .inputs
+                    .iter()
+                    .find(|&&(ic, _)| ic == c)
+                    .map(|&(_, q)| q)?;
+                Some(per * self.ledger.sites[s].throughput)
+            })
+            .sum();
+        self.markets[m].daily_household_demand(c) + industrial
+    }
+
+    /// How much of `c` market `m` would part with: what it holds above its
+    /// own working reserve.
+    ///
+    /// A market does not sell its last store of something at the going rate
+    /// however much somebody offers, and this is the rule that makes that
+    /// true for everyone. Applying it to firms but not to people let a
+    /// trader buy a town's reserve at the posted price and carry it over
+    /// the hill, which is a licence to print money rather than a trade.
+    pub fn surplus(&self, m: usize, c: Commodity) -> f64 {
+        let keep = self.daily_draw(m, c) * c.target_cover_days();
+        let held: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].market == m)
+            .map(|s| self.ledger.stock(s, c))
+            .sum();
+        (held - keep).max(0.0)
     }
 
     /// Profit per unit from hauling `c` along `route`, after freight.

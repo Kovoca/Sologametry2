@@ -324,6 +324,30 @@ pointless tuning:
   forever. Use `f32::total_cmp` + index tiebreak, never `sort_unstable` on
   bare floats.
 
+### Agents in the economy
+
+Every money printer so far has had the same shape: an agent gets paid for
+something that did not happen.
+
+- **A rule that binds firms must bind people.** `Economy::surplus` — what a
+  market holds above its own working reserve — is the single definition of
+  what is for sale, and bulk trade and a man with a lorry both go through
+  it. Applying it to firms only made the most profitable trade in the
+  country "strip whichever town is shortest of something".
+- **Settle on what was delivered, not what was intended.** A market quotes a
+  price for goods it has none of. `deliver` returns the tonnage that
+  actually moved, and pay, profit and the refund of an unfilled outlay all
+  key off that number.
+- **Haulage is mostly routine distribution, not arbitrage.** Offering only
+  price-gap hauls left a driver in a city of 16M idle for four months and
+  starved him. Freight exists because firms move their own stock.
+- Route capacity is population × ~24 tonnes per head per year *(real:* UK
+  moves ~1.6bn t across 67M people*)*, not a multiple of food demand —
+  internal freight is dominated by bulk, which dwarfs what people eat.
+- A persistent price gap between two towns is not automatically a bug. A
+  mountain port 1,200 km of road from the grain belt, at $0.26/t-km, is
+  *supposed* to pay three times as much for grain.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

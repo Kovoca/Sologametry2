@@ -70,14 +70,30 @@ pub struct Contract {
 
 #[derive(Clone, Debug)]
 pub enum Job {
-    /// Move goods along a route because they are worth more at the far
-    /// end. Exists only when the arithmetic says so.
+    /// Move somebody else's goods along a route for a wage. The margin is
+    /// theirs; the driver is paid by the day, and ends up at the far end.
     Haul {
         route: usize,
         commodity: Commodity,
         tonnes: f64,
         from_market: usize,
         to_market: usize,
+    },
+    /// **Buy the cargo yourself.**
+    ///
+    /// The same journey, but on your own account: you pay for the goods at
+    /// this end and sell at the other, so the margin is yours and so is
+    /// the risk. It needs capital, which is what a wage is for, and the
+    /// price can move against you while you are on the road — which is
+    /// what makes it a decision rather than a better wage.
+    Venture {
+        route: usize,
+        commodity: Commodity,
+        tonnes: f64,
+        from_market: usize,
+        to_market: usize,
+        /// What the load cost, paid on setting out.
+        outlay: f64,
     },
     /// A shift at a works that has orders to fill.
     Shift { site: usize, market: usize },
@@ -99,10 +115,33 @@ impl Contract {
                 self.pay,
                 self.days,
             ),
+            Job::Venture {
+                commodity,
+                tonnes,
+                from_market,
+                to_market,
+                outlay,
+                ..
+            } => format!(
+                "bought {tonnes:.1} t of {commodity} for {outlay:.0} to sell in {} \
+                 ({:.1} days on the road)",
+                econ.markets[*to_market].name,
+                self.days,
+            )
+            .replace("  ", " ")
+                + &format!(" — from {}", econ.markets[*from_market].name),
             Job::Shift { site, .. } => format!(
                 "a shift at {} — {:.0} for {:.1} days",
                 econ.ledger.sites[*site].name, self.pay, self.days,
             ),
+        }
+    }
+
+    /// Money that must be found before the work can be taken.
+    pub fn stake(&self) -> f64 {
+        match &self.kind {
+            Job::Venture { outlay, .. } => *outlay,
+            _ => 0.0,
         }
     }
 
@@ -200,7 +239,14 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
 /// freight, and a shift exists when a works has the inputs to run and
 /// somewhere to put the output. If the arithmetic does not say so, there
 /// is no work, and a person who needs work is simply out of luck.
-pub fn work_available(econ: &Economy, market: usize, day: u64) -> Vec<Contract> {
+/// Work on offer in `market`, for somebody with `purse` to stake.
+///
+/// The purse matters because a venture is only on offer to a person who
+/// can buy the load. That is not the world adapting to the player — the
+/// cargo costs what it costs — it is the plain fact that you cannot trade
+/// on your own account with empty pockets. A man with nothing sees only
+/// wages, which is the point.
+pub fn work_available(econ: &Economy, market: usize, day: u64, purse: f64) -> Vec<Contract> {
     let mut out = Vec::new();
 
     // Hauls: the arbitrage the trade system is already finding, offered as
@@ -224,8 +270,16 @@ pub fn work_available(econ: &Economy, market: usize, day: u64) -> Vec<Contract> 
                 (route.b, route.a)
             };
             // A lorry-load, not a shipload. The rest of the arbitrage is
-            // somebody else's to take.
-            let tonnes = 24.0f64.min(route.capacity * 0.02).max(1.0);
+            // somebody else's to take — but only out of what the sending
+            // town will actually part with, or the job is a wage for
+            // driving an empty lorry over a hill.
+            let tonnes = 24.0f64
+                .min(route.capacity * 0.02)
+                .min(econ.surplus(from, c))
+                .max(0.0);
+            if tonnes < 0.2 {
+                continue;
+            }
             let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
 
             // **The driver is paid a wage, not the margin.**
@@ -260,7 +314,91 @@ pub fn work_available(econ: &Economy, market: usize, day: u64) -> Vec<Contract> 
                 days,
                 trade: Trade::Haulier,
             });
+
+            // The same journey on your own account. Anyone with the money
+            // to buy a load takes the margin instead of the wage — and the
+            // risk of the price having moved by the time they arrive.
+            //
+            // How much load is what the purse buys, which is why this
+            // starts as a sack on a cart and becomes a lorry only after
+            // years of wages. The progression is the capital.
+            // You can only buy what is actually for sale. A market quotes
+            // a price for everything, including things it has none of and
+            // things it is holding back, and offering a venture against
+            // either stakes money on a cargo that will never be loaded.
+            let for_sale = econ.surplus(from, c);
+
+            let unit = econ.price(from, c).max(1e-6);
+            let affordable = (purse / unit).min(tonnes).min(for_sale);
+            if affordable >= 0.2 {
+                let outlay = unit * affordable;
+                out.push(Contract {
+                    kind: Job::Venture {
+                        route: r,
+                        commodity: c,
+                        tonnes: affordable,
+                        from_market: from,
+                        to_market: to,
+                        outlay,
+                    },
+                    posted: day,
+                    expires: day + 7,
+                    // Expected, not guaranteed: what it fetches is whatever
+                    // the far market will pay on the day it arrives.
+                    pay: econ.price(to, c) * affordable,
+                    days,
+                    trade: Trade::Haulier,
+                });
+            }
         }
+    }
+
+    // Routine haulage: the ordinary freight of the country.
+    //
+    // Arbitrage is the interesting kind of haul and almost none of the real
+    // kind. Most of what a lorry does is move a firm's own stock to where
+    // the firm wants it, with no price gap involved at all — and offering
+    // only the arbitrage hauls left a driver in a city of sixteen million
+    // with nothing to do for four months, which starved him. The work
+    // exists because the freight exists.
+    //
+    // It still is not a gift: it pays the going rate and no more, and it
+    // only appears where a town genuinely has a surplus of something and
+    // its neighbour has room for it.
+    for r in 0..econ.routes.len() {
+        let route = &econ.routes[r];
+        if !route.usable() || (route.a != market && route.b != market) {
+            continue;
+        }
+        let other = if route.a == market { route.b } else { route.a };
+        let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
+        let rate = day_rate_for_food(econ, market, Trade::Haulier);
+
+        // Whatever this town has most to spare of, in the judgement of the
+        // people who own it.
+        let load = Commodity::ALL
+            .iter()
+            .copied()
+            .filter(|c| c.storable())
+            .map(|c| (c, econ.surplus(market, c).min(24.0)))
+            .filter(|&(_, t)| t >= 0.2)
+            .max_by(|a, b| a.1.total_cmp(&b.1).then((b.0 as usize).cmp(&(a.0 as usize))));
+        let Some((c, tonnes)) = load else { continue };
+
+        out.push(Contract {
+            kind: Job::Haul {
+                route: r,
+                commodity: c,
+                tonnes,
+                from_market: market,
+                to_market: other,
+            },
+            posted: day,
+            expires: day + 7,
+            pay: rate * days,
+            days,
+            trade: Trade::Haulier,
+        });
     }
 
     // Shifts: a works that can run wants hands.
@@ -288,13 +426,20 @@ pub fn work_available(econ: &Economy, market: usize, day: u64) -> Vec<Contract> 
 /// Goes through the journal like every other change, so a lorry-load Hal
 /// drove is the same tonnes arriving as left, and the conservation check
 /// covers his work as it covers everything else.
+/// Returns the tonnage that actually moved, which may be less than was
+/// wanted and may be nothing at all.
+///
+/// Settling on the intended load rather than the delivered one pays a
+/// trader for goods that were never there: a market with no stock of
+/// something still quotes a price for it, and buying from an empty
+/// warehouse turned a venture into free money.
 fn deliver(
     econ: &mut Economy,
     commodity: Commodity,
     tonnes: f64,
     from_market: usize,
     to_market: usize,
-) {
+) -> f64 {
     use crate::econ::Event;
 
     // Take it from whoever in the sending market has most of it, and give
@@ -314,20 +459,27 @@ fn deliver(
                             - econ.ledger.stock(s, commodity)
                     }
                 };
-                score(a).total_cmp(&score(b))
+                score(a).total_cmp(&score(b)).then(b.cmp(&a))
             })
     };
 
     let (Some(src), Some(dst)) = (pick(econ, from_market, true), pick(econ, to_market, false))
     else {
-        return;
+        return 0.0;
     };
     let room = (econ.ledger.sites[dst].capacity[commodity as usize]
         - econ.ledger.stock(dst, commodity))
     .max(0.0);
-    let qty = tonnes.min(econ.ledger.stock(src, commodity)).min(room);
+    // Nobody sells a town's working reserve at the going rate, and that
+    // holds for a man with a lorry as much as for a firm. Without it the
+    // most profitable trade in the country is always to strip whichever
+    // town is shortest of what it is shortest of.
+    let qty = tonnes
+        .min(econ.ledger.stock(src, commodity))
+        .min(econ.surplus(from_market, commodity))
+        .min(room);
     if qty <= 1e-9 {
-        return;
+        return 0.0;
     }
     let mut journal = std::mem::take(&mut econ.journal);
     econ.ledger.apply(
@@ -340,6 +492,7 @@ fn deliver(
         },
     );
     econ.journal = journal;
+    qty
 }
 
 // ---------------------------------------------------------------------------
@@ -400,33 +553,107 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 // leaves the price gap open, so the same job is offered
                 // again tomorrow and for ever — a treadmill rather than an
                 // economy.
-                if let Job::Haul {
-                    commodity,
-                    tonnes,
-                    from_market,
-                    to_market,
-                    ..
-                } = job.kind
-                {
-                    deliver(econ, commodity, tonnes, from_market, to_market);
+                match job.kind {
+                    Job::Haul {
+                        commodity,
+                        tonnes,
+                        from_market,
+                        to_market,
+                        ..
+                    } => {
+                        deliver(econ, commodity, tonnes, from_market, to_market);
+                        person.money += job.pay;
+                        person.earned += job.pay;
+                        // A driver ends up where the load was going.
+                        person.market = to_market;
+                        person.note(
+                            day,
+                            format!(
+                                "delivered to {}, paid {:.0} — {:.0} in hand",
+                                econ.markets[to_market].name, job.pay, person.money
+                            ),
+                        );
+                    }
+                    Job::Venture {
+                        commodity,
+                        tonnes,
+                        from_market,
+                        to_market,
+                        outlay,
+                        ..
+                    } => {
+                        // Only what was actually carried can be sold, and
+                        // only what was carried was paid for: a warehouse
+                        // that has sold out since the deal was struck hands
+                        // the money back rather than keeping it for goods
+                        // it never loaded. Settling on the intended load
+                        // instead of the delivered one paid a trader for
+                        // cargo that was never there, which turned a
+                        // venture into free money.
+                        let carried = deliver(econ, commodity, tonnes, from_market, to_market);
+                        let unfilled = 1.0 - (carried / tonnes.max(1e-9)).clamp(0.0, 1.0);
+                        person.money += outlay * unfilled;
+                        // **Sold at whatever the market gives today**, not
+                        // at the price that made the trip look worth
+                        // taking. Days have passed; the price has moved.
+                        // That gap is the whole risk of trading on your own
+                        // account, and it can go either way.
+                        let got = econ.price(to_market, commodity) * carried;
+                        person.money += got;
+                        let spent = outlay * (1.0 - unfilled);
+                        let profit = got - spent;
+                        person.earned += profit;
+                        person.market = to_market;
+                        person.note(
+                            day,
+                            format!(
+                                "sold {carried:.1} t of {commodity} in {} for {got:.0} \
+                                 ({}{:.0} on the venture) — {:.0} in hand",
+                                econ.markets[to_market].name,
+                                if profit >= 0.0 { "+" } else { "" },
+                                profit,
+                                person.money
+                            ),
+                        );
+                        if profit < 0.0 {
+                            person.note(day, "the price had moved against him");
+                        }
+                    }
+                    Job::Shift { .. } => {
+                        person.money += job.pay;
+                        person.earned += job.pay;
+                        person.note(
+                            day,
+                            format!(
+                                "finished the shift, paid {:.0} — {:.0} in hand",
+                                job.pay, person.money
+                            ),
+                        );
+                    }
                 }
-                person.money += job.pay;
-                person.earned += job.pay;
-                person.note(
-                    day,
-                    format!("finished work, paid {:.0} — {:.0} in hand", job.pay, person.money),
-                );
             }
             person.state = State::Idle;
         }
         State::Idle => {
-            let offers = work_available(econ, person.market, day);
-            // Take the best-paying work this person is trained for. A
-            // hungry one cannot manage heavy work at all.
+            let reserve_for_food = econ.price(person.market, Commodity::ProcessedFood)
+                * FOOD_PER_DAY
+                * 30.0;
+            let stakeable = (person.money - reserve_for_food).max(0.0);
+            let offers = work_available(econ, person.market, day, stakeable);
+            // Take the best work this person is trained for, can afford to
+            // stake, and is well enough to do. Never stake so much that a
+            // bad trip leaves nothing to eat with — which is what keeps a
+            // careful man alive and is also why the poor stay on wages.
+            let reserve = econ.price(person.market, Commodity::ProcessedFood)
+                * FOOD_PER_DAY
+                * 30.0;
             let taken = offers.into_iter().find(|c| {
-                c.trade == person.trade && (person.condition > 0.4 || c.days <= 3.0)
+                c.trade == person.trade
+                    && (person.condition > 0.4 || c.days <= 3.0)
+                    && c.stake() <= (person.money - reserve).max(0.0)
             });
             if let Some(c) = taken {
+                person.money -= c.stake();
                 person.note(day, format!("took work: {}", c.describe(econ)));
                 person.state = State::Working {
                     until: day + c.days.ceil() as u64,
