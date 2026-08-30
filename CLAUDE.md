@@ -723,6 +723,16 @@ tiles on foot, 288 in a vehicle.
   lanes meeting, so two motorways crossed at grade in the middle of a
   city. Junctions now read the plan's own through-routes (`col_class` /
   `row_class`), and a street meeting a motorway dead-ends against it.
+- **A shopping street has no verges; a street of houses does.** Both are
+  `Lot::Street` and before this they rendered identically. Where the
+  frontage is dense the whole corridor is made ground, kerb to building
+  line; where it is houses there are verges, gardens and a kerb. Paving
+  both made a residential lane 100% made surface, which is a runway.
+- **Known gap: a street plot is 32 m where a real urban corridor is
+  12-20 m** building line to building line. Streets take whole plots, so a
+  town is less dense than its population implies and the buildings stand
+  further back than they should. Fixing it means letting a street occupy
+  part of a plot, which is a `townplan` change, not a `ground` one.
 - Front and depth are different axes. They were the same while every
   building was a square inset in its plot; once a shop ran the full width
   of a terrace they came apart, and passing the width where the depth was

@@ -142,7 +142,7 @@ fn main() {
     if want_corner {
         // Off the carriageway and onto the corner of the footway: the
         // nearest pavement tile to the diagonal of the junction.
-        let probe = Ground::window(seed, &plan, centre, t as usize, t as usize);
+        let probe = Ground::window(seed, &plan, centre, t as usize + 2, t as usize + 2);
         let mut best: Option<((i64, i64), i64)> = None;
         for vy in 0..probe.h {
             for vx in 0..probe.w {
@@ -150,8 +150,11 @@ fn main() {
                     continue;
                 }
                 let (gx, gy) = (probe.origin.0 + vx as i64, probe.origin.1 + vy as i64);
-                // Furthest from both centrelines is the corner itself.
-                let score = -((gx - centre.0).abs().min((gy - centre.1).abs()));
+                // **Furthest from both centrelines is the corner.** The
+                // sign was the wrong way round, which put the player back
+                // in the middle of the junction — on the crown of the
+                // road, which is the one place a pedestrian is not.
+                let score = (gx - centre.0).abs().min((gy - centre.1).abs());
                 if best.is_none_or(|(_, b)| score > b) {
                     best = Some(((gx, gy), score));
                 }
@@ -163,7 +166,13 @@ fn main() {
     }
 
     // A viewport, not the bubble: 80 x 34 looks square in a terminal.
-    let mut g = Ground::window(seed, &plan, centre, 80, 34);
+    // A corner is worth looking at further, because what is interesting
+    // about one is the buildings on it, and those are a plot away.
+    let mut g = if want_corner {
+        Ground::window(seed, &plan, centre, 92, 44)
+    } else {
+        Ground::window(seed, &plan, centre, 80, 34)
+    };
 
     // Park an artic on the nearest road, because a lorry is seventeen
     // metres of the street and you cannot see that any other way.

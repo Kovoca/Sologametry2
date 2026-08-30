@@ -32,6 +32,19 @@ fn walk_across(plan: &Plan, class: StreetClass) -> (usize, usize) {
             if ns == ew {
                 continue; // a crossroads, or a stub going nowhere
             }
+            // Away from dense frontage, where the footway runs all the way
+            // to the building line and the cross-section is not the whole
+            // story.
+            if [(0i64, -1i64), (0, 1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| {
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                nx >= 0
+                    && ny >= 0
+                    && (nx as usize) < plan.width
+                    && (ny as usize) < plan.height
+                    && matches!(plan.at(nx as usize, ny as usize), Lot::Flats | Lot::Shop)
+            }) {
+                continue;
+            }
             let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
             // Wide enough to hold the whole plot: a motorway corridor is
             // 33 m, and a window that clipped it made this test pass by
@@ -96,6 +109,22 @@ fn a_street_is_not_thirty_two_metres_of_tarmac() {
                 continue;
             }
             if plan.street_class(x, y) != Some(StreetClass::Lane) {
+                continue;
+            }
+            // **A street of houses**, which has verges and front gardens.
+            // A city-centre street is legitimately paved kerb to building
+            // line and would fail this quite correctly.
+            if [(0i64, -1i64), (0, 1), (-1, 0), (1, 0), (-1, -1), (1, 1)]
+                .iter()
+                .any(|&(dx, dy)| {
+                    let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < plan.width
+                        && (ny as usize) < plan.height
+                        && matches!(plan.at(nx as usize, ny as usize), Lot::Flats | Lot::Shop)
+                })
+            {
                 continue;
             }
             let ns = plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street;
@@ -442,5 +471,58 @@ fn a_street_meeting_a_motorway_stops_at_it() {
     assert_eq!(
         paved, 0,
         "a footway across a motorway: the lesser street punched through"
+    );
+}
+
+#[test]
+fn a_city_centre_street_is_paved_to_the_building_line() {
+    // The complement of `a_street_is_not_thirty_two_metres_of_tarmac`, and
+    // the reason that one has to say *which* street it means. **A shopping
+    // street has no verges** — the frontage comes out to the back of the
+    // footway and the whole corridor is made ground. A street of houses
+    // has grass, gardens and a kerb. Both are streets; they do not look
+    // remotely alike, and before this they looked identical.
+    let plan = a_city();
+    let t = TILES_PER_PLOT as i64;
+    let mut best = 0.0f64;
+    for y in 1..plan.height - 1 {
+        for x in 1..plan.width - 1 {
+            if plan.at(x, y) != Lot::Street {
+                continue;
+            }
+            // A stretch with dense frontage on both sides of it.
+            let dense = |dx: i64, dy: i64| {
+                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                matches!(plan.at(nx as usize, ny as usize), Lot::Flats | Lot::Shop)
+            };
+            if !((dense(-1, 0) && dense(1, 0)) || (dense(0, -1) && dense(0, 1))) {
+                continue;
+            }
+            let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
+            let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+            let (mut made, mut total) = (0, 0);
+            for iy in 0..t {
+                for ix in 0..t {
+                    let (gx, gy) = (x as i64 * t + ix, y as i64 * t + iy);
+                    let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
+                    if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
+                        continue;
+                    }
+                    total += 1;
+                    if matches!(
+                        g.at(vx as usize, vy as usize),
+                        Tile::Road | Tile::Pavement | Tile::Marking | Tile::Shoulder
+                    ) {
+                        made += 1;
+                    }
+                }
+            }
+            best = best.max(made as f64 / total.max(1) as f64);
+        }
+    }
+    assert!(
+        best > 0.9,
+        "the most built-up street in a city of 2.5M is only {:.0}% made surface —          it still has verges down a shopping street",
+        best * 100.0
     );
 }

@@ -267,7 +267,61 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
                     return tile;
                 }
             }
-            open_ground(seed, plan.ground, gx, gy)
+
+            // **Between the kerb and the building line: paved in town,
+            // verge in the country.** That is the difference between a
+            // street and a road, and without it a 13 m corridor sat in the
+            // middle of a 32 m plot with nineteen metres of grass either
+            // side — so in a city of forty-six million the buildings stood
+            // back from the road like farmhouses and a corner had nothing
+            // on it. Which side matters: the edge of town is paved on the
+            // built side and grass on the other.
+            let built = |dx: i64, dy: i64| -> bool {
+                let (nx, ny) = (px + dx, py + dy);
+                nx >= 0
+                    && ny >= 0
+                    && nx < plan.width as i64
+                    && ny < plan.height as i64
+                    // **Dense frontage only.** A city-centre street is
+                    // paved kerb to building line — Oxford Street has no
+                    // verges — because the shops and blocks come right out
+                    // to the footway. A street of houses does not: it has
+                    // verges and front gardens, and paving those made a
+                    // residential lane 100% made surface, which is a
+                    // runway. The difference is the whole point.
+                    && matches!(
+                        plan.at(nx as usize, ny as usize),
+                        Lot::Flats | Lot::Shop
+                    )
+            };
+            // The side you are standing on, for each road through here: a
+            // north-south road has neighbours east and west, an east-west
+            // one north and south. Paving both sides regardless would pave
+            // the fields at the edge of town.
+            let mut built_side = false;
+            for &(_, _, along) in &roads {
+                built_side |= if along == gy {
+                    built(if ix < mid { -1 } else { 1 }, 0)
+                } else {
+                    built(0, if iy < mid { -1 } else { 1 })
+                };
+            }
+            // **At a junction the buildings are on the diagonals**, since
+            // all four orthogonal neighbours are the streets themselves.
+            // Miss this and every corner in the town is a patch of grass,
+            // which is the one place a player is most likely to stand.
+            if roads.len() == 2 {
+                built_side |= built(
+                    if ix < mid { -1 } else { 1 },
+                    if iy < mid { -1 } else { 1 },
+                );
+            }
+            let built = built_side;
+            if built {
+                Tile::Pavement
+            } else {
+                open_ground(seed, plan.ground, gx, gy)
+            }
         }
         Lot::Open => open_ground(seed, plan.ground, gx, gy),
         Lot::Park => {
