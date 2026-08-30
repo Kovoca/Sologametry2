@@ -239,13 +239,21 @@ impl Person {
 // Work that exists because the economy wants it done
 // ---------------------------------------------------------------------------
 
-/// Wage per day for a trade, from what the work is worth.
+/// Wage per day for a trade, from what the work is worth and how many
+/// hands are chasing it.
 ///
 /// Labour share of output is 50-60% in reality (spec A.8), so a day's pay
-/// tracks a day's production value. Scarcity of the specific skill would
-/// move this; there is only one worker so far, so it does not.
+/// tracks a day's production value. On top of that sits the state of the
+/// local labour market: **wages sag where the works are idle**, though not
+/// nearly as far as the idleness itself, because nominal wages are sticky
+/// and what really gives is whether anybody is hiring at all.
 pub fn day_rate(econ: &Economy, market: usize, trade: Trade) -> f64 {
-    day_rate_for_food(econ, market, trade)
+    let index = econ
+        .workforce
+        .get(market)
+        .map(|w| w.wage_index)
+        .unwrap_or(1.0);
+    day_rate_for_food(econ, market, trade) * index
 }
 
 fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
@@ -338,7 +346,7 @@ pub fn work_available(
             // A haul on a route the merchant is making good money on pays
             // a little over the going rate, because he can afford it and
             // wants it done today.
-            let rate = day_rate_for_food(econ, market, Trade::Haulier);
+            let rate = day_rate(econ, market, Trade::Haulier);
             let keenness = (1.0 + margin / c.base_cost()).clamp(1.0, 1.6);
             out.push(Contract {
                 kind: Job::Haul {
@@ -386,7 +394,7 @@ pub fn work_available(
             // Getting there costs something even before the cargo: fodder
             // for an animal that eats whether it earns or not, diesel for
             // a lorry that costs several times its driver's wage to run.
-            let wage = day_rate_for_food(econ, market, Trade::Haulier);
+            let wage = day_rate(econ, market, Trade::Haulier);
             let running = conveyance.upkeep_in_wage_days(true) * wage * own_days;
             if affordable >= 0.005 {
                 let outlay = unit * affordable;
@@ -432,7 +440,7 @@ pub fn work_available(
         }
         let other = if route.a == market { route.b } else { route.a };
         let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
-        let rate = day_rate_for_food(econ, market, Trade::Haulier);
+        let rate = day_rate(econ, market, Trade::Haulier);
 
         // Whatever this town has most to spare of, in the judgement of the
         // people who own it.
@@ -461,10 +469,17 @@ pub fn work_available(
         });
     }
 
-    // Shifts: a works that can run wants hands.
+    // Shifts: a works that **is running** wants hands.
+    //
+    // Not one that merely has power. A mill with no grain employs nobody
+    // today, and a works standing idle is precisely where the jobs are
+    // not — which is the whole reason the workforce is modelled.
     for s in 0..econ.ledger.sites.len() {
         let site = &econ.ledger.sites[s];
         if site.market != market || site.recipe.is_none() || !site.powered {
+            continue;
+        }
+        if site.ran <= 0.0 {
             continue;
         }
         out.push(Contract {
@@ -479,6 +494,24 @@ pub fn work_available(
 
     out.sort_by(|a, b| b.daily_rate().total_cmp(&a.daily_rate()));
     out
+}
+
+/// A number in 0..1 from who somebody is and what day it is.
+///
+/// Deterministic, because a seed has to rebuild the same world and the
+/// same life forever. This is not luck in the sense of a dice roll the
+/// player can reload away from — it is the part of getting hired that
+/// nobody controls, and it has to be reproducible like everything else.
+fn draw(name: &str, day: u64) -> f64 {
+    let mut h = day.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    for b in name.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x1000_0000_01B3);
+    }
+    h ^= h >> 29;
+    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h ^= h >> 32;
+    (h >> 11) as f64 / (1u64 << 53) as f64
 }
 
 /// Move a load that a person actually carried.
@@ -762,8 +795,28 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             let reserve = econ.price(person.market, Commodity::ProcessedFood)
                 * FOOD_PER_DAY
                 * 30.0;
+            // **Somebody else may get it.**
+            //
+            // A slack labour market does not mainly feel like low wages,
+            // it feels like not being taken on. Where there are more hands
+            // than posts, the work goes to one of them and not the others,
+            // and which one is not a thing anybody chooses — so it is
+            // drawn, deterministically, from who he is and what day it is.
+            //
+            // **A venture is exempt, and that matters.** Nobody hires you
+            // to trade on your own account, so working for yourself is the
+            // way out of a town with no work in it — which is exactly why
+            // a vehicle is worth saving for.
+            let hiring = econ
+                .workforce
+                .get(person.market)
+                .map(|w| w.chance_of_work())
+                .unwrap_or(1.0);
+            let drawn = draw(&person.name, day);
             let taken = offers.into_iter().find(|c| {
+                let hired = c.stake() > 0.0 || drawn < hiring;
                 c.trade == person.trade
+                    && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
                     && c.stake() <= (person.money - reserve).max(0.0)
             });

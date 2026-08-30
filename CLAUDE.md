@@ -348,6 +348,50 @@ something that did not happen.
   mountain port 1,200 km of road from the grain belt, at $0.26/t-km, is
   *supposed* to pay three times as much for grain.
 
+## Who does the work (`src/labour.rs`)
+
+The join between the infrastructure sim and the human one. It exists for
+one causal chain: **a transformer fails, so the mill has no power, so the
+mill does not run, so the people who work at the mill are not working, so
+they cannot buy food.** Before it, a blackout was an inconvenience to a
+stockpile; it did not happen to anybody.
+
+Headcount comes straight from the spec's recipe labour-hours — 8 h to
+bring in a tonne of grain *(US agriculture runs ~9)*, 0.2 h to mill a
+tonne of flour, 1.2 to can it — over an 1,800-hour working year *(OECD
+~1,750)*. Nothing is invented.
+
+Scope note: this is the labour market **for the trades the economy has**,
+not a city's whole employment. Six commodities is a thin slice, and
+reporting the other 99% as unemployed would be nonsense.
+
+Three things that were wrong first time:
+- **A power station's `throughput` is a sentinel** meaning "whatever the
+  grid can carry" (1e9). Reading headcount off it staffed one coal station
+  with 4.1M people. Rate plants off `grid.capacity()`, and note their
+  staffing does not follow load — nobody sends half the shift home because
+  demand dipped. It is all of them, or when the plant is down, none.
+- **A farm is not idle out of harvest.** Output collapses between harvests;
+  employment does not, because the ground still needs ploughing, sowing
+  and tending. Tying headcount to tonnage put a farming town at 89%
+  unemployment for ten months. Real agricultural labour swings by about 2x
+  season to season, so use a floor, not a collapse.
+- **Nobody is hired and fired by the day.** Firms hoard labour through a
+  short stoppage. Without ~21-day stickiness a town flickered between full
+  employment and half idle overnight.
+
+Wages sag where hands are idle but **do not collapse** — nominal wages are
+sticky. What actually gives is whether anybody is hiring, so work is
+rationed by availability (`chance_of_work`) rather than by price. **A
+venture is exempt**: nobody hires you to trade on your own account, so
+self-employment is the way out of a town with no work in it, which is
+exactly why a vehicle is worth saving for.
+
+Result worth having: with a spare transformer in store, a man survives the
+failure and buys a handcart. Without one, unemployment climbs from day
+274, he goes hungry on 279 and is dead on 323. **The fault alone did not
+kill him — the fault plus winter did.**
+
 ### Getting there is not free (`src/travel.rs`)
 
 Freight cost answers what a *tonne* costs. It says nothing about how one

@@ -804,6 +804,7 @@ impl Region {
             }
         }
 
+        let markets_len = markets.len();
         let mut economy = Economy {
             ledger: Ledger::new(sites),
             journal: Journal::new(),
@@ -816,6 +817,7 @@ impl Region {
             weather_seed: world.seed ^ (polity as u64).wrapping_mul(0x517C_C1B7_2722_0A95),
             unserved_power: 0.0,
             unmet_demand: basket(),
+            workforce: vec![crate::labour::Workforce::default(); markets_len],
         };
         // Start mid-harvest rather than in the depths of winter, so a
         // short run is not looking at an unrepresentative slice of the

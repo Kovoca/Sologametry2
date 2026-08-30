@@ -9,6 +9,7 @@ pub mod field;
 pub mod geology;
 pub mod hydrology;
 pub mod infrastructure;
+pub mod labour;
 pub mod network;
 pub mod noise;
 pub mod person;

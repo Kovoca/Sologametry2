@@ -1132,6 +1132,12 @@ pub struct Economy {
     /// Household demand that could not be met, per commodity. This is
     /// people going without, and it feeds C1's grievance conditions.
     pub unmet_demand: Basket,
+    /// The labour market of each town, in the trades this economy has.
+    ///
+    /// Kept here rather than on `Market` because it is derived state: it
+    /// is recomputed every day from what the works actually managed to
+    /// run, which is what makes a blackout put people out of work.
+    pub workforce: Vec<crate::labour::Workforce>,
 }
 
 impl Economy {
@@ -1140,12 +1146,19 @@ impl Economy {
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
 
+        for site in self.ledger.sites.iter_mut() {
+            site.ran = 0.0;
+        }
+
         self.turn_of_the_year();
         self.close_the_passes();
         self.run_response();
         self.generate_power();
         self.allocate_power();
         self.produce();
+        // Who was working today falls out of what actually ran, so this
+        // has to come after production and before anybody is paid.
+        crate::labour::update(self);
         // Sell first, then reorder — a shop restocks against what it has
         // left at close of business, which is what makes the day's cover
         // figure mean "days of stock in hand".
@@ -1400,6 +1413,12 @@ impl Economy {
             if batches <= 1e-9 {
                 continue;
             }
+            // A plant's staffing follows what it actually generated, not
+            // its rated ceiling. `throughput` on a power station is a
+            // sentinel standing for "as much as the grid can carry", and
+            // reading headcount off it staffed one coal station with four
+            // million people.
+            self.ledger.sites[site].ran = batches;
 
             for &(c, need) in recipe.inputs {
                 self.ledger.apply(
@@ -1494,9 +1513,6 @@ impl Economy {
     /// Everything that is not a power plant runs its recipe as far as
     /// inputs, power and storage allow.
     fn produce(&mut self) {
-        for site in 0..self.ledger.sites.len() {
-            self.ledger.sites[site].ran = 0.0;
-        }
         for site in 0..self.ledger.sites.len() {
             let s = &self.ledger.sites[site];
             if s.kind == SiteKind::PowerPlant {

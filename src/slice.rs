@@ -165,6 +165,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     // Peak load is dominated by the cannery.
     let peak = cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0;
 
+    let markets_len = markets.len();
     Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
@@ -177,5 +178,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
         weather_seed: 0x5EED_C0FF_EE15_600D,
         unserved_power: 0.0,
         unmet_demand: basket(),
+        workforce: vec![crate::labour::Workforce::default(); markets_len],
     }
 }

@@ -27,6 +27,8 @@ struct Args {
     trade: Trade,
     money: f64,
     doctrine: Doctrine,
+    fault: Option<&'static str>,
+    fault_on: u64,
 }
 
 fn random_seed() -> u64 {
@@ -47,6 +49,8 @@ fn parse_args() -> Args {
         trade: Trade::Haulier,
         money: 60.0,
         doctrine: Doctrine::Prudent,
+        fault: None,
+        fault_on: 40,
     };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -66,6 +70,16 @@ fn parse_args() -> Args {
                     Some("negligent") => Doctrine::Negligent,
                     _ => Doctrine::Prudent,
                 }
+            }
+            "--fault" => {
+                a.fault = match it.next().as_deref() {
+                    Some("line") => Some("line"),
+                    Some("transformer") => Some("transformer"),
+                    _ => None,
+                }
+            }
+            "--fault-on" => {
+                a.fault_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(40)
             }
             "--help" | "-h" => {
                 println!(
@@ -163,14 +177,63 @@ fn main() {
     }
     println!();
 
+    // Prime the labour market so the opening picture is not day zero.
+    region.economy.step();
+    println!("who works here");
+    for m in 0..region.economy.markets.len() {
+        let w = &region.economy.workforce[m];
+        if w.posts <= 0.0 {
+            continue;
+        }
+        println!(
+            "  {:<10} {:>8} posts in these trades, {:>5.1}% of them idle",
+            region.economy.markets[m].name,
+            fmt_pop(w.posts),
+            w.unemployment * 100.0,
+        );
+    }
+    println!();
+
     println!("yr:day | state    | money | food | cond | happening");
     println!("-------+----------+-------+------+------+--------------------------------");
 
     let mut last_log = 0;
-    for _ in 0..args.days {
+    let mut last_unemployment = region.economy.workforce[hal.market].unemployment;
+    for elapsed in 0..args.days {
+        if elapsed == args.fault_on {
+            match args.fault {
+                Some("line") => {
+                    region.economy.grid.fail_line("main line");
+                }
+                Some("transformer") => {
+                    region.economy.grid.fail_transformer("main line");
+                }
+                _ => {}
+            }
+            if args.fault.is_some() {
+                println!(
+                    "{:>6} |          |       |      |      | *** {} fails ***",
+                    "",
+                    args.fault.unwrap()
+                );
+            }
+        }
         region.economy.step();
         let day = region.economy.ledger.day;
         person::live_a_day(&mut hal, &mut region.economy, day);
+
+        // Say so when the ground shifts under him, because that is the
+        // thing the workforce was built to make visible.
+        let u = region.economy.workforce[hal.market].unemployment;
+        if (u - last_unemployment).abs() > 0.05 {
+            println!(
+                "{:>6} |          |       |      |      | {} is {:.0}% out of work",
+                format!("{}:{:03}", day / DAYS_PER_YEAR, day % DAYS_PER_YEAR),
+                region.economy.markets[hal.market].name,
+                u * 100.0,
+            );
+            last_unemployment = u;
+        }
 
         // Print only when something happened to them.
         let happened: Vec<String> = hal.log[last_log..].to_vec();
