@@ -81,7 +81,7 @@ fn main() {
 
     let loc = Locality::zoom(&world, cell);
     let ground_biome = loc.at(loc.size / 2, loc.size / 2).biome;
-    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome);
+    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome).on_rock(world.geology.rock[cell]);
 
     // Find somewhere worth standing.
     let want = match place.as_str() {
@@ -186,7 +186,7 @@ fn main() {
 
     println!();
     println!(
-        "{name} — standing on {:?} at tile {},{}, level {z} ({:.0} m up)",
+        "{name} — standing on {:?} at tile {},{}, level {z} ({:+.0} m)",
         want,
         centre.0,
         centre.1,
@@ -197,7 +197,10 @@ fn main() {
         g.w, g.h, BUBBLE_ON_FOOT
     );
     println!("  seed and never stored (spec A1.5)");
-    println!("  the town stands in {ground_biome:?}");
+    println!(
+        "  the town stands in {ground_biome:?}, on {}",
+        plan.rock.name()
+    );
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {
         println!(

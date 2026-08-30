@@ -119,7 +119,7 @@ fn main() {
     // The town stands on the middle of its own locality, so the ground
     // showing between the streets is the ground you would have walked in.
     let centre = loc.at(loc.size / 2, loc.size / 2);
-    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome);
+    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome).on_rock(world.geology.rock[cell]);
     println!();
     println!(
         "=== 3. THE TOWN — one character to {:.0} m, {:.1} km across ===",

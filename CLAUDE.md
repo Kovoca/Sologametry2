@@ -762,6 +762,19 @@ what makes one tile of stairwell join two levels.
   with partitions: stairwell, lift, landing, flats opening onto it.
   Subdividing the floorplate the way a house is subdivided gave one
   enormous dwelling per block.
+- **Down is a direction like up.** `-1` is a level the same way `+1` is:
+  a cellar under a building, a **sewer under a made-up street** *(Victorian
+  brick sewers run 3-10 m, so one level is about right)*, then soil, then
+  the bedrock `geology.rs` chose when the planet was made — which it had
+  known since it was written and nothing at this layer had ever asked.
+- **Cellars follow the frost line, and that is not taste.** A footing must
+  go below the frost or it heaves, so where frost is deep the hole is dug
+  anyway and a basement is nearly free. Real frost depths: Minnesota
+  1.5 m, New York 1.2 m, Georgia 0.13 m — and US basement prevalence
+  follows almost exactly, ~80% across the Midwest and Northeast, under 10%
+  in the South. The opposite constraint is water: **New Orleans has no
+  basements because the water table is a metre down**, and nor does
+  anywhere built on a marsh.
 - **A door to the street is on the ground floor only.** Above it the same
   wall carries a window; you get in by the stair.
 

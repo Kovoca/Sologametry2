@@ -67,6 +67,9 @@ pub enum Tile {
     /// **This is what makes a Z level a level** rather than a second map.
     Sky,
 
+    /// Soil and subsoil: what a spade goes through.
+    Earth,
+
     /// A stairwell. **High-density housing is a core with dwellings hung
     /// off it**, not a big room with partitions.
     Stairs,
@@ -107,6 +110,7 @@ impl Tile {
             Tile::Door => '/',
             Tile::Window => 'o',
             Tile::Sky => ' ',
+            Tile::Earth => '&',
             Tile::Stairs => '>',
             Tile::Lift => 'V',
             Tile::Parking => '_',
@@ -135,6 +139,8 @@ impl Tile {
     pub fn walkable(self) -> bool {
         match self {
             Tile::Wall | Tile::Water | Tile::Tree | Tile::Window | Tile::Sky => false,
+            // Undug ground is not somewhere you can be.
+            Tile::Earth | Tile::Rock => false,
             Tile::Fitting(f) => matches!(
                 f,
                 Fixture::Till | Fixture::Counter | Fixture::LoadingBay
@@ -162,7 +168,7 @@ pub fn ground_legend(with_vehicle: bool) -> String {
 ");
     out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe
 ");
-    out.push_str("  vertical  > stair   V lift   ' ' open air above or beside
+    out.push_str("  vertical  > stair   V lift   ' ' open air   & earth   ^ rock
 ");
     out.push_str("  country   \" grass   T tree   * scrub   , sand   ^ rock   A snow   ~ water");
     if with_vehicle {
@@ -354,6 +360,15 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
     // height: a building stops being a floorplate with a number of storeys
     // asserted about it and becomes a stack you can stand on any floor of.
     // Everything else at this height is air.
+    // **Below the ground, the same ladder downward.**
+    //
+    // A cellar, then what a spade goes through, then the rock the planet
+    // put there. Returning air below ground was simply wrong: down is a
+    // direction like up.
+    if gz < 0 {
+        return below_ground(seed, plan, lot, gx, gy, ix, iy, gz);
+    }
+
     if gz != 0 {
         if !matches!(lot, Lot::House | Lot::Flats | Lot::Shop | Lot::Works) {
             return Tile::Sky;
@@ -361,7 +376,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
         let f = footprint_of(plan, lot, px, py);
         let across = if f.terraced { t } else { t - 2 * f.side };
         let floorplate = (t - f.front - f.back) * across;
-        if gz < 0 || gz >= storeys_of(lot, floorplate) {
+        if gz >= storeys_of(lot, floorplate) {
             return Tile::Sky;
         }
         return building_tile(seed, plan, lot, gx, gy, ix, iy, gz);
@@ -855,6 +870,100 @@ fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) 
 /// two-bed for four 70; the average new British flat is about 61.
 const ROOM_M2: i64 = 9;
 const FLAT_M2: i64 = 61;
+
+/// **Whether the buildings here have cellars**, which is not a matter of
+/// taste but of two real, opposite constraints.
+///
+/// A footing has to go below the frost line or it heaves, so where the
+/// frost is deep you are digging that hole anyway and a basement is
+/// nearly free — real frost depths run 1.5 m in Minnesota, 1.2 m in New
+/// York and 0.13 m in Georgia, and basement prevalence follows almost
+/// exactly: ~80% across the Midwest and Northeast, under 10% in the South.
+///
+/// The opposite constraint is water. New Orleans has no basements because
+/// the water table is a metre down, and nor does anywhere built on a
+/// marsh.
+fn has_cellars(ground: Biome) -> bool {
+    use Biome::*;
+    match ground {
+        // Hard winters: the hole is dug before you start.
+        Taiga | Tundra | Snowcap | Mountain => true,
+        // Temperate: sometimes, and historically often.
+        Forest | Shrubland | Grassland => true,
+        // Warm, or wet, or both. Nothing to gain and water in the way.
+        Desert | Savanna | Rainforest | Swamp | Beach => false,
+        Ocean | Shallows => false,
+    }
+}
+
+/// **What is underneath.**
+///
+/// One level of cellar under a building where the climate justifies one,
+/// a sewer under a made-up street, and below that the ground itself:
+/// topsoil and subsoil for a metre or two *(real)*, then the bedrock
+/// `geology.rs` decided on when the planet was made.
+#[allow(clippy::too_many_arguments)]
+fn below_ground(
+    seed: u64,
+    plan: &Plan,
+    lot: Lot,
+    gx: i64,
+    gy: i64,
+    ix: i64,
+    iy: i64,
+    gz: i64,
+) -> Tile {
+    let t = TILES_PER_PLOT as i64;
+    // Below the first level down, nothing is dug: soil for a metre or two
+    // and then rock. At 3 m to the level that puts bedrock at level -2.
+    if gz < -1 {
+        return Tile::Rock;
+    }
+
+    match lot {
+        Lot::House | Lot::Flats | Lot::Shop | Lot::Works if has_cellars(plan.ground) => {
+            let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
+            let f = footprint_of(plan, lot, px, py);
+            let (lo_y, hi_y) = (f.front, t - 1 - f.back);
+            let (lo_x, hi_x) = if f.terraced {
+                (0, t - 1)
+            } else {
+                (f.side, t - 1 - f.side)
+            };
+            if ix < lo_x || iy < lo_y || ix > hi_x || iy > hi_y {
+                return Tile::Earth;
+            }
+            if ix == lo_x || ix == hi_x || iy == lo_y || iy == hi_y {
+                return Tile::Wall;
+            }
+            // A cellar is storage, and it is where the stair comes down.
+            let (w, _h) = (hi_x - lo_x + 1, hi_y - lo_y + 1);
+            let core_x = lo_x + w / 2 - 2;
+            if lot == Lot::Flats && iy >= lo_y + 1 && iy <= lo_y + 5 && ix <= core_x + 1 && ix >= core_x {
+                return Tile::Stairs;
+            }
+            if hash(seed, gx, gy, 15) < 0.22 {
+                Tile::Fitting(Fixture::StockRack)
+            } else {
+                Tile::Floor
+            }
+        }
+        // **A street has a sewer under it**, which is the other thing
+        // that is really down there. Victorian brick sewers run 3-10 m
+        // down, so one level is about right; services sit shallower.
+        Lot::Street => {
+            let mid = t / 2;
+            let across = (ix - mid).abs().min((iy - mid).abs());
+            match across {
+                0 => Tile::Water,   // the flow
+                1 => Tile::Floor,   // the ledge you walk on
+                2 => Tile::Wall,    // brick
+                _ => Tile::Earth,
+            }
+        }
+        _ => Tile::Earth,
+    }
+}
 
 /// **How many floors a building has**, which is the thing a floorplate
 /// alone cannot tell you and the reason the arithmetic did not close: a

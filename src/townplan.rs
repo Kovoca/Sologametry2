@@ -362,6 +362,10 @@ pub struct Plan {
     pub row_class: Vec<Option<StreetClass>>,
     /// How it was laid out, which follows from how big it is.
     pub pattern: Pattern,
+    /// **What is under it.** Dig far enough and you are in the rock the
+    /// planet put there, which `geology.rs` has known since it was written
+    /// and nothing at ground level has ever asked about.
+    pub rock: crate::geology::Rock,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -679,8 +683,16 @@ impl Plan {
             col_class: col,
             row_class: row,
             pattern,
+            rock: crate::geology::Rock::Sedimentary,
             ground,
         }
+    }
+
+    /// Tell the plan what it is standing on. Callers that have a
+    /// generated world can read it off `world.geology.rock[cell]`.
+    pub fn on_rock(mut self, rock: crate::geology::Rock) -> Self {
+        self.rock = rock;
+        self
     }
 
     /// The through-route running north-south down this column, if any.

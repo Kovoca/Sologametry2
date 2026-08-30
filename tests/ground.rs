@@ -612,3 +612,63 @@ fn a_room_has_a_door_and_something_in_it() {
         "a block of flats with no stairwell"
     );
 }
+
+#[test]
+fn down_is_a_direction_like_up() {
+    // **+1 and -1 are both a new level.** Returning open air below ground
+    // was simply wrong: under a town there is a cellar, then what a spade
+    // goes through, then the rock the planet put there — which
+    // `geology.rs` has known since it was written and nothing at this
+    // layer had ever asked about.
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Street);
+
+    // A made-up street has a sewer under it. Victorian brick sewers run
+    // 3-10 m down, so one level is about right.
+    let cellar = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -1);
+    assert!(
+        cellar.tiles.iter().any(|t| *t == Tile::Water),
+        "a city street with nothing running under it"
+    );
+    assert!(
+        cellar.tiles.iter().filter(|t| **t == Tile::Earth).count() > 100,
+        "the ground either side of a sewer is not solid"
+    );
+    assert!(!cellar.tiles.iter().any(|t| *t == Tile::Sky), "sky below ground");
+
+    // Below the dug level it is rock all the way.
+    let deep = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -2);
+    assert!(
+        deep.tiles.iter().all(|t| *t == Tile::Rock),
+        "something hollow at 6 m down that nobody dug"
+    );
+    assert!(!Tile::Rock.walkable() && !Tile::Earth.walkable());
+}
+
+#[test]
+fn cellars_follow_the_frost_line() {
+    // **Not a matter of taste.** A footing must go below the frost line or
+    // it heaves, so where frost is deep the hole is dug anyway and a
+    // basement is nearly free: real frost depths are 1.5 m in Minnesota,
+    // 1.2 m in New York, 0.13 m in Georgia, and US basement prevalence
+    // follows almost exactly — ~80% in the Midwest and Northeast, under
+    // 10% in the South. The opposite constraint is water: New Orleans has
+    // no basements because the water table is a metre down.
+    use scale_sim::world::Biome;
+    let under = |b: Biome| {
+        let plan = Plan::lay_out_on(20260828, 4242, 400_000.0, 32, b);
+        let at = stand_on(&plan, Lot::Flats);
+        let g = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -1);
+        // **Count the racking, not the floor.** A sewer has a ledge you
+        // walk on, which is also `Floor`, and the window takes in the
+        // street outside — so counting floor found a cellar under a marsh
+        // that was actually a drain.
+        g.tiles
+            .iter()
+            .filter(|t| **t == Tile::Fitting(Fixture::StockRack))
+            .count()
+    };
+    assert!(under(Biome::Taiga) > 20, "hard winters and no cellars");
+    assert_eq!(under(Biome::Swamp), 0, "a cellar dug into a marsh");
+    assert_eq!(under(Biome::Desert), 0, "a cellar nobody needed to dig");
+}
