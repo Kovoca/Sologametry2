@@ -253,6 +253,41 @@ Things that were wrong first time, and would be again:
   capacity. Multiplying by the mills' headroom too gave a permanent 14%
   surplus and a floored price.
 
+## People (`src/person.rs`)
+
+The first human in the simulation, and the smallest thing that makes this
+a game rather than a world simulator. One person with money, hunger, a
+trade and a market to be in. `cargo run --release --bin life`.
+
+Three rules from spec A4.1 carry it, and breaking any of them turns it
+back into a quest game:
+- **Nothing is pushed.** Work exists as a fact in the world and is found by
+  being where it is. There are no quests, so there are no quest markers.
+- **Nothing scales to the player.** Contracts come from the economy's own
+  arithmetic; most are out of reach or not worth the trip.
+- **The world does not wait.** A contract heard of last week is gone.
+
+**A wage is not a margin.** The first version paid a haulier the whole
+arbitrage, which made one lorry-load worth two years of a man's food and
+turned the job into a money printer. The margin belongs to whoever owns
+the cargo; a driver is paid by the day. Somebody who wants the margin must
+buy the goods first and carry the risk — the trader's path, and a later
+thing.
+
+**Work must actually happen.** A haul that pays but shifts nothing leaves
+the price gap open, so the same job is offered for ever. Deliveries go
+through the journal like every other change, so conservation covers a
+person's work too.
+
+Calibration: a day's work buys 1.5-12 days of food (real low-wage work is
+6-10x); starvation takes about 45 days, but hunger stops someone taking
+heavy work long before that, which is what makes poverty a trap rather
+than a timer.
+
+Not built: bodies, position finer than which market they are in, skills
+beyond a trade tag, relationships, beliefs, ageing, or more than one
+person at a time. All specced (A3, B1, B2, B6), none built.
+
 ## Calibrate against reality, not against taste
 
 Several passes were tuned by eye toward a "feel" that turned out to be

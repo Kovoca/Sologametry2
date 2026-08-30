@@ -11,6 +11,7 @@ pub mod hydrology;
 pub mod infrastructure;
 pub mod network;
 pub mod noise;
+pub mod person;
 pub mod polity;
 pub mod region;
 pub mod rng;

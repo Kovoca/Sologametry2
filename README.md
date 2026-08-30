@@ -115,6 +115,21 @@ one country's lean season is another's harvest — and when the price gap
 beats the freight, cargoes move. `--blockade K` closes every lane touching
 nation K.
 
+## One person's life
+
+```
+cargo run --release --bin life
+cargo run --release --bin life -- --seed 20260828 --rank 3 --days 365
+cargo run --release --bin life -- --trade labourer --money 5
+```
+
+A single character in a generated nation, with money, hunger, a trade and
+a market to be in. Nothing is arranged for them: work exists when the
+economy wants something moved and not otherwise, prices are the market's,
+and a haul they take actually shifts the goods — which closes the price
+gap they were living off. With no work and no money they go hungry and
+eventually die of it.
+
 ## Tests
 
 ```
@@ -142,7 +157,8 @@ src/
   slice.rs     the hand-built two-town scenario
   region.rs    derives an economy from a generated nation, and folds
                several nations into one trading world
-  bin/slice.rs, bin/region.rs, bin/world.rs   run them
+  person.rs    one human being in it: money, hunger, a trade, a job
+  bin/slice.rs, bin/region.rs, bin/world.rs, bin/life.rs   run them
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs
