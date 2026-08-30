@@ -133,7 +133,8 @@ fn main() {
     }
     println!();
     println!(
-        "  # street   h house   H flats   S shop   W works   , park   '{}' the {:?} it stands in",
+        "  . lane  - road  = dual carriageway  # motorway   h house   H flats
+  S shop   W works   , park   '{}' the {:?} it stands in",
         scale_sim::townplan::ground_glyph(plan.ground),
         plan.ground,
     );
@@ -146,7 +147,7 @@ fn main() {
     );
     println!();
     println!("Below this: one plot is 32 x 32 tiles of a metre each, which is where");
-    println!("a person stands and where a lorry takes up seventeen of them. Not built.");
+    println!("a person stands and a lorry takes up seventeen of them.  --bin walk");
 }
 
 fn world_glyph(b: scale_sim::world::Biome) -> char {

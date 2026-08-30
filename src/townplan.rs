@@ -49,6 +49,80 @@ pub const HOUSEHOLD: f64 = 2.4;
 /// kilometre where a street of houses holds 2,500.
 pub const HOUSEHOLDS_PER_BLOCK: f64 = 8.0;
 
+/// **How big a road is, which is decided by what uses it.**
+///
+/// Real cross-sections, and the reason a town does not look like a grid of
+/// identical strips *(all figures real, UK/EU practice)*:
+///
+/// | | carriageway | corridor | carries |
+/// |---|---|---|---|
+/// | lane | 5.5 m (2 x 2.75) | ~10 m | under 300 vehicles a day |
+/// | road | 7.3 m (2 x 3.65) | ~13 m | up to 13,000 |
+/// | dual | 2 x 7.3 + 4 m reserve | ~22 m | beyond that |
+/// | motorway | 2 x 11 (3 lanes) + shoulders | ~34 m | a trunk route |
+///
+/// A lane is two-way at 2.75 m a lane, which is the minimum anybody
+/// builds; 3.65 is the standard lane and what a motorway uses. Note that
+/// a motorway corridor is *wider than a 32 m plot* — which is right, and
+/// is why a trunk road through a town takes a whole block and severs it.
+///
+/// The thresholds are the same ones `network.rs` uses to decide whether a
+/// stretch of country gets paved at all: about 300 vehicles a day to
+/// justify pavement, about 13,000 before a single carriageway needs
+/// dualling.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum StreetClass {
+    /// Residential access. Most of the length of any town.
+    Lane,
+    /// A distributor: the road you take to get out of your estate.
+    Road,
+    /// Dual carriageway, with a reserve down the middle.
+    Dual,
+    /// A trunk route, wider than the plots either side of it.
+    Motorway,
+}
+
+impl StreetClass {
+    /// Half-width of the running surface, in metres from the centre line.
+    pub fn carriageway_half_m(self) -> i64 {
+        match self {
+            StreetClass::Lane => 2,      // 5.5 m, two lanes of 2.75
+            StreetClass::Road => 3,      // 7.3 m, two lanes of 3.65
+            StreetClass::Dual => 9,      // two of 7.3 either side of a reserve
+            StreetClass::Motorway => 16, // two of 11, three lanes each way
+        }
+    }
+
+    /// Bigger is bigger. Used where two roads meet and one has to win.
+    pub fn size(self) -> u8 {
+        match self {
+            StreetClass::Lane => 0,
+            StreetClass::Road => 1,
+            StreetClass::Dual => 2,
+            StreetClass::Motorway => 3,
+        }
+    }
+
+    /// How it shows on the town plan.
+    pub fn glyph(self) -> char {
+        match self {
+            StreetClass::Lane => '.',
+            StreetClass::Road => '-',
+            StreetClass::Dual => '=',
+            StreetClass::Motorway => '#',
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            StreetClass::Lane => "lane",
+            StreetClass::Road => "road",
+            StreetClass::Dual => "dual carriageway",
+            StreetClass::Motorway => "motorway",
+        }
+    }
+}
+
 /// What stands on one plot.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Lot {
@@ -92,6 +166,8 @@ pub struct Plan {
     pub width: usize,
     pub height: usize,
     pub lots: Vec<Lot>,
+    /// How big each street is. Empty for anything that is not a street.
+    pub classes: Vec<Option<StreetClass>>,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -218,12 +294,85 @@ impl Plan {
             }
         }
 
+        // --- How big is each street? ---
+        //
+        // **A hierarchy, because that is what road networks are.** By
+        // length the UK is roughly 1% motorway, 12% A-road and 87% minor,
+        // and every town has that shape: a trunk route or two, a handful
+        // of distributors, and streets of houses hanging off them. Making
+        // them all one width gave a grid of identical strips, which is a
+        // housing estate drawn by somebody who has never seen one.
+        //
+        // Size goes by **rank among the through-routes**, most central
+        // first, because the road a town grew along is the one that ends
+        // up carrying everything. Ranking rather than measuring off the
+        // middle matters: the street grid is deliberately irregular, so
+        // "within a plot of centre" found nothing at all on most towns and
+        // quietly gave every road the same width again.
+        let mid = size as f64 / 2.0;
+        let mut lines: Vec<(usize, bool, f64)> = Vec::new(); // (index, is_column, offset)
+        for x in 0..size {
+            if (0..size).filter(|&y| lots[y * size + x] == Lot::Street).count() > size / 2 {
+                lines.push((x, true, (x as f64 - mid).abs()));
+            }
+        }
+        for y in 0..size {
+            if (0..size).filter(|&x| lots[y * size + x] == Lot::Street).count() > size / 2 {
+                lines.push((y, false, (y as f64 - mid).abs()));
+            }
+        }
+        lines.sort_by(|a, b| a.2.total_cmp(&b.2).then(a.0.cmp(&b.0)).then(b.1.cmp(&a.1)));
+
+        let of_rank = |r: usize| match r {
+            // A trunk route only goes through somewhere big enough to be
+            // worth going through.
+            0 if population > 500_000.0 => StreetClass::Motorway,
+            0 | 1 => StreetClass::Dual,
+            2 | 3 => StreetClass::Road,
+            _ => StreetClass::Lane,
+        };
+
+        let mut col = vec![None; size];
+        let mut row = vec![None; size];
+        for (rank, &(i, is_col, _)) in lines.iter().enumerate() {
+            let c = of_rank(rank);
+            if is_col {
+                col[i] = Some(c);
+            } else {
+                row[i] = Some(c);
+            }
+        }
+
+        let mut classes = vec![None; size * size];
+        for y in 0..size {
+            for x in 0..size {
+                if lots[y * size + x] != Lot::Street {
+                    continue;
+                }
+                // At a crossroads the bigger road wins: you do not narrow
+                // a trunk route because a lane joins it.
+                classes[y * size + x] = match (col[x], row[y]) {
+                    (Some(a), Some(b)) => Some(if a.size() >= b.size() { a } else { b }),
+                    (Some(a), None) => Some(a),
+                    (None, Some(b)) => Some(b),
+                    // A short spur off the grid, serving a few houses.
+                    (None, None) => Some(StreetClass::Lane),
+                };
+            }
+        }
+
         Plan {
             width: size,
             height: size,
             lots,
+            classes,
             ground,
         }
+    }
+
+    /// How big the street on this plot is, if it is a street.
+    pub fn street_class(&self, x: usize, y: usize) -> Option<StreetClass> {
+        self.classes[y * self.width + x]
     }
 
     /// How many of each kind of plot there are.
@@ -246,6 +395,11 @@ impl Plan {
                 let l = self.at(x, y);
                 out.push(if l == Lot::Open {
                     ground_glyph(self.ground)
+                } else if let Some(c) = self.street_class(x, y) {
+                    // The hierarchy has to be visible from up here too, or
+                    // the town reads as a uniform grid right up until you
+                    // walk down onto it.
+                    c.glyph()
                 } else {
                     l.glyph()
                 });

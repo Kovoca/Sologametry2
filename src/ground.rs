@@ -20,7 +20,7 @@
 //! be legible.
 
 use crate::building::{Building, Fixture};
-use crate::townplan::{Lot, Plan, TILES_PER_PLOT};
+use crate::townplan::{Lot, Plan, StreetClass, TILES_PER_PLOT};
 use crate::vehicle::{Part, Vehicle};
 use crate::world::Biome;
 
@@ -45,6 +45,11 @@ pub enum Tile {
     // --- made ground ---
     Road,
     Pavement,
+    /// A painted line. **This is what makes a road two-way** — a centre
+    /// line between the two directions, or a divider between lanes.
+    Marking,
+    /// A motorway's hard shoulder: surface you stop on, not drive on.
+    Shoulder,
 
     // --- built ---
     Wall,
@@ -71,6 +76,8 @@ impl Tile {
             Tile::Tree => 'T',
             Tile::Road => '=',
             Tile::Pavement => '-',
+            Tile::Marking => ':',
+            Tile::Shoulder => ';',
             Tile::Wall => '#',
             Tile::Floor => '.',
             Tile::Door => '/',
@@ -230,6 +237,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
             let runs_ns = lot_at(0, -1) == Lot::Street || lot_at(0, 1) == Lot::Street;
             let runs_ew = lot_at(-1, 0) == Lot::Street || lot_at(1, 0) == Lot::Street;
             let mid = t / 2;
+            let junction = runs_ns && runs_ew;
             let across = match (runs_ns, runs_ew) {
                 (true, true) => (iy - mid).abs().min((ix - mid).abs()),
                 (true, false) => (ix - mid).abs(),
@@ -237,15 +245,14 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
                 // A stub of road going nowhere: still a bit of surface.
                 (false, false) => (ix - mid).abs().max((iy - mid).abs()),
             };
-            // **A residential carriageway is 5-6 m** with a 2 m pavement
-            // either side. The rest of the plot is verge and frontage.
-            if across <= 3 {
-                Tile::Road
-            } else if across <= 5 {
-                Tile::Pavement
-            } else {
-                open_ground(seed, plan.ground, gx, gy)
-            }
+            let class = plan
+                .street_class(px as usize, py as usize)
+                .unwrap_or(StreetClass::Lane);
+            // How far along the street are we? Markings are dashed, and
+            // a dash has to line up along the road, not across it.
+            let along = if runs_ns { gy } else { gx };
+            cross_section(class, across, along, junction)
+                .unwrap_or_else(|| open_ground(seed, plan.ground, gx, gy))
         }
         Lot::Open => open_ground(seed, plan.ground, gx, gy),
         Lot::Park => {
@@ -314,6 +321,76 @@ fn building_tile(
 
 /// **The inside of a shop, laid out the way one is.**
 ///
+/// **What you find at a given distance from the centre line.**
+///
+/// Every figure is a real cross-section, because the alternative is
+/// picking widths that look right and getting a town where a country lane
+/// and a trunk road are the same object. `None` means you are past the
+/// edge of the corridor and standing on whatever the country is.
+///
+/// The lane widths are the ones that get built: **2.75 m is the narrowest
+/// anybody lays**, 3.65 m is standard and what a motorway uses. Which is
+/// why a lane's two directions share 5.5 m with no line down it (you do
+/// not mark a road that narrow — the two directions just give way), while
+/// a motorway needs 11 m a side for its three.
+fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) -> Option<Tile> {
+    // **Lines are dashed, and the dash gets longer as the road gets
+    // faster** — an ordinary centre line is a 2 m mark with a 7 m gap, and
+    // a lane line at motorway speed is a long mark with a short gap,
+    // because at 110 km/h a 2 m dash is gone before you have seen it.
+    // Solid means something specific (do not cross), so the edge of a
+    // carriageway is solid and the line between lanes is not.
+    let dashed = |mark: i64, period: i64| {
+        if junction {
+            // Nothing is painted through a junction; that is where the
+            // lines stop and give way.
+            Tile::Road
+        } else if along.rem_euclid(period) < mark {
+            Tile::Marking
+        } else {
+            Tile::Road
+        }
+    };
+    let centre_line = dashed(2, 9);
+    let lane_line = dashed(4, 6);
+    let edge_line = if junction { Tile::Road } else { Tile::Marking };
+    match class {
+        // ~10 m corridor: 5.5 m shared, 2 m footway each side.
+        StreetClass::Lane => match across {
+            0..=2 => Some(Tile::Road),
+            3..=4 => Some(Tile::Pavement),
+            _ => None,
+        },
+        // ~13 m: 7.3 m of two marked lanes, 2.5 m footways.
+        StreetClass::Road => match across {
+            0 => Some(centre_line),
+            1..=3 => Some(Tile::Road),
+            4..=6 => Some(Tile::Pavement),
+            _ => None,
+        },
+        // ~25 m: a reserve, then 7.3 m of two lanes each way, then footways.
+        StreetClass::Dual => match across {
+            0..=1 => Some(Tile::Grass), // central reserve
+            2 | 9 => Some(edge_line),   // solid: the edge of the carriageway
+            5 => Some(lane_line),       // dashed: between the two lanes
+            3..=8 => Some(Tile::Road),
+            10..=12 => Some(Tile::Pavement),
+            _ => None,
+        },
+        // ~33 m, which is the whole plot: reserve, 11 m of three lanes
+        // each way, and a 3.3 m hard shoulder. **No footway** — you cannot
+        // walk on a motorway, and a town it runs through is cut in two.
+        StreetClass::Motorway => match across {
+            0..=1 => Some(Tile::Grass),
+            2 | 12 => Some(edge_line),
+            5 | 9 => Some(lane_line),
+            3..=11 => Some(Tile::Road),
+            13..=16 => Some(Tile::Shoulder),
+            _ => None,
+        },
+    }
+}
+
 /// Tills across the front by the door, because that is where you pay on
 /// the way out. Aisles of shelving through the middle. Stockroom racking
 /// along the back wall, where the lorries come to. This is `building.rs`'s

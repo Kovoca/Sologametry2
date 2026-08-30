@@ -17,7 +17,7 @@ use scale_sim::network::Network;
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
-use scale_sim::townplan::{Lot, Plan, TILES_PER_PLOT};
+use scale_sim::townplan::{Lot, Plan, StreetClass, TILES_PER_PLOT};
 use scale_sim::vehicle::Vehicle;
 use scale_sim::world::World;
 
@@ -45,7 +45,7 @@ fn main() {
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--where" => place = it.next().unwrap_or_else(|| "street".into()),
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--where street|shop|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--where street|lane|road|dual|motorway|shop|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -87,6 +87,14 @@ fn main() {
         "edge" => Lot::Open,
         _ => Lot::Street,
     };
+    // If they asked for a size of road, only streets of that size will do.
+    let want_class = match place.as_str() {
+        "lane" => Some(StreetClass::Lane),
+        "road" => Some(StreetClass::Road),
+        "dual" => Some(StreetClass::Dual),
+        "motorway" => Some(StreetClass::Motorway),
+        _ => None,
+    };
     let mut found = (plan.width / 2, plan.height / 2);
     'outer: for r in 0..plan.width {
         for y in 0..plan.height {
@@ -94,7 +102,10 @@ fn main() {
                 let d = (x as i64 - plan.width as i64 / 2)
                     .abs()
                     .max((y as i64 - plan.height as i64 / 2).abs());
-                if d as usize == r && plan.at(x, y) == want {
+                if d as usize == r
+                    && plan.at(x, y) == want
+                    && want_class.is_none_or(|c| plan.street_class(x, y) == Some(c))
+                {
                     found = (x, y);
                     break 'outer;
                 }
@@ -127,9 +138,18 @@ fn main() {
     );
     println!("  the town stands in {ground_biome:?}");
     println!();
+    if let Some(c) = plan.street_class(found.0, found.1) {
+        println!(
+            "  the nearest street is a {} — {} m of running surface",
+            c.name(),
+            c.carriageway_half_m() * 2 + 1
+        );
+        println!();
+    }
     print!("{}", g.render(Some(centre)));
     println!();
-    println!("  @ you   = road   - pavement   # wall   / door   o window   . floor");
+    println!("  @ you   = road   : lane marking   ; hard shoulder   - pavement");
+    println!("  # wall   / door   o window   . floor");
     println!("  $ till  S shelving  R racking  L loading bay");
     println!("  \" grass  T tree  * scrub  , sand  ^ rock  ~ water");
     println!("  E engine  @ seat  o wheel  = cargo  ! controls  b battery  a alternator");

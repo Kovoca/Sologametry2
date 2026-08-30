@@ -4,12 +4,53 @@
 
 use scale_sim::building::Fixture;
 use scale_sim::ground::{Ground, Tile};
-use scale_sim::townplan::{Lot, Plan, TILES_PER_PLOT};
+use scale_sim::townplan::{Lot, Plan, StreetClass, TILES_PER_PLOT};
 use scale_sim::vehicle::Vehicle;
 use scale_sim::world::Biome;
 
 fn a_town() -> Plan {
     Plan::lay_out_on(20260828, 4242, 400_000.0, 32, Biome::Grassland)
+}
+
+fn a_city() -> Plan {
+    // Big enough to have a trunk route driven through it.
+    Plan::lay_out_on(20260828, 4242, 2_500_000.0, 32, Biome::Grassland)
+}
+
+/// **Walk across a street and count what is under your feet.** Returns the
+/// running surface and the footway, in metres, for a plain stretch of the
+/// given class — not a junction, which legitimately carries both roads.
+fn walk_across(plan: &Plan, class: StreetClass) -> (usize, usize) {
+    let t = TILES_PER_PLOT as i64;
+    for y in 1..plan.height - 1 {
+        for x in 1..plan.width - 1 {
+            if plan.at(x, y) != Lot::Street || plan.street_class(x, y) != Some(class) {
+                continue;
+            }
+            let ns = plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street;
+            let ew = plan.at(x - 1, y) == Lot::Street || plan.at(x + 1, y) == Lot::Street;
+            if ns == ew {
+                continue; // a crossroads, or a stub going nowhere
+            }
+            let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
+            let g = Ground::around(1, plan, at, 48);
+            let (mut surface, mut foot) = (0, 0);
+            for k in -20..=20i64 {
+                let (gx, gy) = if ns { (at.0 + k, at.1) } else { (at.0, at.1 + k) };
+                let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
+                if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
+                    continue;
+                }
+                match g.at(vx as usize, vy as usize) {
+                    Tile::Road | Tile::Marking | Tile::Shoulder => surface += 1,
+                    Tile::Pavement => foot += 1,
+                    _ => {}
+                }
+            }
+            return (surface, foot);
+        }
+    }
+    panic!("no plain stretch of {class:?} in this town");
 }
 
 fn stand_on(plan: &Plan, want: Lot) -> (i64, i64) {
@@ -49,6 +90,9 @@ fn a_street_is_not_thirty_two_metres_of_tarmac() {
     'find: for y in 1..plan.height - 1 {
         for x in 1..plan.width - 1 {
             if plan.at(x, y) != Lot::Street {
+                continue;
+            }
+            if plan.street_class(x, y) != Some(StreetClass::Lane) {
                 continue;
             }
             let ns = plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street;
@@ -161,4 +205,89 @@ fn you_can_stand_on_a_lorry_but_not_in_a_shelf() {
     assert!(!Tile::Wall.walkable());
     assert!(!Tile::Fitting(Fixture::Shelving).walkable());
     assert!(Tile::Fitting(Fixture::Till).walkable());
+}
+
+#[test]
+fn a_road_is_as_big_as_what_uses_it() {
+    // **The whole point.** A town whose streets are all one width is a
+    // housing estate drawn by somebody who has never seen one. By length
+    // the UK is about 1% motorway, 12% A-road and 87% minor, and the
+    // widths are not close: a residential lane is 5 m of shared surface, a
+    // motorway is 33 m of corridor.
+    let town = a_town();
+    let (lane, lane_foot) = walk_across(&town, StreetClass::Lane);
+    let (road, road_foot) = walk_across(&town, StreetClass::Road);
+    let (dual, _) = walk_across(&town, StreetClass::Dual);
+    let (motorway, motorway_foot) = walk_across(&a_city(), StreetClass::Motorway);
+
+    assert!(
+        lane < road && road < dual && dual < motorway,
+        "not a hierarchy: lane {lane} m, road {road} m, dual {dual} m, motorway {motorway} m"
+    );
+
+    // **Every one of them is two-way.** The narrowest carriageway anybody
+    // builds is two lanes of about 2.5 m; a lane that could not fit two
+    // cars passing would be a driveway.
+    assert!(lane >= 5, "a {lane} m lane is single-track");
+    // Anything above a lane has to let two lorries meet: an artic is
+    // 2.55 m wide, so 7 m of two 3.65 m lanes is the standard.
+    for (name, w) in [("road", road), ("dual", dual), ("motorway", motorway)] {
+        assert!(w >= 7, "two artics cannot pass on {w} m of {name}");
+    }
+
+    // Footways exist on streets people live on...
+    assert!(lane_foot >= 2 && road_foot >= 2, "a street with nowhere to walk");
+    // ...and not on a motorway. That is what severance means: the town
+    // either side of it is joined by bridges or not at all.
+    assert_eq!(
+        motorway_foot, 0,
+        "a footway down the side of a motorway"
+    );
+}
+
+#[test]
+fn the_lines_down_a_road_are_dashed() {
+    // A solid line means something specific — do not cross — so the edge
+    // of a carriageway is solid and the line between lanes is not. Painting
+    // every line solid turns a road into a set of rails.
+    let plan = a_town();
+    let t = TILES_PER_PLOT as i64;
+    let mut found = false;
+    'find: for y in 1..plan.height - 1 {
+        for x in 1..plan.width - 1 {
+            if plan.at(x, y) != Lot::Street
+                || plan.street_class(x, y) != Some(StreetClass::Road)
+            {
+                continue;
+            }
+            let ns = plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street;
+            let ew = plan.at(x - 1, y) == Lot::Street || plan.at(x + 1, y) == Lot::Street;
+            if ns == ew {
+                continue;
+            }
+            let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
+            let g = Ground::around(1, &plan, at, 40);
+            // Walk *along* the centre line and count mark against gap.
+            let (mut mark, mut gap) = (0, 0);
+            for k in -14..=14i64 {
+                let (gx, gy) = if ns { (at.0, at.1 + k) } else { (at.0 + k, at.1) };
+                let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
+                if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
+                    continue;
+                }
+                match g.at(vx as usize, vy as usize) {
+                    Tile::Marking => mark += 1,
+                    Tile::Road => gap += 1,
+                    _ => {}
+                }
+            }
+            assert!(
+                mark > 0 && gap > mark,
+                "a centre line of {mark} m painted and {gap} m clear is not a dashed line"
+            );
+            found = true;
+            break 'find;
+        }
+    }
+    assert!(found, "no two-way road in this town to look at");
 }

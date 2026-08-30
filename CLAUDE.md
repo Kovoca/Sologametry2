@@ -645,12 +645,33 @@ plan and tile coordinates, so no chunk needs its neighbour to exist and
 returning gives the same ground. **Only near the person** (A1.6): 160
 tiles on foot, 288 in a vehicle.
 
-- **A street is not 32 m of tarmac.** A residential carriageway is 5-6 m
-  with 2 m pavements; the rest of the plot is verge and frontage. And a
-  street runs *one way* — orientation comes from its neighbours, because
-  taking the nearer centreline regardless put a crossroads in every single
-  street plot and paved three quarters of the town. A real junction is
-  ~57% made surface and a plain lane ~35%, which is now asserted.
+- **A street is not 32 m of tarmac**, and a street runs *one way* —
+  orientation comes from its neighbours, because taking the nearer
+  centreline regardless put a crossroads in every single street plot and
+  paved three quarters of the town.
+- **A road is as big as what uses it.** Four classes, all real
+  cross-sections, all two-way:
+
+  | | carriageway | corridor | footway |
+  |---|---|---|---|
+  | lane | 5 m shared, no centre line | ~10 m | 2 m |
+  | road | 7.3 m, two lanes of 3.65 | ~13 m | 2.5 m |
+  | dual | 2 x 7.3 + reserve | ~25 m | yes |
+  | motorway | 2 x 11 (three lanes) + hard shoulders | ~33 m | **none** |
+
+  2.75 m is the narrowest lane anybody lays and 3.65 m the standard, which
+  is why a lane's two directions share 5 m unmarked (you do not paint a
+  centre line that narrow) and a motorway needs 11 m a side. A motorway
+  corridor fills a whole 32 m plot and has no footway: that is severance,
+  and it is why a trunk route through a town cuts it in two.
+- **Lines are dashed, and solid means something.** A carriageway edge is
+  solid, the line between lanes is not; the dash lengthens with speed
+  (2 m mark / 7 m gap on a centre line). Painting them all solid turns a
+  road into a set of rails. Nothing is painted through a junction.
+- **Size comes from rank among the through-routes, not from distance to
+  the middle.** The street grid is deliberately irregular, so "within a
+  plot of centre" matched nothing on most towns and silently gave every
+  road the same width again. Ranking always yields a hierarchy.
 - **A vehicle is walkable.** You stand on the seat to drive and the bed to
   load; that is the whole reason parts are tiles rather than a mode.
 - **Furniture mostly is not.** You stand at a till and in front of
