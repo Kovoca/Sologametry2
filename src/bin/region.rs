@@ -167,10 +167,10 @@ fn main() {
     // Run it.
     let e = &mut region.economy;
     println!(
-        " day | season | harvest |  grain | grain cover | food | food cover | haul | event"
+        "yr:day | season | harvest |  grain | grain cover | food | food cover | haul | event"
     );
     println!(
-        "-----+--------+---------+--------+-------------+------+------------+------+---------"
+        "-------+--------+---------+--------+-------------+------+------------+------+---------"
     );
 
     let mut last = String::new();
@@ -214,9 +214,14 @@ fn main() {
 
         if !note.is_empty() || day < 2 || day % 20 == 0 || day + 1 == args.days {
             let grain = Commodity::Grain;
+            // Calendar date, not loop step: a region starts mid-harvest
+            // rather than in the depths of winter, so day-since-start and
+            // where the year actually is are different things.
+            let yr = e.ledger.day / scale_sim::econ::DAYS_PER_YEAR;
+            let doy = e.ledger.day % scale_sim::econ::DAYS_PER_YEAR;
             println!(
-                "{:>4} | {:<6} | {:>7.2} | {:>6.0} | {:>11.0} | {:>4.0} | {:>10.1} | {:>4} | {}{}",
-                day,
+                "{:>6} | {:<6} | {:>7.2} | {:>6.0} | {:>11.0} | {:>4.0} | {:>10.1} | {:>4} | {}{}",
+                format!("{yr}:{doy:03}"),
                 e.season().name(),
                 e.harvest_today(),
                 e.price(0, grain),
