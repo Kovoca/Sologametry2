@@ -17,7 +17,7 @@ use crate::econ::{
     Site, SiteKind, DAYS_PER_YEAR, N_COMMODITIES,
 };
 use crate::geology::Geology;
-use crate::network::Network;
+use crate::network::{Network, Road};
 use crate::polity::Polities;
 use crate::settlement::{Kind, Settlements, NO_SETTLEMENT};
 use crate::world::World;
@@ -99,6 +99,100 @@ fn cap(pairs: &[(Commodity, f64)]) -> [f64; N_COMMODITIES] {
         b[c as usize] = v;
     }
     b
+}
+
+/// What it costs to move a tonne one kilometre over a given class of
+/// ground. A nation's freight bill is not its map distance — it is what
+/// the roads it actually built let it do.
+fn rate_for(road: Road, navigable: bool) -> f64 {
+    if navigable {
+        return WATER_COST_PER_TKM;
+    }
+    match road {
+        // A trunk route is what heavy freight is for. Local roads and
+        // tracks cost more per tonne-kilometre; open country costs far
+        // more, which is why goods follow roads even when the road is the
+        // long way round.
+        Road::Highway => ROAD_COST_PER_TKM * 0.75,
+        Road::Road => ROAD_COST_PER_TKM,
+        Road::Track => ROAD_COST_PER_TKM * 1.8,
+        Road::None => ROAD_COST_PER_TKM * 5.0,
+    }
+}
+
+/// Freight cost from `from` to every cell, following the road network.
+///
+/// Dijkstra over the map with each step priced by the road under it, so
+/// the cost between two towns is what the country's actual roads charge
+/// rather than the distance a crow would fly. Water is impassable to a
+/// lorry; navigable rivers are cheap.
+fn freight_field(world: &World, net: &Network, from: usize) -> (Vec<f64>, Vec<f64>) {
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+    use crate::world::Biome;
+
+    #[derive(Clone, Copy, PartialEq)]
+    struct C(f64);
+    impl Eq for C {}
+    impl PartialOrd for C {
+        fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
+            Some(self.0.total_cmp(&o.0))
+        }
+    }
+    impl Ord for C {
+        fn cmp(&self, o: &Self) -> std::cmp::Ordering {
+            self.0.total_cmp(&o.0)
+        }
+    }
+
+    let (w, h) = (world.width, world.height);
+    let mut best = vec![f64::INFINITY; w * h];
+    // Kilometres along the cheapest path, which is not the same as the
+    // shortest path: a longer run on a highway beats a short scramble over
+    // a col, and reporting the road distance is what shows the detour.
+    let mut km = vec![f64::INFINITY; w * h];
+    let mut heap: BinaryHeap<Reverse<(C, usize)>> = BinaryHeap::new();
+    best[from] = 0.0;
+    km[from] = 0.0;
+    heap.push(Reverse((C(0.0), from)));
+
+    const D: [(i32, i32); 8] = [
+        (-1, -1), (0, -1), (1, -1),
+        (-1, 0), (1, 0),
+        (-1, 1), (0, 1), (1, 1),
+    ];
+
+    while let Some(Reverse((C(d), i))) = heap.pop() {
+        if d > best[i] {
+            continue;
+        }
+        let (x, y) = ((i % w) as i32, (i / w) as i32);
+        for (dx, dy) in D {
+            let ny = y + dy;
+            if ny < 0 || ny >= h as i32 {
+                continue;
+            }
+            let nx = (x + dx).rem_euclid(w as i32) as usize;
+            let j = ny as usize * w + nx;
+
+            let navigable = net.navigable[j];
+            if !navigable && matches!(world.biomes[j], Biome::Ocean | Biome::Shallows) {
+                continue; // no road across water
+            }
+            let step_km = if dx != 0 && dy != 0 {
+                KM_PER_CELL * std::f64::consts::SQRT_2
+            } else {
+                KM_PER_CELL
+            };
+            let nd = d + step_km * rate_for(net.road[j], navigable);
+            if nd < best[j] {
+                best[j] = nd;
+                km[j] = km[i] + step_km;
+                heap.push(Reverse((C(nd), j)));
+            }
+        }
+    }
+    (best, km)
 }
 
 /// Shortest distance between two cells on the cylinder, in kilometres.
@@ -475,36 +569,81 @@ impl Region {
             powered: true,
         });
 
-        // --- Routes: every town connected to the largest, at a freight
-        // cost taken from the real distance and whether there is water ---
-        let w = world.width;
+        // --- Routes, following the roads the country actually built ---
+        //
+        // Two things were wrong with joining every town to the capital by a
+        // straight line. Distance was as the crow flies, so a haul over a
+        // mountain range cost the same as one across a plain; and the
+        // topology was a star, so two neighbouring cities traded through a
+        // capital that might be a thousand kilometres away. No nation's
+        // settlements sit off its own road network.
+        //
+        // Costs now come from a Dijkstra over the generated network, priced
+        // by the road under each step, and the towns are joined by a
+        // minimum spanning tree over those costs — so the shape of the
+        // economy is the shape of the roads.
         let mut routes = Vec::new();
-        for m in 1..towns.len() {
-            let (a, b) = (settlements.list[towns[0]].cell, settlements.list[towns[m]].cell);
-            let km = distance_km(a, b, w);
+        if towns.len() > 1 {
+            let fields: Vec<(Vec<f64>, Vec<f64>)> = towns
+                .iter()
+                .map(|&t| freight_field(world, network, settlements.list[t].cell))
+                .collect();
+            let cost = |a: usize, b: usize| fields[a].0[settlements.list[towns[b]].cell];
+            let road_km = |a: usize, b: usize| fields[a].1[settlements.list[towns[b]].cell];
 
-            // Two coastal or two river towns move goods by water, which is
-            // an order of magnitude cheaper and is why such towns trade
-            // freely while inland ones do not.
-            let by_water = (settlements.list[towns[0]].coastal
-                && settlements.list[towns[m]].coastal)
-                || (network.navigable[a] && network.navigable[b]);
-            let rate = if by_water { WATER_COST_PER_TKM } else { ROAD_COST_PER_TKM };
+            // Prim's algorithm: grow one connected network from the capital
+            // outward, always adding the town that is cheapest to reach
+            // from what is already joined up.
+            let mut joined = vec![false; towns.len()];
+            joined[0] = true;
+            for _ in 1..towns.len() {
+                let mut best: Option<(usize, usize, f64)> = None;
+                for a in 0..towns.len() {
+                    if !joined[a] {
+                        continue;
+                    }
+                    for b in 0..towns.len() {
+                        if joined[b] {
+                            continue;
+                        }
+                        let c = cost(a, b);
+                        if !c.is_finite() {
+                            continue; // no overland route at all
+                        }
+                        if best.is_none_or(|(_, _, bc)| c < bc) {
+                            best = Some((a, b, c));
+                        }
+                    }
+                }
+                let Some((a, b, c)) = best else { break };
+                joined[b] = true;
 
-            routes.push(Route {
-                name: format!(
-                    "{} to {} ({:.0} km by {})",
-                    markets[0].name,
-                    markets[m].name,
-                    km,
-                    if by_water { "water" } else { "road" }
-                ),
-                a: 0,
-                b: m,
-                freight_cost: km * rate,
-                capacity: food_day * 2.0,
-                open: true,
-            });
+                let straight = distance_km(
+                    settlements.list[towns[a]].cell,
+                    settlements.list[towns[b]].cell,
+                    world.width,
+                );
+                let along = road_km(a, b);
+                routes.push(Route {
+                    name: format!(
+                        "{} to {} ({:.0} km of road for a {:.0} km gap)",
+                        markets[a].name, markets[b].name, along, straight
+                    ),
+                    a,
+                    b,
+                    freight_cost: c,
+                    capacity: food_day * 2.0,
+                    open: true,
+                });
+            }
+
+            let stranded = joined.iter().filter(|&&j| !j).count();
+            if stranded > 0 {
+                notes.push(format!(
+                    "{stranded} of this nation's modelled towns have no overland route \
+                     to the rest of it"
+                ));
+            }
         }
 
         let mut economy = Economy {

@@ -142,6 +142,95 @@ fn freight_costs_come_from_real_distances() {
 }
 
 #[test]
+fn every_town_is_on_its_nations_road_network() {
+    // No country's settlements sit off its own roads. The routes must form
+    // one connected network reaching every modelled town, not a star of
+    // straight lines drawn between them.
+    for seed in [1u64, 42, 20260828] {
+        let p = planet(seed);
+        for rank in 0..5 {
+            let Some(r) = region_of(&p, rank, Doctrine::Prudent) else {
+                continue;
+            };
+            let n = r.economy.markets.len();
+            if n < 2 {
+                continue;
+            }
+
+            let mut adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+            for route in &r.economy.routes {
+                adj[route.a].push(route.b);
+                adj[route.b].push(route.a);
+            }
+            let mut seen = vec![false; n];
+            let mut stack = vec![0usize];
+            seen[0] = true;
+            while let Some(m) = stack.pop() {
+                for &j in &adj[m] {
+                    if !seen[j] {
+                        seen[j] = true;
+                        stack.push(j);
+                    }
+                }
+            }
+            let stranded = seen.iter().filter(|&&s| !s).count();
+            assert_eq!(
+                stranded, 0,
+                "seed {seed} nation {rank}: {stranded} of {n} towns are off the network"
+            );
+
+            // A tree over n towns has exactly n-1 links: no redundant
+            // straight-line shortcuts left over from the old star.
+            assert_eq!(
+                r.economy.routes.len(),
+                n - 1,
+                "seed {seed} nation {rank}: {} routes for {n} towns",
+                r.economy.routes.len()
+            );
+        }
+    }
+}
+
+#[test]
+fn road_hauls_are_never_shorter_than_the_crow_flies() {
+    // The whole point of routing over the network: freight follows roads,
+    // and roads bend round terrain. A haul reported as shorter than the
+    // straight-line gap would mean the costs had come loose from the map.
+    let p = planet(20260828);
+    let mut detours = 0;
+    for rank in 0..6 {
+        let Some(r) = region_of(&p, rank, Doctrine::Prudent) else {
+            continue;
+        };
+        for route in &r.economy.routes {
+            // The name carries both figures: "N km of road for an M km gap".
+            let nums: Vec<f64> = route
+                .name
+                .split(|c: char| !c.is_ascii_digit())
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse().ok())
+                .collect();
+            if nums.len() < 2 {
+                continue;
+            }
+            let (road, direct) = (nums[0], nums[1]);
+            assert!(
+                road >= direct - 1.0,
+                "{}: {road} km of road for a {direct} km gap is shorter than a straight line",
+                route.name
+            );
+            if road > direct * 1.3 {
+                detours += 1;
+            }
+        }
+    }
+    assert!(
+        detours > 0,
+        "not one route detoured round anything — freight is ignoring the terrain"
+    );
+}
+
+#[test]
 fn populations_are_the_ones_the_world_generated() {
     // The economy must run on the world's numbers, not on numbers of its
     // own. If these drift apart, the two halves are only pretending to be

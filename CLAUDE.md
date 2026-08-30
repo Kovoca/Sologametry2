@@ -133,6 +133,15 @@ geology put coal (a nation without it imports fuel and gains a dependency
 that can be cut), and freight costs come from real distances and whether
 there is navigable water between the towns. Nothing here invents capacity.
 
+**A nation's routes follow the roads it actually built.** Freight costs
+come from a Dijkstra over the generated network priced by the road class
+under each step, and the towns are joined by a minimum spanning tree over
+those costs. No settlement sits off its own country's network. Straight
+lines to the capital were wrong twice over: distance ignored terrain, and
+the star topology made two neighbouring cities trade through a capital a
+thousand kilometres away. Typical result — 1,196 km of road for a 596 km
+gap where a range is in the way.
+
 `region::Nations` folds several nations into **one** economy with lanes
 between them — one ledger for the whole planet, because that is what makes
 conservation mean anything across a border. Nations are maritime if their
