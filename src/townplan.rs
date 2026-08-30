@@ -25,6 +25,7 @@
 //!   law, and it holds remarkably well across cities and centuries.
 
 use crate::rng::Rng;
+use crate::world::Biome;
 
 /// Metres across one plot.
 pub const METRES_PER_PLOT: f64 = 25.0;
@@ -82,6 +83,14 @@ pub struct Plan {
     pub width: usize,
     pub height: usize,
     pub lots: Vec<Lot>,
+    /// **The country the town is standing in.**
+    ///
+    /// A town is not built on a blank sheet: settle in a green zone and
+    /// there are trees between the houses and fields beyond the last
+    /// street, settle in badlands and there is scrub. The unbuilt plots
+    /// are that ground showing through, which is the whole reason the
+    /// locality above this exists.
+    pub ground: Biome,
 }
 
 impl Plan {
@@ -98,6 +107,17 @@ impl Plan {
     /// because a perfectly regular grid reads as a spreadsheet rather than
     /// a place.
     pub fn lay_out(seed: u64, cell: usize, population: f64, size: usize) -> Self {
+        Plan::lay_out_on(seed, cell, population, size, Biome::Grassland)
+    }
+
+    /// The same, on ground of a known kind.
+    pub fn lay_out_on(
+        seed: u64,
+        cell: usize,
+        population: f64,
+        size: usize,
+        ground: Biome,
+    ) -> Self {
         let mut rng = Rng::new(seed ^ (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let mut lots = vec![Lot::Open; size * size];
         let mid = size as f64 / 2.0;
@@ -193,6 +213,7 @@ impl Plan {
             width: size,
             height: size,
             lots,
+            ground,
         }
     }
 
@@ -213,11 +234,36 @@ impl Plan {
         let mut out = String::with_capacity((self.width + 1) * self.height);
         for y in 0..self.height {
             for x in 0..self.width {
-                out.push(self.at(x, y).glyph());
+                let l = self.at(x, y);
+                out.push(if l == Lot::Open {
+                    ground_glyph(self.ground)
+                } else {
+                    l.glyph()
+                });
             }
             out.push('\n');
         }
         out
+    }
+}
+
+/// What unbuilt ground looks like, which is whatever country the town was
+/// put down in.
+pub fn ground_glyph(b: Biome) -> char {
+    use Biome::*;
+    match b {
+        Ocean | Shallows => '~',
+        Beach => ',',
+        Desert => '.',
+        Savanna => ';',
+        Grassland => '"',
+        Shrubland => '*',
+        Forest | Rainforest => 'f',
+        Swamp => 's',
+        Taiga => 't',
+        Tundra => '-',
+        Mountain => '^',
+        Snowcap => 'A',
     }
 }
 

@@ -38,9 +38,30 @@
 
 /// One component of a vehicle.
 ///
-/// Deliberately coarse for now — a frame section, not every bolt. The
-/// finer breakdown (individual panels, lights, seats, the interior you can
-/// walk about in) is what this grows into.
+/// ## What CDDA has, and what is here
+///
+/// CDDA's list runs to a couple of hundred parts, and the organising idea
+/// in it is worth more than the list: **a vehicle is a mobile building**.
+/// It has structure, power, storage, workstations, protection and
+/// controls, which is the same set a shop or a mill has — and is exactly
+/// why the design doc asks for the part system to be generalised to
+/// buildings rather than reinvented there.
+///
+/// Represented here, because each does work in this simulation:
+/// structure, wheels, engines, fuel, seating, cargo, **controls** (a part
+/// you can lose, after which it does not move), **electrics** (battery,
+/// alternator, solar — the grid already models power, so a vehicle can be
+/// one), **refrigeration** (this economy has spoilage and a reefer is the
+/// difference between hauling food and hauling grain), a **workshop rig**
+/// (the fault-response crews already exist and a rig is what they carry),
+/// and **land gear** (a plough against eight person-hours a tonne of
+/// grain is the whole story of agricultural labour).
+///
+/// Deliberately not here yet, and each for a reason rather than an
+/// oversight: doors, roofs, boards and windows (they matter once weather
+/// and the walkable interior exist), armour and turret mounts (they
+/// matter once C1's conflict does), lights (once there is night), and
+/// kitchens, forges and labs (once crafting does).
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Part {
     /// Structural section. Carries load and holds everything else on.
@@ -56,6 +77,42 @@ pub enum Part {
     Tank(u32),
     /// The driver has to sit somewhere.
     Seat,
+    /// **The controls.** Wheel, pedals, the rest of it.
+    ///
+    /// A part you can lose, and the vehicle does not move without it —
+    /// which is the property that makes a part list worth having rather
+    /// than a specification sheet.
+    Controls,
+    /// Stores electricity, in kilowatt-hours.
+    ///
+    /// A lorry's starter battery is 12 V and 220 Ah, so about 2.6 kWh; a
+    /// refrigerated trailer carries far more.
+    Battery(u32),
+    /// Makes electricity while the engine turns, in watts *(real: a truck
+    /// alternator is 1.5-3 kW)*.
+    Alternator(u32),
+    /// Makes electricity from daylight, in watts *(real: about 200 W to
+    /// the square metre at peak)*.
+    SolarPanel(u32),
+    /// **Refrigeration**, in watts of cooling.
+    ///
+    /// A transport refrigeration unit holding a trailer at -20 C draws
+    /// 5-15 kW and burns two to four litres an hour doing it. It is the
+    /// difference between hauling food and hauling grain, and in an
+    /// economy with spoilage in the ledger that is a real distinction.
+    Refrigeration(u32),
+    /// A workshop in the back: tools, a bench, a welder.
+    ///
+    /// The fault-response crews already drive to breakdowns; this is what
+    /// they are carrying when they get there.
+    WorkshopRig,
+    /// Ploughs, drills, harvesters — gear that works the ground rather
+    /// than carrying anything.
+    ///
+    /// Eight person-hours to bring in a tonne of grain is the figure the
+    /// whole agricultural labour model rests on, and mechanisation is what
+    /// moves it.
+    LandGear { working_width_m: u32 },
 }
 
 impl Part {
@@ -92,6 +149,16 @@ impl Part {
             Part::CargoBay(kg) => 40.0 + 0.28 * kg as f64,
             Part::Tank(l) => 8.0 + 0.35 * l as f64,
             Part::Seat => 18.0,
+            Part::Controls => 25.0,
+            // Lead-acid runs about 25 kg the kilowatt-hour; lithium is a
+            // third of that and several times the price.
+            Part::Battery(kwh) => 6.0 + 25.0 * kwh as f64,
+            Part::Alternator(w) => 4.0 + 0.008 * w as f64,
+            // A panel is about 11 kg to the square metre and 200 W to it.
+            Part::SolarPanel(w) => 2.0 + 0.055 * w as f64,
+            Part::Refrigeration(w) => 120.0 + 0.030 * w as f64,
+            Part::WorkshopRig => 350.0,
+            Part::LandGear { working_width_m } => 200.0 * working_width_m as f64,
         }
     }
 
@@ -120,6 +187,13 @@ impl Part {
             Part::CargoBay(kg) => 4.0 + 0.012 * kg as f64,
             Part::Tank(l) => 1.0 + 0.02 * l as f64,
             Part::Seat => 3.0,
+            Part::Controls => 12.0,
+            Part::Battery(kwh) => 2.0 + 3.0 * kwh as f64,
+            Part::Alternator(w) => 1.0 + 0.004 * w as f64,
+            Part::SolarPanel(w) => 0.5 + 0.010 * w as f64,
+            Part::Refrigeration(w) => 40.0 + 0.012 * w as f64,
+            Part::WorkshopRig => 90.0,
+            Part::LandGear { working_width_m } => 25.0 * working_width_m as f64,
         }
     }
 
@@ -138,8 +212,15 @@ impl Part {
     /// hung from.
     pub fn prominence(self) -> u8 {
         match self {
+            Part::Controls => 7,
             Part::Seat => 6,
+            Part::Refrigeration(_) => 6,
+            Part::WorkshopRig => 6,
+            Part::LandGear { .. } => 6,
             Part::Engine(_) => 5,
+            Part::Battery(_) => 4,
+            Part::Alternator(_) => 3,
+            Part::SolarPanel(_) => 3,
             Part::CargoBay(_) => 4,
             Part::Tank(_) => 3,
             Part::Wheel { .. } => 2,
@@ -156,6 +237,13 @@ impl Part {
             Part::CargoBay(_) => '=',
             Part::Tank(_) => 'T',
             Part::Seat => '@',
+            Part::Controls => '!',
+            Part::Battery(_) => 'b',
+            Part::Alternator(_) => 'a',
+            Part::SolarPanel(_) => 'p',
+            Part::Refrigeration(_) => '*',
+            Part::WorkshopRig => 'w',
+            Part::LandGear { .. } => 'Y',
         }
     }
 
@@ -261,6 +349,7 @@ impl Vehicle {
             vec![
                 (Part::Frame { heavy: false }, 0, 0),
                 (Part::Seat, 0, 0),
+                (Part::Controls, 0, 0),
                 (Part::Wheel { heavy: false }, 0, 0),
                 (Part::CargoBay(80), 1, 0),
                 (Part::Wheel { heavy: false }, 1, 0),
@@ -277,6 +366,9 @@ impl Vehicle {
             (Part::Engine(90), 0, 0),
             (Part::Engine(0), 0, 1),
             (Part::Seat, 1, 0),
+            (Part::Controls, 1, 0),
+            (Part::Alternator(1500), 0, 0),
+            (Part::Battery(3), 0, 1),
             (Part::Frame { heavy: true }, 1, 1),
             (Part::Tank(70), 2, 1),
         ];
@@ -299,6 +391,9 @@ impl Vehicle {
         let mut p = vec![
             (Part::Engine(160), 0, 1),
             (Part::Seat, 1, 1),
+            (Part::Controls, 1, 1),
+            (Part::Alternator(2000), 0, 0),
+            (Part::Battery(3), 0, 2),
             (Part::Tank(150), 1, 2),
         ];
         for x in 0..8 {
@@ -322,6 +417,9 @@ impl Vehicle {
         let mut p = vec![
             (Part::Engine(330), 0, 1),
             (Part::Seat, 1, 1),
+            (Part::Controls, 1, 1),
+            (Part::Alternator(3000), 0, 0),
+            (Part::Battery(5), 0, 2),
             (Part::Tank(500), 2, 0),
         ];
         // Tractor unit, then the trailer behind it.
@@ -340,6 +438,20 @@ impl Vehicle {
             p.push((Part::CargoBay(3000), 5 + i, 1));
         }
         Vehicle::of("an artic", p)
+    }
+
+    /// **A refrigerated artic.** The same lorry with a fridge on the front
+    /// of the trailer and the generation to run it, which is what lets it
+    /// carry food rather than grain.
+    pub fn reefer() -> Self {
+        let mut v = Vehicle::artic();
+        v.name = "a refrigerated artic";
+        v.parts.push((Part::Refrigeration(12_000), 4, 1));
+        // A reefer carries its own generator set; the tractor's alternator
+        // comes nowhere near 12 kW around the clock.
+        v.parts.push((Part::Alternator(42_000), 4, 0));
+        v.parts.push((Part::Battery(20), 4, 2));
+        v
     }
 
     /// Empty weight, in tonnes.
@@ -362,6 +474,71 @@ impl Vehicle {
     /// Loaded weight, in tonnes.
     pub fn gross_t(&self) -> f64 {
         self.kerb_t() + self.payload_t()
+    }
+
+    /// **Whether it will move at all.**
+    ///
+    /// Needs something to drive it, something to steer with, and wheels
+    /// under it. This is the property that makes a part list worth having
+    /// rather than a specification sheet: a lorry with its controls
+    /// stripped is a shed, and everything that follows from that —
+    /// salvage, sabotage, a wreck you can rob for parts — needs the
+    /// question to be askable.
+    pub fn drivable(&self) -> bool {
+        let mut controls = false;
+        let mut wheels = 0;
+        let mut drive = false;
+        for p in self.kinds() {
+            match p {
+                Part::Controls => controls = true,
+                Part::Wheel { .. } => wheels += 1,
+                Part::Engine(kw) if kw > 0 => drive = true,
+                Part::Seat => {}
+                _ => {}
+            }
+        }
+        // Muscle counts: a bicycle has no engine and goes perfectly well.
+        controls && wheels >= 2 && (drive || self.power_kw() == 0.0)
+    }
+
+    /// Electricity it can make in a day, in kilowatt-hours.
+    ///
+    /// The alternator turns while the engine does; the panel works in
+    /// daylight, which averages about five useful hours a day across a
+    /// year in temperate country.
+    pub fn generation_kwh_per_day(&self) -> f64 {
+        let mut out = 0.0;
+        for p in self.kinds() {
+            match p {
+                Part::Alternator(w) => out += w as f64 / 1000.0 * 7.0,
+                Part::SolarPanel(w) => out += w as f64 / 1000.0 * 5.0,
+                _ => {}
+            }
+        }
+        out * self.condition
+    }
+
+    /// Electricity it needs in a day, in kilowatt-hours.
+    pub fn draw_kwh_per_day(&self) -> f64 {
+        self.kinds()
+            .map(|p| match p {
+                // A reefer runs around the clock; that is the point of it.
+                Part::Refrigeration(w) => w as f64 / 1000.0 * 24.0,
+                Part::WorkshopRig => 2.0,
+                _ => 0.0,
+            })
+            .sum()
+    }
+
+    /// **Whether the electrics balance**, which decides whether a reefer
+    /// holds its temperature or the load is spoiled by the time it lands.
+    pub fn powered(&self) -> bool {
+        self.draw_kwh_per_day() <= self.generation_kwh_per_day() + 1e-9
+    }
+
+    /// Whether it can carry food without spoiling it.
+    pub fn refrigerated(&self) -> bool {
+        self.kinds().any(|p| matches!(p, Part::Refrigeration(_))) && self.powered()
     }
 
     /// Cruising speed, in km/h.

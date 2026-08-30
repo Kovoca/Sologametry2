@@ -523,6 +523,25 @@ The design doc's *"tile-layered data model, generalizing CDDA's
 vehicle-part system to buildings"*, one step in. A vehicle is frames and
 engines and cargo bays; a shop is tills and shelving and a loading dock.
 
+### What CDDA has, and what is here
+
+CDDA's part list runs to a couple of hundred. The organising idea is worth
+more than the list: **a vehicle is a mobile building** — structure, power,
+storage, workstations, protection, controls — which is the same set a shop
+has, and exactly why the design doc wants one part system for both.
+
+Here, because each does work in this sim: structure, wheels, engines,
+fuel, seating, cargo, **controls** (lose them and it does not move),
+**electrics** (battery/alternator/solar — the grid already models power),
+**refrigeration** (this economy has spoilage; a reefer is the difference
+between hauling food and hauling grain), a **workshop rig** (fault crews
+already drive to breakdowns — this is what they carry), and **land gear**
+(8 person-hours a tonne of grain is what mechanisation moves).
+
+Deliberately absent, each for a reason: doors/roofs/windows (need weather
+and the walkable interior), armour and turrets (need C1's conflict),
+lights (need night), kitchens and forges (need crafting).
+
 **A vehicle is ground, not a mode.** You do not enter one, you stand on a
 tile of it: an artic is 17 m of occupied road with the seat at (1,1), and
 where you stand decides what you can reach. One tile is a metre, which
@@ -612,6 +631,46 @@ when there are two*:
 - `labour::update` ran **before** the shops sold, so every shop read as shut
   and rostered a third of its people. A cashier could not keep a room. Who
   worked today has to be counted after the day's trade, not before.
+
+## The scale ladder
+
+DF nests a world tile inside mid-level tiles and you pick a block of those
+to play on. This had no such middle — 16.4 km region cell straight to a
+25 m plot, a factor of 655 with nothing between, so there was no scale at
+which you could look at a valley.
+
+| | metres | nests | built |
+|---|---|---|---|
+| region cell | 16,384 | the world map | yes |
+| **locality** | **1,024** | 16 x 16 per cell | **yes** |
+| plot | 32 | 32 x 32 per locality | yes (`townplan`) |
+| tile | 1 | 32 x 32 per plot | no |
+
+16 x 32 x 32 = 16,384 — the same number all the way down, which is why the
+region cell is 16.384 km. `cargo run --release --bin zoom` walks it.
+
+### One cell, zoomed (`src/locality.rs`)
+
+Spec A1.3d: *interpolate the coarse fields, add higher-frequency
+variation*, store nothing. Both halves matter, and both were got wrong
+first:
+
+- **Do not re-derive the biome.** The coarse pass classifies by percentile
+  rank over land (CLAUDE.md already records why absolute cuts are
+  fragile), so re-classifying a zoomed patch against fixed thresholds
+  turned a mountain cell into flat desert. What you see at a kilometre is
+  the *transition* between two 16 km cells — forest thinning into
+  grassland over a couple of miles — so a patch takes its parent's country
+  or its neighbour's near that edge, dithered so the line is ragged.
+- **Detail must be smaller than the gap between bands**, or it stops
+  refining the coarse pass and starts overruling it.
+- **A river is a channel, not a lowland.** Marking every patch below a
+  threshold put water on a tenth of the cell in a scatter. It comes in
+  from one neighbour and leaves toward another, wanders, and is joined up
+  the whole way — an unjoined wander arrives in pieces.
+
+A town then stands **on** its locality: settle in a green zone and there
+are trees between the streets.
 
 ## A town's ground plan (`src/townplan.rs`)
 
