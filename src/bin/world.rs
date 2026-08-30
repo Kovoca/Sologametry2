@@ -1,4 +1,4 @@
-//! Generate a planet and run several of its nations as one trading world.
+﻿//! Generate a planet and run several of its nations as one trading world.
 //!
 //!   cargo run --release --bin world
 //!   cargo run --release --bin world -- --seed 20260828 --nations 6 --days 1100
@@ -145,16 +145,46 @@ fn main() {
     }
     println!();
 
+    // What each nation's roads cost to have and to keep. The trap this
+    // exposes is the point: hard country costs more per kilometre AND
+    // holds fewer people to pay for it.
+    let accounts = scale_sim::infrastructure::all_accounts(&world, &network, &polities);
+    println!("roads          km      hard      capital      upkeep/yr   per head/yr");
+    for (n, name) in nations.names.iter().enumerate() {
+        let a = &accounts[nations.polity[n] as usize];
+        // Everyone the roads serve, not merely the handful of cities
+        // modelled as markets. A nation's network is paid for by all of
+        // it, and dividing by the modelled few would flatter the sparse
+        // countries this figure exists to expose.
+        let pid = nations.polity[n];
+        let people: f64 = settlements
+            .list
+            .iter()
+            .filter(|s| s.polity == pid)
+            .map(|s| s.population as f64)
+            .sum();
+        println!(
+            "  {:<11} {:>7.0} {:>7.0}%   {:>10.0}M   {:>10.0}M   {:>10.2}",
+            name,
+            a.total_km(),
+            a.hard_going_km / a.total_km().max(1.0) * 100.0,
+            a.capital,
+            a.upkeep_per_year,
+            a.upkeep_per_capita(people),
+        );
+    }
+    println!();
+
     for n in &nations.notes {
         println!("  {n}");
     }
     println!();
 
     println!(
-        "yr:day | seasons N/S    | grain: cheapest  dearest | cross-border hauls | event"
+        "yr:day | seasons N/S    | grain: cheapest  dearest | hauls | roads | freight | event"
     );
     println!(
-        "-------+----------------+--------------------------+--------------------+---------"
+        "-------+----------------+--------------------------+-------+-------+---------+-------"
     );
 
     for day in 0..args.days {
@@ -204,17 +234,27 @@ fn main() {
             .map(|m| e.season_at(m).name())
             .unwrap_or("-");
 
-        if !note.is_empty() || day % 30 == 0 || day + 1 == args.days {
+        if !note.is_empty() || day % 365 == 0 || day + 1 == args.days {
             let yr = e.ledger.day / DAYS_PER_YEAR;
             let doy = e.ledger.day % DAYS_PER_YEAR;
+            // Worst-kept network on the planet, and what the world's
+            // freight bill has come to because of it.
+            let worst = e
+                .road_condition
+                .iter()
+                .copied()
+                .fold(1.0f64, f64::min);
+            let freight: f64 = e.routes.iter().map(|r| r.freight_cost).sum();
             println!(
-                "{:>6} | {:<6} {:<7} | {:>15.0} {:>8.0} | {:>18} | {}",
+                "{:>6} | {:<6} {:<7} | {:>15.0} {:>8.0} | {:>5} | {:>5.2} | {:>7.0} | {}",
                 format!("{yr}:{doy:03}"),
                 north,
                 south,
                 lo,
                 hi,
                 hauls,
+                worst,
+                freight,
                 note,
             );
         }

@@ -218,6 +218,81 @@ fn trade_volumes_are_still_too_small_to_equalise() {
 }
 
 #[test]
+fn neglected_roads_decay_and_freight_gets_dearer() {
+    // The maintenance deficit of spec C.4, end to end: a state that
+    // underfunds upkeep sees its roads go, and its freight bill rises
+    // years later — long after whoever cut the budget has moved on.
+    let world = World::generate(384, 216, 20260828);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+
+    let run = |doctrine: Doctrine| {
+        let mut n = Nations::build(
+            &world, &polities, &settlements, &network, 4, 4, doctrine,
+        );
+        let before: f64 = n.economy.routes.iter().map(|r| r.freight_cost).sum();
+        for _ in 0..(DAYS_PER_YEAR * 20) {
+            n.economy.step();
+        }
+        let after: f64 = n.economy.routes.iter().map(|r| r.freight_cost).sum();
+        let condition = n.economy.road_condition[0];
+        (before, after, condition)
+    };
+
+    let (kept_before, kept_after, kept) = run(Doctrine::Prudent);
+    let (let_go_before, let_go_after, let_go) = run(Doctrine::Negligent);
+
+    assert!(
+        (kept_after - kept_before).abs() / kept_before < 0.01,
+        "a maintained network got dearer anyway: {kept_before:.0} -> {kept_after:.0}"
+    );
+    assert!(
+        let_go < kept,
+        "twenty years of underfunding left the roads in condition {let_go:.2} \
+         against {kept:.2} for a maintained network"
+    );
+    assert!(
+        let_go_after > let_go_before * 1.1,
+        "roads decayed to {let_go:.2} and freight only went {let_go_before:.0} -> \
+         {let_go_after:.0}"
+    );
+}
+
+#[test]
+fn road_decay_is_slow_enough_to_be_a_trap() {
+    // The point of the mechanic is the delay. If neglect showed up within
+    // a year or two it would simply be a bad decision anyone could see;
+    // what makes it worth modelling is that it takes a decade, by which
+    // time it is somebody else's problem.
+    let world = World::generate(384, 216, 20260828);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+    let mut n = Nations::build(
+        &world, &polities, &settlements, &network, 4, 4, Doctrine::Negligent,
+    );
+
+    for _ in 0..(DAYS_PER_YEAR * 3) {
+        n.economy.step();
+    }
+    let after_three = n.economy.road_condition[0];
+    assert!(
+        after_three > 0.85,
+        "three years of neglect already took the roads to {after_three:.2}"
+    );
+
+    for _ in 0..(DAYS_PER_YEAR * 17) {
+        n.economy.step();
+    }
+    let after_twenty = n.economy.road_condition[0];
+    assert!(
+        after_twenty < 0.70,
+        "twenty years of neglect left the roads at {after_twenty:.2} — no consequence at all"
+    );
+}
+
+#[test]
 fn nobody_starves_in_a_trading_world() {
     for seed in [1u64, 20260828] {
         let mut n = nations(seed, 6);

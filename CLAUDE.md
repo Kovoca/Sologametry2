@@ -133,6 +133,24 @@ geology put coal (a nation without it imports fuel and gains a dependency
 that can be cut), and freight costs come from real distances and whether
 there is navigable water between the towns. Nothing here invents capacity.
 
+**Infrastructure costs money, and terrain decides how much.** `src/
+infrastructure.rs` prices roads with real figures: ~$2M/km across
+grassland, ~$7M through swamp, ~$15M through mountains, plus a bridge
+premium at watercourses; maintenance 2-4% of capital a year, worst in
+freeze-thaw climates. Terrain multiplies cost far more than distance does.
+
+The consequence worth having is a trap: serving marginal country costs
+more per kilometre *and* holds fewer people to pay for it, which is why
+remote regions stay poorly connected and why C1.3's "difficult terrain"
+is an opportunity for anyone who does not want to be governed.
+
+**The maintenance deficit runs end to end.** Doctrine sets what share of
+upkeep is funded (prudent 100%, negligent 55%); the shortfall decays road
+condition by ~6%/yr of the gap; freight cost scales with condition. A
+neglected network goes 1.00 -> 0.46 over twenty years and freight rises
+43% — slow enough that whoever cut the budget is long gone before it
+shows, which is exactly why real governments cut it.
+
 **A nation's routes follow the roads it actually built.** Freight costs
 come from a Dijkstra over the generated network priced by the road class
 under each step, and the towns are joined by a minimum spanning tree over

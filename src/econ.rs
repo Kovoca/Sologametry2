@@ -694,7 +694,13 @@ pub struct Route {
     pub b: usize,
     /// Currency per unit moved. Road freight is roughly 12x sea per
     /// tonne-km (spec A.9), which is why the mode matters so much.
+    ///
+    /// This is what the haul costs *today*, on the road as it currently
+    /// is. A neglected network raises it.
     pub freight_cost: f64,
+    /// What the haul costs on a road in good repair. `freight_cost` is
+    /// this, worsened by however far the surface has been let go.
+    pub sound_cost: f64,
     /// Units per day the route can carry.
     pub capacity: f64,
     pub open: bool,
@@ -919,6 +925,20 @@ impl Doctrine {
     pub fn redundant_grid(self) -> bool {
         self == Doctrine::Prudent
     }
+
+    /// Share of the road network's needed upkeep that actually gets
+    /// funded.
+    ///
+    /// Nobody opens a maintained bridge, so maintenance is the line real
+    /// governments cut first and the decay takes a decade to show — which
+    /// is exactly why a negligent state can look fine for a long time and
+    /// then not.
+    pub fn maintenance_funding(self) -> f64 {
+        match self {
+            Doctrine::Prudent => 1.0,
+            Doctrine::Negligent => 0.55,
+        }
+    }
 }
 
 impl Response {
@@ -983,6 +1003,17 @@ pub struct Economy {
     pub response: Response,
     /// Seeds the weather, so a world replays identically.
     pub weather_seed: u64,
+    /// Per nation: the state of its roads, 0 (impassable ruin) to 1 (as
+    /// built).
+    pub road_condition: Vec<f64>,
+    /// Per nation: the share of needed maintenance actually funded.
+    ///
+    /// This is the maintenance deficit of spec C.4, and the reason it is
+    /// worth modelling: new bridges get opening ceremonies and maintained
+    /// ones do not, so real governments underfund upkeep and the network
+    /// decays for a decade before anything visibly breaks — long after the
+    /// leadership responsible has moved on.
+    pub maintenance_funding: Vec<f64>,
     /// Electricity that could not be supplied today — the load shed.
     pub unserved_power: f64,
     /// Household demand that could not be met, per commodity. This is
@@ -1051,6 +1082,40 @@ impl Economy {
             // than reality produces a famine every few years, which is
             // neither true nor interesting.
             m.harvest_quality = 0.78 + 0.37 * u.powf(0.7);
+        }
+
+        self.age_the_roads();
+    }
+
+    /// A year of wear against a year of maintenance.
+    ///
+    /// Left entirely alone a road surface is finished in fifteen to twenty
+    /// years, so it loses of the order of six per cent of its condition
+    /// annually. Funding replaces that share of the loss. The floor is
+    /// well above zero because even an abandoned road remains a formation
+    /// people drive slowly along; it does not become open country again.
+    fn age_the_roads(&mut self) {
+        const DECAY_PER_YEAR: f64 = 0.06;
+        for (n, cond) in self.road_condition.iter_mut().enumerate() {
+            let funded = self.maintenance_funding.get(n).copied().unwrap_or(1.0);
+            let lost = DECAY_PER_YEAR * (1.0 - funded).max(0.0);
+            *cond = (*cond - lost).clamp(0.35, 1.0);
+        }
+
+        // Freight on a worn road costs more: slower running, heavier wear
+        // on lorries, loads broken for weight limits, detours round a
+        // closed bridge. A route between two nations is only as good as
+        // the worse of the two.
+        for r in self.routes.iter_mut() {
+            let na = self.markets[r.a].nation as usize;
+            let nb = self.markets[r.b].nation as usize;
+            let worst = self
+                .road_condition
+                .get(na)
+                .copied()
+                .unwrap_or(1.0)
+                .min(self.road_condition.get(nb).copied().unwrap_or(1.0));
+            r.freight_cost = r.sound_cost * (1.0 + 0.8 * (1.0 - worst));
         }
     }
 

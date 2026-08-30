@@ -8,6 +8,7 @@ pub mod econ;
 pub mod field;
 pub mod geology;
 pub mod hydrology;
+pub mod infrastructure;
 pub mod network;
 pub mod noise;
 pub mod polity;

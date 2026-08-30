@@ -632,6 +632,7 @@ impl Region {
                     a,
                     b,
                     freight_cost: c,
+                    sound_cost: c,
                     capacity: food_day * 2.0,
                     open: true,
                 });
@@ -653,6 +654,8 @@ impl Region {
             routes,
             grid: Grid::for_doctrine(doctrine, peak_power),
             response: Response::for_doctrine(doctrine),
+            road_condition: vec![1.0],
+            maintenance_funding: vec![doctrine.maintenance_funding()],
             weather_seed: world.seed ^ (polity as u64).wrapping_mul(0x517C_C1B7_2722_0A95),
             unserved_power: 0.0,
             unmet_demand: basket(),
@@ -822,6 +825,7 @@ impl Nations {
                     a: ma,
                     b: mb,
                     freight_cost: km * rate,
+                    sound_cost: km * rate,
                     // International trade is a fraction of what a country
                     // moves internally, not a firehose.
                     capacity: volume * 0.5,
@@ -915,6 +919,11 @@ fn absorb(host: &mut Economy, guest: Economy, nation: u16) -> Vec<usize> {
     for l in guest.grid.lines {
         host.grid.lines.push(l);
     }
+    // ...and its own roads, which it maintains or does not on its own
+    // account. Indexed by nation, so `nation` doubles as the index.
+    host.road_condition.push(*guest.road_condition.first().unwrap_or(&1.0));
+    host.maintenance_funding
+        .push(*guest.maintenance_funding.first().unwrap_or(&1.0));
     let _ = site_base;
 
     // The opening stock of the absorbed sites has to be counted, or the

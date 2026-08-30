@@ -146,6 +146,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         a: ASHFORD,
         b: BEXLEY,
         freight_cost: 45.0,
+        sound_cost: 45.0,
         capacity: 150.0,
         open: true,
     }];
@@ -160,6 +161,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         routes,
         grid: Grid::for_doctrine(doctrine, peak),
         response: Response::for_doctrine(doctrine),
+        road_condition: vec![1.0],
+        maintenance_funding: vec![doctrine.maintenance_funding()],
         weather_seed: 0x5EED_C0FF_EE15_600D,
         unserved_power: 0.0,
         unmet_demand: basket(),
