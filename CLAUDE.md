@@ -632,6 +632,37 @@ when there are two*:
   and rostered a third of its people. A cashier could not keep a room. Who
   worked today has to be counted after the day's trade, not before.
 
+## The ground you stand on (`src/ground.rs`)
+
+The bottom of the ladder, at a metre to the tile. Everything above it was
+furniture for a place nobody could be in: a shop had tills and shelving
+but no floor to put them on, a lorry was 17 m of parts with no road under
+it, and a man had money, hunger and a trade but no position finer than
+which market he was in.
+
+**Generated, never stored** (A1.5, rule R5) — a pure function of seed,
+plan and tile coordinates, so no chunk needs its neighbour to exist and
+returning gives the same ground. **Only near the person** (A1.6): 160
+tiles on foot, 288 in a vehicle.
+
+- **A street is not 32 m of tarmac.** A residential carriageway is 5-6 m
+  with 2 m pavements; the rest of the plot is verge and frontage. And a
+  street runs *one way* — orientation comes from its neighbours, because
+  taking the nearer centreline regardless put a crossroads in every single
+  street plot and paved three quarters of the town. A real junction is
+  ~57% made surface and a plain lane ~35%, which is now asserted.
+- **A vehicle is walkable.** You stand on the seat to drive and the bed to
+  load; that is the whole reason parts are tiles rather than a mode.
+- **Furniture mostly is not.** You stand at a till and in front of
+  shelving, never in a shelf bay, or a shop is one open room with pictures
+  of shelves on the floor.
+- A shop's interior is `building.rs`'s fixture list given somewhere to
+  stand: tills across the front by the door because that is where you pay
+  on the way out, aisles through the middle, racking at the back where the
+  lorries come.
+
+`cargo run --release --bin walk -- --where shop`
+
 ## The scale ladder
 
 DF nests a world tile inside mid-level tiles and you pick a block of those
@@ -644,10 +675,14 @@ which you could look at a valley.
 | region cell | 16,384 | the world map | yes |
 | **locality** | **1,024** | 16 x 16 per cell | **yes** |
 | plot | 32 | 32 x 32 per locality | yes (`townplan`) |
-| tile | 1 | 32 x 32 per plot | no |
+| tile | 1 | 32 x 32 per plot | **yes** (`ground`) |
 
 16 x 32 x 32 = 16,384 — the same number all the way down, which is why the
-region cell is 16.384 km. `cargo run --release --bin zoom` walks it.
+region cell is 16.384 km. A test asserts the multiplication, because if the
+rungs drift apart nothing above or below can be trusted; the plot was 25 m
+until something hung off it and the arithmetic had to close.
+`cargo run --release --bin zoom` walks the top three,
+`--bin walk` stands on the bottom one.
 
 ### One cell, zoomed (`src/locality.rs`)
 

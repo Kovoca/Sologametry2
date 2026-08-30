@@ -27,8 +27,17 @@
 use crate::rng::Rng;
 use crate::world::Biome;
 
-/// Metres across one plot.
-pub const METRES_PER_PLOT: f64 = 25.0;
+/// Metres across one plot — a house and its garden, a shop front, a lane.
+///
+/// **32, so the ladder multiplies out.** A region cell is 16 localities of
+/// 1,024 m; a locality is 32 plots of 32 m; a plot is 32 tiles of a metre.
+/// 16 x 32 x 32 = 16,384, which is why the region cell is 16.384 km. It
+/// was 25 while nothing hung off it and the arithmetic did not close.
+pub const METRES_PER_PLOT: f64 = 32.0;
+
+/// Tiles across one plot. The bottom of the ladder: one tile is a metre,
+/// which is where a person stands.
+pub const TILES_PER_PLOT: usize = 32;
 
 /// People in a household *(real: 2.3-2.6 across the developed world)*.
 pub const HOUSEHOLD: f64 = 2.4;

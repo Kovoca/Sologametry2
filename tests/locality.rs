@@ -13,6 +13,14 @@ fn a_world() -> World {
 
 #[test]
 fn the_ladder_multiplies_out() {
+    use scale_sim::townplan::{METRES_PER_PLOT, TILES_PER_PLOT};
+    let plots_per_locality = METRES_PER_LOCALITY / METRES_PER_PLOT;
+    assert_eq!(
+        plots_per_locality as usize * TILES_PER_PLOT * LOCALITIES_PER_CELL,
+        16_384,
+        "16 localities x {plots_per_locality} plots x {TILES_PER_PLOT} tiles          should be 16,384 m"
+    );
+
     // 16 localities x 32 plots x 32 tiles = 16,384 m, which is why the
     // region cell is 16.384 km in the first place. If these drift apart
     // the scales stop nesting and nothing above or below can be trusted.
