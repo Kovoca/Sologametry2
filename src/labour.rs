@@ -151,6 +151,23 @@ pub fn update(econ: &mut Economy) {
 
     let grid_capacity = econ.grid.capacity();
     for site in econ.ledger.sites.iter() {
+        // **Shops employ people, and used to employ none.**
+        //
+        // Retail is around a tenth of all jobs in a developed economy
+        // against about 1.5% in food manufacturing, so a model that
+        // counted mills and canneries and not shops was counting the
+        // small half. The headcount comes off the fixtures: somebody has
+        // to work each till, fill each shelf and unload each lorry.
+        if let Some(b) = &site.fitted {
+            let hands = b.staff();
+            posts[site.market] += hands;
+            // A shop shuts when there is nothing on the shelves, and not
+            // before. Stock is what keeps it open, not a recipe.
+            let stocked = Commodity::ALL
+                .iter()
+                .any(|&c| site.stock[c as usize] > 0.0);
+            working[site.market] += if stocked { hands } else { 0.0 };
+        }
         let Some(r) = site.recipe else { continue };
         let labour = RECIPES[r].labour;
 

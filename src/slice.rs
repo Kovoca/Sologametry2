@@ -71,6 +71,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: farm_rate,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Ashford mill".into(),
@@ -82,6 +83,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: mill_rate,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Ashford cannery".into(),
@@ -93,6 +95,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: cannery_rate,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Kelling power station".into(),
@@ -104,6 +107,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: 1e9,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Ashford depot".into(),
@@ -115,6 +119,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: goods_per_day * 1.1,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Ashford market hall".into(),
@@ -126,6 +131,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: 0.0,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
         Site {
             name: "Bexley general store".into(),
@@ -137,6 +143,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             throughput: 0.0,
             powered: true,
             ran: 0.0,
+            fitted: None,
         },
     ];
 

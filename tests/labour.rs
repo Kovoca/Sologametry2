@@ -238,3 +238,69 @@ fn natural_unemployment_is_a_real_figure() {
         "a working year is not {HOURS_PER_WORKING_YEAR} hours"
     );
 }
+
+#[test]
+fn a_shop_employs_people_and_the_fixtures_say_how_many() {
+    // **Retail is the biggest employer there is and used to be none.**
+    //
+    // A shop was a stockpile with a name over the door: it produced
+    // nothing, so it had no recipe, so `labour` counted nobody in it. That
+    // left the model counting mills and canneries — about 1.5% of real
+    // employment — and omitting the roughly 10% who work in shops.
+    //
+    // The headcount is not a percentage. Somebody has to work each till,
+    // fill each bay of shelving and unload each lorry, so it comes off the
+    // fixtures and changes when they do.
+    use scale_sim::building::{Building, Fixture};
+
+    let small = Building::shop(2.0, 4.0);
+    let large = Building::shop(200.0, 4.0);
+    assert!(
+        large.staff() > small.staff() * 10.0,
+        "a shop doing a hundred times the trade employs {:.0} against {:.0}",
+        large.staff(),
+        small.staff()
+    );
+    assert!(
+        large.staff_at(Fixture::Till) > 1.0,
+        "a supermarket with no cashiers"
+    );
+
+    let mut r = a_nation(Doctrine::Prudent);
+    r.economy.step();
+    let with_shops: f64 = r.economy.workforce.iter().map(|w| w.posts).sum();
+    let shop_staff: f64 = r
+        .economy
+        .ledger
+        .sites
+        .iter()
+        .filter_map(|s| s.fitted.as_ref())
+        .map(|b| b.staff())
+        .sum();
+    assert!(
+        shop_staff > with_shops * 0.25,
+        "shops are {:.0} of {:.0} posts — retail should be the larger half",
+        shop_staff,
+        with_shops
+    );
+}
+
+#[test]
+fn shop_work_is_steady_work() {
+    // Retail does not have a season. A farm sheds hands between harvests
+    // and a shop does not, which is what makes a town with shops in it a
+    // steadier place to be poor than one without.
+    let mut r = a_nation(Doctrine::Prudent);
+    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let day = r.economy.ledger.day;
+        person::live_a_day(&mut hal, &mut r.economy, day);
+    }
+    assert!(hal.alive(), "a shop worker starved in a working town");
+    assert!(
+        hal.days_worked > (DAYS_PER_YEAR * 2) as u64 * 6 / 10,
+        "he found only {} days of shop work in two years",
+        hal.days_worked
+    );
+}

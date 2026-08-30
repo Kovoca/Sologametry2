@@ -490,6 +490,17 @@ impl Region {
                 throughput: 0.0,
                 powered: true,
                 ran: 0.0,
+                // **Fitted out for the trade it does**, and staffed
+                // accordingly: a till for every couple of tonnes rung
+                // through a day, shelving for a third of the stock and
+                // racking out the back for the rest, a dock for the
+                // lorries and a served counter or two. A village shop and
+                // a city supermarket are the same furniture at different
+                // counts.
+                fitted: Some(crate::building::Building::shop(
+                    food_day + goods_day,
+                    4.0,
+                )),
             });
         }
 
@@ -574,6 +585,7 @@ impl Region {
                 throughput: rate,
                 powered: true,
                 ran: 0.0,
+                fitted: None,
             });
         }
 
@@ -616,6 +628,7 @@ impl Region {
                 throughput: mill_rate,
                 powered: true,
                 ran: 0.0,
+                fitted: None,
             });
             sites.push(Site {
                 name: format!("{name} cannery"),
@@ -633,6 +646,7 @@ impl Region {
                 throughput: cannery_rate,
                 powered: true,
                 ran: 0.0,
+                fitted: None,
             });
         }
         let mill_rate = total_mill;
@@ -684,6 +698,7 @@ impl Region {
                 throughput: short * 1.1,
                 powered: true,
                 ran: 0.0,
+                fitted: None,
             });
         }
         if imported > 0.5 {
@@ -752,6 +767,7 @@ impl Region {
                     throughput: coal_day * 1.1,
                     powered: true,
                     ran: 0.0,
+                    fitted: None,
                 });
                 sites.push(Site {
                     name: format!("{name} power station"),
@@ -763,6 +779,7 @@ impl Region {
                     throughput: 1e9,
                     powered: true,
                     ran: 0.0,
+                    fitted: None,
                 });
                 notes.push(format!(
                     "{} coalfield cells in the nation; nearest workings {:.0} km from {}, \
@@ -788,6 +805,7 @@ impl Region {
                     throughput: coal_day * 1.1,
                     powered: true,
                     ran: 0.0,
+                    fitted: None,
                 });
                 sites.push(Site {
                     name: format!("{name} power station"),
@@ -802,6 +820,7 @@ impl Region {
                     throughput: 1e9,
                     powered: true,
                     ran: 0.0,
+                    fitted: None,
                 });
                 notes.push(format!(
                     "no workable coal in this nation — every tonne it burns is landed at {} \
@@ -833,6 +852,7 @@ impl Region {
             throughput: goods_day * 1.1,
             powered: true,
             ran: 0.0,
+            fitted: None,
         });
 
         // --- Routes, following the roads the country actually built ---

@@ -62,6 +62,7 @@ fn parse_args() -> Args {
             "--trade" => {
                 a.trade = match it.next().as_deref() {
                     Some("labourer") => Trade::Labourer,
+                    Some("shop") => Trade::Shopworker,
                     _ => Trade::Haulier,
                 }
             }

@@ -22,6 +22,7 @@
 //! and eating. Those are specced (A3, B1, B6) and unbuilt.
 
 use crate::econ::{Commodity, Economy};
+use crate::building::Fixture;
 use crate::travel::Conveyance;
 
 /// Days a person can go hungry before it kills them.
@@ -44,6 +45,11 @@ pub enum Trade {
     Haulier,
     /// Works a shift at a mill or cannery.
     Labourer,
+    /// **Works in a shop** — on the checkouts, filling shelves, or in the
+    /// stockroom taking the lorries in. The single biggest employer in
+    /// the economy, and until now it employed nobody, because a shop was
+    /// a stockpile with a name over the door.
+    Shopworker,
 }
 
 impl Trade {
@@ -51,6 +57,7 @@ impl Trade {
         match self {
             Trade::Haulier => "haulier",
             Trade::Labourer => "labourer",
+            Trade::Shopworker => "shop worker",
         }
     }
 }
@@ -103,6 +110,12 @@ pub enum Job {
     },
     /// A shift at a works that has orders to fill.
     Shift { site: usize, market: usize },
+    /// A shift in a shop, at one of the jobs a shop actually contains.
+    Counter {
+        site: usize,
+        market: usize,
+        role: Fixture,
+    },
 }
 
 impl Contract {
@@ -136,6 +149,19 @@ impl Contract {
             )
             .replace("  ", " ")
                 + &format!(" — from {}", econ.markets[*from_market].name),
+            Job::Counter { site, role, .. } => format!(
+                "{} at {} — {:.0} for {:.1} days",
+                match role {
+                    Fixture::Till => "a shift on the checkouts",
+                    Fixture::Shelving => "a shift filling shelves",
+                    Fixture::StockRack => "a shift in the stockroom",
+                    Fixture::LoadingBay => "a shift on goods-in",
+                    Fixture::Counter => "a shift on the counter",
+                },
+                econ.ledger.sites[*site].name,
+                self.pay,
+                self.days,
+            ),
             Job::Shift { site, market } if *site == usize::MAX => format!(
                 "a day carting about {} — {:.0}",
                 econ.markets[*market].name, self.pay,
@@ -306,6 +332,10 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // little less for less risk and no lorry.
         Trade::Haulier => 7.0,
         Trade::Labourer => 6.0,
+        // Shop work is the worst-paid of the three and always has been:
+        // it needs no licence, no ticket and no strength, so anybody can
+        // do it and the wage knows it.
+        Trade::Shopworker => 5.0,
     };
     food * multiple
 }
@@ -548,6 +578,38 @@ pub fn work_available(
             days: 1.0,
             trade: Trade::Haulier,
         });
+    }
+
+    // **Shop work.** Every fixture that needs somebody on it is a job,
+    // and a shop with nothing on its shelves has none of them.
+    for s in 0..econ.ledger.sites.len() {
+        let site = &econ.ledger.sites[s];
+        if site.market != market {
+            continue;
+        }
+        let Some(b) = &site.fitted else { continue };
+        let stocked = Commodity::ALL.iter().any(|&c| site.stock[c as usize] > 0.0);
+        if !stocked {
+            continue;
+        }
+        let rate = day_rate(econ, market, Trade::Shopworker);
+        for &(role, count) in b.fixtures.iter() {
+            if count * role.staff() < 1.0 {
+                continue;
+            }
+            out.push(Contract {
+                kind: Job::Counter {
+                    site: s,
+                    market,
+                    role,
+                },
+                posted: day,
+                expires: day + 3,
+                pay: rate * 6.0,
+                days: 6.0,
+                trade: Trade::Shopworker,
+            });
+        }
     }
 
     // Shifts: a works that **is running** wants hands.
@@ -825,7 +887,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                             person.note(day, "the price had moved against him");
                         }
                     }
-                    Job::Shift { .. } => {
+                    Job::Counter { .. } | Job::Shift { .. } => {
                         person.money += job.pay;
                         person.earned += job.pay;
                         person.note(

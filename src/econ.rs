@@ -254,6 +254,13 @@ pub struct Site {
     /// the output still has its people; how long it keeps them is a
     /// different question, and this is the number that decides it.
     pub ran: f64,
+    /// How the place is fitted out, where that matters.
+    ///
+    /// A shop's tills and shelving and loading bays decide how many people
+    /// work in it — the biggest single employer in the economy, and one
+    /// that used to employ nobody at all because a shop was a stockpile
+    /// with a name.
+    pub fitted: Option<crate::building::Building>,
 }
 
 /// Authoritative state. Spec A2: a materialised view of the journal, and

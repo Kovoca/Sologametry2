@@ -517,6 +517,42 @@ a stock gap starved him, because a city of 16M always holds more tonnes
 than a town of 2M so freight flowed one way and never back. **Compare days
 of cover, never tonnes** — but the real answer was to stop inventing.
 
+## Buildings are built from fixtures (`src/building.rs`)
+
+The design doc's *"tile-layered data model, generalizing CDDA's
+vehicle-part system to buildings"*, one step in. A vehicle is frames and
+engines and cargo bays; a shop is tills and shelving and a loading dock.
+
+**The point is the staff.** A shop does not employ people because a table
+says retail is a tenth of the workforce — it employs them because somebody
+works each till, fills each bay and unloads each lorry, and the counts
+come off the trade it does. Take the tills out and the cashiers go too.
+
+| fixture | staff (FTE) | does |
+|---|---|---|
+| checkout | 1.4 | 2.5 t/day *(25 customers/h x 7 kg basket)* |
+| shelving | 0.25 | holds 0.4 t |
+| stockroom racking | 0.04 | holds 3 t |
+| loading bay | 1.2 | 40 t/day |
+| served counter | 1.6 | 0.4 t/day |
+
+Checked against a real large supermarket — ~75 t/day, ~300 staff — these
+give about 190; the shortfall is management, cleaning, security and online
+picking, none of which are fixtures here.
+
+Why it had to exist: the economy modelled farms, mills, canneries and
+mines, which is roughly 1.5% of real employment, and gave a city of
+sixteen million shops that employed **nobody at all**. Retail is around
+10%. The missing half was the big one.
+
+Consequences worth having: a shop worker works ~85% of days, which is what
+steady retail looks like, and a town's unemployment stops swinging 20%
+with the harvest because retail has no season.
+
+Not built yet: the walkable tile interior, the wall/floor layers, and the
+electrical and water nodes hung off them. Fixtures first, the same way
+parts came before vehicle interiors.
+
 ## Vehicles are built from parts (`src/vehicle.rs`)
 
 Per the design doc: *"Vehicles (and later, spaceships) have interiors and
