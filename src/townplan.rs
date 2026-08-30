@@ -290,6 +290,12 @@ pub struct Plan {
     pub lots: Vec<Lot>,
     /// How big each street is. Empty for anything that is not a street.
     pub classes: Vec<Option<StreetClass>>,
+    /// The class of the through-route running north-south down each
+    /// column, and east-west along each row. **Kept apart from `classes`
+    /// because a junction needs to know which road is which**: where two
+    /// streets meet, the bigger one runs through and the lesser one stops.
+    pub col_class: Vec<Option<StreetClass>>,
+    pub row_class: Vec<Option<StreetClass>>,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -488,8 +494,20 @@ impl Plan {
             height: size,
             lots,
             classes,
+            col_class: col,
+            row_class: row,
             ground,
         }
+    }
+
+    /// The through-route running north-south down this column, if any.
+    pub fn col_class(&self, x: usize) -> Option<StreetClass> {
+        self.col_class.get(x).copied().flatten()
+    }
+
+    /// The through-route running east-west along this row, if any.
+    pub fn row_class(&self, y: usize) -> Option<StreetClass> {
+        self.row_class.get(y).copied().flatten()
     }
 
     /// How big the street on this plot is, if it is a street.

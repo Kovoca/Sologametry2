@@ -230,41 +230,44 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
         // plot is verge and frontage. Paving the whole width gave every
         // lane the footprint of a dual carriageway.
         Lot::Street => {
-            // **Which way does this street run?**
+            // **Which way does this street run, and which road wins?**
             //
-            // From its neighbours: a plot with street above and below
-            // carries a north-south road, one with street either side
-            // carries an east-west road, and one with both is a
-            // crossroads. Taking the nearer of the two centrelines
-            // regardless put a crossroads in every single street plot,
-            // which paves three quarters of the town.
-            let lot_at = |dx: i64, dy: i64| -> Lot {
-                let (nx, ny) = (px + dx, py + dy);
-                if nx < 0 || ny < 0 || nx >= plan.width as i64 || ny >= plan.height as i64 {
-                    Lot::Street // the road carries on out of town
-                } else {
-                    plan.at(nx as usize, ny as usize)
-                }
-            };
-            let runs_ns = lot_at(0, -1) == Lot::Street || lot_at(0, 1) == Lot::Street;
-            let runs_ew = lot_at(-1, 0) == Lot::Street || lot_at(1, 0) == Lot::Street;
+            // Both come from the plan's through-routes. Reading it off the
+            // neighbouring plots instead put a crossroads in every single
+            // street plot, which paves three quarters of the town — and it
+            // could not tell a lane joining a trunk road from two lanes
+            // meeting, so two motorways crossed at grade in the middle of
+            // a city.
             let mid = t / 2;
-            let junction = runs_ns && runs_ew;
-            let across = match (runs_ns, runs_ew) {
-                (true, true) => (iy - mid).abs().min((ix - mid).abs()),
-                (true, false) => (ix - mid).abs(),
-                (false, true) => (iy - mid).abs(),
-                // A stub of road going nowhere: still a bit of surface.
-                (false, false) => (ix - mid).abs().max((iy - mid).abs()),
-            };
-            let class = plan
-                .street_class(px as usize, py as usize)
-                .unwrap_or(StreetClass::Lane);
-            // How far along the street are we? Markings are dashed, and
-            // a dash has to line up along the road, not across it.
-            let along = if runs_ns { gy } else { gx };
-            cross_section(class, across, along, junction)
-                .unwrap_or_else(|| open_ground(seed, plan.ground, gx, gy))
+            let mut roads: Vec<(StreetClass, i64, i64)> = Vec::new();
+            if let Some(c) = plan.col_class(px as usize) {
+                roads.push((c, (ix - mid).abs(), gy)); // runs north-south
+            }
+            if let Some(c) = plan.row_class(py as usize) {
+                roads.push((c, (iy - mid).abs(), gx)); // runs east-west
+            }
+            roads.sort_by_key(|&(c, _, _)| std::cmp::Reverse(c.size()));
+
+            // **The bigger road runs through and the lesser one stops at
+            // it.** That is what severance is, and a motorway's corridor
+            // fills the whole plot, so a street meeting one dead-ends
+            // against it — which is exactly the claim the cross-sections
+            // were already making and nothing was enforcing.
+            let equal_crossing =
+                roads.len() == 2 && roads[0].0.size() == roads[1].0.size();
+            for &(c, across, along) in &roads {
+                if let Some(tile) = cross_section(c, across, along, equal_crossing) {
+                    return tile;
+                }
+            }
+            // A short spur off the grid, serving a few houses.
+            if roads.is_empty() {
+                let across = (ix - mid).abs().max((iy - mid).abs());
+                if let Some(tile) = cross_section(StreetClass::Lane, across, gx, false) {
+                    return tile;
+                }
+            }
+            open_ground(seed, plan.ground, gx, gy)
         }
         Lot::Open => open_ground(seed, plan.ground, gx, gy),
         Lot::Park => {
@@ -280,6 +283,82 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
     }
 }
 
+/// **How a building sits on its plot, which is what urban density
+/// actually looks like.**
+///
+/// Density was a number in the plan — Clark's law, flats in the middle,
+/// houses outward — and nothing at the tile layer used it, so a city of
+/// forty-six million had grass and trees between every building. A city
+/// centre has a **street wall**: buildings on the back of the footway,
+/// sharing party walls with their neighbours, with whatever open ground
+/// there is behind them rather than around them.
+///
+/// Real site coverage *(building footprint over plot area)*: a dense urban
+/// core is 60-80%, inner-city terraces 40-50%, interwar semis 25-30%,
+/// detached suburbs 15-25%. What produces that spread is not plot size —
+/// it is **setback and party walls**, so that is what is modelled.
+///
+/// A terrace is not a type here, it is a consequence: a house whose
+/// neighbours along the street are also built shares walls with them, and
+/// one whose neighbours are fields does not.
+struct Footprint {
+    front: i64,
+    back: i64,
+    side: i64,
+    /// Whether the wall on the low side is shared with next door, in which
+    /// case the high side has none and the neighbour's closes it. Real
+    /// party walls are one wall, not two.
+    terraced: bool,
+}
+
+fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
+    let built = |dx: i64, dy: i64| -> bool {
+        let (nx, ny) = (px + dx, py + dy);
+        if nx < 0 || ny < 0 || nx >= plan.width as i64 || ny >= plan.height as i64 {
+            return false;
+        }
+        matches!(
+            plan.at(nx as usize, ny as usize),
+            Lot::House | Lot::Flats | Lot::Shop
+        )
+    };
+    // Which way is the street? That is the front, and the two plots along
+    // it are the ones a terrace shares walls with.
+    let street = |dx: i64, dy: i64| -> bool {
+        let (nx, ny) = (px + dx, py + dy);
+        nx >= 0
+            && ny >= 0
+            && nx < plan.width as i64
+            && ny < plan.height as i64
+            && plan.at(nx as usize, ny as usize) == Lot::Street
+    };
+    let fronts_ns = street(0, -1) || street(0, 1);
+    let neighbours = if fronts_ns {
+        built(-1, 0) && built(1, 0)
+    } else {
+        built(0, -1) && built(0, 1)
+    };
+
+    match lot {
+        // A shopfront is on the back of the pavement, because a shop set
+        // back behind a garden is not a shop anybody walks into. Service
+        // yard behind. ~84% coverage.
+        Lot::Shop => Footprint { front: 1, back: 4, side: 0, terraced: true },
+        // A mansion block: on the street, joined to its neighbours, with
+        // the bins and the drying green behind. ~78%.
+        Lot::Flats => Footprint { front: 1, back: 6, side: 0, terraced: true },
+        // A shed wants lorry access, so the yard is at the front.
+        Lot::Works => Footprint { front: 6, back: 2, side: 2, terraced: false },
+        // **The gradient.** A terraced house is 10 m deep with a 4 m front
+        // garden and a long garden behind — a Victorian street. Detached,
+        // it is a 12 m box in the middle of its ground.
+        Lot::House if neighbours => {
+            Footprint { front: 4, back: 18, side: 0, terraced: true }
+        }
+        _ => Footprint { front: 8, back: 14, side: 10, terraced: false },
+    }
+}
+
 /// The shell of a building on its plot, and what is inside it.
 fn building_tile(
     seed: u64,
@@ -291,26 +370,33 @@ fn building_tile(
     iy: i64,
 ) -> Tile {
     let t = TILES_PER_PLOT as i64;
-    // Set back from the plot edge — a house does not fill its garden, and
-    // a shop leaves room for a pavement and a delivery yard.
-    let inset = match lot {
-        Lot::Shop | Lot::Works => 3,
-        _ => 6,
+    let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
+    let f = footprint_of(plan, lot, px, py);
+
+    // The front faces the street, which here means the low side.
+    let (lo_y, hi_y) = (f.front, t - 1 - f.back);
+    let (lo_x, hi_x) = if f.terraced {
+        // Runs the full width and shares the wall on the low side, so
+        // between two neighbours there is one wall and not two.
+        (0, t - 1)
+    } else {
+        (f.side, t - 1 - f.side)
     };
-    let (lo, hi) = (inset, t - 1 - inset);
-    if ix < lo || iy < lo || ix > hi || iy > hi {
+    if ix < lo_x || iy < lo_y || ix > hi_x || iy > hi_y {
         return open_ground(seed, plan.ground, gx, gy);
     }
 
-    let on_wall = ix == lo || iy == lo || ix == hi || iy == hi;
+    let on_wall = ix == lo_x
+        || iy == lo_y
+        || iy == hi_y
+        // A terrace's high flank is closed by next door's party wall.
+        || (ix == hi_x && !f.terraced);
     if on_wall {
-        // The door faces the street, which here means the low side.
-        let mid = (lo + hi) / 2;
-        if iy == lo && (ix - mid).abs() <= 1 {
+        let mid = (lo_x + hi_x) / 2;
+        if iy == lo_y && (ix - mid).abs() <= 1 {
             return Tile::Door;
         }
-        // Windows, but not on the corners.
-        let corner = (ix == lo || ix == hi) && (iy == lo || iy == hi);
+        let corner = (ix == lo_x || ix == hi_x) && (iy == lo_y || iy == hi_y);
         if !corner && hash(seed, gx, gy, 4) < 0.35 {
             return Tile::Window;
         }
@@ -319,7 +405,7 @@ fn building_tile(
 
     // --- inside ---
     match lot {
-        Lot::Shop => shop_interior(lo, hi, ix, iy),
+        Lot::Shop => shop_interior(lo_x, hi_x, lo_y, hi_y, ix, iy),
         Lot::Works => {
             if hash(seed, gx, gy, 5) < 0.10 {
                 Tile::Fitting(Fixture::StockRack)
@@ -407,12 +493,18 @@ fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) ->
 /// the way out. Aisles of shelving through the middle. Stockroom racking
 /// along the back wall, where the lorries come to. This is `building.rs`'s
 /// fixture list given somewhere to stand.
-fn shop_interior(lo: i64, hi: i64, ix: i64, iy: i64) -> Tile {
-    let depth = hi - lo;
-    let from_front = iy - lo;
+fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -> Tile {
+    // **Front and depth are different axes.** They were the same while
+    // every building was a square inset in the middle of its plot; once a
+    // shop ran the full width of a terrace they came apart, and passing
+    // the width where the depth was wanted put the back wall halfway up
+    // the shop.
+    let depth = hi_y - lo_y;
+    let from_front = iy - lo_y;
+    let across = ix - lo_x;
     if from_front <= 1 {
         // The checkouts, with gaps to walk through.
-        return if ix % 3 == 0 {
+        return if across % 3 == 0 {
             Tile::Fitting(Fixture::Till)
         } else {
             Tile::Floor
@@ -420,16 +512,16 @@ fn shop_interior(lo: i64, hi: i64, ix: i64, iy: i64) -> Tile {
     }
     if from_front >= depth - 3 {
         // Goods in, and the racking behind it.
-        return if from_front == depth - 1 && (ix - lo) % 5 == 2 {
+        return if from_front == depth - 1 && across % 5 == 2 {
             Tile::Fitting(Fixture::LoadingBay)
-        } else if (ix - lo) % 2 == 0 {
+        } else if across % 2 == 0 {
             Tile::Fitting(Fixture::StockRack)
         } else {
             Tile::Floor
         };
     }
     // Aisles: a run of shelving, then a gangway wide enough for a trolley.
-    if (iy - lo) % 3 != 0 && (ix - lo) % 8 != 0 {
+    if from_front % 3 != 0 && across % 8 != 0 {
         Tile::Fitting(Fixture::Shelving)
     } else {
         Tile::Floor
@@ -535,11 +627,17 @@ fn hash(seed: u64, x: i64, y: i64, layer: u64) -> f32 {
 
 /// Where a `Building`'s fixtures would stand, for anything that needs to
 /// know rather than draw — a person walking to their till, say.
-pub fn fixture_positions(b: &Building, lo: i64, hi: i64) -> Vec<(Fixture, i64, i64)> {
+pub fn fixture_positions(
+    b: &Building,
+    lo_x: i64,
+    hi_x: i64,
+    lo_y: i64,
+    hi_y: i64,
+) -> Vec<(Fixture, i64, i64)> {
     let mut out = Vec::new();
-    for iy in lo + 1..hi {
-        for ix in lo + 1..hi {
-            if let Tile::Fitting(f) = shop_interior(lo, hi, ix, iy) {
+    for iy in lo_y + 1..hi_y {
+        for ix in lo_x + 1..hi_x {
+            if let Tile::Fitting(f) = shop_interior(lo_x, hi_x, lo_y, hi_y, ix, iy) {
                 out.push((f, ix, iy));
             }
         }

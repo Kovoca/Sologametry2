@@ -45,7 +45,7 @@ fn main() {
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--where" => place = it.next().unwrap_or_else(|| "street".into()),
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--where street|lane|road|dual|motorway|shop|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -84,9 +84,16 @@ fn main() {
     // Find somewhere worth standing.
     let want = match place.as_str() {
         "shop" => Lot::Shop,
+        "flats" => Lot::Flats,
+        "house" => Lot::House,
+        "works" => Lot::Works,
         "edge" => Lot::Open,
         _ => Lot::Street,
     };
+    // **A corner is a junction**, and you stand on the pavement at it —
+    // which is a different question from standing in the middle of a
+    // street, and the one somebody dropped into a city actually faces.
+    let want_corner = place == "corner";
     // If they asked for a size of road, only streets of that size will do.
     let want_class = match place.as_str() {
         "lane" => Some(StreetClass::Lane),
@@ -96,14 +103,31 @@ fn main() {
         _ => None,
     };
     let mut found = (plan.width / 2, plan.height / 2);
-    'outer: for r in 0..plan.width {
+    // Houses are worth seeing at the edge of town, where they stop being
+    // terraces; everything else is worth seeing near the middle.
+    let outward = want != Lot::House;
+    'outer: for step in 0..plan.width {
+        let r = if outward { step } else { plan.width - 1 - step };
         for y in 0..plan.height {
             for x in 0..plan.width {
                 let d = (x as i64 - plan.width as i64 / 2)
                     .abs()
                     .max((y as i64 - plan.height as i64 / 2).abs());
+                let junction = x > 0
+                    && y > 0
+                    && x + 1 < plan.width
+                    && y + 1 < plan.height
+                    && (plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street)
+                    && (plan.at(x - 1, y) == Lot::Street || plan.at(x + 1, y) == Lot::Street);
                 if d as usize == r
                     && plan.at(x, y) == want
+                    && junction == want_corner
+                    // A corner you can stand on. A motorway has no
+                    // footway, so its junctions are not corners.
+                    && (!want_corner
+                        || plan.street_class(x, y).is_some_and(|c| {
+                            c != scale_sim::townplan::StreetClass::Motorway
+                        }))
                     && want_class.is_none_or(|c| plan.street_class(x, y) == Some(c))
                 {
                     found = (x, y);
@@ -114,10 +138,29 @@ fn main() {
     }
 
     let t = TILES_PER_PLOT as i64;
-    let centre = (
-        found.0 as i64 * t + t / 2,
-        found.1 as i64 * t + t / 2,
-    );
+    let mut centre = (found.0 as i64 * t + t / 2, found.1 as i64 * t + t / 2);
+    if want_corner {
+        // Off the carriageway and onto the corner of the footway: the
+        // nearest pavement tile to the diagonal of the junction.
+        let probe = Ground::window(seed, &plan, centre, t as usize, t as usize);
+        let mut best: Option<((i64, i64), i64)> = None;
+        for vy in 0..probe.h {
+            for vx in 0..probe.w {
+                if probe.at(vx, vy) != Tile::Pavement {
+                    continue;
+                }
+                let (gx, gy) = (probe.origin.0 + vx as i64, probe.origin.1 + vy as i64);
+                // Furthest from both centrelines is the corner itself.
+                let score = -((gx - centre.0).abs().min((gy - centre.1).abs()));
+                if best.is_none_or(|(_, b)| score > b) {
+                    best = Some(((gx, gy), score));
+                }
+            }
+        }
+        if let Some((p, _)) = best {
+            centre = p;
+        }
+    }
 
     // A viewport, not the bubble: 80 x 34 looks square in a terminal.
     let mut g = Ground::window(seed, &plan, centre, 80, 34);

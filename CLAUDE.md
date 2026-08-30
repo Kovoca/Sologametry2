@@ -706,6 +706,27 @@ tiles on foot, 288 in a vehicle.
   stand: tills across the front by the door because that is where you pay
   on the way out, aisles through the middle, racking at the back where the
   lorries come.
+- **Urban density is a shape, not a number.** Clark's law was already in
+  the plan — flats in the middle, houses outward — and nothing at the tile
+  layer read it, so a city of 46M had grass and trees between every
+  building. A centre has a **street wall**: buildings on the back of the
+  footway sharing party walls, with what open ground there is *behind*
+  them rather than around them. Real site coverage *(footprint over plot)*
+  is 60-80% in a dense core, 40-50% inner terraces, 15-25% detached
+  suburbs, and what produces that spread is **setback and party walls**,
+  not plot size. A terrace is therefore not a type here but a consequence:
+  a house whose neighbours along the street are built shares walls with
+  them; one whose neighbours are fields does not.
+- **The bigger road runs through; the lesser one stops at it.** Severance
+  was asserted in a comment and enforced nowhere. Reading a junction off
+  neighbouring plots could not tell a lane joining a trunk road from two
+  lanes meeting, so two motorways crossed at grade in the middle of a
+  city. Junctions now read the plan's own through-routes (`col_class` /
+  `row_class`), and a street meeting a motorway dead-ends against it.
+- Front and depth are different axes. They were the same while every
+  building was a square inset in its plot; once a shop ran the full width
+  of a terrace they came apart, and passing the width where the depth was
+  wanted put the back wall halfway up the shop.
 
 `cargo run --release --bin walk -- --where shop`
 

@@ -311,3 +311,136 @@ fn the_lines_down_a_road_are_dashed() {
     }
     assert!(found, "no two-way road in this town to look at");
 }
+
+/// What share of a plot is actually built on.
+fn site_coverage(plan: &Plan, px: usize, py: usize) -> f64 {
+    let t = TILES_PER_PLOT as i64;
+    let at = (px as i64 * t + t / 2, py as i64 * t + t / 2);
+    let g = Ground::around(1, plan, at, TILES_PER_PLOT);
+    let (mut built, mut total) = (0, 0);
+    for iy in 0..t {
+        for ix in 0..t {
+            let (gx, gy) = (px as i64 * t + ix, py as i64 * t + iy);
+            let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
+            if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
+                continue;
+            }
+            total += 1;
+            if !matches!(
+                g.at(vx as usize, vy as usize),
+                Tile::Grass | Tile::Scrub | Tile::Sand | Tile::Rock
+                    | Tile::Snow | Tile::Water | Tile::Tree
+            ) {
+                built += 1;
+            }
+        }
+    }
+    built as f64 / total.max(1) as f64
+}
+
+fn find_lot(plan: &Plan, want: Lot, from_centre: bool) -> (usize, usize) {
+    let c = (plan.width as i64 / 2, plan.height as i64 / 2);
+    let mut best: Option<((usize, usize), i64)> = None;
+    for y in 0..plan.height {
+        for x in 0..plan.width {
+            if plan.at(x, y) != want {
+                continue;
+            }
+            let d = (x as i64 - c.0).abs().max(y as i64 - c.1);
+            let score = if from_centre { -d } else { d };
+            if best.is_none_or(|(_, b)| score > b) {
+                best = Some(((x, y), score));
+            }
+        }
+    }
+    best.map(|(p, _)| p).unwrap_or_else(|| panic!("no {want:?} in this town"))
+}
+
+#[test]
+fn a_city_centre_is_a_street_wall_and_a_suburb_is_not() {
+    // **Urban density is a shape, not a number.** Clark's law was already
+    // in the plan — flats in the middle, houses outward — and nothing at
+    // the tile layer read it, so a city of forty-six million had grass and
+    // trees between every building. What a centre actually has is a street
+    // wall: buildings on the back of the footway, sharing party walls.
+    //
+    // Real site coverage *(footprint over plot)*: a dense urban core is
+    // 60-80%, inner terraces 40-50%, detached suburbs 15-25%.
+    let plan = a_city();
+    let core = site_coverage(&plan, find_lot(&plan, Lot::Flats, true).0, find_lot(&plan, Lot::Flats, true).1);
+    let (hx, hy) = find_lot(&plan, Lot::House, false);
+    let suburb = site_coverage(&plan, hx, hy);
+
+    assert!(
+        (0.60..=0.85).contains(&core),
+        "a block of flats covering {:.0}% of its plot is not a city centre",
+        core * 100.0
+    );
+    assert!(
+        suburb < 0.45,
+        "a house covering {:.0}% of its plot has no garden at all",
+        suburb * 100.0
+    );
+    assert!(
+        core > suburb * 1.7,
+        "centre {:.0}% against suburb {:.0}% is not a density gradient",
+        core * 100.0,
+        suburb * 100.0
+    );
+}
+
+#[test]
+fn a_street_meeting_a_motorway_stops_at_it() {
+    // **Severance, which was asserted in a doc comment and enforced
+    // nowhere.** Reading a junction off the neighbouring plots could not
+    // tell a lane joining a trunk road from two lanes meeting, so two
+    // motorways crossed at grade in the middle of a city. The bigger road
+    // runs through; the lesser one dead-ends against its corridor.
+    use scale_sim::townplan::StreetClass;
+    let plan = a_city();
+    let t = TILES_PER_PLOT as i64;
+
+    // A plot where a motorway column crosses a lesser row.
+    let mut found = None;
+    for y in 0..plan.height {
+        for x in 0..plan.width {
+            if plan.at(x, y) != Lot::Street {
+                continue;
+            }
+            let (c, r) = (plan.col_class(x), plan.row_class(y));
+            let crossing = matches!(
+                (c, r),
+                (Some(StreetClass::Motorway), Some(o)) if o != StreetClass::Motorway
+            ) || matches!(
+                (r, c),
+                (Some(StreetClass::Motorway), Some(o)) if o != StreetClass::Motorway
+            );
+            if crossing {
+                found = Some((x, y));
+            }
+        }
+    }
+    let Some((x, y)) = found else {
+        return; // this town has no trunk route crossing a lesser street
+    };
+
+    let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    let mut paved = 0;
+    for iy in 0..t {
+        for ix in 0..t {
+            let (gx, gy) = (x as i64 * t + ix, y as i64 * t + iy);
+            let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
+            if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
+                continue;
+            }
+            if g.at(vx as usize, vy as usize) == Tile::Pavement {
+                paved += 1;
+            }
+        }
+    }
+    assert_eq!(
+        paved, 0,
+        "a footway across a motorway: the lesser street punched through"
+    );
+}
