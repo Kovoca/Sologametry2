@@ -160,8 +160,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
         routes,
         grid: Grid::for_doctrine(doctrine, peak),
         response: Response::for_doctrine(doctrine),
-        southern: false,
-        harvest_quality: 1.0,
         weather_seed: 0x5EED_C0FF_EE15_600D,
         unserved_power: 0.0,
         unmet_demand: basket(),

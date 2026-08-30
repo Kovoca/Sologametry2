@@ -281,6 +281,19 @@ impl Ledger {
         }
     }
 
+    /// Count the opening stock of sites added after construction.
+    ///
+    /// Needed when several economies are folded into one: the incomers
+    /// arrive holding goods, and without this the conservation check
+    /// reports every tonne of it as having appeared from nowhere.
+    pub fn absorb_opening_stock(&mut self, from_site: usize) {
+        for s in &self.sites[from_site..] {
+            for c in 0..N_COMMODITIES {
+                self.opening_total[c] += s.stock[c];
+            }
+        }
+    }
+
     /// Total of a commodity held across every site.
     pub fn total(&self, c: Commodity) -> f64 {
         self.sites.iter().map(|s| s.stock[c as usize]).sum()
@@ -483,8 +496,21 @@ pub mod recipe {
 
 pub struct Market {
     pub name: String,
+    /// Which nation this market belongs to. Weather is drawn per nation,
+    /// and a lane between two nations is a different thing from a road
+    /// inside one.
+    pub nation: u16,
     /// People fed from this market.
     pub population: f64,
+    /// Southern hemisphere, so its farming year runs six months out of
+    /// step with a northern one. This is what makes seasonal trade between
+    /// hemispheres possible: one country's lean season is another's
+    /// harvest.
+    pub southern: bool,
+    /// This year's growing conditions here, as a multiplier on the
+    /// harvest. Weather is regional, so markets of the same nation share a
+    /// draw.
+    pub harvest_quality: f64,
     pub price: Basket,
     /// Days of cover currently held, for reporting.
     pub cover: Basket,
@@ -495,6 +521,15 @@ pub struct Market {
 
 impl Market {
     pub fn new(name: impl Into<String>, population: f64) -> Self {
+        Self::in_nation(name, population, 0, false)
+    }
+
+    pub fn in_nation(
+        name: impl Into<String>,
+        population: f64,
+        nation: u16,
+        southern: bool,
+    ) -> Self {
         let mut price = basket();
         for (i, c) in Commodity::ALL.iter().enumerate() {
             price[i] = c.base_cost();
@@ -505,7 +540,10 @@ impl Market {
         }
         Market {
             name: name.into(),
+            nation,
             population,
+            southern,
+            harvest_quality: 1.0,
             price,
             cover: basket(),
             expected_cover: expected,
@@ -516,6 +554,17 @@ impl Market {
     /// below it, people go hungry.
     pub fn daily_household_demand(&self, c: Commodity) -> f64 {
         self.population * c.per_capita_annual() / 365.0
+    }
+
+    /// Season here today.
+    pub fn season(&self, day: u64) -> Season {
+        Season::on(day, self.southern)
+    }
+
+    /// Today's harvest multiplier here: where the year is, times how the
+    /// year has turned out.
+    pub fn harvest(&self, day: u64) -> f64 {
+        harvest_curve(day, self.southern) * self.harvest_quality
     }
 }
 
@@ -932,13 +981,6 @@ pub struct Economy {
     pub routes: Vec<Route>,
     pub grid: Grid,
     pub response: Response,
-    /// True if this region sits in the southern hemisphere, so its
-    /// farming year runs six months out of step with a northern one.
-    pub southern: bool,
-    /// This year's growing conditions as a multiplier on the harvest.
-    /// Redrawn each year: weather is the largest thing in farming that
-    /// nobody controls.
-    pub harvest_quality: f64,
     /// Seeds the weather, so a world replays identically.
     pub weather_seed: u64,
     /// Electricity that could not be supplied today — the load shed.
@@ -988,32 +1030,38 @@ impl Economy {
             return;
         }
         let year = day / DAYS_PER_YEAR;
-        let mut z = self
-            .weather_seed
-            .wrapping_add(year.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        z ^= z >> 31;
-        let u = ((z >> 11) as f64) / ((1u64 << 53) as f64); // 0..1
+        let seed = self.weather_seed;
 
-        // Roughly 0.78..1.15, mean near 0.97, with the low tail longer
-        // than the high one. Real cereal yields vary by ten to twenty per
-        // cent year on year; a fifth down is a bad year a country rides out
-        // on its reserves, not a catastrophe. Making the spread wider than
-        // reality produces a famine every few years, which is neither true
-        // nor interesting.
-        self.harvest_quality = 0.78 + 0.37 * u.powf(0.7);
+        for m in self.markets.iter_mut() {
+            // Keyed by nation, so a country's provinces share a season
+            // while its neighbours may be having a quite different year.
+            // That difference is half of why trade exists.
+            let mut z = seed
+                .wrapping_add(year.wrapping_mul(0x9E37_79B9_7F4A_7C15))
+                .wrapping_add((m.nation as u64).wrapping_mul(0x517C_C1B7_2722_0A95));
+            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+            z ^= z >> 31;
+            let u = ((z >> 11) as f64) / ((1u64 << 53) as f64); // 0..1
+
+            // Roughly 0.78..1.15, mean near 0.97, with the low tail longer
+            // than the high one. Real cereal yields vary by ten to twenty
+            // per cent year on year; a fifth down is a bad year a country
+            // rides out on its reserves, not a catastrophe. A wider spread
+            // than reality produces a famine every few years, which is
+            // neither true nor interesting.
+            m.harvest_quality = 0.78 + 0.37 * u.powf(0.7);
+        }
     }
 
-    /// Season where this region's farms are.
-    pub fn season(&self) -> Season {
-        Season::on(self.ledger.day, self.southern)
+    /// Season in market `m`.
+    pub fn season_at(&self, m: usize) -> Season {
+        self.markets[m].season(self.ledger.day)
     }
 
-    /// Today's harvest multiplier: where the year is, times how the year
-    /// has turned out.
-    pub fn harvest_today(&self) -> f64 {
-        harvest_curve(self.ledger.day, self.southern) * self.harvest_quality
+    /// Today's harvest multiplier in market `m`.
+    pub fn harvest_at(&self, m: usize) -> f64 {
+        self.markets[m].harvest(self.ledger.day)
     }
 
     /// Notice faults, report them, dispatch crews, complete repairs.
@@ -1263,7 +1311,7 @@ impl Economy {
             // when the crop is ready. Everything else runs flat.
             let mut batches = self.site_capacity(site);
             if s.kind == SiteKind::Farm {
-                batches *= self.harvest_today();
+                batches *= self.harvest_at(s.market);
             }
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
@@ -1541,28 +1589,52 @@ impl Economy {
                 };
                 let _ = gap;
 
-                // Ship from the surplus market's shops to the deficit's.
+                // Ship from whoever in the surplus market holds the goods
+                // to whoever in the deficit market has room. Restricting
+                // this to shops made it dead for everything nobody buys
+                // over a counter: grain sits in granaries, so a grain
+                // arbitrage could be worth taking and nothing would move.
+                let holds = |s: usize, m: usize| {
+                    self.ledger.sites[s].market == m
+                        && self.ledger.sites[s].capacity[c as usize] > 0.0
+                };
                 let source: Vec<usize> = (0..self.ledger.sites.len())
-                    .filter(|&s| {
-                        self.ledger.sites[s].market == from_m
-                            && self.ledger.sites[s].kind == SiteKind::Shop
-                    })
+                    .filter(|&s| holds(s, from_m))
                     .collect();
                 let sink: Vec<usize> = (0..self.ledger.sites.len())
-                    .filter(|&s| {
-                        self.ledger.sites[s].market == to_m
-                            && self.ledger.sites[s].kind == SiteKind::Shop
-                    })
+                    .filter(|&s| holds(s, to_m))
                     .collect();
-                let (Some(&dst), false) = (sink.first(), source.is_empty()) else {
+                // Deliver where there is most room, which is where the
+                // shortage is deepest.
+                let dst = sink.iter().copied().max_by(|&a, &b| {
+                    let room = |s: usize| {
+                        self.ledger.sites[s].capacity[c as usize] - self.ledger.stock(s, c)
+                    };
+                    room(a).total_cmp(&room(b)).then(b.cmp(&a))
+                });
+                let (Some(dst), false) = (dst, source.is_empty()) else {
                     continue;
                 };
 
                 // Only genuine surplus moves. A trader who empties his home
                 // market to chase a price has no home market — and without
                 // this the two towns simply slosh stock back and forth.
-                let keep =
-                    self.markets[from_m].daily_household_demand(c) * c.target_cover_days();
+                // Measured against the market's own total draw, household
+                // and industrial, since for grain the mills are the buyers.
+                let industrial: f64 = (0..self.ledger.sites.len())
+                    .filter(|&s| self.ledger.sites[s].market == from_m)
+                    .filter_map(|s| {
+                        let r = self.ledger.sites[s].recipe?;
+                        let per = RECIPES[r]
+                            .inputs
+                            .iter()
+                            .find(|&&(ic, _)| ic == c)
+                            .map(|&(_, q)| q)?;
+                        Some(per * self.ledger.sites[s].throughput)
+                    })
+                    .sum();
+                let daily = self.markets[from_m].daily_household_demand(c) + industrial;
+                let keep = daily * c.target_cover_days();
                 for src in source {
                     if budget <= 1e-9 {
                         break;
@@ -1645,7 +1717,12 @@ impl Economy {
                 // over a period as long as the commodity keeps is the cheap
                 // way to get that behaviour without modelling speculators:
                 // a perishable reacts within days, grain over months.
-                let window = c.target_cover_days().max(1.0);
+                // A quarter of the stock cycle, not the whole of it. Long
+                // enough to damp the seasonal swing, short enough that a
+                // market notices a cargo arriving: at the full window a
+                // grain price took five months to respond to imports, so
+                // trade relieved the shortage and the price never knew.
+                let window = (c.target_cover_days() * 0.25).max(3.0);
                 let alpha = 1.0 / window;
                 let seen = self.markets[m].expected_cover[c as usize];
                 let cover = seen * (1.0 - alpha) + cover * alpha;

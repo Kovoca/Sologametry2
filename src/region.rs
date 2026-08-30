@@ -210,7 +210,11 @@ impl Region {
             let food_day = pop * Commodity::ProcessedFood.per_capita_annual() / 365.0;
             let goods_day = pop * Commodity::RetailGoods.per_capita_annual() / 365.0;
 
-            markets.push(Market::new(name.clone(), pop));
+            // Hemisphere from the town's own latitude: a country can
+            // straddle the equator, and a market's farming year follows
+            // where it actually is.
+            let southern = s.cell / world.width > world.height / 2;
+            markets.push(Market::in_nation(name.clone(), pop, 0, southern));
             settlement_of_market.push(t);
 
             sites.push(Site {
@@ -503,10 +507,6 @@ impl Region {
             });
         }
 
-        // The farming year runs six months out of step below the equator.
-        let capital_cell = settlements.list[towns[0]].cell;
-        let southern = capital_cell / world.width > world.height / 2;
-
         let mut economy = Economy {
             ledger: Ledger::new(sites),
             journal: Journal::new(),
@@ -514,8 +514,6 @@ impl Region {
             routes,
             grid: Grid::for_doctrine(doctrine, peak_power),
             response: Response::for_doctrine(doctrine),
-            southern,
-            harvest_quality: 1.0,
             weather_seed: world.seed ^ (polity as u64).wrapping_mul(0x517C_C1B7_2722_0A95),
             unserved_power: 0.0,
             unmet_demand: basket(),
@@ -559,4 +557,230 @@ impl Region {
 /// Kind of a settlement, for reporting.
 pub fn settlement_kind(set: &Settlements, idx: usize) -> Kind {
     set.list[idx].kind
+}
+
+// ---------------------------------------------------------------------------
+// A world of trading nations
+// ---------------------------------------------------------------------------
+
+/// Several nations in one economy, with lanes between them.
+///
+/// One ledger for the whole planet, because that is what makes
+/// conservation mean anything across a border: a cargo leaving one country
+/// is the same tonnes arriving in another, not a subtraction here and an
+/// invention there.
+pub struct Nations {
+    pub economy: Economy,
+    /// Polity id per nation index.
+    pub polity: Vec<u16>,
+    /// Market indices belonging to each nation.
+    pub markets_of: Vec<Vec<usize>>,
+    pub names: Vec<String>,
+    pub notes: Vec<String>,
+}
+
+impl Nations {
+    /// Build the `count` largest nations into a single trading world.
+    pub fn build(
+        world: &World,
+        polities: &Polities,
+        settlements: &Settlements,
+        network: &Network,
+        count: usize,
+        markets_each: usize,
+        doctrine: Doctrine,
+    ) -> Nations {
+        let ranked = polities.ranked();
+        let mut economy: Option<Economy> = None;
+        let mut polity_ids = Vec::new();
+        let mut markets_of: Vec<Vec<usize>> = Vec::new();
+        let mut names = Vec::new();
+        let mut notes = Vec::new();
+        let mut capitals: Vec<usize> = Vec::new(); // settlement cell of each capital
+        let mut coastal: Vec<bool> = Vec::new();
+
+        for (nation, &(id, _)) in ranked.iter().take(count).enumerate() {
+            let Some(region) = Region::extract(
+                world,
+                polities,
+                settlements,
+                network,
+                id,
+                markets_each,
+                doctrine,
+            ) else {
+                continue;
+            };
+
+            let cap_settlement = region.settlement_of_market[0];
+            capitals.push(settlements.list[cap_settlement].cell);
+            // A nation is maritime if its *territory* reaches the sea, not
+            // if its largest cities happen to be ports. Most great cities
+            // are inland; the country still ships through whatever harbour
+            // it has, and judging by the capital alone leaves a planet of
+            // landlocked states with no sea trade at all.
+            coastal.push(has_coastline(world, polities, id));
+            names.push(region.economy.markets[0].name.clone());
+            polity_ids.push(id);
+            for n in region.notes {
+                notes.push(format!("{}: {n}", names[nation]));
+            }
+
+            match economy.as_mut() {
+                None => {
+                    let mut e = region.economy;
+                    for m in e.markets.iter_mut() {
+                        m.nation = nation as u16;
+                    }
+                    markets_of.push((0..e.markets.len()).collect());
+                    economy = Some(e);
+                }
+                Some(host) => {
+                    markets_of.push(absorb(host, region.economy, nation as u16));
+                }
+            }
+        }
+
+        let mut economy = economy.expect("no nations could be built");
+
+        // --- Lanes between nations ---
+        //
+        // Capital to capital. Two coastal nations trade by sea at roughly a
+        // tenth the cost per tonne-kilometre of road, which is why maritime
+        // neighbours are effectively one market and landlocked ones are
+        // not. Nations with no sea between them still trade overland, dearly.
+        let w = world.width;
+        for a in 0..capitals.len() {
+            for b in (a + 1)..capitals.len() {
+                let km = distance_km(capitals[a], capitals[b], w);
+                let by_sea = coastal[a] && coastal[b];
+                let rate = if by_sea {
+                    WATER_COST_PER_TKM
+                } else {
+                    ROAD_COST_PER_TKM
+                };
+                // Beyond a certain distance an overland haul simply is not
+                // done: there is no road across an ocean, and a landlocked
+                // pair a hemisphere apart do not trade grain.
+                if !by_sea && km > 4000.0 {
+                    continue;
+                }
+                let (ma, mb) = (markets_of[a][0], markets_of[b][0]);
+                let volume = economy.markets[ma]
+                    .daily_household_demand(Commodity::ProcessedFood)
+                    .min(
+                        economy.markets[mb]
+                            .daily_household_demand(Commodity::ProcessedFood),
+                    );
+                economy.routes.push(Route {
+                    name: format!(
+                        "{} - {} ({:.0} km by {})",
+                        names[a],
+                        names[b],
+                        km,
+                        if by_sea { "sea" } else { "land" }
+                    ),
+                    a: ma,
+                    b: mb,
+                    freight_cost: km * rate,
+                    // International trade is a fraction of what a country
+                    // moves internally, not a firehose.
+                    capacity: volume * 0.5,
+                    open: true,
+                });
+            }
+        }
+
+        let north = economy.markets.iter().filter(|m| !m.southern).count();
+        notes.push(format!(
+            "{} nations, {} markets ({} northern, {} southern), {} routes",
+            names.len(),
+            economy.markets.len(),
+            north,
+            economy.markets.len() - north,
+            economy.routes.len(),
+        ));
+
+        Nations {
+            economy,
+            polity: polity_ids,
+            markets_of,
+            names,
+            notes,
+        }
+    }
+
+    pub fn population(&self) -> f64 {
+        self.economy.markets.iter().map(|m| m.population).sum()
+    }
+
+    /// Nation index of a market.
+    pub fn nation_of(&self, market: usize) -> u16 {
+        self.economy.markets[market].nation
+    }
+}
+
+/// Whether any of a polity's territory touches open water.
+pub fn has_coastline(world: &World, pol: &Polities, polity: u16) -> bool {
+    use crate::world::Biome;
+    let (w, h) = (world.width, world.height);
+    for y in 0..h {
+        for x in 0..w {
+            let i = y * w + x;
+            if pol.owner[i] != polity {
+                continue;
+            }
+            let xm = (x + w - 1) % w;
+            let xp = (x + 1) % w;
+            let candidates = [
+                y * w + xm,
+                y * w + xp,
+                y.saturating_sub(1) * w + x,
+                (y + 1).min(h - 1) * w + x,
+            ];
+            if candidates
+                .iter()
+                .any(|&j| matches!(world.biomes[j], Biome::Ocean | Biome::Shallows))
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Fold one nation's economy into another's, renumbering as it goes.
+///
+/// Returns the host market indices the guest's markets became.
+fn absorb(host: &mut Economy, guest: Economy, nation: u16) -> Vec<usize> {
+    let market_base = host.markets.len();
+    let site_base = host.ledger.sites.len();
+
+    let mut mine = Vec::with_capacity(guest.markets.len());
+    for (i, mut m) in guest.markets.into_iter().enumerate() {
+        m.nation = nation;
+        host.markets.push(m);
+        mine.push(market_base + i);
+    }
+    for mut s in guest.ledger.sites {
+        s.market += market_base;
+        host.ledger.sites.push(s);
+    }
+    for mut r in guest.routes {
+        r.a += market_base;
+        r.b += market_base;
+        host.routes.push(r);
+    }
+    // Each nation keeps its own grid and repair service; they are separate
+    // states, and a blackout in one is not a blackout in the other.
+    for l in guest.grid.lines {
+        host.grid.lines.push(l);
+    }
+    let _ = site_base;
+
+    // The opening stock of the absorbed sites has to be counted, or the
+    // conservation check will report every tonne they arrived with as
+    // having appeared from nowhere.
+    host.ledger.absorb_opening_stock(site_base);
+    mine
 }

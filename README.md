@@ -102,6 +102,19 @@ draw on; its colliery exists only if the geology put coal in the country
 its freight costs come from the real distances between its towns and
 whether there is navigable water between them.
 
+## A world of trading nations
+
+```
+cargo run --release --bin world -- --seed 20260828 --nations 6
+cargo run --release --bin world -- --blockade 2 --blockade-on 400
+```
+
+Several nations of one planet in a single economy, with sea and land lanes
+between them. Northern and southern nations run six months out of step, so
+one country's lean season is another's harvest — and when the price gap
+beats the freight, cargoes move. `--blockade K` closes every lane touching
+nation K.
+
 ## Tests
 
 ```
@@ -127,8 +140,9 @@ src/
   network.rs   navigable waterways, roads by traffic, chokepoints
   econ.rs      commodities, journal, ledger, production, markets, grid
   slice.rs     the hand-built two-town scenario
-  region.rs    derives an economy from a generated nation
-  bin/slice.rs, bin/region.rs   run them and print what happens
+  region.rs    derives an economy from a generated nation, and folds
+               several nations into one trading world
+  bin/slice.rs, bin/region.rs, bin/world.rs   run them
   world.rs     the pipeline: elevation -> erosion -> climate -> biomes -> geology
 tests/
   generation.rs

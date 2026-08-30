@@ -222,8 +222,8 @@ fn main() {
             println!(
                 "{:>6} | {:<6} | {:>7.2} | {:>6.0} | {:>11.0} | {:>4.0} | {:>10.1} | {:>4} | {}{}",
                 format!("{yr}:{doy:03}"),
-                e.season().name(),
-                e.harvest_today(),
+                e.season_at(0).name(),
+                e.harvest_at(0),
                 e.price(0, grain),
                 e.markets[0].cover[grain as usize],
                 e.price(0, FOOD),

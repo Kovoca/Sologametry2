@@ -133,9 +133,23 @@ geology put coal (a nation without it imports fuel and gains a dependency
 that can be cut), and freight costs come from real distances and whether
 there is navigable water between the towns. Nothing here invents capacity.
 
+`region::Nations` folds several nations into **one** economy with lanes
+between them — one ledger for the whole planet, because that is what makes
+conservation mean anything across a border. Nations are maritime if their
+*territory* reaches the sea, not if their biggest cities are ports (most
+great cities are inland; the country still ships through whatever harbour
+it has). Sea lanes cost about a sixth of land.
+
 `cargo run --release --bin slice` runs the hand-built two-town scenario;
-`--bin region` runs a real nation off a generated planet. `tests/economy.rs`
-is the spec's acceptance test; `tests/region.rs` guards the seam.
+`--bin region` runs one real nation off a generated planet; `--bin world`
+runs several of them trading. `tests/economy.rs` is the spec's acceptance
+test; `tests/region.rs` guards the seam; `tests/nations.rs` guards trade.
+
+**Known gap, documented in a test rather than hidden:** trade volumes are
+too small to equalise prices between nations. Lanes join capitals, so a
+cargo from a glut market in one country to a dear market in another must
+clear three separate price-versus-freight tests in a row. Real trade is
+agents choosing a route end to end, not a pairwise test at every hop.
 
 **Nothing is repaired on a schedule.** A fault must be noticed, reported
 over working comms, assigned to a crew, and travelled to before any work

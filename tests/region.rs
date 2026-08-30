@@ -184,10 +184,10 @@ fn the_farming_year_has_a_shape() {
     let mut e = r.economy;
     for _ in 0..scale_sim::econ::DAYS_PER_YEAR {
         e.step();
-        let h = e.harvest_today();
+        let h = e.harvest_at(0);
         peak = peak.max(h);
         trough = trough.min(h);
-        seasons.insert(e.season().name());
+        seasons.insert(e.season_at(0).name());
     }
     assert_eq!(seasons.len(), 4, "the year did not pass through four seasons");
     assert!(

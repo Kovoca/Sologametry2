@@ -263,16 +263,35 @@ impl Settlements {
             }
 
             for (rank, cell) in placed.into_iter().enumerate() {
-                let coastal = matches!(world.biomes[cell], Biome::Beach)
-                    || {
-                        let mut c = false;
-                        neighbours(cell, w, h, |j| {
-                            if matches!(world.biomes[j], Biome::Shallows | Biome::Beach) {
-                                c = true;
-                            }
-                        });
-                        c
-                    };
+                // A port is a town with working access to the sea, not one
+                // whose own cell happens to be beach. At sixteen kilometres
+                // a cell, a city two cells from open water is on the coast
+                // by any measure that matters — and getting this wrong
+                // makes a planet with no seaports at all, which then has no
+                // sea freight and so no cheap trade between continents.
+                let coastal = matches!(world.biomes[cell], Biome::Beach) || {
+                    let mut found = false;
+                    let mut frontier = vec![cell];
+                    let mut seen = vec![cell];
+                    for _ in 0..2 {
+                        let mut next = Vec::new();
+                        for &i in &frontier {
+                            neighbours(i, w, h, |j| {
+                                if matches!(world.biomes[j], Biome::Shallows | Biome::Ocean) {
+                                    found = true;
+                                } else if !seen.contains(&j) {
+                                    seen.push(j);
+                                    next.push(j);
+                                }
+                            });
+                        }
+                        if found {
+                            break;
+                        }
+                        frontier = next;
+                    }
+                    found
+                };
                 list.push(Settlement {
                     cell,
                     polity: *id,

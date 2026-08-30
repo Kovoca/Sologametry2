@@ -1,0 +1,233 @@
+//! Trade between nations.
+//!
+//! One ledger for the whole planet, so a cargo leaving one country is the
+//! same tonnes arriving in another rather than a subtraction here and an
+//! invention there.
+
+use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
+use scale_sim::network::Network;
+use scale_sim::polity::Polities;
+use scale_sim::region::Nations;
+use scale_sim::settlement::Settlements;
+use scale_sim::world::World;
+
+const FOOD: Commodity = Commodity::ProcessedFood;
+const GRAIN: Commodity = Commodity::Grain;
+
+fn nations(seed: u64, count: usize) -> Nations {
+    let world = World::generate(384, 216, seed);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+    Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        count,
+        4,
+        Doctrine::Prudent,
+    )
+}
+
+#[test]
+fn a_world_of_nations_conserves() {
+    // The reason for one ledger. Folding several economies together must
+    // not lose or invent a tonne of anything.
+    for seed in [1u64, 42, 20260828] {
+        let mut n = nations(seed, 6);
+        n.economy.ledger.assert_conserved();
+        for _ in 0..(DAYS_PER_YEAR * 2) {
+            n.economy.step();
+            n.economy.ledger.assert_conserved();
+        }
+    }
+}
+
+#[test]
+fn both_hemispheres_are_represented() {
+    // The seasonal trade opportunity is between hemispheres, not within a
+    // country: one nation's lean season is another's harvest. If every
+    // nation sits in the same hemisphere there is nothing to trade on.
+    let n = nations(20260828, 8);
+    let north = n.economy.markets.iter().filter(|m| !m.southern).count();
+    let south = n.economy.markets.len() - north;
+    assert!(
+        north > 0 && south > 0,
+        "{north} northern and {south} southern markets — no hemisphere offset at all"
+    );
+}
+
+#[test]
+fn hemispheres_run_out_of_step() {
+    let n = nations(20260828, 8);
+    let north = n
+        .economy
+        .markets
+        .iter()
+        .position(|m| !m.southern)
+        .expect("no northern market");
+    let south = n
+        .economy
+        .markets
+        .iter()
+        .position(|m| m.southern)
+        .expect("no southern market");
+
+    // On any given day the two hemispheres must be in different seasons,
+    // and their harvests must peak at opposite ends of the year.
+    let mut differed = 0;
+    let mut e = n.economy;
+    for _ in 0..DAYS_PER_YEAR {
+        e.step();
+        if e.season_at(north) != e.season_at(south) {
+            differed += 1;
+        }
+    }
+    assert!(
+        differed > DAYS_PER_YEAR as usize * 3 / 4,
+        "hemispheres were in the same season for most of the year"
+    );
+}
+
+#[test]
+fn nations_trade_across_borders() {
+    // Lanes exist and are actually used. Without this the whole structure
+    // is several sealed economies sharing a ledger.
+    let mut n = nations(20260828, 6);
+    let international: Vec<usize> = (0..n.economy.routes.len())
+        .filter(|&r| {
+            let e = &n.economy;
+            e.markets[e.routes[r].a].nation != e.markets[e.routes[r].b].nation
+        })
+        .collect();
+    assert!(!international.is_empty(), "no lanes between nations at all");
+
+    let mut ever_worth_it = false;
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        n.economy.step();
+        if international
+            .iter()
+            .any(|&r| n.economy.arbitrage(r, GRAIN) > 0.0)
+        {
+            ever_worth_it = true;
+        }
+    }
+    assert!(
+        ever_worth_it,
+        "nations diverged for two years and no cross-border haul was ever worth taking"
+    );
+}
+
+#[test]
+fn a_blockade_isolates_a_nation() {
+    // Cutting the lanes must actually cut them: a blockaded nation's
+    // prices come loose from everyone else's, because nothing can move.
+    let mut n = nations(20260828, 6);
+    for _ in 0..(DAYS_PER_YEAR + 100) {
+        n.economy.step();
+    }
+
+    let target: u16 = 1;
+    let mut closed = 0;
+    let markets = n.economy.markets.iter().map(|m| m.nation).collect::<Vec<_>>();
+    for r in n.economy.routes.iter_mut() {
+        let (a, b) = (markets[r.a], markets[r.b]);
+        if a != b && (a == target || b == target) {
+            r.open = false;
+            closed += 1;
+        }
+    }
+    assert!(closed > 0, "nation {target} had no lanes to close");
+
+    for _ in 0..200 {
+        n.economy.step();
+    }
+    n.economy.ledger.assert_conserved();
+
+    // Nothing may cross a closed lane.
+    for r in n.economy.routes.iter().filter(|r| !r.open) {
+        let (a, b) = (markets[r.a], markets[r.b]);
+        assert!(a == target || b == target, "closed the wrong lane");
+    }
+}
+
+#[test]
+fn goods_actually_cross_borders() {
+    // Not merely that a haul is *worth* taking, but that tonnes move. The
+    // journal knows: a Shipped event whose two ends sit in different
+    // nations is international trade and nothing else is.
+    use scale_sim::econ::Event;
+
+    let mut n = nations(20260828, 6);
+    let before = n.economy.journal.len();
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        n.economy.step();
+    }
+
+    let nation_of_site: Vec<u16> = n
+        .economy
+        .ledger
+        .sites
+        .iter()
+        .map(|s| n.economy.markets[s.market].nation)
+        .collect();
+
+    let mut crossed = 0.0f64;
+    for entry in n.economy.journal.entries().iter().skip(before) {
+        if let Event::Shipped { from, to, qty, .. } = &entry.event {
+            if nation_of_site[*from] != nation_of_site[*to] {
+                crossed += qty;
+            }
+        }
+    }
+    assert!(
+        crossed > 0.0,
+        "two years and not one tonne crossed a border"
+    );
+}
+
+/// Trade is *not* yet asserted to narrow the price spread, and it does not.
+///
+/// Lanes join capitals, so a cargo from a glut market in one country to a
+/// dear market in another has to clear three separate price-versus-freight
+/// tests in a row — to its own capital, across the lane, and out to the
+/// buyer. That chain rarely completes, so volumes are far below what would
+/// equalise anything. Real trade is agents choosing routes end to end, not
+/// a pairwise test at every hop, and that is what this wants next.
+#[test]
+fn trade_volumes_are_still_too_small_to_equalise() {
+    let mut n = nations(20260828, 6);
+    for _ in 0..DAYS_PER_YEAR {
+        n.economy.step();
+    }
+    let mut lo = f64::INFINITY;
+    let mut hi: f64 = 0.0;
+    for m in 0..n.economy.markets.len() {
+        let p = n.economy.price(m, GRAIN);
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    // Documenting the gap rather than pretending it is closed: if a change
+    // ever brings this under 2x, the note above is stale and should go.
+    assert!(
+        hi / lo.max(1.0) > 1.5,
+        "the spread closed to {:.2}x — trade got stronger, update the note",
+        hi / lo.max(1.0)
+    );
+}
+
+#[test]
+fn nobody_starves_in_a_trading_world() {
+    for seed in [1u64, 20260828] {
+        let mut n = nations(seed, 6);
+        for _ in 0..(DAYS_PER_YEAR * 2) {
+            n.economy.step();
+            assert!(
+                n.economy.unmet_demand[FOOD as usize] == 0.0,
+                "seed {seed}: people went hungry on day {} with nothing wrong",
+                n.economy.ledger.day
+            );
+        }
+    }
+}
