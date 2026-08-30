@@ -115,6 +115,31 @@ impl Tile {
     }
 }
 
+/// **One legend for the tile view**, so every binary that draws ground
+/// says the same thing about it. The vehicle parts are listed only when
+/// there is a vehicle to explain.
+pub fn ground_legend(with_vehicle: bool) -> String {
+    let mut out = String::new();
+    out.push_str("  you       @
+");
+    out.push_str("  made      = carriageway   : lane marking   ; hard shoulder   - footway
+");
+    out.push_str("  building  # wall   / door   o window   . floor
+");
+    out.push_str("  fittings  $ till   S shelving   R racking   L loading bay   C counter
+");
+    out.push_str("  country   \" grass   T tree   * scrub   , sand   ^ rock   A snow   ~ water");
+    if with_vehicle {
+        out.push_str("
+  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank");
+        out.push_str("
+            % seat   ! controls   b battery   a alternator");
+        out.push_str("
+            p solar   x refrigeration   w workshop rig   Y land gear");
+    }
+    out
+}
+
 /// A window of ground, real for as long as somebody is looking at it.
 pub struct Ground {
     pub w: usize,

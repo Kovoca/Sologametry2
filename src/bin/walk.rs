@@ -221,11 +221,7 @@ fn main() {
     }
     print!("{}", g.render(Some(centre)));
     println!();
-    println!("  @ you   = road   : lane marking   ; hard shoulder   - pavement");
-    println!("  # wall   / door   o window   . floor");
-    println!("  $ till  S shelving  R racking  L loading bay");
-    println!("  \" grass  T tree  * scrub  , sand  ^ rock  ~ water");
-    println!("  E engine  @ seat  o wheel  = cargo  ! controls  b battery  a alternator");
+    println!("{}", scale_sim::ground::ground_legend(true));
     println!();
     let here = g.at(
         (centre.0 - g.origin.0) as usize,

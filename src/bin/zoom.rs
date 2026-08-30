@@ -132,12 +132,7 @@ fn main() {
         println!("  {line}");
     }
     println!();
-    println!(
-        "  . lane  - road  = dual carriageway  # motorway   h house   H flats
-  S shop   W works   , park   '{}' the {:?} it stands in",
-        scale_sim::townplan::ground_glyph(plan.ground),
-        plan.ground,
-    );
+    println!("{}", scale_sim::townplan::plan_legend(plan.ground));
     println!();
     println!(
         "  {} houses and {} blocks of flats; {} shops.",

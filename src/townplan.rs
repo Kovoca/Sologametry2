@@ -804,20 +804,39 @@ fn street_distance(lots: &[Lot], size: usize, x: usize, y: usize) -> usize {
 /// put down in.
 pub fn ground_glyph(b: Biome) -> char {
     use Biome::*;
+    // **The country must not look like the town built on it.** Desert was
+    // `.` and Tundra `-`, which are a lane and a road; Beach was `,`,
+    // which is a park. A town in the desert had streets you could not see.
     match b {
         Ocean | Shallows => '~',
-        Beach => ',',
-        Desert => '.',
+        Beach => 'b',
+        Desert => 'd',
         Savanna => ';',
         Grassland => '"',
         Shrubland => '*',
         Forest | Rainforest => 'f',
         Swamp => 's',
         Taiga => 't',
-        Tundra => '-',
+        Tundra => 'u',
         Mountain => '^',
         Snowcap => 'A',
     }
+}
+
+/// **One legend for the plot view**, so every binary that draws a town
+/// says the same thing about it.
+pub fn plan_legend(ground: Biome) -> String {
+    let mut out = String::new();
+    out.push_str("  streets   . lane   - road   = dual carriageway   # motorway
+");
+    out.push_str("  built     h houses   H flats   S shop   W works   , park
+");
+    out.push_str(&format!(
+        "  country   {}  the {:?} the town stands in",
+        ground_glyph(ground),
+        ground,
+    ));
+    out
 }
 
 fn touching_street(lots: &[Lot], size: usize, x: usize, y: usize) -> bool {

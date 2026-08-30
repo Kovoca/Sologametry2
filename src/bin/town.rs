@@ -100,7 +100,7 @@ fn main() {
     println!();
     print!("{}", plan.render());
     println!();
-    println!("  . lane  - road  = dual  # motorway   h house  H flats  S shop  W works  , park");
+    println!("{}", scale_sim::townplan::plan_legend(plan.ground));
     println!();
 
     let houses = plan.count(Lot::House) + plan.count(Lot::Flats);

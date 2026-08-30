@@ -229,21 +229,47 @@ impl Part {
     }
 
     /// One character, so the thing can be drawn.
+    /// **Nothing a vehicle is made of may look like the ground it stands
+    /// on.** These used to be `#`, `=`, `T`, `o`, `*` and `@` — which are
+    /// wall, road, tree, window, scrub and the player — so a parked lorry
+    /// read as `a#To#########ooo#` and was genuinely impossible to pick
+    /// out from the street it was on. Colour is how a roguelike normally
+    /// solves this and there is none here, so the characters have to do
+    /// the work themselves.
     pub fn glyph(self) -> char {
         match self {
-            Part::Frame { .. } => '#',
+            Part::Frame { .. } => '+',
             Part::Engine(_) => 'E',
-            Part::Wheel { .. } => 'o',
-            Part::CargoBay(_) => '=',
-            Part::Tank(_) => 'T',
-            Part::Seat => '@',
+            Part::Wheel { .. } => 'O',
+            Part::CargoBay(_) => 'B',
+            Part::Tank(_) => 'F', // fuel
+            Part::Seat => '%',
             Part::Controls => '!',
             Part::Battery(_) => 'b',
             Part::Alternator(_) => 'a',
             Part::SolarPanel(_) => 'p',
-            Part::Refrigeration(_) => '*',
+            Part::Refrigeration(_) => 'x',
             Part::WorkshopRig => 'w',
             Part::LandGear { .. } => 'Y',
+        }
+    }
+
+    /// What it is, for a legend.
+    pub fn label(self) -> &'static str {
+        match self {
+            Part::Frame { .. } => "frame",
+            Part::Engine(_) => "engine",
+            Part::Wheel { .. } => "wheel",
+            Part::CargoBay(_) => "cargo bay",
+            Part::Tank(_) => "fuel tank",
+            Part::Seat => "seat",
+            Part::Controls => "controls",
+            Part::Battery(_) => "battery",
+            Part::Alternator(_) => "alternator",
+            Part::SolarPanel(_) => "solar panel",
+            Part::Refrigeration(_) => "refrigeration",
+            Part::WorkshopRig => "workshop rig",
+            Part::LandGear { .. } => "land gear",
         }
     }
 

@@ -953,6 +953,38 @@ pavement honestly and `Road::Track` never appears. That is a hole in
 vehicles; `staked` is cargo still on the road, which is not a leak. Every
 money printer so far was caught by this identity failing.
 
+## Reading the output
+
+Three views, three symbol sets. **A glyph must not mean two things in the
+same picture**, which took a pass to get right: a town in Desert drew open
+ground as `.` — a lane — and one in Tundra as `-`, a road, so its streets
+were invisible; and a parked lorry came out as `a#To#########ooo#` because
+frame was `#` like a wall, cargo `=` like road, tank `T` like a tree and
+wheels `o` like windows. Colour is how a roguelike normally separates
+these and there is none here, so the characters have to do it.
+
+One legend function per view (`townplan::plan_legend`, `ground::
+ground_legend`), so every binary says the same thing.
+
+**Town plan** (`town`, `zoom` step 3) — 32 m to the character:
+
+| | |
+|---|---|
+| streets | `.` lane `-` road `=` dual `#` motorway |
+| built | `h` houses `H` flats `S` shop `W` works `,` park |
+| country | `~` water `b` beach `d` desert `;` savanna `"` grass `*` scrub `f` forest `s` swamp `t` taiga `u` tundra `^` mountain `A` snowcap |
+
+**Ground** (`walk`) — 1 m to the character:
+
+| | |
+|---|---|
+| you | `@` |
+| made | `=` carriageway `:` lane marking `;` hard shoulder `-` footway |
+| building | `#` wall `/` door `o` window `.` floor |
+| fittings | `$` till `S` shelving `R` racking `L` loading bay `C` counter |
+| country | `"` grass `T` tree `*` scrub `,` sand `^` rock `A` snow `~` water |
+| vehicle | `+` frame `E` engine `O` wheel `B` cargo bay `F` fuel tank `%` seat `!` controls `b` battery `a` alternator `p` solar `x` refrigeration `w` workshop rig `Y` land gear |
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
