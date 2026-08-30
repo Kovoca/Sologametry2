@@ -131,9 +131,13 @@ fn a_man_with_nothing_and_no_work_dies() {
         }
     }
     let died = died_on.expect("penniless with no work for four months and still alive");
+    // Starvation takes weeks — about forty days on its own. **Sleeping
+    // out shortens it**, because exposure costs condition on top of
+    // hunger, and the two together are what actually kills people on the
+    // street rather than either alone.
     assert!(
-        hal.days_hungry >= 40,
-        "he died after only {} hungry days — starvation takes weeks",
+        hal.days_hungry >= 25,
+        "he died after only {} hungry days — starvation takes weeks even          with nowhere to sleep",
         hal.days_hungry
     );
     let _ = died;
@@ -316,4 +320,81 @@ fn a_life_is_deterministic() {
         (p.money.to_bits(), p.days_worked, p.log.len())
     };
     assert_eq!(run(), run(), "two identical lives diverged");
+}
+
+#[test]
+fn rent_is_the_biggest_thing_he_buys() {
+    // **Housing is a quarter to a third of a low income** *(real: 25-35%,
+    // and "housing stressed" is the term for anything above 30)*, against
+    // a tenth to a seventh on food. It was not modelled at all, so
+    // everybody in this world lived rent-free and the poorest man in it
+    // could still save for a lorry.
+    let r = a_nation(20260828);
+    for m in 0..r.economy.markets.len() {
+        let rent = person::rent_per_day(&r.economy, m);
+        let food = r.economy.price(m, FOOD) * FOOD_PER_DAY;
+        let wage = person::day_rate(&r.economy, m, Trade::Labourer);
+        assert!(
+            rent > food,
+            "{}: rent {rent:.2} a day against {food:.2} for food — housing is \
+             the larger of the two everywhere",
+            r.economy.markets[m].name
+        );
+        let share = rent / wage;
+        assert!(
+            (0.15..0.45).contains(&share),
+            "{}: rent is {:.0}% of a day's wage",
+            r.economy.markets[m].name,
+            share * 100.0
+        );
+    }
+}
+
+#[test]
+fn a_man_in_work_keeps_his_roof() {
+    // The baseline has to be that working keeps you housed, or the
+    // failure state means nothing. A shop worker on three and a half days
+    // a week should hold a rented room and put a little by.
+    let mut r = a_nation(20260828);
+    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let day = r.economy.ledger.day;
+        person::live_a_day(&mut hal, &mut r.economy, day);
+    }
+    assert!(hal.alive());
+    assert_ne!(
+        hal.housing,
+        person::Housing::Homeless,
+        "two years of shop work and he is on the street, having worked {} days",
+        hal.days_worked
+    );
+}
+
+#[test]
+fn a_price_shock_can_put_a_working_man_on_the_street() {
+    // And once he is out he is half as employable, because the address
+    // goes on the form — which is what makes homelessness self-sustaining
+    // rather than a bad month. The order matters: hungry first, then
+    // evicted, because rent is due whether or not he was on the rota and
+    // food can be gone without for a day.
+    let mut r = a_nation(20260828);
+    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 5.0);
+    let mut evicted = false;
+    for n in 0..800u64 {
+        if n == 20 {
+            r.economy.grid.fail_transformer("main line");
+        }
+        r.economy.step();
+        let day = r.economy.ledger.day;
+        person::live_a_day(&mut hal, &mut r.economy, day);
+        if hal.housing == person::Housing::Homeless {
+            evicted = true;
+            break;
+        }
+    }
+    assert!(
+        evicted,
+        "bread quintupled and a man on shop wages kept his tenancy throughout"
+    );
 }

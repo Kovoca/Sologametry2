@@ -201,6 +201,52 @@ impl Contract {
     }
 }
 
+/// **Where somebody sleeps.**
+///
+/// Housing is the largest thing a household spends money on — a quarter
+/// to a third of income against a tenth to a seventh on food — and it was
+/// not modelled at all, so everybody in this world lived rent-free.
+///
+/// It is also the thing that fails first and hurts longest. Rent is due
+/// whether or not you were on the rota this week, and once you are out
+/// you are much harder to employ, because the address goes on the form.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Housing {
+    /// A room in somebody else's place. Cheap, and no security at all.
+    Lodging,
+    /// A tenancy of his own.
+    Rented,
+    /// Bought, and the rent stops.
+    Owned,
+    /// Nowhere.
+    Homeless,
+}
+
+impl Housing {
+    pub fn name(self) -> &'static str {
+        match self {
+            Housing::Lodging => "a rented room",
+            Housing::Rented => "a place of his own",
+            Housing::Owned => "his own front door",
+            Housing::Homeless => "nowhere",
+        }
+    }
+
+    /// What it costs a day, against the going rent for a tenancy.
+    ///
+    /// A room in a shared house is about half a flat; owning costs
+    /// nothing further once it is bought, which is the whole reason
+    /// people want to.
+    pub fn share_of_rent(self) -> f64 {
+        match self {
+            Housing::Lodging => 0.5,
+            Housing::Rented => 1.0,
+            Housing::Owned => 0.0,
+            Housing::Homeless => 0.0,
+        }
+    }
+}
+
 /// How a person is getting on.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum State {
@@ -228,6 +274,10 @@ pub struct Person {
     /// out of that is to buy a better vehicle rather than to find a better
     /// price.
     pub conveyance: Conveyance,
+    /// Where he sleeps, and what it costs him.
+    pub housing: Housing,
+    /// Days he has been sleeping out.
+    pub days_homeless: u64,
     /// The contract in hand, if any.
     pub job: Option<Contract>,
     /// What has happened to them. The beginning of B4's memory log.
@@ -268,6 +318,10 @@ impl Person {
             condition: 1.0,
             state: State::Idle,
             conveyance: Conveyance::OnFoot,
+            // Everybody starts in a rented room. Nobody arrives owning
+            // anything, and this is the cheapest roof there is.
+            housing: Housing::Lodging,
+            days_homeless: 0,
             job: None,
             log: Vec::new(),
             days_hungry: 0,
@@ -292,6 +346,22 @@ impl Person {
 // ---------------------------------------------------------------------------
 // Work that exists because the economy wants it done
 // ---------------------------------------------------------------------------
+
+/// **What a tenancy costs here, per day.**
+///
+/// Housing is a quarter to a third of a low income *(real: 25-35%, and
+/// "housing stressed" is the term for anything over 30)*, against a tenth
+/// to a seventh on food. It is the largest thing a household buys and it
+/// was not modelled at all, so everybody lived rent-free and the poorest
+/// person in the world could still save for a lorry.
+///
+/// Priced off the local wage rather than off a land market, which does
+/// not exist yet: where wages are high, so is rent, which is most of what
+/// a land market would tell us anyway.
+pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
+    const SHARE_OF_A_WAGE: f64 = 0.30;
+    day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE
+}
 
 /// Wage per day for a trade, from what the work is worth and how many
 /// hands are chasing it.
@@ -840,6 +910,51 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
         }
     }
 
+    // --- Pay the rent ---
+    //
+    // **Due whether or not he was on the rota this week.** That is the
+    // whole difficulty of it: food can be gone without for a day and rent
+    // cannot be gone without at all, so a bad fortnight puts somebody out
+    // of a home that a bad fortnight of hunger would not have killed.
+    {
+        let rent = rent_per_day(econ, person.market) * person.housing.share_of_rent();
+        if rent > 0.0 {
+            if person.money >= rent {
+                person.money -= rent;
+                person.spent += rent;
+            } else {
+                if person.housing != Housing::Homeless {
+                    person.note(day, "put out — could not find the rent");
+                }
+                person.housing = Housing::Homeless;
+            }
+        }
+    }
+
+    if person.housing == Housing::Homeless {
+        person.days_homeless += 1;
+        // **Sleeping out is not free either.** It costs health rather than
+        // money, which is why it is a trap and not a saving: rough
+        // sleeping does severe and cumulative damage, and the people it
+        // happens to are the ones who could least afford to be ill.
+        person.condition = (person.condition - 0.012).max(0.0);
+        if person.days_homeless == 1 {
+            person.note(day, "slept out");
+        }
+        // Back indoors as soon as there is a month's rent and a deposit,
+        // which is the real barrier: the money to get in is far more than
+        // the money to stay.
+        let rent = rent_per_day(econ, person.market);
+        let deposit = rent * 30.0 * 1.5;
+        if person.money > deposit {
+            person.money -= rent * 30.0 * 0.5;
+            person.spent += rent * 30.0 * 0.5;
+            person.housing = Housing::Lodging;
+            person.days_homeless = 0;
+            person.note(day, "found a room again");
+        }
+    }
+
     // --- Keep what you own ---
     //
     // **A vehicle costs money on the days it earns none.** An animal eats
@@ -952,9 +1067,18 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             person.state = State::Idle;
         }
         State::Idle => {
-            let reserve_for_food = econ.price(person.market, Commodity::ProcessedFood)
+            // **A month of everything, not a month of groceries.**
+            //
+            // Rent is the larger of the two and is due whether or not he
+            // worked, so reckoning affordability against food alone let
+            // him buy a bicycle he could not keep a roof over. He was put
+            // out three weeks later and stayed out for over a year,
+            // because once you are on the street you are half as
+            // employable and cannot save the deposit to get back in.
+            let cost_of_living = econ.price(person.market, Commodity::ProcessedFood)
                 * FOOD_PER_DAY
-                * 30.0;
+                + rent_per_day(econ, person.market) * person.housing.share_of_rent();
+            let reserve_for_food = cost_of_living * 30.0;
 
             // --- Buy a better vehicle, if it is clearly worth it ---
             //
@@ -1028,9 +1152,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             // stake, and is well enough to do. Never stake so much that a
             // bad trip leaves nothing to eat with — which is what keeps a
             // careful man alive and is also why the poor stay on wages.
-            let reserve = econ.price(person.market, Commodity::ProcessedFood)
-                * FOOD_PER_DAY
-                * 30.0;
+            let reserve = reserve_for_food;
             // **Somebody else may get it.**
             //
             // A slack labour market does not mainly feel like low wages,
@@ -1049,11 +1171,18 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             if offers.iter().any(|c| c.stake() > 0.0) {
                 person.days_offered += 1;
             }
-            let hiring = econ
+            let mut hiring = econ
                 .workforce
                 .get(person.market)
                 .map(|w| w.chance_of_work())
                 .unwrap_or(1.0);
+            // **No address, no job.** A fixed address goes on the form,
+            // and not having one is one of the largest barriers there is
+            // to getting off the street — which is what makes homelessness
+            // self-sustaining rather than a bad month.
+            if person.housing == Housing::Homeless {
+                hiring *= 0.45;
+            }
             let drawn = draw(&person.name, day);
             // **The only way up.** A man who has put in a couple of years
             // on the floor can be made a chargehand; a man off the street

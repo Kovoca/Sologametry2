@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
 use scale_sim::network::Network;
-use scale_sim::person::{self, Person, State, Trade};
+use scale_sim::person::{self, Housing, Person, State, Trade};
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
@@ -145,6 +145,12 @@ fn main() {
     let food_day = region.economy.price(start, FOOD) * person::FOOD_PER_DAY;
     println!(
         "A day's work pays about {wage:.1}; a day's food costs {food_day:.1}.",
+    );
+    println!(
+        "He sleeps in {}; the rent is {:.1} a day against {:.1} for food.",
+        hal.housing.name(),
+        person::rent_per_day(&region.economy, start),
+        food_day,
     );
     println!(
         "He travels {} and can carry {:.0} kg of his own.",
@@ -307,6 +313,15 @@ fn main() {
         println!(
             "  which is {:.0} days of food at today's price of {bread:.2}.",
             hal.money / bread.max(1e-9),
+        );
+        println!(
+            "He sleeps in {}{}.",
+            hal.housing.name(),
+            if hal.housing == Housing::Homeless {
+                format!(", and has for {} days", hal.days_homeless)
+            } else {
+                String::new()
+            },
         );
         println!(
             "He ends up with {} — {:.0} kg at a time.",

@@ -1191,13 +1191,18 @@ impl Economy {
         self.generate_power();
         self.allocate_power();
         self.produce();
-        // Who was working today falls out of what actually ran, so this
-        // has to come after production and before anybody is paid.
-        crate::labour::update(self);
         // Sell first, then reorder — a shop restocks against what it has
         // left at close of business, which is what makes the day's cover
         // figure mean "days of stock in hand".
         self.consume_households();
+        // **After the shops have sold**, not before.
+        //
+        // Who was working today falls out of what the works ran and what
+        // the tills took, and running this before the day's trade read
+        // every shop as shut: sales were still zero, so a supermarket
+        // rostered a third of its people and could not keep a cashier
+        // housed.
+        crate::labour::update(self);
         self.distribute();
         self.trade();
         self.update_prices();

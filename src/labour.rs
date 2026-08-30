@@ -169,12 +169,16 @@ pub fn update(econ: &mut Economy) {
             // which is exactly why shop work is part-time and the hours
             // are never guaranteed. The managers are in whether anybody
             // comes through the door or not.
-            let rated: f64 = b
-                .fixtures
-                .iter()
-                .filter(|(fx, _)| fx.throughput_t() > 0.0)
-                .map(|&(fx, n)| fx.throughput_t() * n)
-                .sum();
+            // **Against the checkouts, which is what selling is.**
+            //
+            // Summing every fixture that moves tonnage counted the same
+            // goods twice — once through the loading bay on the way in and
+            // once through a till on the way out — so a shop trading flat
+            // out read as half idle, rostered two thirds of its people and
+            // could not keep a cashier housed.
+            let rated = b.staff_at(crate::building::Fixture::Till)
+                / crate::building::Fixture::Till.staff()
+                * crate::building::Fixture::Till.throughput_t();
             let busy = if rated > 0.0 { site.ran / rated } else { 0.0 };
             let stocked = Commodity::ALL
                 .iter()

@@ -523,6 +523,12 @@ The design doc's *"tile-layered data model, generalizing CDDA's
 vehicle-part system to buildings"*, one step in. A vehicle is frames and
 engines and cargo bays; a shop is tills and shelving and a loading dock.
 
+**A vehicle is ground, not a mode.** You do not enter one, you stand on a
+tile of it: an artic is 17 m of occupied road with the seat at (1,1), and
+where you stand decides what you can reach. One tile is a metre, which
+pins the bottom of the ladder — a 25 m town plot is 25x25 tiles, and a
+16.4 km region cell is the world map.
+
 **The point is the staff.** A shop does not employ people because a table
 says retail is a tenth of the workforce — it employs them because somebody
 works each till, fills each bay and unloads each lorry, and the counts
@@ -577,6 +583,35 @@ promotion runs two to three years in)* and paying a third more.
 Not built yet: the walkable tile interior, the wall/floor layers, and the
 electrical and water nodes hung off them. Fixtures first, the same way
 parts came before vehicle interiors.
+
+## Somewhere to sleep (`Housing` in `src/person.rs`)
+
+**Housing is the largest thing a household buys** — 25-35% of a low income
+against a tenth to a seventh on food *(real; "housing stressed" is the
+term for anything over 30%)* — and it was not modelled at all, so everybody
+lived rent-free and the poorest man in the world could still save for a
+lorry.
+
+Lodging, a tenancy, ownership, or nowhere. Rent is due **whether or not he
+was on the rota**, which is the whole difficulty: food can be gone without
+for a day and rent cannot, so a bad fortnight puts somebody out that a bad
+fortnight of hunger would not have killed.
+
+- **No address, no job.** Hiring chance halves on the street, which is what
+  makes homelessness self-sustaining rather than a bad month.
+- **Getting back in costs more than staying in** — a deposit plus a month
+  up front, which is the real barrier.
+- Sleeping out costs condition. **Exposure plus hunger kills faster than
+  hunger alone**, which is what actually happens to people on the street.
+
+Two bugs it flushed out, both the same shape — *reckoning against one cost
+when there are two*:
+- He bought a bicycle keeping thirty days of **food** in reserve, could not
+  make rent three weeks later, and was out for over a year. A month's
+  reserve means a month of everything.
+- `labour::update` ran **before** the shops sold, so every shop read as shut
+  and rostered a third of its people. A cashier could not keep a room. Who
+  worked today has to be counted after the day's trade, not before.
 
 ## A town's ground plan (`src/townplan.rs`)
 

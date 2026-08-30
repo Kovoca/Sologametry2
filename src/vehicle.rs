@@ -17,6 +17,19 @@
 //! damaged, removed, salvaged and improvised, which is the whole point of
 //! the CDDA model and the thing a tier list can never do.
 //!
+//! ## A vehicle is ground, not a mode
+//!
+//! **You do not "enter" a vehicle; you stand on one of its tiles.** That
+//! is how CDDA does it and it is the reason the part model is worth
+//! having: a lorry is seventeen metres of occupied road with a seat at
+//! one end, and where you are standing on it decides what you can reach.
+//! A vehicle with no footprint cannot be stood on, blocked by, crashed
+//! into, or slept in.
+//!
+//! One tile is a metre, which pins the bottom of the scale ladder: a
+//! 25 m town plot is 25 x 25 tiles, and a 16.4 km region cell is the
+//! world map. The same three numbers all the way down.
+//!
 //! **This is a modern world.** It has coal-fired power stations, canneries
 //! and forty-four-tonne artics on its trunk roads, so the ladder a poor
 //! man climbs runs bicycle, second-hand van, box truck, artic — not
@@ -53,9 +66,14 @@ impl Part {
     /// a tenth of the payload it is rated to carry.
     pub fn mass_kg(self) -> f64 {
         match self {
+            // **One tile of structure**, not a whole chassis. An artic is
+            // 51 tiles of frame and 13-15 t of vehicle before anything
+            // goes in it, so a tile of it is about 120 kg. Sizing a frame
+            // as if it were the entire ladder chassis gave a 54-tonne
+            // empty lorry.
             Part::Frame { heavy } => {
                 if heavy {
-                    900.0
+                    120.0
                 } else {
                     15.0
                 }
@@ -86,9 +104,9 @@ impl Part {
         match self {
             Part::Frame { heavy } => {
                 if heavy {
-                    8.0
+                    1.1
                 } else {
-                    1.5
+                    0.3
                 }
             }
             Part::Engine(kw) => 6.0 + 0.55 * kw as f64,
@@ -113,6 +131,34 @@ impl Part {
         }
     }
 
+    /// Which part of a stacked tile is the one you would name.
+    ///
+    /// You say "the driver's seat", not "the frame under the driver's
+    /// seat", and a wheel is more worth knowing about than the rail it is
+    /// hung from.
+    pub fn prominence(self) -> u8 {
+        match self {
+            Part::Seat => 6,
+            Part::Engine(_) => 5,
+            Part::CargoBay(_) => 4,
+            Part::Tank(_) => 3,
+            Part::Wheel { .. } => 2,
+            Part::Frame { .. } => 1,
+        }
+    }
+
+    /// One character, so the thing can be drawn.
+    pub fn glyph(self) -> char {
+        match self {
+            Part::Frame { .. } => '#',
+            Part::Engine(_) => 'E',
+            Part::Wheel { .. } => 'o',
+            Part::CargoBay(_) => '=',
+            Part::Tank(_) => 'T',
+            Part::Seat => '@',
+        }
+    }
+
     pub fn power_kw(self) -> f64 {
         match self {
             Part::Engine(kw) => kw as f64,
@@ -125,13 +171,20 @@ impl Part {
 #[derive(Clone, Debug)]
 pub struct Vehicle {
     pub name: &'static str,
-    pub parts: Vec<Part>,
+    /// Every part, and **where on the vehicle it is** — one metre to the
+    /// tile, x along the length and y across the width.
+    ///
+    /// Position is not decoration. It is what makes a vehicle a piece of
+    /// ground somebody can stand on, which is the whole point of the CDDA
+    /// model: the seat is at one end, the cargo is behind it, and a part
+    /// that is damaged is damaged *somewhere*.
+    pub parts: Vec<(Part, i32, i32)>,
     /// 1.0 as it left the works, falling as it wears.
     pub condition: f64,
 }
 
 impl Vehicle {
-    fn of(name: &'static str, parts: Vec<Part>) -> Self {
+    fn of(name: &'static str, parts: Vec<(Part, i32, i32)>) -> Self {
         Vehicle {
             name,
             parts,
@@ -139,88 +192,159 @@ impl Vehicle {
         }
     }
 
-    /// **A bicycle with a trailer.** What somebody with a month's savings
-    /// buys, and it beats walking by a factor of five.
+    /// Just the parts, for the sums that do not care where anything is.
+    pub fn kinds(&self) -> impl Iterator<Item = Part> + '_ {
+        self.parts.iter().map(|&(p, _, _)| p)
+    }
+
+    /// How much road it takes up, in tiles: length by width.
+    ///
+    /// Real dimensions, which is why an artic and a bicycle are different
+    /// problems on the same street: a 44-tonne artic is 16.5 m long and
+    /// 2.55 m wide, a Transit is 5.5 by 2, a bicycle with a trailer under
+    /// 2 by 1.
+    pub fn footprint(&self) -> (i32, i32) {
+        if self.parts.is_empty() {
+            return (0, 0);
+        }
+        let xs: Vec<i32> = self.parts.iter().map(|&(_, x, _)| x).collect();
+        let ys: Vec<i32> = self.parts.iter().map(|&(_, _, y)| y).collect();
+        (
+            xs.iter().max().unwrap() - xs.iter().min().unwrap() + 1,
+            ys.iter().max().unwrap() - ys.iter().min().unwrap() + 1,
+        )
+    }
+
+    /// What is on one tile of it — **the part that matters there**.
+    ///
+    /// Tiles stack: a wheel is bolted to a frame and a seat sits on one,
+    /// so a tile usually holds several parts. Returning whichever happened
+    /// to be added first drew a lorry as a featureless slab with its
+    /// wheels and its load hidden underneath the chassis.
+    pub fn at(&self, x: i32, y: i32) -> Option<Part> {
+        self.parts
+            .iter()
+            .filter(|&&(_, px, py)| px == x && py == y)
+            .map(|&(p, _, _)| p)
+            .max_by_key(|p| p.prominence())
+    }
+
+    /// Where somebody would sit to drive it.
+    pub fn driver_seat(&self) -> Option<(i32, i32)> {
+        self.parts
+            .iter()
+            .find(|(p, _, _)| matches!(p, Part::Seat))
+            .map(|&(_, x, y)| (x, y))
+    }
+
+    /// The thing drawn out, one character to the metre.
+    pub fn render(&self) -> String {
+        let xs: Vec<i32> = self.parts.iter().map(|&(_, x, _)| x).collect();
+        let ys: Vec<i32> = self.parts.iter().map(|&(_, _, y)| y).collect();
+        let (x0, x1) = (*xs.iter().min().unwrap(), *xs.iter().max().unwrap());
+        let (y0, y1) = (*ys.iter().min().unwrap(), *ys.iter().max().unwrap());
+        let mut out = String::new();
+        for y in y0..=y1 {
+            for x in x0..=x1 {
+                out.push(self.at(x, y).map_or('.', |p| p.glyph()));
+            }
+            out.push('\n');
+        }
+        out
+    }
+
+    /// **A bicycle with a trailer.** 2 m by 1: what somebody with a
+    /// month's savings buys, and it beats walking by a factor of five.
     pub fn bicycle() -> Self {
         Vehicle::of(
             "a bicycle and trailer",
             vec![
-                Part::Frame { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Seat,
-                Part::CargoBay(80),
+                (Part::Frame { heavy: false }, 0, 0),
+                (Part::Seat, 0, 0),
+                (Part::Wheel { heavy: false }, 0, 0),
+                (Part::CargoBay(80), 1, 0),
+                (Part::Wheel { heavy: false }, 1, 0),
+                (Part::Wheel { heavy: false }, 1, 0),
             ],
         )
     }
 
-    /// **A second-hand van.** The first rung that is a living rather than
-    /// an errand, and the first that needs fuel.
+    /// **A second-hand van** — 5.5 m by 2, so 6 tiles by 2. The first rung
+    /// that is a living rather than an errand, and the first that needs
+    /// fuel.
     pub fn van() -> Self {
-        Vehicle::of(
-            "a second-hand van",
-            vec![
-                Part::Frame { heavy: true },
-                Part::Frame { heavy: true },
-                Part::Engine(90),
-                Part::Wheel { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Wheel { heavy: false },
-                Part::Seat,
-                Part::Tank(70),
-                Part::CargoBay(1200),
-            ],
-        )
-    }
-
-    /// **A rigid box truck**, seven and a half tonnes gross.
-    pub fn box_truck() -> Self {
-        Vehicle::of(
-            "a box truck",
-            vec![
-                Part::Frame { heavy: true },
-                Part::Frame { heavy: true },
-                Part::Frame { heavy: true },
-                Part::Engine(160),
-                Part::Wheel { heavy: true },
-                Part::Wheel { heavy: true },
-                Part::Wheel { heavy: true },
-                Part::Wheel { heavy: true },
-                Part::Seat,
-                Part::Tank(150),
-                Part::CargoBay(1800),
-                Part::CargoBay(1800),
-            ],
-        )
-    }
-
-    /// **An artic.** Forty-four tonnes gross on European roads, which
-    /// leaves the twenty-four tonnes of payload hauliers quote.
-    pub fn artic() -> Self {
-        let mut parts = vec![
-            Part::Frame { heavy: true },
-            Part::Frame { heavy: true },
-            Part::Frame { heavy: true },
-            Part::Frame { heavy: true },
-            Part::Frame { heavy: true },
-            Part::Engine(330),
-            Part::Seat,
-            Part::Tank(500),
+        let mut p = vec![
+            (Part::Engine(90), 0, 0),
+            (Part::Engine(0), 0, 1),
+            (Part::Seat, 1, 0),
+            (Part::Frame { heavy: true }, 1, 1),
+            (Part::Tank(70), 2, 1),
         ];
-        for _ in 0..12 {
-            parts.push(Part::Wheel { heavy: true });
+        p.retain(|&(part, _, _)| part.power_kw() != 0.0 || !matches!(part, Part::Engine(_)));
+        for y in 0..2 {
+            p.push((Part::Wheel { heavy: false }, 0, y));
+            p.push((Part::Wheel { heavy: false }, 4, y));
         }
-        for _ in 0..8 {
-            parts.push(Part::CargoBay(3000));
+        for x in 2..6 {
+            for y in 0..2 {
+                p.push((Part::Frame { heavy: true }, x, y));
+            }
         }
-        Vehicle::of("an artic", parts)
+        p.push((Part::CargoBay(1200), 4, 0));
+        Vehicle::of("a second-hand van", p)
+    }
+
+    /// **A rigid box truck** — 8 m by 2.5, so 8 tiles by 3.
+    pub fn box_truck() -> Self {
+        let mut p = vec![
+            (Part::Engine(160), 0, 1),
+            (Part::Seat, 1, 1),
+            (Part::Tank(150), 1, 2),
+        ];
+        for x in 0..8 {
+            for y in 0..3 {
+                p.push((Part::Frame { heavy: true }, x, y));
+            }
+        }
+        for &x in &[0i32, 6] {
+            p.push((Part::Wheel { heavy: true }, x, 0));
+            p.push((Part::Wheel { heavy: true }, x, 2));
+        }
+        p.push((Part::CargoBay(1800), 4, 1));
+        p.push((Part::CargoBay(1800), 6, 1));
+        Vehicle::of("a box truck", p)
+    }
+
+    /// **An artic** — 16.5 m by 2.55, so 17 tiles by 3. Forty-four tonnes
+    /// gross on European roads, which leaves the twenty-four tonnes of
+    /// payload hauliers quote.
+    pub fn artic() -> Self {
+        let mut p = vec![
+            (Part::Engine(330), 0, 1),
+            (Part::Seat, 1, 1),
+            (Part::Tank(500), 2, 0),
+        ];
+        // Tractor unit, then the trailer behind it.
+        for x in 0..17 {
+            for y in 0..3 {
+                p.push((Part::Frame { heavy: true }, x, y));
+            }
+        }
+        // Steer axle, drive axles, and the trailer bogie.
+        for &x in &[0i32, 2, 3, 13, 14, 15] {
+            p.push((Part::Wheel { heavy: true }, x, 0));
+            p.push((Part::Wheel { heavy: true }, x, 2));
+        }
+        // Eight pallet bays down the trailer.
+        for i in 0..8 {
+            p.push((Part::CargoBay(3000), 5 + i, 1));
+        }
+        Vehicle::of("an artic", p)
     }
 
     /// Empty weight, in tonnes.
     pub fn kerb_t(&self) -> f64 {
-        self.parts.iter().map(|p| p.mass_kg()).sum::<f64>() / 1000.0
+        self.kinds().map(|p| p.mass_kg()).sum::<f64>() / 1000.0
     }
 
     /// **What it will carry**, in tonnes — the sum of its cargo bays.
@@ -228,11 +352,11 @@ impl Vehicle {
     /// Not a figure from a table: bolt another bay on and it carries more,
     /// take one off and it carries less.
     pub fn payload_t(&self) -> f64 {
-        self.parts.iter().map(|p| p.capacity_kg()).sum::<f64>() / 1000.0 * self.condition
+        self.kinds().map(|p| p.capacity_kg()).sum::<f64>() / 1000.0 * self.condition
     }
 
     pub fn power_kw(&self) -> f64 {
-        self.parts.iter().map(|p| p.power_kw()).sum::<f64>() * self.condition
+        self.kinds().map(|p| p.power_kw()).sum::<f64>() * self.condition
     }
 
     /// Loaded weight, in tonnes.
@@ -270,9 +394,6 @@ impl Vehicle {
 
     /// What it costs to buy, in days of an unskilled wage.
     pub fn price_in_wage_days(&self) -> f64 {
-        self.parts
-            .iter()
-            .map(|p| p.price_in_wage_days())
-            .sum::<f64>()
+        self.kinds().map(|p| p.price_in_wage_days()).sum::<f64>()
     }
 }
