@@ -517,6 +517,41 @@ a stock gap starved him, because a city of 16M always holds more tonnes
 than a town of 2M so freight flowed one way and never back. **Compare days
 of cover, never tonnes** — but the real answer was to stop inventing.
 
+## Vehicles are built from parts (`src/vehicle.rs`)
+
+Per the design doc: *"Vehicles (and later, spaceships) have interiors and
+individual parts, CDDA-style."* First step of that — not the walkable
+interior yet, but the principle underneath it: **a vehicle's capabilities
+are computed from what it is made of, never typed in.**
+
+A van carries what its cargo bays hold; it cruises as fast as its engine
+pushes its gross weight; it drinks fuel in proportion to that weight; it
+costs the sum of its parts. Bolt a bigger engine on and it climbs better
+*and* drinks more, because both read the same number. Once parts are
+individual they can be damaged, removed, salvaged and improvised, which is
+the point and the thing a tier list can never do.
+
+What the parts add up to, against real figures:
+
+| | kerb t | payload | km/h | l/100km | km/day |
+|---|---|---|---|---|---|
+| bicycle + trailer | 0.13 | 80 kg | 15 | - | 99 |
+| second-hand van | 2.45 | 1.2 t | 90 | 8.4 | 693 |
+| box truck | 4.4 | 3.6 t | 90 | 11.2 | 693 |
+| artic | 13.1 | 24 t | 90 | 30.1 | 693 |
+
+- **This is a modern world** — coal-fired stations, canneries, 44-tonne
+  artics — so the ladder is bicycle/van/truck/artic. It used to be handcart,
+  pack mule, wagon: furniture from a different century.
+- **Nine hours is the legal maximum; seven is a working day.** The rest
+  goes on loading, queueing, town speeds and mandatory breaks, which is why
+  a real artic covers 550-700 km rather than the 900 its cruising speed
+  suggests.
+- **Judge a vehicle on when work is *available*, not on what he has done.**
+  Using his own record is circular — he cannot trade without a vehicle, so
+  his record says never, so he never buys one. A man sat on seven thousand
+  days of food doing casual work for five a time because of it.
+
 ### Getting there is not free (`src/travel.rs`)
 
 Freight cost answers what a *tonne* costs. It says nothing about how one

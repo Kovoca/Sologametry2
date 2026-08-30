@@ -283,7 +283,7 @@ fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
     // local capacity, and capacity is consumed in score order. The result is
     // all the cores crowded into the good land and then Voronoi-ing out into
     // equal-sized states, which is exactly the uniformity this is meant to
-    // break. Summing 1/multiplierÂ² over the land gives the map's capacity at
+    // break. Summing 1/multiplier² over the land gives the map's capacity at
     // unit spacing; solving for `target` yields the scale.
     let inv_sq: f32 = candidates.iter().map(|&i| 1.0 / multiplier(i).powi(2)).sum();
     // 0.72 is the packing efficiency of a Poisson-disc sample; without it

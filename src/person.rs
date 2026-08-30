@@ -1,4 +1,4 @@
-//! A person living in the economy.
+﻿//! A person living in the economy.
 //!
 //! The first human being in the simulation. Everything until now has been
 //! a world — terrain, nations, markets, freight — with populations as
@@ -207,6 +207,14 @@ pub struct Person {
     /// is worth its keep — one that earns on twelve days a year and eats
     /// on three hundred and sixty-five is a way to go broke slowly.
     pub days_trading: u64,
+    /// **Days a load was there to be carried, whether or not he could.**
+    ///
+    /// What decides whether a vehicle is worth its keep is how often it
+    /// would be *used*, and judging that by what he has already done is
+    /// circular: he cannot trade without a vehicle, so his record says
+    /// never, so he never buys one. A man sat on seven thousand days of
+    /// food doing casual day work for five a time because of it.
+    pub days_offered: u64,
     /// Gross takings: wages, and the profit on ventures after their costs.
     pub earned: f64,
     /// Everything that went out and did not come back — food eaten, and
@@ -233,6 +241,7 @@ impl Person {
             days_idle: 0,
             days_worked: 0,
             days_trading: 0,
+            days_offered: 0,
             earned: 0.0,
             spent: 0.0,
         }
@@ -351,7 +360,7 @@ pub fn work_available(
             // else's to take — and only out of what the sending town will
             // actually part with, or the job is a wage for driving an
             // empty lorry over a hill.
-            let tonnes = Conveyance::Lorry
+            let tonnes = Conveyance::Artic
                 .payload()
                 .min(route.capacity * 0.02)
                 .min(econ.surplus(from, c))
@@ -359,7 +368,7 @@ pub fn work_available(
             if tonnes < 0.2 {
                 continue;
             }
-            let Some(speed) = Conveyance::Lorry.km_per_day(surface) else {
+            let Some(speed) = Conveyance::Artic.km_per_day(surface) else {
                 continue; // no lorry gets over this
             };
             let days = (route.km / speed).clamp(1.0, 60.0);
@@ -486,7 +495,7 @@ pub fn work_available(
         let other = to;
         let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
         let rate = day_rate(econ, market, Trade::Haulier);
-        let tonnes = shipped.min(Conveyance::Lorry.payload());
+        let tonnes = shipped.min(Conveyance::Artic.payload());
         if tonnes < 0.2 {
             continue;
         }
@@ -876,7 +885,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 let usage = if seen < 90.0 {
                     0.25
                 } else {
-                    person.days_trading as f64 / seen
+                    (person.days_offered as f64 / seen).clamp(0.0, 1.0)
                 };
                 if let Some((better, price)) = Conveyance::best_upgrade(
                     person.conveyance,
@@ -923,6 +932,12 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             // to trade on your own account, so working for yourself is the
             // way out of a town with no work in it — which is exactly why
             // a vehicle is worth saving for.
+            if offers.iter().any(|c| c.stake() > 0.0) {
+                person.days_offered += 1;
+            }
+            if offers.iter().any(|c| c.stake() > 0.0) {
+                person.days_offered += 1;
+            }
             let hiring = econ
                 .workforce
                 .get(person.market)

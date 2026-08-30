@@ -1,4 +1,4 @@
-//! One person living in the economy.
+﻿//! One person living in the economy.
 //!
 //! The tests that matter here are not that a life goes well. They are that
 //! it can go badly, that nothing is arranged for anybody, and that a
@@ -173,7 +173,7 @@ fn nothing_is_offered_that_the_economy_does_not_want() {
     r.economy.step();
 
     let day = r.economy.ledger.day;
-    let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Lorry);
+    let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Artic);
     assert!(
         !offers.iter().any(|c| matches!(
             c.kind,
@@ -291,7 +291,7 @@ fn routine_haulage_exists_when_nothing_is_mispriced() {
     let day = r.economy.ledger.day;
     let mut found = 0;
     for m in 0..r.economy.markets.len() {
-        let offers = person::work_available(&r.economy, m, day, 0.0, Conveyance::Lorry);
+        let offers = person::work_available(&r.economy, m, day, 0.0, Conveyance::Artic);
         if offers.iter().any(|c| c.trade == Trade::Haulier) {
             found += 1;
         }

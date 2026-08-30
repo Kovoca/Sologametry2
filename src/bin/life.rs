@@ -161,7 +161,7 @@ fn main() {
             .km_per_day(s)
             .map(|v| format!("{:.0} days on foot", (r.km / v).max(1.0)))
             .unwrap_or_else(|| "impassable on foot".into());
-        let lorry = scale_sim::travel::Conveyance::Lorry
+        let lorry = scale_sim::travel::Conveyance::Artic
             .km_per_day(s)
             .map(|v| format!("{:.0} by lorry", (r.km / v).max(1.0)))
             .unwrap_or_else(|| "no lorry gets through".into());
