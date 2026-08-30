@@ -135,8 +135,20 @@ impl Ground {
     /// biome supplies what the unbuilt ground is made of, so a town in
     /// forest has trees between the houses and one in badlands has scrub.
     pub fn around(seed: u64, plan: &Plan, centre: (i64, i64), radius: usize) -> Self {
-        let w = radius;
-        let h = radius / 2; // terminals are twice as tall as they are wide
+        // **Square, because a reality bubble is a radius and not a
+        // viewport.** This used to halve the height so it fitted a
+        // terminal, which meant somebody could see twice as far east as
+        // north — and, less obviously, meant anything measured across an
+        // east-west street was quietly cut off at 24 m. A motorway's hard
+        // shoulders sat outside the window and a test that should have
+        // caught it passed instead.
+        Self::window(seed, plan, centre, radius * 2 + 1, radius * 2 + 1)
+    }
+
+    /// A window of a given size, for *looking at* rather than standing in.
+    /// Terminals are about twice as tall as they are wide, so a view meant
+    /// to look square on screen is not square in metres.
+    pub fn window(seed: u64, plan: &Plan, centre: (i64, i64), w: usize, h: usize) -> Self {
         let origin = (centre.0 - w as i64 / 2, centre.1 - h as i64 / 2);
         let mut tiles = Vec::with_capacity(w * h);
 

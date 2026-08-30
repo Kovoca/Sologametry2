@@ -33,9 +33,12 @@ fn walk_across(plan: &Plan, class: StreetClass) -> (usize, usize) {
                 continue; // a crossroads, or a stub going nowhere
             }
             let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
-            let g = Ground::around(1, plan, at, 48);
+            // Wide enough to hold the whole plot: a motorway corridor is
+            // 33 m, and a window that clipped it made this test pass by
+            // never seeing the hard shoulders.
+            let g = Ground::around(1, plan, at, TILES_PER_PLOT);
             let (mut surface, mut foot) = (0, 0);
-            for k in -20..=20i64 {
+            for k in -(TILES_PER_PLOT as i64 / 2)..TILES_PER_PLOT as i64 / 2 {
                 let (gx, gy) = if ns { (at.0 + k, at.1) } else { (at.0, at.1 + k) };
                 let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
                 if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
@@ -225,6 +228,14 @@ fn a_road_is_as_big_as_what_uses_it() {
         "not a hierarchy: lane {lane} m, road {road} m, dual {dual} m, motorway {motorway} m"
     );
 
+    // **The exact cross-sections, in metres, because one tile is a metre.**
+    // Pinned rather than merely ordered: these are real figures, and
+    // changing one should cost an argument.
+    assert_eq!((lane, lane_foot), (5, 4), "a lane is 5 m shared and 2 m of path each side");
+    assert_eq!((road, road_foot), (7, 6), "a road is 7.3 m of two lanes and 2.5 m of path");
+    assert_eq!(dual, 16, "a dual is two carriageways of 7.3 m either side of a reserve");
+    assert_eq!(motorway, 29, "a motorway is 11 m of three lanes and 3.3 m of shoulder, twice");
+
     // **Every one of them is two-way.** The narrowest carriageway anybody
     // builds is two lanes of about 2.5 m; a lane that could not fit two
     // cars passing would be a driveway.
@@ -242,6 +253,15 @@ fn a_road_is_as_big_as_what_uses_it() {
     assert_eq!(
         motorway_foot, 0,
         "a footway down the side of a motorway"
+    );
+
+    // And the corridor fills the plot. **That is what severance is**: the
+    // 32 m of town this route runs through is entirely road, so the halves
+    // either side of it are joined by bridges or not at all.
+    assert_eq!(
+        motorway + motorway_foot + 3, // + the central reserve
+        TILES_PER_PLOT,
+        "a motorway that leaves room either side of it is not a motorway"
     );
 }
 

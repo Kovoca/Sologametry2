@@ -119,7 +119,8 @@ fn main() {
         found.1 as i64 * t + t / 2,
     );
 
-    let mut g = Ground::around(seed, &plan, centre, BUBBLE_ON_FOOT / 2);
+    // A viewport, not the bubble: 80 x 34 looks square in a terminal.
+    let mut g = Ground::window(seed, &plan, centre, 80, 34);
 
     // Park an artic on the nearest road, because a lorry is seventeen
     // metres of the street and you cannot see that any other way.
@@ -133,9 +134,10 @@ fn main() {
         want, centre.0, centre.1
     );
     println!(
-        "  {} m across, generated from the seed and never stored (spec A1.5)",
-        g.w
+        "  {} m by {} m of the {} m you could see on foot, generated from the",
+        g.w, g.h, BUBBLE_ON_FOOT
     );
+    println!("  seed and never stored (spec A1.5)");
     println!("  the town stands in {ground_biome:?}");
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {

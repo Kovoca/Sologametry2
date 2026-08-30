@@ -652,18 +652,27 @@ tiles on foot, 288 in a vehicle.
 - **A road is as big as what uses it.** Four classes, all real
   cross-sections, all two-way:
 
-  | | carriageway | corridor | footway |
-  |---|---|---|---|
-  | lane | 5 m shared, no centre line | ~10 m | 2 m |
-  | road | 7.3 m, two lanes of 3.65 | ~13 m | 2.5 m |
-  | dual | 2 x 7.3 + reserve | ~25 m | yes |
-  | motorway | 2 x 11 (three lanes) + hard shoulders | ~33 m | **none** |
+  **One tile is one metre, so these are tile counts.** Measured off the
+  generated ground, not asserted in a doc:
+
+  | | carriageway | reserve | shoulder | footway | made |
+  |---|---|---|---|---|---|
+  | lane | 5 | - | - | 2+2 | 9 |
+  | road | 7 | - | - | 3+3 | 13 |
+  | dual | 8+8 | 3 | - | 3+3 | 25 |
+  | motorway | 11+11 | 3 | 4+3 | **none** | **32** |
 
   2.75 m is the narrowest lane anybody lays and 3.65 m the standard, which
   is why a lane's two directions share 5 m unmarked (you do not paint a
-  centre line that narrow) and a motorway needs 11 m a side. A motorway
-  corridor fills a whole 32 m plot and has no footway: that is severance,
-  and it is why a trunk route through a town cuts it in two.
+  centre line that narrow) and a motorway needs 11 m a side. **A motorway
+  fills its whole 32 m plot and has no footway** — that is severance, and
+  it is why a trunk route through a town cuts it in two.
+- **A reality bubble is a radius, not a viewport.** `Ground::around` used
+  to halve the height so it fitted a terminal, so somebody could see twice
+  as far east as north — and anything measured across an east-west street
+  was silently cut off at 24 m. A motorway's shoulders fell outside the
+  window and the test that should have caught it passed. `around` is now
+  square; `window` is the thing you look through.
 - **Lines are dashed, and solid means something.** A carriageway edge is
   solid, the line between lanes is not; the dash lengthens with speed
   (2 m mark / 7 m gap on a centre line). Painting them all solid turns a
