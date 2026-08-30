@@ -287,22 +287,38 @@ fn a_shop_employs_people_and_the_fixtures_say_how_many() {
 }
 
 #[test]
-fn shop_work_is_steady_work() {
-    // Retail does not have a season. A farm sheds hands between harvests
-    // and a shop does not, which is what makes a town with shops in it a
-    // steadier place to be poor than one without.
+fn shop_work_is_shifts_not_a_salary() {
+    // **Where retail's precarity actually lives.**
+    //
+    // The work is steady and the hours are not. A shop worker is put on
+    // the rota a day at a time, so he is employed and still does not know
+    // whether he is on next week — around 60% of UK retail work is
+    // part-time and variable hours are the norm, and part-timers average
+    // two and a half to three days.
+    //
+    // He should be able to live on it, and should not be able to count on
+    // it. Rostering him a guaranteed six-day week instead gave him 85% of
+    // the days in the year, which is a salary with a different name.
     let mut r = a_nation(Doctrine::Prudent);
     let mut hal = Person::new("Hal", Trade::Shopworker, 0, 60.0);
-    for _ in 0..(DAYS_PER_YEAR * 2) {
+    let days = DAYS_PER_YEAR * 2;
+    for _ in 0..days {
         r.economy.step();
         let day = r.economy.ledger.day;
         person::live_a_day(&mut hal, &mut r.economy, day);
     }
     assert!(hal.alive(), "a shop worker starved in a working town");
+
+    let share = hal.days_worked as f64 / days as f64;
     assert!(
-        hal.days_worked > (DAYS_PER_YEAR * 2) as u64 * 6 / 10,
-        "he found only {} days of shop work in two years",
-        hal.days_worked
+        share > 0.25,
+        "he got on the rota {:.0}% of days — that is not a living",
+        share * 100.0
+    );
+    assert!(
+        share < 0.80,
+        "he worked {:.0}% of every day for two years; that is not shift work",
+        share * 100.0
     );
 }
 

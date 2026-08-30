@@ -608,6 +608,10 @@ pub fn work_available(
             if count * role.staff() < 1.0 {
                 continue;
             }
+            // **One shift, not a week.** A shop worker is put on the rota
+            // a day at a time, which is the whole shape of the job: the
+            // work is steady and the hours are not, and next week is
+            // somebody else's decision.
             out.push(Contract {
                 kind: Job::Counter {
                     site: s,
@@ -615,9 +619,9 @@ pub fn work_available(
                     role,
                 },
                 posted: day,
-                expires: day + 3,
-                pay: rate * 6.0,
-                days: 6.0,
+                expires: day + 1,
+                pay: rate,
+                days: 1.0,
                 trade: Trade::Shopworker,
             });
         }

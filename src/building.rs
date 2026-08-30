@@ -221,21 +221,36 @@ impl Building {
         (self.supervisors() / SPAN_OF_CONTROL).ceil().max(1.0) + 1.0
     }
 
-    /// **How many are needed today**, against how busy the place is.
+    /// **The rota for today**, in worker-shifts.
     ///
-    /// A supermarket has thirty checkouts and opens eight of them on a wet
-    /// Tuesday morning. Roughly a third of retail labour is fixed — the
-    /// stockroom, opening and closing, the managers who are there whether
-    /// anybody comes in or not — and the rest is rostered against the
-    /// trade, which is exactly why the work is part-time and the hours are
-    /// never guaranteed.
-    pub fn staff_today(&self, utilisation: f64) -> f64 {
+    /// A shop does not flex its staffing by the hour — it writes a rota.
+    /// Somebody decides on Wednesday how many people are wanted on
+    /// Saturday, and that is how many turn up. Thirty checkouts, eight of
+    /// them open on a wet Tuesday, because eight people were put on the
+    /// morning shift and not thirty.
+    ///
+    /// **This is where retail's precarity actually lives.** You are
+    /// employed and the rota gives you three days this week — around 60%
+    /// of UK retail work is part-time and variable hours are the norm, so
+    /// the question a shop worker asks is not whether they have a job but
+    /// whether they are on next week.
+    ///
+    /// About a third of the floor's hours are fixed whatever the trade —
+    /// the stockroom, opening and closing, the deliveries that come
+    /// whether anybody buys anything or not — and the rest is rostered
+    /// against expected takings. The people in charge are on regardless;
+    /// that is most of what being in charge is.
+    pub fn shifts_today(&self, utilisation: f64) -> f64 {
         let u = utilisation.clamp(0.0, 1.0);
         const FIXED_SHARE: f64 = 0.33;
         let floor = self.floor_staff() * (FIXED_SHARE + (1.0 - FIXED_SHARE) * u);
-        // The people in charge are there whether it is busy or not; that
-        // is most of what being in charge is.
-        floor + self.supervisors() + self.managers()
+        (floor + self.supervisors() + self.managers()).ceil()
+    }
+
+    /// What the rota costs in people. Same number, named for the other
+    /// question it answers.
+    pub fn staff_today(&self, utilisation: f64) -> f64 {
+        self.shifts_today(utilisation)
     }
 
     /// Staff doing one particular job, so a person can look for that work.

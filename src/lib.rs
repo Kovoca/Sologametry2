@@ -19,6 +19,7 @@ pub mod region;
 pub mod rng;
 pub mod settlement;
 pub mod slice;
+pub mod townplan;
 pub mod travel;
 pub mod vehicle;
 pub mod world;

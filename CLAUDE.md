@@ -545,10 +545,17 @@ mines, which is roughly 1.5% of real employment, and gave a city of
 sixteen million shops that employed **nobody at all**. Retail is around
 10%. The missing half was the big one.
 
-**Staffed to the trade it is doing today.** A supermarket has thirty
-checkouts and opens eight on a wet Tuesday. About a third of the floor's
-hours are fixed and the rest are rostered against the till receipts, which
-is exactly why shop work is part-time and the hours are never guaranteed.
+**A rota, not a flex.** A shop does not adjust staffing by the hour — it
+writes a rota: somebody decides on Wednesday how many are wanted on
+Saturday, and that is how many turn up. Thirty checkouts and eight open on
+a wet Tuesday, because eight people were put on the morning shift.
+
+**This is where retail's precarity lives.** A shop worker is rostered a
+day at a time, so he is employed and still does not know if he is on next
+week — ~60% of UK retail is part-time and part-timers average 2.5-3 days.
+He works about a third of the days in a year: enough to live on, never
+enough to count on. Rostering a guaranteed six-day week gave him 85% of
+the year, which is a salary with a different name.
 
 **Somebody has to see the work is done.** Span of control is 8-15 in
 retail and light manufacturing *(real)*; at ten, applied twice, management
@@ -570,6 +577,37 @@ promotion runs two to three years in)* and paying a third more.
 Not built yet: the walkable tile interior, the wall/floor layers, and the
 electrical and water nodes hung off them. Fixtures first, the same way
 parts came before vehicle interiors.
+
+## A town's ground plan (`src/townplan.rs`)
+
+The rung between the world map and a building's interior — the CDDA
+overmap scale. A market used to be a point with a population hung off it,
+and the shop `building.rs` fitted out stood nowhere in particular.
+
+**Generated, never stored** (spec A1.5): a pure function of world seed and
+the settlement's cell, so walking away and back rebuilds it identically.
+One plot is 25 m — a house and its garden, a shop front, or a lane.
+
+Real figures that make a town the size and shape it is:
+- Households of **2.4**; blocks **80-200 m** between streets.
+- **Clark's law** — density decays exponentially from the centre, which
+  holds across cities and centuries and is why a town edge is a gradient.
+- **Density comes from building upward**, not from smaller plots. A
+  European tenement is four storeys of two dwellings; houses alone gave a
+  capital of 16M the density of an American suburb. The centre now runs
+  ~10,000/km², which is central London.
+- **Shops face the street and crowd the middle** — retail density falls
+  off inside a few hundred metres. Sprinkled evenly they gave one shop per
+  five houses everywhere, which is a bazaar and not a town.
+- Works want cheap land and lorry access, so they are out past the
+  housing, which is why you cannot see a cannery from a town square.
+
+`cargo run --release --bin town` draws one.
+
+Where the scale ladder stands: world map **built**; cell detail within a
+region, not built; **town plan built**; walkable tiles with furniture, not
+built (fixtures exist, tiles do not); a person's position finer than which
+market they are in, not built.
 
 ## Vehicles are built from parts (`src/vehicle.rs`)
 
