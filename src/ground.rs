@@ -25,6 +25,12 @@ use crate::vehicle::{Part, Vehicle};
 use crate::world::Biome;
 
 /// How far the world is real around somebody *(spec A1.6)*.
+/// **A Z level is a storey, not a metre.** Floor-to-floor in a real
+/// building is 2.5-3 m, so height is measured in a coarser unit than the
+/// ground is — which is exactly how Dwarf Fortress does it, and the reason
+/// a stairwell occupies one tile of plan and joins two levels.
+pub const METRES_PER_LEVEL: f64 = 3.0;
+
 pub const BUBBLE_ON_FOOT: usize = 160;
 /// Further in a vehicle, because you cover ground faster and need to see
 /// the ambush before you are in it.
@@ -57,8 +63,26 @@ pub enum Tile {
     Door,
     Window,
 
+    /// Open air: above a roof, or beside a building on an upper level.
+    /// **This is what makes a Z level a level** rather than a second map.
+    Sky,
+
+    /// A stairwell. **High-density housing is a core with dwellings hung
+    /// off it**, not a big room with partitions.
+    Stairs,
+    /// A lift, which a block needs above about four storeys — that is the
+    /// limit anybody will walk up, and the point at which a walk-up stops
+    /// being buildable.
+    Lift,
+
+    /// Tarmac with bays painted on it. **A car park is bigger than the
+    /// thing it serves**, which is real and is why it has to be drawn.
+    Parking,
+
     /// A piece of a building's fitting-out, standing where it stands.
     Fitting(Fixture),
+    /// Furniture, which is what makes a room a room rather than a floor.
+    Furnishing(Furnishing),
     /// A piece of a vehicle. **You can walk onto this** — that is the
     /// point of it being a tile rather than a mode.
     Vehicle(Part),
@@ -82,6 +106,11 @@ impl Tile {
             Tile::Floor => '.',
             Tile::Door => '/',
             Tile::Window => 'o',
+            Tile::Sky => ' ',
+            Tile::Stairs => '>',
+            Tile::Lift => 'V',
+            Tile::Parking => '_',
+            Tile::Furnishing(f) => f.glyph(),
             Tile::Fitting(f) => match f {
                 Fixture::Till => '$',
                 Fixture::Shelving => 'S',
@@ -105,11 +134,14 @@ impl Tile {
     /// of shelves on the floor.
     pub fn walkable(self) -> bool {
         match self {
-            Tile::Wall | Tile::Water | Tile::Tree | Tile::Window => false,
+            Tile::Wall | Tile::Water | Tile::Tree | Tile::Window | Tile::Sky => false,
             Tile::Fitting(f) => matches!(
                 f,
                 Fixture::Till | Fixture::Counter | Fixture::LoadingBay
             ),
+            // You stand beside a bed and at a table; you do not stand in
+            // the wardrobe.
+            Tile::Furnishing(f) => matches!(f, Furnishing::Chair),
             _ => true,
         }
     }
@@ -128,6 +160,10 @@ pub fn ground_legend(with_vehicle: bool) -> String {
 ");
     out.push_str("  fittings  $ till   S shelving   R racking   L loading bay   C counter
 ");
+    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe
+");
+    out.push_str("  vertical  > stair   V lift   ' ' open air above or beside
+");
     out.push_str("  country   \" grass   T tree   * scrub   , sand   ^ rock   A snow   ~ water");
     if with_vehicle {
         out.push_str("
@@ -140,8 +176,47 @@ pub fn ground_legend(with_vehicle: bool) -> String {
     out
 }
 
+/// **Furniture appropriate to the use**, which is the thing CDDA has and
+/// a bare floor does not. A room with nothing in it is not a room, it is
+/// an area.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Furnishing {
+    Bed,
+    Table,
+    Chair,
+    Stove,
+    Wardrobe,
+}
+
+impl Furnishing {
+    pub fn glyph(self) -> char {
+        match self {
+            Furnishing::Bed => 'n',
+            Furnishing::Table => 'm',
+            Furnishing::Chair => 'h',
+            Furnishing::Stove => 'e',
+            Furnishing::Wardrobe => 'k',
+        }
+    }
+}
+
+/// **What a room is for.** Assigned from where it sits, not chosen at
+/// random: the room off the front door is the one you live in, the
+/// kitchen backs onto the yard because that is where the drains and the
+/// bins are, and the rest are bedrooms.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Room {
+    Living,
+    Kitchen,
+    Bedroom,
+    /// Circulation: hall, landing, stair. Deliberately empty.
+    Hall,
+}
+
 /// A window of ground, real for as long as somebody is looking at it.
 pub struct Ground {
+    /// Which storey you are looking at. 0 is the ground.
+    pub z: i64,
     pub w: usize,
     pub h: usize,
     /// Tile coordinates of the top-left corner, within the town.
@@ -160,6 +235,17 @@ impl Ground {
     /// biome supplies what the unbuilt ground is made of, so a town in
     /// forest has trees between the houses and one in badlands has scrub.
     pub fn around(seed: u64, plan: &Plan, centre: (i64, i64), radius: usize) -> Self {
+        Self::around_on(seed, plan, centre, radius, 0)
+    }
+
+    /// The same, on a chosen storey.
+    pub fn around_on(
+        seed: u64,
+        plan: &Plan,
+        centre: (i64, i64),
+        radius: usize,
+        z: i64,
+    ) -> Self {
         // **Square, because a reality bubble is a radius and not a
         // viewport.** This used to halve the height so it fitted a
         // terminal, which meant somebody could see twice as far east as
@@ -167,13 +253,25 @@ impl Ground {
         // east-west street was quietly cut off at 24 m. A motorway's hard
         // shoulders sat outside the window and a test that should have
         // caught it passed instead.
-        Self::window(seed, plan, centre, radius * 2 + 1, radius * 2 + 1)
+        Self::window_on(seed, plan, centre, radius * 2 + 1, radius * 2 + 1, z)
     }
 
     /// A window of a given size, for *looking at* rather than standing in.
     /// Terminals are about twice as tall as they are wide, so a view meant
     /// to look square on screen is not square in metres.
     pub fn window(seed: u64, plan: &Plan, centre: (i64, i64), w: usize, h: usize) -> Self {
+        Self::window_on(seed, plan, centre, w, h, 0)
+    }
+
+    /// The same, on a chosen storey.
+    pub fn window_on(
+        seed: u64,
+        plan: &Plan,
+        centre: (i64, i64),
+        w: usize,
+        h: usize,
+        z: i64,
+    ) -> Self {
         let origin = (centre.0 - w as i64 / 2, centre.1 - h as i64 / 2);
         let mut tiles = Vec::with_capacity(w * h);
 
@@ -181,10 +279,11 @@ impl Ground {
             for tx in 0..w {
                 let gx = origin.0 + tx as i64;
                 let gy = origin.1 + ty as i64;
-                tiles.push(tile_at(seed, plan, gx, gy));
+                tiles.push(tile_at(seed, plan, gx, gy, z));
             }
         }
         Ground {
+            z,
             w,
             h,
             origin,
@@ -238,7 +337,7 @@ impl Ground {
 /// makes "generate on demand, store nothing" possible: no chunk has to
 /// exist before its neighbour, and the same coordinates always give the
 /// same tile.
-fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
+fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
     let t = TILES_PER_PLOT as i64;
     let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
     let (ix, iy) = (gx.rem_euclid(t), gy.rem_euclid(t));
@@ -248,6 +347,25 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
     } else {
         plan.at(px as usize, py as usize)
     };
+
+    // **Above the ground there is only what somebody built.**
+    //
+    // This is what a Z level buys, and it is how Dwarf Fortress manages
+    // height: a building stops being a floorplate with a number of storeys
+    // asserted about it and becomes a stack you can stand on any floor of.
+    // Everything else at this height is air.
+    if gz != 0 {
+        if !matches!(lot, Lot::House | Lot::Flats | Lot::Shop | Lot::Works) {
+            return Tile::Sky;
+        }
+        let f = footprint_of(plan, lot, px, py);
+        let across = if f.terraced { t } else { t - 2 * f.side };
+        let floorplate = (t - f.front - f.back) * across;
+        if gz < 0 || gz >= storeys_of(lot, floorplate) {
+            return Tile::Sky;
+        }
+        return building_tile(seed, plan, lot, gx, gy, ix, iy, gz);
+    }
 
     match lot {
         // **A street is not 32 m of tarmac.** A residential carriageway is
@@ -376,7 +494,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Tile {
             }
         }
         Lot::House | Lot::Flats | Lot::Shop | Lot::Works => {
-            building_tile(seed, plan, lot, gx, gy, ix, iy)
+            building_tile(seed, plan, lot, gx, gy, ix, iy, 0)
         }
     }
 }
@@ -437,6 +555,7 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
 }
 
 /// The shell of a building on its plot, and what is inside it.
+#[allow(clippy::too_many_arguments)]
 fn building_tile(
     seed: u64,
     plan: &Plan,
@@ -445,6 +564,7 @@ fn building_tile(
     gy: i64,
     ix: i64,
     iy: i64,
+    gz: i64,
 ) -> Tile {
     let t = TILES_PER_PLOT as i64;
     let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
@@ -460,7 +580,11 @@ fn building_tile(
         (f.side, t - 1 - f.side)
     };
     if ix < lo_x || iy < lo_y || ix > hi_x || iy > hi_y {
-        return open_ground(seed, plan.ground, gx, gy);
+        return if gz == 0 {
+            open_ground(seed, plan.ground, gx, gy)
+        } else {
+            Tile::Sky
+        };
     }
 
     // **A 32 m frontage is five houses, not one.** A terrace is divided
@@ -486,7 +610,9 @@ fn building_tile(
         } else {
             iy == lo_y && (ix - mid).abs() <= 1
         };
-        if own_door {
+        // **A door to the street exists on the ground floor only.** Above
+        // it, the same wall carries a window — you get in by the stair.
+        if own_door && gz == 0 {
             return Tile::Door;
         }
         if party {
@@ -500,16 +626,115 @@ fn building_tile(
     }
 
     // --- inside ---
+    //
+    // **A building is more than one room.** A bare floor inside four walls
+    // is an area, not a place: what makes an interior legible is
+    // partitions, doorways between them, and furniture that says what each
+    // room is for.
     match lot {
-        Lot::Shop => shop_interior(lo_x, hi_x, lo_y, hi_y, ix, iy),
+        // **A high street is shops with flats over them**, which is what
+        // a two-storey shop actually is and why town centres have people
+        // living in them.
+        Lot::Shop if gz == 0 => shop_interior(lo_x, hi_x, lo_y, hi_y, ix, iy),
         Lot::Works => {
+            // A shed is one big space on purpose — that is what a shed is
+            // for — with racking round the edges.
             if hash(seed, gx, gy, 5) < 0.10 {
                 Tile::Fitting(Fixture::StockRack)
             } else {
                 Tile::Floor
             }
         }
-        _ => Tile::Floor,
+        // **High-density housing is a core with dwellings off it.**
+        //
+        // A stairwell, a lift once the block is taller than anybody will
+        // walk *(four storeys is the limit of a walk-up, which is exactly
+        // where lifts start)*, a landing, and flats opening onto it.
+        // Subdividing the floorplate the way a house is subdivided gave
+        // one enormous dwelling per block, which is not what a tenement is.
+        Lot::Flats => {
+            let (w, h) = (hi_x - lo_x + 1, hi_y - lo_y + 1);
+            let core_x = lo_x + w / 2 - 2;
+            let core_y = lo_y + 1;
+            let storeys = storeys_of(Lot::Flats, w * h);
+            if iy >= core_y && iy <= core_y + 4 && ix >= core_x && ix <= core_x + 4 {
+                // 2.5 x 5 m of stair, a 1.8 m lift shaft beside it, and
+                // the landing you step out onto.
+                return if ix <= core_x + 1 {
+                    Tile::Stairs
+                } else if ix == core_x + 2 && storeys > 4 {
+                    Tile::Lift
+                } else {
+                    Tile::Floor
+                };
+            }
+            let key = px * 977 + py * 31;
+            let (flat, _fw, _fh, wall) =
+                room_at(seed, key, lo_x + 1, lo_y + 1, hi_x - 1, hi_y - 1, ix, iy, FLAT_M2);
+            if let Some(door) = wall {
+                return if door { Tile::Door } else { Tile::Wall };
+            }
+            // Rooms inside the flat. Descending again from the same
+            // bounds with a smaller target lands in the same subdivision
+            // and then keeps going, so a flat gets its own rooms.
+            let (room, rw, rh, partition) = room_at(
+                seed,
+                key,
+                lo_x + 1,
+                lo_y + 1,
+                hi_x - 1,
+                hi_y - 1,
+                ix,
+                iy,
+                ROOM_M2,
+            );
+            match partition {
+                Some(true) => Tile::Door,
+                Some(false) => Tile::Wall,
+                None => furnish(
+                    seed,
+                    room ^ flat,
+                    iy - lo_y,
+                    rh,
+                    ix,
+                    iy,
+                    rw <= 3 || rh <= 3 || hash(seed, gx, gy, 14) < 0.45,
+                ),
+            }
+        }
+        _ => {
+            // A terrace is divided into houses first; each house is then
+            // divided into rooms of its own, so the key has to include
+            // which house it is.
+            let unit = if f.terraced && lot == Lot::House {
+                ix.div_euclid(6)
+            } else {
+                0
+            };
+            let (ux0, ux1) = if f.terraced && lot == Lot::House {
+                (unit * 6 + 1, (unit + 1) * 6 - 1)
+            } else {
+                (lo_x + 1, hi_x - 1)
+            };
+            let key = px * 977 + py * 31 + unit;
+            let (room, rw, rh, partition) =
+                room_at(seed, key, ux0, lo_y + 1, ux1, hi_y - 1, ix, iy, ROOM_M2);
+            match partition {
+                Some(true) => Tile::Door,
+                Some(false) => Tile::Wall,
+                None => {
+                    // Furniture goes against the walls, the way furniture
+                    // does, leaving the middle to walk in.
+                    let on_edge = ix == ux0
+                        || ix == ux1
+                        || iy == lo_y + 1
+                        || iy == hi_y - 1
+                        || rw <= 3
+                        || rh <= 3;
+                    furnish(seed, room, iy - lo_y, rh, ix, iy, on_edge)
+                }
+            }
+        }
     }
 }
 
@@ -621,6 +846,163 @@ fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) 
         Tile::Fitting(Fixture::Shelving)
     } else {
         Tile::Floor
+    }
+}
+
+/// **Real room and dwelling sizes** *(UK nationally described space
+/// standard and ordinary practice)*. A double bedroom is 12-14 m², a
+/// living room 16-20, a kitchen 8-12. A one-bed flat for two is 50 m², a
+/// two-bed for four 70; the average new British flat is about 61.
+const ROOM_M2: i64 = 9;
+const FLAT_M2: i64 = 61;
+
+/// **How many floors a building has**, which is the thing a floorplate
+/// alone cannot tell you and the reason the arithmetic did not close: a
+/// block of eight dwellings on an 800 m² plate over four storeys works out
+/// at 400 m² each, which is a mansion, not a tenement.
+///
+/// Real: a terrace is two storeys, a European tenement four to six, a
+/// high-street shop has a floor over it, a shed is one. **Four is the
+/// limit of a walk-up** — nobody carries shopping higher — which is
+/// exactly where lifts start.
+pub fn storeys_of(lot: Lot, floorplate_m2: i64) -> i64 {
+    match lot {
+        Lot::Flats => {
+            if floorplate_m2 >= 600 {
+                6
+            } else {
+                4
+            }
+        }
+        Lot::House => 2,
+        Lot::Shop => 2,
+        _ => 1,
+    }
+}
+
+/// **Where the partitions fall inside a building.**
+///
+/// A recursive split, always across the long way, until the pieces are
+/// the size of real rooms. Real figures *(UK)*: a double bedroom is 12-14
+/// m², a living room 16-20, a kitchen 8-12, a bathroom 4-6; an average
+/// new-build house is 76 m² over about five rooms. So a 60 m² floor wants
+/// four or five rooms, not one.
+///
+/// Computed per tile rather than stored, like everything else at this
+/// layer — the descent is a handful of steps and it keeps `tile_at` a
+/// pure function of its coordinates (spec A1.5).
+///
+/// Returns which room the tile is in, how big that room is, and whether
+/// the tile is on a partition (and if so whether it is the doorway).
+fn room_at(
+    seed: u64,
+    key: i64,
+    mut x0: i64,
+    mut y0: i64,
+    mut x1: i64,
+    mut y1: i64,
+    ix: i64,
+    iy: i64,
+    smallest_m2: i64,
+) -> (u64, i64, i64, Option<bool>) {
+    let mut id: u64 = 1;
+    for _ in 0..8 {
+        let (w, h) = (x1 - x0 + 1, y1 - y0 + 1);
+        if w * h <= smallest_m2 * 2 || w.min(h) < 4 {
+            break;
+        }
+        // Always across the long way, so rooms stay roughly square rather
+        // than becoming corridors.
+        let vertical = w >= h;
+        let span = if vertical { w } else { h };
+        // Somewhere in the middle, so no room is a slot.
+        let t = 0.35 + 0.30 * hash(seed, key, id as i64, 11) as f64;
+        let cut = (span as f64 * t) as i64;
+        let (lo, at) = if vertical { (x0, x0 + cut) } else { (y0, y0 + cut) };
+        let _ = lo;
+        let here = if vertical { ix } else { iy };
+
+        if here == at {
+            // On the partition. One doorway through it, placed along the
+            // wall — a room with no door is a cupboard.
+            let other = if vertical { iy } else { ix };
+            let (o0, o1) = if vertical { (y0, y1) } else { (x0, x1) };
+            let door = o0 + 1 + ((o1 - o0 - 1) as f64
+                * (0.2 + 0.6 * hash(seed, key, id as i64, 12) as f64)) as i64;
+            return (id, w, h, Some(other == door));
+        }
+        if here < at {
+            if vertical { x1 = at - 1 } else { y1 = at - 1 }
+            id = id * 2;
+        } else {
+            if vertical { x0 = at + 1 } else { y0 = at + 1 }
+            id = id * 2 + 1;
+        }
+    }
+    (id, x1 - x0 + 1, y1 - y0 + 1, None)
+}
+
+/// **What a room is for, and what stands in it.**
+///
+/// The room touching the front door is the one you live in; the kitchen
+/// backs onto the yard, because that is where the drains and the bins
+/// are; the rest are bedrooms. Furniture goes against the walls, the way
+/// furniture actually does, leaving the middle to walk in.
+fn furnish(
+    seed: u64,
+    room: u64,
+    depth_from_front: i64,
+    room_h: i64,
+    ix: i64,
+    iy: i64,
+    on_edge: bool,
+) -> Tile {
+    let kind = if depth_from_front <= 1 {
+        Room::Living
+    } else if room % 3 == 0 {
+        Room::Kitchen
+    } else if room % 7 == 0 {
+        Room::Hall
+    } else {
+        Room::Bedroom
+    };
+    if !on_edge {
+        // The middle of a room is floor. A table is the one thing that
+        // stands away from the wall.
+        return if kind == Room::Living && room_h >= 5 && (ix + iy) % 5 == 0 {
+            Tile::Furnishing(Furnishing::Table)
+        } else {
+            Tile::Floor
+        };
+    }
+    let r = hash(seed, ix, iy, 13);
+    match kind {
+        Room::Hall => Tile::Floor,
+        Room::Living => {
+            if r < 0.35 {
+                Tile::Furnishing(Furnishing::Chair)
+            } else {
+                Tile::Floor
+            }
+        }
+        Room::Kitchen => {
+            if r < 0.18 {
+                Tile::Furnishing(Furnishing::Stove)
+            } else if r < 0.55 {
+                Tile::Fitting(Fixture::Counter)
+            } else {
+                Tile::Floor
+            }
+        }
+        Room::Bedroom => {
+            if r < 0.40 {
+                Tile::Furnishing(Furnishing::Bed)
+            } else if r < 0.55 {
+                Tile::Furnishing(Furnishing::Wardrobe)
+            } else {
+                Tile::Floor
+            }
+        }
     }
 }
 

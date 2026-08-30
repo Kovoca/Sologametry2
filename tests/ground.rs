@@ -540,3 +540,75 @@ fn a_city_centre_street_is_paved_to_the_building_line() {
         best * 100.0
     );
 }
+
+#[test]
+fn a_building_is_a_stack_of_floors() {
+    // **Height is managed with Z levels**, the way Dwarf Fortress does it.
+    // Before this a building was a floorplate with a number of storeys
+    // asserted about it, which is how a block of eight dwellings on an
+    // 800 m² plate came to 400 m² a flat — a mansion, not a tenement.
+    //
+    // A Z level is a storey and not a metre: floor-to-floor is 2.5-3 m.
+    use scale_sim::ground::{storeys_of, METRES_PER_LEVEL};
+    assert!((2.5..=3.2).contains(&METRES_PER_LEVEL));
+
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Flats);
+
+    // Ground floor and third floor are both inside the building...
+    let g0 = Ground::around_on(1, &plan, at, TILES_PER_PLOT, 0);
+    let g3 = Ground::around_on(1, &plan, at, TILES_PER_PLOT, 3);
+    let inside = |g: &Ground| {
+        g.tiles
+            .iter()
+            .filter(|t| matches!(t, Tile::Floor | Tile::Furnishing(_) | Tile::Wall))
+            .count()
+    };
+    assert!(inside(&g3) > 100, "the third floor of a block of flats is empty");
+
+    // ...and there is more open air up there, because the two-storey
+    // shops either side of it have run out.
+    let sky = |g: &Ground| g.tiles.iter().filter(|t| **t == Tile::Sky).count();
+    assert_eq!(sky(&g0), 0, "open air at ground level");
+    assert!(sky(&g3) > sky(&g0), "nothing thins out with height");
+
+    // **Four storeys is the limit of a walk-up**, which is exactly where
+    // lifts start, and a shed is one storey however big it is.
+    assert!(storeys_of(Lot::Flats, 800) > 4, "a tenement of four storeys or fewer");
+    assert_eq!(storeys_of(Lot::House, 60), 2, "a terraced house is two storeys");
+    assert_eq!(storeys_of(Lot::Works, 900), 1, "a shed with an upstairs");
+
+    // Above the roof there is nothing at all.
+    let high = Ground::around_on(1, &plan, at, TILES_PER_PLOT, 40);
+    assert!(
+        high.tiles.iter().all(|t| *t == Tile::Sky),
+        "something is standing 120 m up"
+    );
+}
+
+#[test]
+fn a_room_has_a_door_and_something_in_it() {
+    // A bare floor inside four walls is an area, not a place. What makes
+    // an interior legible is partitions, doorways through them, and
+    // furniture that says what each room is for — which is the thing CDDA
+    // has and a single open room does not.
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Flats);
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+
+    let count = |f: scale_sim::ground::Furnishing| {
+        g.tiles.iter().filter(|t| **t == Tile::Furnishing(f)).count()
+    };
+    use scale_sim::ground::Furnishing::*;
+    assert!(count(Bed) > 0, "a block of flats with nowhere to sleep");
+    assert!(count(Stove) > 0, "nowhere to cook");
+    assert!(
+        g.tiles.iter().filter(|t| **t == Tile::Door).count() > 4,
+        "more than one room means more than one door"
+    );
+    // A stair, because you cannot get to the floors above without one.
+    assert!(
+        g.tiles.iter().any(|t| *t == Tile::Stairs),
+        "a block of flats with no stairwell"
+    );
+}

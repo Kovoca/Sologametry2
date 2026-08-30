@@ -36,6 +36,7 @@ fn main() {
     let mut rank = 3usize;
     let mut which = 4usize;
     let mut place = String::from("street");
+    let mut z = 0i64;
 
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -44,8 +45,9 @@ fn main() {
             "--rank" => rank = it.next().and_then(|v| v.parse().ok()).unwrap_or(3).max(1),
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--where" => place = it.next().unwrap_or_else(|| "street".into()),
+            "--z" => z = it.next().and_then(|v| v.parse().ok()).unwrap_or(0),
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -169,21 +171,26 @@ fn main() {
     // A corner is worth looking at further, because what is interesting
     // about one is the buildings on it, and those are a plot away.
     let mut g = if want_corner {
-        Ground::window(seed, &plan, centre, 92, 44)
+        Ground::window_on(seed, &plan, centre, 92, 44, z)
     } else {
-        Ground::window(seed, &plan, centre, 80, 34)
+        Ground::window_on(seed, &plan, centre, 80, 34, z)
     };
 
     // Park an artic on the nearest road, because a lorry is seventeen
     // metres of the street and you cannot see that any other way.
-    if let Some(spot) = nearest(&g, Tile::Road) {
-        g.park(&Vehicle::artic(), spot);
+    if z == 0 {
+        if let Some(spot) = nearest(&g, Tile::Road) {
+            g.park(&Vehicle::artic(), spot);
+        }
     }
 
     println!();
     println!(
-        "{name} — standing on {:?} at tile {},{}",
-        want, centre.0, centre.1
+        "{name} — standing on {:?} at tile {},{}, level {z} ({:.0} m up)",
+        want,
+        centre.0,
+        centre.1,
+        z as f64 * scale_sim::ground::METRES_PER_LEVEL,
     );
     println!(
         "  {} m by {} m of the {} m you could see on foot, generated from the",

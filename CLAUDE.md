@@ -740,6 +740,44 @@ tiles on foot, 288 in a vehicle.
 
 `cargo run --release --bin walk -- --where shop`
 
+### Height is a Z level (`ground.rs`)
+
+Dwarf Fortress's answer, and the right one: **a building is a stack of
+floors, not a floorplate with a number asserted about it.** `tile_at` takes
+a `gz`; above the ground there is only what somebody built, and everything
+else at that height is `Tile::Sky`.
+
+A **Z level is a storey, not a metre** — floor-to-floor is 2.5-3 m — so
+height is measured in a coarser unit than the ground is. That asymmetry is
+what makes one tile of stairwell join two levels.
+
+- **The arithmetic did not close before this.** `HOUSEHOLDS_PER_BLOCK = 8`
+  on an 800 m² plate over four storeys is 400 m² a flat, which is a
+  mansion. Storeys are now real: a terrace is 2, a high-street shop 2
+  *(which is why town centres have people living over the shops)*, a
+  tenement 4-6, a shed 1.
+- **Four storeys is the limit of a walk-up** — nobody carries shopping
+  higher — which is exactly where lifts start.
+- **High-density housing is a core with dwellings off it**, not a big room
+  with partitions: stairwell, lift, landing, flats opening onto it.
+  Subdividing the floorplate the way a house is subdivided gave one
+  enormous dwelling per block.
+- **A door to the street is on the ground floor only.** Above it the same
+  wall carries a window; you get in by the stair.
+
+### A room has a door and something in it
+
+A bare floor inside four walls is an area, not a place. Interiors
+subdivide recursively across the long way until the pieces are real rooms
+*(UK space standard: double bedroom 12-14 m², living room 16-20, kitchen
+8-12; a flat averages 61 m², a house 76 over about five rooms)*, each
+partition gets one doorway, and furniture goes **against the walls** the
+way furniture does, leaving the middle to walk in. Room use comes from
+position, not from a dice roll: the room off the front door is the one you
+live in, the kitchen backs onto the yard where the drains and bins are.
+
+Computed per tile, never stored, like the rest of this layer.
+
 ## The scale ladder
 
 DF nests a world tile inside mid-level tiles and you pick a block of those
