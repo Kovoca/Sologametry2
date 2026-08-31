@@ -146,6 +146,10 @@ impl Populace {
                 // very poor are rare — which is what a real distribution
                 // of anything looks like and what a flat draw does not.
                 p.diligence = ((rng.next_f32() + rng.next_f32() + rng.next_f32()) / 3.0) as f64;
+                // **What they can learn is not how hard they work at it.**
+                // Same shape of draw, an independent roll: plenty of able
+                // people are idle and plenty of dogged ones are not clever.
+                let free = ((rng.next_f32() + rng.next_f32() + rng.next_f32()) / 3.0) as f64;
                 // **Nobody lives one to a house.** Real composition: 30%
                 // alone, 27% a couple, 22% a couple with children, 10% a
                 // lone parent, ~11% sharing or family — average household
@@ -161,13 +165,34 @@ impl Populace {
                 // of young people; apprenticeships add another slice. So
                 // most people have school and no more, which is what most
                 // work requires.
-                let q = rng.next_f32();
+                //
+                // **Nobody holds a qualification they could not finish**, so
+                // the draw is gated the same way the children's is. It skews
+                // the graduate body upward in ability without any rule
+                // saying so — which is what a real graduate body looks like.
+                let q = rng.next_f32() as f64;
                 p.qualification = if q < 0.32 {
                     Qualification::Degree
                 } else if q < 0.52 {
                     Qualification::Vocational
                 } else {
                     Qualification::School
+                };
+                // **These adults already got through it**, so ability is
+                // drawn *given* the qualification rather than gated by it.
+                // Gating it instead multiplies two thirds by a third and
+                // gives a country of 9% graduates — a test caught exactly
+                // that. Sampling a population that has already run the
+                // pipeline is not the same as running the pipeline.
+                //
+                // A holder is somewhere above the floor, skewed upward;
+                // somebody who left at sixteen may be able or not, because
+                // plenty of able people never went.
+                let floor = p.qualification.takes_to_finish();
+                p.aptitude = if floor > 0.0 {
+                    (floor + (1.0 - floor) * free).min(1.0)
+                } else {
+                    free
                 };
                 // Nobody works at a trade they are not qualified for, so
                 // the sample has to be drawn consistently.
@@ -333,12 +358,70 @@ impl Populace {
                 .unwrap_or(0.0);
             let afford = (can_carry + 0.35 * helped).clamp(0.0, 1.0);
 
-            let qualification = if roll < 0.38 * afford {
+            // **The other gate: not everybody can do everything.**
+            //
+            // Ability is partly inherited and partly not, and how much of
+            // that is the genes and how much is growing up in a house with
+            // books in it is the oldest argument in the subject. The model
+            // takes no side and keeps the pull weak: most of the draw is
+            // the child's own.
+            let free = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0)
+                as f64;
+            let aptitude = (0.72 * free + 0.28 * household.aptitude).clamp(0.0, 1.0);
+
+            // **Grades, and this is where the real mechanism lives.**
+            //
+            // The first version gated on money at eighteen and gave a 20x
+            // gap between a rich child and a poor one, where the real gap
+            // in entry to higher education is about **2x** (England, by
+            // area: ~28% of the least advantaged fifth against ~57% of the
+            // most). A fee is not what does the damage.
+            //
+            // What does is the sixteen years before it. Feinstein's work on
+            // the 1970 British Cohort found children of deprived families
+            // who tested well at 22 months were on average overtaken by
+            // higher-status children before primary school — the strong
+            // form of that crossover has since been challenged, so the
+            // model takes the defensible part: **what a child can show at
+            // sixteen is their own ability plus what was done for them**.
+            //
+            // A state that funds schools is buying back part of that
+            // difference, which is the whole argument for funding them —
+            // and it does it by **making grades track ability instead of
+            // money**, not by handing everybody better grades. Adding a
+            // funding bonus to attainment put two thirds of a country
+            // through university; a school system does not raise the mean,
+            // it decides what the mean is made of.
+            let on_money = 0.30 * (1.0 - helped) + 0.08 * helped;
+            let attained =
+                ((1.0 - on_money) * aptitude + on_money * afford).clamp(0.0, 1.0);
+
+            // **Two gates, and both must pass.** Below the floor a course
+            // is not merely unlikely, it is out of reach — no amount of
+            // money finishes a degree for somebody who cannot do the work.
+            // Above it, the odds climb with the grades, and money still
+            // buys a little: fees, maintenance, and three years of not
+            // earning.
+            let odds = |q: Qualification| -> f64 {
+                let floor = q.takes_to_finish();
+                if attained < floor {
+                    return 0.0;
+                }
+                let headroom = ((attained - floor) / (1.0 - floor)).clamp(0.0, 1.0);
+                ((0.30 + 0.70 * headroom) * (0.62 + 0.38 * afford)).clamp(0.0, 1.0)
+            };
+
+            // Scaled so the cohort lands near the real 38% entering higher
+            // education once both gates have taken their cut.
+            let qualification = if roll < 1.33 * odds(Qualification::Degree) {
                 Qualification::Degree
-            } else if roll < 0.38 * afford + 0.20 {
+            } else if attained >= Qualification::Vocational.takes_to_finish()
+                && roll < 1.33 * odds(Qualification::Degree) + 0.26
+            {
                 // An apprenticeship is paid, so it is far less gated by
                 // what a family has — which is exactly why it is the route
-                // for people a degree is out of reach for.
+                // for people a degree is out of reach for. It has a floor
+                // of its own, and somebody below both leaves at sixteen.
                 Qualification::Vocational
             } else {
                 Qualification::School
@@ -359,6 +442,7 @@ impl Populace {
             p.age_years = 16.0 + qualification.years_to_earn();
             p.diligence =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
+            p.aptitude = aptitude;
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
             self.people.push(p);
@@ -437,6 +521,8 @@ impl Populace {
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
             let trade = draw_trade(&mut self.rng);
             let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
+            p.aptitude = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
+                / 3.0) as f64;
             p.diligence = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
                 / 3.0) as f64;
             // **A replacement is somebody else from the population, not a

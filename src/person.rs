@@ -573,6 +573,23 @@ pub struct Person {
     /// **How good they actually are at it**, 0 to 1. Fixed; this is the
     /// person, not their reputation.
     pub diligence: f64,
+    /// **What they can learn**, 0 to 1 — which is not the same as how hard
+    /// they work at it, and not everybody can do everything.
+    ///
+    /// Roughly normally distributed, as ability is: most people are
+    /// middling and the very able and the very not are rare. Real
+    /// cognitive ability correlates with educational attainment at about
+    /// **r = 0.5** — strong enough that it plainly matters, far too weak
+    /// to be the whole story.
+    ///
+    /// **Background matters comparably.** Feinstein's work on the 1970
+    /// British Cohort found children from deprived backgrounds who scored
+    /// well at 22 months were on average overtaken by higher-SES children
+    /// before primary school — though later research has challenged the
+    /// strong form of that crossover, so the model takes the defensible
+    /// version: **ability and money each gate the same door, and neither
+    /// alone opens it.**
+    pub aptitude: f64,
     /// **How they are regarded**, 0 to 1 — which is a different thing.
     ///
     /// Promotion does not run on days worked. It runs on what the people
@@ -662,6 +679,8 @@ impl Person {
             // name. A caller with a real distribution to draw from can
             // overwrite it.
             diligence,
+            // Middling until a caller draws from a real distribution.
+            aptitude: 0.5,
             standing: 0.5,
             visibility: 0.0,
             log: Vec::new(),
@@ -728,6 +747,31 @@ pub enum Qualification {
 }
 
 impl Qualification {
+    /// **What it takes to get through it**, on the same 0-1 scale as
+    /// aptitude.
+    ///
+    /// Not everybody can do everything, and pretending otherwise makes a
+    /// nonsense of both education and of the people who do not have it.
+    /// Real: graduates average about two thirds of a standard deviation
+    /// above the mean in cognitive ability, and university non-completion
+    /// runs 6-7% in Britain while apprenticeship non-completion runs
+    /// 30-40% — a course you cannot do is a course you leave.
+    pub fn takes_to_finish(self) -> f64 {
+        match self {
+            Qualification::School => 0.0,
+            // A trade is demanding in its own way and less academically
+            // selective, which is most of why it is a different route
+            // rather than a lesser one.
+            Qualification::Vocational => 0.20,
+            // Ability is drawn so that most people are middling: this
+            // floor puts a degree out of reach for roughly the bottom
+            // third, and leaves it *possible* for the rest. It is not the
+            // graduate average — graduates average well above it, because
+            // the odds keep rising with ability above the bar.
+            Qualification::Degree => 0.42,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Qualification::School => "school",

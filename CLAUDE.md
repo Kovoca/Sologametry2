@@ -1978,6 +1978,38 @@ ground_legend`), so every binary says the same thing.
 | country | `"` grass `T` tree `*` scrub `,` sand `^` rock `A` snow `~` water |
 | vehicle | `+` frame `E` engine `O` wheel `B` cargo bay `F` fuel tank `%` seat `!` controls `b` battery `a` alternator `p` solar `x` refrigeration `w` workshop rig `Y` land gear |
 
+### Not everyone makes it, and cutting schools changes who does
+
+`Person.aptitude` is a second axis, separate from `diligence` — **what
+somebody can learn is not how hard they work at it**. Roughly normal, so
+most people are middling. `Qualification::takes_to_finish` is a floor:
+below it a course is *out of reach*, not merely unlikely, and **31% of a
+cohort cannot reach a degree on grades whatever is paid for them**.
+
+Two things came out of it that were not typed in:
+
+- **Graduates land at +0.68 SD of ability** *(real: +0.67)*. Nothing sets
+  that; it falls out of a floor plus odds that keep rising above it.
+- **The class gap in entry is 2.0x** *(real, England by area: 28% of the
+  least advantaged fifth against 57% of the most)*.
+
+Three wrong models before it, each caught by a number:
+- **Gating the seeded adults' qualification on ability** multiplied two
+  thirds by a third and gave a country of 9% graduates. Those adults have
+  *already been through it*, so ability is drawn **given** the
+  qualification. Sampling a population that has run the pipeline is not
+  the same as running it.
+- **A money gate at eighteen** gave a 20x rich/poor spread against a real
+  2x. A fee is not what does the damage.
+- **Funding schools as a bonus to attainment** put two thirds of a country
+  through university. A school system does not raise the mean.
+
+What it does instead is decide what the mean is *made of* — and that is
+the result worth having. Cut education funding to nothing and **the same
+number of people get degrees**, but they are +0.50 SD instead of +0.68 and
+the class gap goes 1.9x to **5.2x**. The university does not shrink; it
+fills with the well-off instead of the able.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

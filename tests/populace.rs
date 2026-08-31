@@ -665,3 +665,136 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
         );
     }
 }
+
+/// **Money alone does not finish a degree, and funding schools does not
+/// produce more graduates — it changes which ones.**
+///
+/// Peter's point, and the reason ability had to be a separate axis from
+/// diligence: there are people who will not reach a given level whatever
+/// the family can pay for. About **a third of a cohort cannot reach a
+/// degree on grades**, and no household carries them past that.
+///
+/// The rule this obeys: a population correlation cannot show a mechanism.
+/// Everything is held still and one thing moves.
+#[test]
+fn grades_gate_what_money_cannot_buy() {
+    use scale_sim::person::Qualification;
+
+    // The same arithmetic `a_year_passes` runs on a school leaver.
+    fn cohort(helped: f64) -> (f64, f64, f64, f64) {
+        let mut st = 12345u64;
+        let mut next = move || {
+            st ^= st << 13;
+            st ^= st >> 7;
+            st ^= st << 17;
+            (st >> 11) as f64 / (1u64 << 53) as f64
+        };
+        let on_money = 0.30 * (1.0 - helped) + 0.08 * helped;
+        let (mut deg, mut deg_apt, mut all_apt, mut blocked) = (0u32, 0.0, 0.0, 0u32);
+        let (mut poor, mut poor_n, mut rich, mut rich_n) = (0u32, 0u32, 0u32, 0u32);
+        let n = 200_000;
+        for _ in 0..n {
+            let apt = (next() + next() + next()) / 3.0;
+            let afford = next();
+            let roll = next();
+            let attained = ((1.0 - on_money) * apt + on_money * afford).clamp(0.0, 1.0);
+            let floor = Qualification::Degree.takes_to_finish();
+            all_apt += apt;
+            if attained < floor {
+                blocked += 1;
+            }
+            let odds = if attained < floor {
+                0.0
+            } else {
+                let h = ((attained - floor) / (1.0 - floor)).clamp(0.0, 1.0);
+                ((0.30 + 0.70 * h) * (0.62 + 0.38 * afford)).clamp(0.0, 1.0)
+            };
+            let got = roll < 1.33 * odds;
+            if afford < 0.2 {
+                poor_n += 1;
+                if got {
+                    poor += 1;
+                }
+            }
+            if afford > 0.8 {
+                rich_n += 1;
+                if got {
+                    rich += 1;
+                }
+            }
+            if got {
+                deg += 1;
+                deg_apt += apt;
+            }
+        }
+        let n = n as f64;
+        (
+            deg as f64 / n,                                  // share with a degree
+            (deg_apt / deg as f64 - all_apt / n) / 0.167,     // graduate ability, in SD
+            (rich as f64 / rich_n as f64) / (poor as f64 / poor_n as f64), // class gap
+            blocked as f64 / n,                              // shut out on grades
+        )
+    }
+
+    let (share, ability, gap, blocked) = cohort(1.0);
+
+    // Real: ~35% of working-age adults hold a degree, ~38% enter.
+    assert!(
+        (0.30..0.45).contains(&share),
+        "a funded country puts {:.0}% through a degree, against a real ~35%",
+        share * 100.0
+    );
+    // Real: graduates average about +0.67 SD in measured ability. Nothing
+    // sets this — it falls out of the floor and of odds that keep rising
+    // above it.
+    assert!(
+        (0.5..0.9).contains(&ability),
+        "graduates are +{ability:.2} SD in ability, against a real +0.67"
+    );
+    // Real, England by area: ~28% of the least advantaged fifth enter
+    // higher education against ~57% of the most.
+    assert!(
+        (1.6..2.6).contains(&gap),
+        "the class gap in entry is {gap:.1}x, against a real ~2x"
+    );
+    // Peter's point, in one number.
+    assert!(
+        (0.20..0.42).contains(&blocked),
+        "{:.0}% cannot reach a degree on grades whatever is paid",
+        blocked * 100.0
+    );
+
+    // **Now vary one thing: what the state spends on schools.**
+    let (share_cut, ability_cut, gap_cut, _) = cohort(0.0);
+
+    // The finding, and it is not the obvious one. Cutting schools does not
+    // shrink the graduate body.
+    assert!(
+        (share_cut - share).abs() < 0.06,
+        "about as many still go: {:.0}% against {:.0}%",
+        share_cut * 100.0,
+        share * 100.0
+    );
+    // What it does instead is change who they are — the university fills
+    // with less able people, because places go on background instead.
+    assert!(
+        ability_cut < ability - 0.10,
+        "graduates should be less able without schools: +{ability_cut:.2} vs +{ability:.2} SD"
+    );
+    assert!(
+        gap_cut > gap * 1.8,
+        "and the class gap should widen sharply: {gap_cut:.1}x vs {gap:.1}x"
+    );
+    println!(
+        "funded:   {:.0}% graduate, +{:.2} SD ability, {:.1}x class gap\n\
+         unfunded: {:.0}% graduate, +{:.2} SD ability, {:.1}x class gap\n\
+         {:.0}% of a cohort cannot reach a degree on grades at all",
+        share * 100.0,
+        ability,
+        gap,
+        share_cut * 100.0,
+        ability_cut,
+        gap_cut,
+        blocked * 100.0
+    );
+}
