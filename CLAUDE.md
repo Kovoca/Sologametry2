@@ -1067,6 +1067,27 @@ pavement honestly and `Road::Track` never appears. That is a hole in
 vehicles; `staked` is cargo still on the road, which is not a leak. Every
 money printer so far was caught by this identity failing.
 
+### A floor is a boundary, not a property of a level
+
+The design doc's line, and it turned out to be load-bearing: *floors and
+ceilings are boundaries between volumes, not implied merely because the
+next Z coordinate exists*. A floor was implied wherever the next level
+existed, which makes a shaft, an atrium, a double-height bay and a breach
+four special cases instead of **one missing boundary**.
+
+`floor_below` answers what separates a level from the one under it.
+`None` means the two are one volume.
+
+- **A stairwell is a hole through every floor it passes** — not an object,
+  a floor that is open. Which is also why water runs down one.
+- **A storey and a Z level are not the same thing.** Real industrial clear
+  height is 6-12 m against a dwelling's 2.5-3, so a shed is *one storey and
+  three levels*, with no floor part way up it. `storeys_of` and `levels_of`
+  are now different questions.
+- Mining through is *modifying the boundary*, not deleting a tile — which
+  is what makes shafts, bridges, grates, collapses and double-height
+  spaces one mechanism instead of five.
+
 ### What happened beats what was generated
 
 **Generated, never stored** (A1.5, R5) is what keeps a save bounded — and

@@ -816,3 +816,68 @@ fn what_happened_beats_what_was_generated() {
     assert_eq!(restored.at(vx, vy), Tile::Wall);
     assert!(changes.is_empty());
 }
+
+#[test]
+fn a_floor_is_a_boundary_not_a_property_of_a_level() {
+    // **"Floors and ceilings are boundaries between volumes, not implied
+    // merely because the next Z coordinate exists."** A floor was implied
+    // wherever the next level existed, which makes a shaft, an atrium, a
+    // double-height bay and a breach four special cases instead of one
+    // missing boundary.
+    use scale_sim::ground::{floor_below, levels_of, levels_per_storey, storeys_of, surface_z};
+
+    let plan = a_city();
+
+    // At the surface the ground is the boundary, and it holds you up.
+    let at = stand_on(&plan, Lot::Flats);
+    let sz = surface_z(1, &plan, at.0, at.1);
+    let ground = floor_below(1, &plan, at.0, at.1, sz).expect("no ground to stand on");
+    assert!(ground.supports_weight() && !ground.liquid_permeable());
+
+    // Between the storeys of a block of flats there is a floor.
+    assert!(
+        floor_below(1, &plan, at.0, at.1, sz + 1).is_some(),
+        "the first floor of a block of flats has nothing under it"
+    );
+
+    // **Above the roof there is no boundary at all** — that is what open
+    // air is, and it needs no separate representation.
+    assert!(floor_below(1, &plan, at.0, at.1, sz + 40).is_none());
+
+    // **A stairwell is a hole through every floor it passes.** Not a
+    // special object: a floor that is open.
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    let mut stair = None;
+    for y in 0..g.h {
+        for x in 0..g.w {
+            if g.at(x, y) == Tile::Stairs {
+                stair = Some((g.origin.0 + x as i64, g.origin.1 + y as i64));
+            }
+        }
+    }
+    let (sx, sy) = stair.expect("a block of flats with no stairwell");
+    let shaft = floor_below(1, &plan, sx, sy, sz + 1).expect("the shaft left the building");
+    assert!(!shaft.supports_weight(), "a stairwell you cannot fall down");
+    assert!(shaft.liquid_permeable(), "water that will not run down a stairwell");
+
+    // **A storey and a level are not the same thing.** A shed's clear
+    // height is 6-12 m against a dwelling's 2.5-3, so a works is one
+    // storey and several levels — with no floor part way up it.
+    assert_eq!(levels_per_storey(Lot::Works), 3);
+    assert_eq!(levels_per_storey(Lot::House), 1);
+    assert_eq!(storeys_of(Lot::Works, 900), 1, "a shed with an upstairs");
+    assert_eq!(levels_of(Lot::Works, 900), 3, "a shed one storey tall and flat");
+
+    // Works sit out past the housing, so a 1 km square has none in it.
+    let wide = Plan::lay_out_on(20260828, 4242, 2_500_000.0, 72, Biome::Grassland);
+    let works = stand_on(&wide, Lot::Works);
+    let wz = surface_z(1, &wide, works.0, works.1);
+    assert!(
+        floor_below(1, &wide, works.0, works.1, wz + 1).is_none(),
+        "a floor half way up a warehouse bay"
+    );
+    assert!(
+        floor_below(1, &wide, works.0, works.1, wz + 3).is_none(),
+        "a shed with a floor above its roof"
+    );
+}

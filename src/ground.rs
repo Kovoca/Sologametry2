@@ -694,7 +694,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
         let f = footprint_of(plan, lot, px, py);
         let across = if f.terraced { t } else { t - 2 * f.side };
         let floorplate = (t - f.front - f.back) * across;
-        if gz >= storeys_of(lot, floorplate) {
+        if gz >= levels_of(lot, floorplate) {
             return Tile::Sky;
         }
         return building_tile(seed, plan, lot, gx, gy, ix, iy, gz);
@@ -1484,6 +1484,134 @@ fn below_ground(
         }
         _ => Tile::Earth,
     }
+}
+
+/// **A storey and a Z level are not the same thing.**
+///
+/// An ordinary storey takes one level. A warehouse bay, a workshop, a
+/// theatre, an atrium or a double-height lobby takes two or more — real
+/// industrial clear height is 6-12 m against a dwelling's 2.5-3, so a
+/// shed is one storey and two or three levels. Assuming they are the same
+/// is what makes a floor appear wherever the next Z coordinate happens to
+/// exist.
+pub fn levels_per_storey(lot: Lot) -> i64 {
+    match lot {
+        // A shed is one storey with the roof a long way up.
+        Lot::Works => 3,
+        _ => 1,
+    }
+}
+
+/// How many Z levels a building occupies in total.
+pub fn levels_of(lot: Lot, floorplate_m2: i64) -> i64 {
+    storeys_of(lot, floorplate_m2) * levels_per_storey(lot)
+}
+
+/// **A floor is a boundary between two volumes, not a property of
+/// either.**
+///
+/// It has no thickness in plan and it is what decides whether anything —
+/// a person, water, a falling object — passes between one level and the
+/// next. Mining through a floor is *modifying the boundary*, not deleting
+/// a tile; that distinction is what makes shafts, bridges, grates,
+/// collapses and double-height spaces the same mechanism rather than five.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Floor {
+    pub material: FloorMaterial,
+    /// A hole: a stairwell, a hoistway, an atrium, a breach.
+    pub open: bool,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum FloorMaterial {
+    /// The ground itself, which is the boundary at the surface.
+    Ground,
+    Timber,
+    Concrete,
+}
+
+impl Floor {
+    /// Whether somebody standing on the level above is held up by it.
+    pub fn supports_weight(self) -> bool {
+        !self.open
+    }
+
+    /// Whether water gets through.
+    pub fn liquid_permeable(self) -> bool {
+        self.open
+    }
+}
+
+/// **What separates this level from the one below it, if anything.**
+///
+/// `None` is an open volume — the two levels are one space. That is what
+/// a double-height bay is, and a stairwell, and a lift shaft: not special
+/// objects, just a missing boundary.
+pub fn floor_below(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Option<Floor> {
+    let t = TILES_PER_PLOT as i64;
+    let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
+    let sz = surface_z(seed, plan, gx, gy);
+    let rel = gz - sz;
+
+    let lot = if px < 0 || py < 0 || px >= plan.width as i64 || py >= plan.height as i64 {
+        Lot::Open
+    } else {
+        plan.at(px as usize, py as usize)
+    };
+
+    // At the surface, the ground is the boundary. Solid unless somebody
+    // has dug through it.
+    if rel == 0 {
+        return Some(Floor {
+            material: FloorMaterial::Ground,
+            open: false,
+        });
+    }
+
+    if rel < 0 {
+        // Underground: rock and soil are their own boundary. A cellar has
+        // a floor slab under it.
+        return Some(Floor {
+            material: if rel == -1 {
+                FloorMaterial::Concrete
+            } else {
+                FloorMaterial::Ground
+            },
+            open: false,
+        });
+    }
+
+    // Above ground there is a floor only where a building has one.
+    if !matches!(lot, Lot::House | Lot::Flats | Lot::Shop | Lot::Works) {
+        return None; // open air
+    }
+    let f = footprint_of(plan, lot, px, py);
+    let across = if f.terraced { t } else { t - 2 * f.side };
+    let floorplate = (t - f.front - f.back) * across;
+    if rel >= levels_of(lot, floorplate) {
+        return None; // above the roof
+    }
+
+    // **Inside a single storey there is no floor.** A shed's clear height
+    // is one volume however many levels it spans.
+    if rel % levels_per_storey(lot) != 0 {
+        return None;
+    }
+
+    // A stairwell or a hoistway is a hole through every floor it passes:
+    // that is what makes it a shaft rather than a stack of cupboards.
+    let open = matches!(
+        tile_at(seed, plan, gx, gy, gz),
+        Tile::Stairs | Tile::Lift
+    );
+    Some(Floor {
+        material: if lot == Lot::Works {
+            FloorMaterial::Concrete
+        } else {
+            FloorMaterial::Timber
+        },
+        open,
+    })
 }
 
 /// **How many floors a building has**, which is the thing a floorplate
