@@ -164,6 +164,13 @@ pub struct Government {
     pub funded: [f64; 6],
     /// Public posts in each market, summed over the services.
     pub posts: Vec<f64>,
+    /// **What share of its supplies the state actually got**, 0 to 1.
+    ///
+    /// A budget line buys staff *and* stock. A hospital with its full
+    /// establishment of doctors and no medicines is not a hospital, and
+    /// this is the number that says so — set every day by what the
+    /// pharmacies and machine works could actually deliver.
+    pub supplied: f64,
 }
 
 impl Government {
@@ -224,6 +231,8 @@ impl Government {
             revenue,
             funded,
             posts,
+            // Assumed until a day has been run and the shelves checked.
+            supplied: 1.0,
         }
     }
 
@@ -242,6 +251,24 @@ impl Government {
         // A fully funded policy leaves the parent about a sixth of it,
         // which is roughly where the Nordic countries actually land.
         1.0 - 0.84 * self.funded[i]
+    }
+
+    /// **What the health service can actually deliver**, which is the
+    /// staff it can pay for *and* the supplies it can get.
+    ///
+    /// Peter's rule, applied to the one service where it decides whether
+    /// somebody lives: the medicines come from a factory, the factory
+    /// runs on oil, and a country cut off from either has a hospital full
+    /// of staff who cannot treat anybody. Infant mortality reads this
+    /// rather than the budget line alone.
+    pub fn health_delivered(&self) -> f64 {
+        let i = Service::ALL
+            .iter()
+            .position(|&s| s == Service::Health)
+            .unwrap_or(0);
+        // Staffing and supply are complements, not substitutes: neither
+        // covers for the other, so the weaker one binds.
+        (self.funded[i] * self.supplied).clamp(0.0, 1.0)
     }
 
     /// Public posts in one market.

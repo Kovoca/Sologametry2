@@ -245,3 +245,159 @@ fn an_oil_field_employs_almost_nobody() {
          the gap should be two orders of magnitude"
     );
 }
+
+/// **What a bunker costs, against what a house costs.**
+///
+/// Putting a fence and a buried bunker on one scale is the point: the
+/// range is enormous and not intuitive.
+#[test]
+fn hardening_a_structure_costs_an_order_of_magnitude() {
+    use scale_sim::building::Structure;
+
+    let house = Structure::House.materials();
+    let bunker = Structure::Bunker.materials();
+
+    // Anchored on a real house: a 93 m2 house takes ~20 t of cement and
+    // ~3.5 t of steel, which is 0.22 and 0.038 a square metre.
+    assert!((house.cement - 0.22).abs() < 0.02);
+    assert!((house.steel - 0.043).abs() < 0.01);
+
+    // A metre of reinforced concrete against a cavity wall.
+    assert!(
+        bunker.cement / house.cement > 5.0,
+        "a bunker is only {:.1}x a house in cement",
+        bunker.cement / house.cement
+    );
+    // And the steel is the shocking one: blast-grade rebar runs 200 kg a
+    // cubic metre against an ordinary building's 80-120, over five times
+    // the concrete.
+    assert!(
+        bunker.steel / house.steel > 15.0,
+        "a bunker is only {:.1}x a house in steel",
+        bunker.steel / house.steel
+    );
+
+    // A fence is a real structure and costs almost nothing, which is the
+    // other end of the same scale.
+    assert!(Structure::Fence.materials().total() < house.total() * 0.05);
+
+    // **A terrace is cheaper than a detached house per square metre**, and
+    // not because it is smaller — a party wall is one wall doing two jobs.
+    assert!(Structure::Terrace.materials().total() < house.total());
+
+    // A tenement needs a frame, because load-bearing masonry gives out at
+    // about four storeys. That is where the steel starts.
+    assert!(Structure::Tenement.materials().steel > house.steel);
+}
+
+/// **New Orleans has no basements**, and `ground.rs` has known why since
+/// it was written without anything ever asking it.
+#[test]
+fn you_cannot_cheaply_dig_below_the_water_table() {
+    use scale_sim::building::Structure;
+
+    let dug_to = 4.0;
+    // Dry ground: damp-proofing, and no more.
+    assert_eq!(Structure::Bunker.wetness_multiplier(30.0, dug_to), 1.0);
+    // A metre down, as in a delta city: tanking, pumps, and a bill to
+    // match.
+    let wet = Structure::Bunker.wetness_multiplier(1.0, dug_to);
+    assert!(
+        wet >= 2.0,
+        "digging below the water table came out at only {wet:.1}x"
+    );
+    // Deeper below the table is worse, because it is head of water.
+    assert!(Structure::Bunker.wetness_multiplier(0.5, 8.0) > wet);
+    // And none of it applies to something sitting on the surface.
+    assert_eq!(Structure::House.wetness_multiplier(0.5, 8.0), 1.0);
+}
+
+/// **A hospital runs on supplies, and they are made in a factory.**
+#[test]
+fn medicine_is_made_from_oil_and_a_hospital_needs_it() {
+    // **A pharmaceutical works buys chemicals, not crude.** It no more
+    // starts from a barrel of oil than a baker starts from a field.
+    let feedstock: Vec<Commodity> = RECIPES[recipe::PHARMA]
+        .inputs
+        .iter()
+        .map(|&(c, _)| c)
+        .collect();
+    assert!(
+        feedstock.contains(&Commodity::Chemicals),
+        "medicines are synthesised from chemicals"
+    );
+    // And the chemicals lead back to oil, so a hospital is downstream of
+    // a petroleum supply however many steps away.
+    let chem: Vec<Commodity> = RECIPES[recipe::CHEMICAL_WORKS]
+        .inputs
+        .iter()
+        .map(|&(c, _)| c)
+        .collect();
+    assert!(chem.contains(&Commodity::Petroleum));
+
+    // **What a shop sells is not what a hospital uses.** Retail remedies
+    // and medical grade are separate commodities made by separate works,
+    // and a hospital cannot substitute one for the other: you do not
+    // anaesthetise anybody with aspirin.
+    assert!(
+        Commodity::Medicine.base_cost() > Commodity::Remedies.base_cost() * 3.0,
+        "medical grade should cost far more than what a chemist sells"
+    );
+    assert!(
+        Commodity::Remedies.per_capita_annual() > 0.0,
+        "people buy remedies over a counter"
+    );
+    assert_eq!(
+        Commodity::Medicine.per_capita_annual(),
+        0.0,
+        "medical grade is bought by the state on contract, not off a shelf"
+    );
+    // Poorer yields under GMP, and far more labour per tonne.
+    assert!(RECIPES[recipe::PHARMA].labour > RECIPES[recipe::REMEDY_WORKS].labour * 2.0);
+
+    // A country that makes its own has hospitals that keep working; the
+    // state's delivered health is staffing and supply together.
+    let mut e = a_nation(20260828, 2).economy;
+    for _ in 0..200 {
+        e.step();
+    }
+    e.ledger.assert_conserved();
+    // **Every town has a hospital and every hospital has stock**, which
+    // is the structural thing this test is for. Modelled as a budget line
+    // it could not be supplied at all: nothing in the country *wanted*
+    // medical grade — no recipe consumed it and no shop sold it — so
+    // `distribute` never moved a gram and the entire national supply sat
+    // in the one town with the works.
+    let hospitals: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == SiteKind::Hospital)
+        .collect();
+    assert_eq!(
+        hospitals.len(),
+        e.markets.len(),
+        "a service is consumed where the people are; every town needs one"
+    );
+    for &h in &hospitals {
+        assert!(
+            e.ledger.stock(h, Commodity::Medicine) > 0.0,
+            "{} has no medicine at all",
+            e.ledger.sites[h].name
+        );
+    }
+
+    let gov = e.government.as_ref().expect("a nation with a state");
+    // **Known gap, recorded rather than tuned away.** Two hospitals in
+    // five run at ~72% because distribution is a per-site pull rather
+    // than a haulier moving loads along a route: a town far from the
+    // works draws its stock down faster than the pairwise test refills
+    // it. That is the same weakness `nations.rs` already documents for
+    // trade, and it is what a logistics operator would fix.
+    assert!(
+        gov.supplied > 0.70,
+        "a working nation could only supply {:.0}% of its hospitals",
+        gov.supplied * 100.0
+    );
+    assert!(
+        gov.health_delivered() > 0.0 && gov.health_delivered() <= 1.0,
+        "delivered health is a share"
+    );
+}

@@ -242,17 +242,19 @@ impl Populace {
         const INFANT_DEATHS_WITH_A_HOSPITAL: f64 = 0.0039;
         const INFANT_DEATHS_WITHOUT: f64 = 0.055;
 
-        // How well the state funds its hospitals, 0 to 1.
+        // **What the hospitals can actually deliver**, which is the staff
+        // the budget pays for *and* the medicines they can get hold of.
+        //
+        // Reading the budget line alone said a fully funded health service
+        // was a working one even with every pharmacy empty. The drugs are
+        // made in a factory out of oil, so a country cut off from the
+        // feedstock has hospitals full of staff who cannot treat anybody —
+        // and this is the one place in the model where that decides
+        // whether somebody lives.
         let health = econ
             .government
             .as_ref()
-            .map(|g| {
-                let i = crate::state::Service::ALL
-                    .iter()
-                    .position(|&s| s == crate::state::Service::Health)
-                    .unwrap_or(0);
-                g.funded[i]
-            })
+            .map(|g| g.health_delivered())
             .unwrap_or(0.0);
         let infant_deaths = INFANT_DEATHS_WITHOUT
             + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health;

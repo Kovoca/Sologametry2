@@ -737,8 +737,91 @@ a thousand kilometres from the only source of an input simply stops. Real
 economies import 30-50% of their steel even when they make it, so each
 town holds a stockholder and a timber yard for the balance.
 
-**Grid shed order is now fuel → food → shops → steel → heavy
-manufacturing.** Lumping all industry at one rank was fine with one kind
+### Every input gets a yard, whether or not anybody remembered
+
+`Ledger::new` now walks every site's recipe and gives each input storage.
+Storage is per commodity, so a site with no `capacity` entry for one of
+its own inputs **can never receive a single tonne of it** — `distribute`
+clamps every delivery by the room available. It fails silently: the site
+just never runs, and what you see at the far end is a famine. That is
+exactly what the cannery did when it gained a tinplate input and kept its
+old two-commodity store, so the rule is enforced rather than remembered.
+
+**Real works hold more of their inputs than of their output** — weeks of
+raw material against days of finished goods, because the input is what
+stops the line. A steelworks' ore stockyard dwarfs its billet store.
+
+### What a thing costs to build (`building.rs`)
+
+`Structure` puts a fence and a buried bunker on one scale, because the
+range is enormous and not intuitive. Anchored on a real house: **a 93 m²
+house takes ~20 t of cement and 3.5 t of steel** — 0.22 and 0.043 a square
+metre, and the builder's rule of thumb of 4 kg of steel per square foot is
+the same number.
+
+| per m² of floor | cement | steel |
+|---|---|---|
+| house | 0.22 | 0.043 |
+| terrace | 0.19 | 0.036 |
+| tenement | 0.30 | 0.070 |
+| shelter *(0.4 m RC)* | 0.80 | 0.375 |
+| **bunker** *(1 m RC, buried)* | **1.60** | **1.00** |
+
+- **Hardening costs an order of magnitude**: a bunker is 7x a house in
+  cement and **23x in steel**, because blast-grade rebar runs 200 kg/m³
+  against an ordinary building's 80-120, in five times the concrete.
+- **A party wall is one wall doing two jobs**, which is why a terrace is
+  cheaper per m² and not merely denser. Load-bearing masonry gives out at
+  about four storeys, and that is where the steel starts.
+- **Aggregate is deliberately not a commodity.** It is most of any
+  structure by weight and travels under 50 km, so what a country has to
+  *get* is the binder, the metal and the wood.
+- **New Orleans has no basements**, and `ground.rs` has known the depth to
+  water since it was written without anything ever asking. Below the water
+  table a hole needs *tanking* rather than damp-proofing — a waterproof
+  box holding back real head, and pumps for ever — which real practice
+  puts at 2-3x the structural cost.
+
+### A hospital is a place that holds supplies
+
+Peter's rule applied where it decides whether somebody lives: **the
+machinery to do medicine and the medicines themselves are made in a
+factory, out of chemicals, out of oil.** So a health service is downstream
+of a chemical industry, and `populace.rs` reads `health_delivered()` —
+staffing *and* supply — for infant mortality rather than the budget line
+alone.
+
+**Retail remedies and medical grade are different industries.** Same
+chemistry, wholly different manufacturing: a paracetamol line is
+high-volume tabletting on a commodity active, while a sterile injectable
+is made under GMP in a validated cleanroom with batch traceability and a
+QA release. Global pharma is ~$1.6tn of which OTC is ~$180bn — a ninth of
+the value on a far larger share of the tonnage. **A hospital cannot
+substitute one for the other**: you do not anaesthetise anybody with
+aspirin, so a country whose remedy works is running flat out can still
+have an operating theatre that cannot open.
+
+**A hospital had to become a site.** As a budget line it could not be
+supplied at all — nothing in the country *wanted* medical grade, because
+no recipe consumed it and no shop sold it, so `distribute` never moved a
+gram and the entire national stock sat in the one town with the works
+while every other hospital held nothing. **A commodity nobody wants is a
+commodity nothing ever delivers.** It is now an ordinary site with an
+ordinary recipe: a batch is one person served for one day.
+
+**And a hospital is never shed.** Real grids hold them above everything,
+on a protected feeder with their own generators — the one load an operator
+will black out a district to keep.
+
+**Known gap, named in `medicine_is_made_from_oil_and_a_hospital_needs_it`:**
+two hospitals in five run at ~72%, because distribution is a per-site pull
+rather than a haulier moving loads along a route. A town far from the works
+draws down faster than the pairwise test refills it — the same weakness
+`nations.rs` already documents for trade, and what a logistics operator
+would fix.
+
+**Grid shed order is now hospitals → fuel → food → shops → chemicals and
+steel → heavy manufacturing.** Lumping all industry at one rank was fine with one kind
 of it; with two, "larger first" handed the whole supply to a goods factory
 and shut the food chain down. Real grids shed this way too, and the
 heaviest users are *paid* to go first — an **interruptible tariff** buys a

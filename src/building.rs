@@ -393,3 +393,193 @@ impl Building {
         self.sum(|f| f.price_in_wage_days())
     }
 }
+
+// ---------------------------------------------------------------------------
+// What a thing costs to build
+// ---------------------------------------------------------------------------
+
+/// **What a structure is made of**, in tonnes of traded material.
+///
+/// Aggregate and sand are deliberately absent although they are the bulk
+/// of any structure by weight: real aggregate travels under 50 km and is
+/// dug from whatever pit is nearest, so it is not a traded commodity at
+/// this scale. What a country actually has to *get* is the binder, the
+/// metal and the wood — which is why cement, steel and timber are the
+/// three numbers here and gravel is not.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Bill {
+    pub cement: f64,
+    pub steel: f64,
+    pub timber: f64,
+}
+
+impl Bill {
+    pub fn total(&self) -> f64 {
+        self.cement + self.steel + self.timber
+    }
+
+    /// Scale a bill by an area, a length or a count.
+    pub fn times(&self, n: f64) -> Bill {
+        Bill {
+            cement: self.cement * n,
+            steel: self.steel * n,
+            timber: self.timber * n,
+        }
+    }
+}
+
+/// What a structure's bill is measured against.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Per {
+    /// A square metre of floor.
+    FloorArea,
+    /// A metre of run — a fence or a wall is a line, not a room.
+    Length,
+}
+
+/// **Everything from a fence to a buried bunker**, and the point of
+/// putting them on one scale is that the range is enormous and not
+/// intuitive.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Structure {
+    /// Post and rail. The cheapest thing anybody builds, and still made
+    /// of something.
+    Fence,
+    /// A timber shed on a thin slab.
+    Shed,
+    /// A detached house, two storeys.
+    House,
+    /// The same house sharing party walls, which is most of why a terrace
+    /// is cheaper per dwelling and not merely denser.
+    Terrace,
+    /// Four to six storeys, which needs a frame rather than load-bearing
+    /// walls — and that is where the steel starts.
+    Tenement,
+    /// Big span, steel portal frame, concrete slab.
+    Warehouse,
+    /// Industrial: heavier floors for machinery, cranes overhead.
+    Works,
+    /// **Hardened, above ground.** 0.4 m of reinforced concrete, which is
+    /// the thickness that matters for blast and for gamma: concrete's
+    /// halving thickness is about 6 cm, so 40 cm is roughly a hundredfold
+    /// attenuation.
+    Shelter,
+    /// **Hardened and buried.** A metre of reinforced concrete, earth
+    /// pressure on every wall, and a hole to put it in.
+    Bunker,
+}
+
+impl Structure {
+    pub const ALL: [Structure; 9] = [
+        Structure::Fence,
+        Structure::Shed,
+        Structure::House,
+        Structure::Terrace,
+        Structure::Tenement,
+        Structure::Warehouse,
+        Structure::Works,
+        Structure::Shelter,
+        Structure::Bunker,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Structure::Fence => "fence",
+            Structure::Shed => "shed",
+            Structure::House => "house",
+            Structure::Terrace => "terrace",
+            Structure::Tenement => "tenement",
+            Structure::Warehouse => "warehouse",
+            Structure::Works => "works",
+            Structure::Shelter => "shelter",
+            Structure::Bunker => "bunker",
+        }
+    }
+
+    pub fn per(self) -> Per {
+        match self {
+            Structure::Fence => Per::Length,
+            _ => Per::FloorArea,
+        }
+    }
+
+    /// **Materials per square metre of floor** (or per metre, for a
+    /// fence).
+    ///
+    /// The house is the anchor and it is a real one: a 93 m² house takes
+    /// about **20 t of cement and 3.5 t of steel**, which is 0.22 and
+    /// 0.038 a square metre — and the rule of thumb builders use, 4 kg of
+    /// steel per square foot, is the same number.
+    ///
+    /// Everything else is that house, made lighter or made hard.
+    pub fn materials(self) -> Bill {
+        let b = |cement, steel, timber| Bill {
+            cement,
+            steel,
+            timber,
+        };
+        match self {
+            // ~5 kg of timber a metre, and a staple.
+            Structure::Fence => b(0.0, 0.0002, 0.005),
+            Structure::Shed => b(0.05, 0.002, 0.030),
+            Structure::House => b(0.22, 0.043, 0.050),
+            // A party wall is one wall doing two jobs.
+            Structure::Terrace => b(0.19, 0.036, 0.045),
+            // Load-bearing masonry stops working at about four storeys,
+            // so this is a frame — and a frame is steel.
+            Structure::Tenement => b(0.30, 0.070, 0.020),
+            Structure::Warehouse => b(0.18, 0.055, 0.005),
+            Structure::Works => b(0.30, 0.080, 0.005),
+            // **0.4 m of reinforced concrete over walls and roof** comes
+            // to ~2.5 m³ of concrete per m² of floor. A cubic metre of
+            // concrete holds ~320 kg of cement, and blast-grade rebar
+            // runs 150 kg/m³ against an ordinary building's 80-120.
+            Structure::Shelter => b(0.80, 0.375, 0.0),
+            // A metre of concrete, and 200 kg/m³ of steel in it.
+            Structure::Bunker => b(1.60, 1.000, 0.0),
+        }
+    }
+
+    /// **Spoil to be dug out and carted away**, cubic metres per square
+    /// metre of floor. Zero for anything that sits on the ground.
+    pub fn excavated_m3(self) -> f64 {
+        match self {
+            // A footing, and nothing more.
+            Structure::House | Structure::Terrace | Structure::Works => 0.3,
+            Structure::Tenement => 0.6,
+            // The structure itself, plus working room round it, plus the
+            // cover over the top.
+            Structure::Bunker => 4.0,
+            _ => 0.0,
+        }
+    }
+
+    pub fn buried(self) -> bool {
+        self == Structure::Bunker
+    }
+
+    /// **How much dearer this gets below the water table.**
+    ///
+    /// `ground.rs` has known the depth to water since it was written and
+    /// nothing had ever asked it. It decides this: a basement above the
+    /// water table needs damp-proofing, one below it needs *tanking* —
+    /// a continuous waterproof box holding back real pressure, and pumps
+    /// for ever afterwards. Real practice puts that at two to three times
+    /// the structural cost, and it is why **New Orleans has no basements**
+    /// and nor does anywhere built on a marsh.
+    ///
+    /// `depth_to_water_m` comes straight from `World::depth_to_water_m`.
+    pub fn wetness_multiplier(self, depth_to_water_m: f64, dug_to_m: f64) -> f64 {
+        if !self.buried() || dug_to_m <= 0.0 {
+            return 1.0;
+        }
+        if depth_to_water_m >= dug_to_m {
+            // Dry ground. Damp-proofing only.
+            return 1.0;
+        }
+        // How far below the water table the floor sits.
+        let below = (dug_to_m - depth_to_water_m).max(0.0);
+        // Tanking, and then a bit more for every metre of head.
+        (2.0 + 0.35 * below).min(6.0)
+    }
+}

@@ -63,9 +63,46 @@ pub enum Commodity {
     /// capital goods of the design doc's "whole nine yards". The step
     /// between a tonne of steel and a thing somebody buys.
     Machinery,
+    /// **Cement**, in tonnes. After water, the most-consumed substance on
+    /// earth — about **4.1 billion tonnes a year, half a tonne a head**.
+    ///
+    /// Made by burning limestone, which is near enough everywhere that a
+    /// cement works is sited on its fuel and its market rather than on its
+    /// ore. That is why there is no limestone commodity here: the input
+    /// that decides where a kiln goes is the coal.
+    Cement,
+    /// **Medicines and medical supplies**, in tonnes — drugs, dressings,
+    /// fluids, disposables.
+    ///
+    /// Peter's rule applied to a hospital: the machinery to do medicine
+    /// and the medicines themselves come from somewhere. Most drugs are
+    /// organic synthesis on **petrochemical feedstock**, so a health
+    /// service is downstream of an oil supply, and that is not a
+    /// contrivance — it is why pharmaceutical plants sit in chemical
+    /// clusters.
+    Medicine,
+    /// **Bulk and fine chemicals**, in tonnes — solvents, reagents,
+    /// acids, alkalis, the intermediates everything else is synthesised
+    /// from.
+    ///
+    /// A pharmaceutical works does not start from crude oil any more than
+    /// a baker starts from a field: it buys chemicals, and somebody makes
+    /// those. It is one of the largest industries on earth and almost
+    /// nobody outside it can name a single product.
+    Chemicals,
+    /// **Over-the-counter remedies**, in tonnes — what a shop sells.
+    ///
+    /// Paracetamol, ibuprofen, aspirin, antihistamines, antacids, cough
+    /// mixtures, 1% hydrocortisone, vitamins. Low doses with a wide safety
+    /// margin, which is exactly why they can be sold to anybody without a
+    /// prescription.
+    ///
+    /// **A hospital cannot run on these**, and that is the distinction
+    /// worth modelling: you cannot anaesthetise anybody with aspirin.
+    Remedies,
 }
 
-pub const N_COMMODITIES: usize = 14;
+pub const N_COMMODITIES: usize = 18;
 
 impl Commodity {
     pub const ALL: [Commodity; N_COMMODITIES] = [
@@ -83,6 +120,10 @@ impl Commodity {
         Commodity::Petroleum,
         Commodity::Plastics,
         Commodity::Machinery,
+        Commodity::Cement,
+        Commodity::Medicine,
+        Commodity::Chemicals,
+        Commodity::Remedies,
     ];
 
     pub fn name(self) -> &'static str {
@@ -101,6 +142,10 @@ impl Commodity {
             Commodity::Petroleum => "oil",
             Commodity::Plastics => "plastic",
             Commodity::Machinery => "machines",
+            Commodity::Cement => "cement",
+            Commodity::Medicine => "medicine",
+            Commodity::Chemicals => "chemicals",
+            Commodity::Remedies => "remedies",
         }
     }
 
@@ -212,6 +257,15 @@ impl Commodity {
             Commodity::Petroleum => -0.1,
             Commodity::Plastics => -0.4,
             Commodity::Machinery => -0.6,
+            Commodity::Cement => -0.3,
+            // **The most inelastic thing there is.** Nobody does without
+            // insulin because it got dearer; they go without something
+            // else, or they die.
+            Commodity::Medicine => -0.08,
+            Commodity::Chemicals => -0.3,
+            // A headache tablet is a comfort, not a necessity, and gives
+            // far more readily than the drug that keeps somebody alive.
+            Commodity::Remedies => -0.7,
         }
     }
 
@@ -236,6 +290,11 @@ impl Commodity {
             // same coalfield never smelted anything.
             Commodity::Electricity => 0.9,
             Commodity::RetailGoods => 1.0,
+            // **What a shop sells is not what a hospital uses.** Roughly
+            // 8 kg a head a year of over-the-counter remedies goes across
+            // a counter; the medical-grade supply is bought by the state
+            // on contract and never appears here.
+            Commodity::Remedies => 0.008,
             // Nobody buys a tonne of crude steel. It reaches a household
             // inside a cooker, a car and a tin, which is what makes it an
             // *industrial* demand and why pricing it off household
@@ -276,6 +335,16 @@ impl Commodity {
             Commodity::Petroleum => 60.0,
             Commodity::Plastics => 20.0,
             Commodity::Machinery => 20.0,
+            // **Cement does not keep.** Bagged, it is finished in about
+            // three months and goes off faster in a damp climate, which
+            // is why a works ships continuously and nobody stockpiles it
+            // the way they stockpile ore.
+            Commodity::Cement => 12.0,
+            // A hospital holds weeks, and running out is a different kind
+            // of event from running out of anything else here.
+            Commodity::Medicine => 45.0,
+            Commodity::Chemicals => 20.0,
+            Commodity::Remedies => 20.0,
         }
     }
 
@@ -309,6 +378,24 @@ impl Commodity {
             Commodity::Petroleum => 220.0,
             Commodity::Plastics => 430.0,
             Commodity::Machinery => 620.0,
+            // Real cement is $100-130 a tonne — about a quarter of steel,
+            // which is the ratio that matters here.
+            Commodity::Cement => 100.0,
+            // **The most valuable thing in the economy by weight**, and by
+            // a long way. Even generic drugs run tens of thousands a tonne
+            // and branded ones far more.
+            Commodity::Medicine => 6_000.0,
+            // Bulk chemicals are cheap and fine chemicals are not; this
+            // is a blend, and it sits between resin and medicine.
+            Commodity::Chemicals => 700.0,
+            // **Four times cheaper than medical grade**, and in reality
+            // the gap is wider still: paracetamol is a bulk chemical at a
+            // few pounds a kilo, while a sterile injectable is made under
+            // GMP in a validated cleanroom with batch traceability and
+            // yields to match. Global pharma is ~$1.6tn of which OTC is
+            // ~$180bn — a ninth of the value on a far larger share of the
+            // tonnage.
+            Commodity::Remedies => 1_400.0,
         }
     }
 }
@@ -439,6 +526,19 @@ pub enum SiteKind {
     Cracker,
     /// A machine works — the step between a tonne of steel and a thing.
     MachineWorks,
+    /// A cement kiln.
+    CementWorks,
+    /// **The building trade.** Consumes fabric and produces nothing that
+    /// moves, which is what makes it construction rather than
+    /// manufacturing.
+    Builders,
+    /// Where medicines are made.
+    Pharma,
+    /// A chemical works — solvents, reagents, the intermediates.
+    ChemicalWorks,
+    /// **A hospital.** Holds stock, consumes it, and produces nothing that
+    /// can be shipped.
+    Hospital,
     PowerPlant,
     Shop,
     /// Where goods from outside the modelled region arrive.
@@ -489,7 +589,52 @@ pub struct Ledger {
 }
 
 impl Ledger {
-    pub fn new(sites: Vec<Site>) -> Self {
+    /// **A works has a yard for what goes in and a store for what comes
+    /// out**, and both have to exist before it can trade.
+    ///
+    /// Storage is per commodity, so a site with no `capacity` entry for
+    /// one of its own recipe inputs can never receive a single tonne of
+    /// it — `distribute` clamps every delivery by the room available. It
+    /// fails silently: the site simply never runs, and what you see at the
+    /// far end is a famine.
+    ///
+    /// That is exactly what happened when the cannery gained a tinplate
+    /// input and kept its old two-commodity store. Rather than trust
+    /// whoever writes the next recipe to remember, every input gets a yard
+    /// whether or not the caller thought of it.
+    ///
+    /// **Real works hold more of their inputs than of their output**:
+    /// weeks of raw material against days of finished goods, because the
+    /// input is what stops the line and the output is what somebody is
+    /// waiting for. A steelworks' ore stockyard dwarfs its billet store.
+    fn give_every_input_a_yard(sites: &mut [Site]) {
+        /// Days of input a works keeps if nobody said otherwise. Long
+        /// enough to ride out a delivery being late, which is what a raw
+        /// materials yard is for.
+        const DEFAULT_YARD_DAYS: f64 = 20.0;
+        for s in sites.iter_mut() {
+            let Some(r) = s.recipe else { continue };
+            // A power station's throughput is a sentinel, not a rate.
+            let rate = if s.kind == SiteKind::PowerPlant {
+                continue;
+            } else {
+                s.throughput
+            };
+            for &(c, per) in RECIPES[r].inputs {
+                if !c.storable() {
+                    continue;
+                }
+                let want = per * rate * DEFAULT_YARD_DAYS;
+                let i = c as usize;
+                if s.capacity[i] < want {
+                    s.capacity[i] = want;
+                }
+            }
+        }
+    }
+
+    pub fn new(mut sites: Vec<Site>) -> Self {
+        Self::give_every_input_a_yard(&mut sites);
         let mut opening = basket();
         for s in &sites {
             for c in 0..N_COMMODITIES {
@@ -633,7 +778,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 22] = [
+pub const RECIPES: [Recipe; 32] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -919,6 +1064,160 @@ pub const RECIPES: [Recipe; 22] = [
         labour: 60.0,
         needs_water: false,
     },
+    Recipe {
+        name: "cement works",
+        // **Real: 3.2 GJ a tonne of thermal energy and 110 kWh of
+        // electricity.** The heat is the process — you are calcining
+        // limestone at 1,450 C — so the coal is most of the cost and all
+        // of the reason a kiln sits where the fuel is.
+        inputs: &[(Commodity::Coal, 0.12)],
+        outputs: &[(Commodity::Cement, 1.0)],
+        power: 0.11,
+        // As capital-intensive as extraction. A modern kiln line making
+        // 1.5 Mt a year is run by a couple of hundred people.
+        labour: 0.5,
+        needs_water: false,
+    },
+    Recipe {
+        name: "cement imports",
+        inputs: &[],
+        outputs: &[(Commodity::Cement, 1.0)],
+        power: 0.02,
+        labour: 0.1,
+        needs_water: false,
+    },
+    // **The building trade, which is where all of that ends up.**
+    //
+    // Half of construction output is repair and maintenance rather than
+    // new build, and this is the recipe behind that line in `services.rs`:
+    // a country consumes its own fabric and has to keep replacing it.
+    // Output is not a commodity because a building is not shipped — the
+    // materials are consumed into it, the way food is consumed into
+    // people.
+    Recipe {
+        name: "building trade",
+        // Per tonne of fabric put up. Aggregate and sand are the bulk of
+        // any structure and are deliberately absent: real aggregate
+        // travels under 50 km and is not a traded commodity at this
+        // scale. What a country has to *get* is the binder, the metal and
+        // the wood.
+        inputs: &[
+            (Commodity::Cement, 0.62),
+            (Commodity::Steel, 0.06),
+            (Commodity::Timber, 0.06),
+        ],
+        outputs: &[],
+        power: 0.05,
+        // Construction is 6.4% of employment and famously hard to
+        // mechanise: the site comes to the work, never the other way.
+        labour: 14.0,
+        needs_water: false,
+    },
+    // **A hospital's supplies have to be made by somebody.**
+    Recipe {
+        name: "pharmaceutical works",
+        // **Synthesis from chemicals, not from crude.** A pharmaceutical
+        // works no more starts from a barrel of oil than a baker starts
+        // from a field: it buys reagents and solvents from the chemical
+        // industry, and the yields are poor — several tonnes of input per
+        // tonne of active product is normal, which is much of why
+        // medicines cost what they do.
+        inputs: &[(Commodity::Chemicals, 2.2), (Commodity::Plastics, 0.25)],
+        outputs: &[(Commodity::Medicine, 1.0)],
+        // Cleanrooms run around the clock whether or not they are making
+        // anything, which is why pharmaceutical plants are power-hungry
+        // out of all proportion to their tonnage.
+        power: 1.8,
+        // Low volume, high skill: this is a graduate industry, and the
+        // hours per tonne say so.
+        labour: 40.0,
+        needs_water: true,
+    },
+    Recipe {
+        name: "medicine imports",
+        inputs: &[],
+        outputs: &[(Commodity::Medicine, 1.0)],
+        power: 0.05,
+        labour: 0.4,
+        needs_water: false,
+    },
+    // **The chemical industry**, which sits between the refinery and
+    // everybody who synthesises anything.
+    Recipe {
+        name: "chemical works",
+        inputs: &[(Commodity::Petroleum, 1.1)],
+        outputs: &[(Commodity::Chemicals, 1.0)],
+        // Steam crackers and separation trains: the industry is one of
+        // the largest industrial users of electricity there is.
+        power: 1.6,
+        labour: 3.0,
+        needs_water: true,
+    },
+    Recipe {
+        name: "chemical imports",
+        inputs: &[],
+        outputs: &[(Commodity::Chemicals, 1.0)],
+        power: 0.02,
+        labour: 0.15,
+        needs_water: false,
+    },
+    // **Retail remedies, which are a different industry from medicine.**
+    //
+    // Same chemistry, wholly different manufacturing: a paracetamol line
+    // is high-volume tabletting on a commodity active, while a sterile
+    // injectable is made under GMP in a validated cleanroom with batch
+    // traceability, environmental monitoring and a QA release. That is
+    // why the yields, the labour and the price are not close — and why a
+    // country can perfectly well make its own aspirin and still import
+    // every vial of anaesthetic it uses.
+    Recipe {
+        name: "remedy works",
+        inputs: &[(Commodity::Chemicals, 1.3), (Commodity::Plastics, 0.15)],
+        outputs: &[(Commodity::Remedies, 1.0)],
+        power: 0.8,
+        labour: 12.0,
+        needs_water: true,
+    },
+    Recipe {
+        name: "remedy imports",
+        inputs: &[],
+        outputs: &[(Commodity::Remedies, 1.0)],
+        power: 0.03,
+        labour: 0.3,
+        needs_water: false,
+    },
+    // **A hospital is a place that holds supplies**, not a line in a
+    // budget.
+    //
+    // Modelled as a budget line it could not be supplied at all: nothing
+    // in the country *wanted* medical grade, because no recipe consumed
+    // it and no shop sold it, so `distribute` never moved a gram and the
+    // entire national stock sat in the one town with the works while
+    // every other hospital held nothing. Making it a site with a recipe
+    // fixes that the same way it works for everybody else.
+    //
+    // A batch is one person served for one day, so `throughput` is the
+    // population the hospital covers. It produces nothing that moves —
+    // which is exactly what a service is, and why it keeps working when
+    // the mill has shut.
+    Recipe {
+        name: "hospital",
+        inputs: &[
+            // 12 kg a head a year of medical grade, and a couple of kilos
+            // of equipment on a replacement cycle.
+            (Commodity::Medicine, 0.012 / 365.0),
+            (Commodity::Machinery, 0.0025 / 365.0),
+        ],
+        outputs: &[],
+        // Lights, heating, imaging, theatres: a hospital is one of the
+        // most power-hungry buildings a town has, and one of the few that
+        // must never lose supply.
+        power: 0.9 / 365.0,
+        // Health is 1 post per 45 people at ~1,800 hours a year, which is
+        // this per person-day.
+        labour: 0.11,
+        needs_water: true,
+    },
 ];
 
 /// Indices into `RECIPES`, so scenarios read as places rather than numbers.
@@ -945,6 +1244,16 @@ pub mod recipe {
     pub const TIMBER_IMPORTS: usize = 19;
     pub const CRACKER: usize = 20;
     pub const MACHINE_WORKS: usize = 21;
+    pub const CEMENT_WORKS: usize = 22;
+    pub const CEMENT_IMPORTS: usize = 23;
+    pub const BUILDING_TRADE: usize = 24;
+    pub const PHARMA: usize = 25;
+    pub const MEDICINE_IMPORTS: usize = 26;
+    pub const CHEMICAL_WORKS: usize = 27;
+    pub const CHEMICAL_IMPORTS: usize = 28;
+    pub const REMEDY_WORKS: usize = 29;
+    pub const REMEDY_IMPORTS: usize = 30;
+    pub const HOSPITAL: usize = 31;
 }
 
 // ---------------------------------------------------------------------------
@@ -2029,6 +2338,9 @@ impl Economy {
         // Sell first, then reorder — a shop restocks against what it has
         // left at close of business, which is what makes the day's cover
         // figure mean "days of stock in hand".
+        // Reads what the hospitals managed to run today, so it must come
+        // after `produce`.
+        self.supply_the_state();
         self.consume_households();
         // **After the shops have sold**, not before.
         //
@@ -2408,20 +2720,30 @@ impl Economy {
                 // The mine first: without coal nothing generates at all
                 // tomorrow, so starving it to keep a factory running today
                 // is how a grid talks itself into a blackout.
-                SiteKind::Mine | SiteKind::IronMine | SiteKind::OilField => 0,
+                // **A hospital is never shed.** Real grids hold them
+                // above everything, on a protected feeder with their own
+                // generators, and it is the one load an operator will
+                // black out a district to keep.
+                SiteKind::Hospital => 0,
+                SiteKind::Mine | SiteKind::IronMine | SiteKind::OilField => 1,
                 // The food chain.
-                SiteKind::Factory | SiteKind::Mill | SiteKind::Butcher => 1,
-                SiteKind::Farm => 2,
-                SiteKind::Shop => 3,
+                SiteKind::Factory | SiteKind::Mill | SiteKind::Butcher => 2,
+                SiteKind::Farm => 3,
+                SiteKind::Shop => 4,
                 // **Steel before the factories that eat it.** They are
                 // both heavy industry, but shedding the steelworks to keep
                 // the works running stops the works a fortnight later for
                 // want of metal — the same reasoning that puts the
                 // colliery first.
-                SiteKind::Steelworks | SiteKind::Cracker => 4,
+                SiteKind::Steelworks | SiteKind::Cracker | SiteKind::CementWorks
+                | SiteKind::Pharma
+                | SiteKind::ChemicalWorks => 5,
                 // Heavy manufacturing, on an interruptible tariff.
-                SiteKind::Works | SiteKind::MachineWorks | SiteKind::Forestry => 5,
-                _ => 6,
+                SiteKind::Works
+                | SiteKind::MachineWorks
+                | SiteKind::Forestry
+                | SiteKind::Builders => 6,
+                _ => 7,
             };
             rank(a.0)
                 .cmp(&rank(b.0))
@@ -2794,6 +3116,36 @@ impl Economy {
                 }
                 self.unmet_demand[c as usize] += left;
             }
+        }
+    }
+
+    /// **What share of its supplies the country's hospitals actually
+    /// got**, read off the hospitals themselves.
+    ///
+    /// They are ordinary sites with an ordinary recipe, so `produce` has
+    /// already consumed what they could get and `ran` says how much
+    /// service that bought. Nothing here shops on the state's behalf —
+    /// which was the earlier design, and it could not work, because a
+    /// commodity nobody wants is a commodity nothing ever delivers.
+    fn supply_the_state(&mut self) {
+        if self.government.is_none() {
+            return;
+        }
+        let mut rated = 0.0;
+        let mut served = 0.0;
+        for s in self.ledger.sites.iter() {
+            if s.kind != SiteKind::Hospital {
+                continue;
+            }
+            rated += s.throughput;
+            served += s.ran;
+        }
+        if let Some(gov) = self.government.as_mut() {
+            gov.supplied = if rated > 1e-9 {
+                (served / rated).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
         }
     }
 

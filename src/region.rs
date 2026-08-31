@@ -902,11 +902,36 @@ impl Region {
         // Goods are machines, plastic and wood; machines are steel and
         // plastic; steel is ore and coal; plastic is oil. Every figure
         // here is the recipe coefficient.
-        let machinery_day = goods_made * 0.28;
-        let plastics_day = goods_made * 0.04 + machinery_day * 0.08;
-        let timber_day = goods_made * 0.20;
-        let oil_day = plastics_day * 1.4;
-        let steel_day = machinery_day * 0.72 + cannery_rate * 0.035;
+        // **A hospital is one of the most machinery-intensive places
+        // there is** — every scanner in it was built by somebody — and
+        // leaving its equipment out of the national figure meant it
+        // competed with the factories for machines that had never been
+        // made for it.
+        let hospital_kit = nation_pop * 0.0025 / 365.0 * 1.5;
+        let machinery_day = goods_made * 0.28 + hospital_kit;
+        // **Construction, which is where most cement and half the steel
+        // in the world actually go.** Real per-head consumption is ~0.5 t
+        // of cement a year, and at 0.62 t of cement per tonne of fabric
+        // that is 0.81 t of building put up per person per year.
+        let fabric_day = nation_pop * 0.81 / 365.0;
+        let cement_day = fabric_day * 0.62;
+        // **A hospital's supplies.** ~20 kg a head a year of drugs,
+        // dressings, fluids and disposables.
+        let medicine_day = nation_pop * 0.02 / 365.0;
+        let plastics_day = goods_made * 0.04
+            + machinery_day * 0.08
+            + medicine_day * 0.25
+            + nation_pop * 0.008 / 365.0 * 0.15;
+        let timber_day = goods_made * 0.20 + fabric_day * 0.06;
+        // **Medicines are synthesised from chemicals**, and the yields are
+        // poor: 2.2 t of reagent per tonne of product.
+        // What a shop sells, which is a separate industry from what a
+        // hospital uses.
+        let remedies_day = nation_pop * 0.008 / 365.0;
+        let chemicals_day = medicine_day * 2.2 + remedies_day * 1.3;
+        let oil_day = plastics_day * 1.4 + chemicals_day * 1.1;
+        let steel_day =
+            machinery_day * 0.72 + cannery_rate * 0.035 + fabric_day * 0.06;
         let ore_day = steel_day * DOMESTIC_STEEL_SHARE * 1.4 * 1.35;
         let coking_coal = steel_day * DOMESTIC_STEEL_SHARE * 0.8 * 1.35;
 
@@ -929,6 +954,11 @@ impl Region {
             + oil_day * 0.10
             + steel_day * 0.25
             + ore_day * 0.08
+            + cement_day * 0.11
+            + fabric_day * 0.05
+            + medicine_day * 1.8
+            + remedies_day * 0.8
+            + chemicals_day * 1.6
             + goods_day * 0.02
             // **Households, which were never in this sum at all.** Real
             // residential demand is ~0.9 MWh a head a year and it is a
@@ -1411,6 +1441,170 @@ impl Region {
             }
         }
 
+        // --- Cement, the building trade, and a hospital's supplies ---
+        //
+        // **A kiln sits on its fuel.** Calcining limestone at 1,450 C is
+        // most of the cost of cement and limestone is near enough
+        // everywhere, so what decides where a cement works goes is the
+        // coal — which is why they cluster on coalfields and not on
+        // quarries.
+        if cement_day > 0.01 {
+            let m = coal_town.map(|(m, _)| m).unwrap_or(port);
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} cement works"),
+                kind: SiteKind::CementWorks,
+                market: m,
+                stock: cap(&[(Commodity::Cement, cement_day * 8.0)]),
+                capacity: cap(&[(Commodity::Cement, cement_day * 20.0)]),
+                recipe: Some(recipe::CEMENT_WORKS),
+                throughput: cement_day * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+            notes.push(format!(
+                "cement works at {name}: {:.0} t/day, on the coalfield because the kiln \
+                 burns more than the quarry yields",
+                cement_day
+            ));
+        }
+
+        // **The building trade goes where the buildings are.** A site
+        // comes to the work and never the other way about, which is why
+        // construction is the least concentrated industry there is and
+        // exists in every town in proportion to its people.
+        for m in 0..towns.len() {
+            let share = if nation_pop > 0.0 {
+                markets[m].population / nation_pop
+            } else {
+                0.0
+            };
+            let rate = fabric_day * share;
+            if rate < 0.01 {
+                continue;
+            }
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} builders"),
+                kind: SiteKind::Builders,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Cement, rate * 0.62 * 8.0),
+                    (Commodity::Steel, rate * 0.06 * 20.0),
+                    (Commodity::Timber, rate * 0.06 * 20.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Cement, rate * 0.62 * 20.0),
+                    (Commodity::Steel, rate * 0.06 * 60.0),
+                    (Commodity::Timber, rate * 0.06 * 60.0),
+                ]),
+                recipe: Some(recipe::BUILDING_TRADE),
+                throughput: rate,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
+        if chemicals_day > 0.01 {
+            let m = if oil_day > 0.01 { port } else { 0 };
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} chemical works"),
+                kind: SiteKind::ChemicalWorks,
+                market: m,
+                stock: cap(&[(Commodity::Chemicals, chemicals_day * 12.0)]),
+                capacity: cap(&[(Commodity::Chemicals, chemicals_day * 40.0)]),
+                recipe: Some(recipe::CHEMICAL_WORKS),
+                throughput: chemicals_day * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
+        // **A pharmaceutical works stands in a chemical cluster**, on the
+        // feedstock, for the same reason the cracker does. A country
+        // without one buys its medicines — and buys a dependency with
+        // them that is far sharper than the one it takes on for grain.
+        if medicine_day > 0.01 {
+            let m = if oil_day > 0.01 {
+                endow
+                    .best_oil
+                    .and(Some(port))
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} pharmaceutical works"),
+                kind: SiteKind::Pharma,
+                market: m,
+                stock: cap(&[(Commodity::Medicine, medicine_day * 20.0)]),
+                capacity: cap(&[(Commodity::Medicine, medicine_day * 60.0)]),
+                recipe: Some(recipe::PHARMA),
+                throughput: medicine_day * DOMESTIC_STEEL_SHARE * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+            notes.push(format!(
+                "pharmaceutical works at {name}: {:.1} t/day of medicines on \
+                 {:.1} t of oil and {:.1} t of plastic",
+                medicine_day * DOMESTIC_STEEL_SHARE,
+                medicine_day * 0.40,
+                medicine_day * 0.25
+            ));
+        }
+
+        if remedies_day > 0.01 {
+            let m = if oil_day > 0.01 { port } else { 0 };
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} remedy works"),
+                kind: SiteKind::Pharma,
+                market: m,
+                stock: cap(&[(Commodity::Remedies, remedies_day * 15.0)]),
+                capacity: cap(&[(Commodity::Remedies, remedies_day * 45.0)]),
+                recipe: Some(recipe::REMEDY_WORKS),
+                throughput: remedies_day * DOMESTIC_STEEL_SHARE * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
+        // **A hospital in every town**, covering its own people. A
+        // service is consumed where the people are and cannot be shipped:
+        // nobody travels to another country for a broken arm.
+        for m in 0..towns.len() {
+            let people = markets[m].population;
+            if people < 1.0 {
+                continue;
+            }
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} hospital"),
+                kind: SiteKind::Hospital,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Medicine, people * 0.012 / 365.0 * 30.0),
+                    (Commodity::Machinery, people * 0.0025 / 365.0 * 30.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Medicine, people * 0.012 / 365.0 * 90.0),
+                    (Commodity::Machinery, people * 0.0025 / 365.0 * 90.0),
+                ]),
+                recipe: Some(recipe::HOSPITAL),
+                throughput: people,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
         // **A stockholder in every town.** Steel does not spoil and a
         // works keeps weeks of it, so this is a merchant's yard rather
         // than a factory — and it is what stops a distant works being
@@ -1420,8 +1614,21 @@ impl Region {
             for (c, imports, label) in [
                 (Commodity::Steel, recipe::STEEL_IMPORTS, "steel stockholder"),
                 (Commodity::Timber, recipe::TIMBER_IMPORTS, "timber yard"),
+                (Commodity::Cement, recipe::CEMENT_IMPORTS, "cement depot"),
+                (Commodity::Medicine, recipe::MEDICINE_IMPORTS, "pharmacy"),
+                (Commodity::Chemicals, recipe::CHEMICAL_IMPORTS, "chemical factor"),
+                (Commodity::Remedies, recipe::REMEDY_IMPORTS, "chemist"),
+                // **A machinery dealer.** Hospitals buy equipment per head
+                // while machine works are sited by where the steel is, so
+                // a remote town's hospital had nowhere at all to get a
+                // scanner. Every town needs a merchant for it.
+                (Commodity::Machinery, recipe::DEPOT, "machinery dealer"),
             ] {
-                let draw: f64 = sites
+                // What this town's works draw, **plus what its people
+                // buy over a counter**. Sizing on recipe inputs alone gave
+                // medicine a merchant nowhere, because no recipe consumes
+                // it — it is bought by households and by the state.
+                let works_draw: f64 = sites
                     .iter()
                     .filter(|x| x.market == m)
                     .filter_map(|x| x.recipe.map(|r| (r, x.throughput)))
@@ -1434,6 +1641,16 @@ impl Region {
                             .unwrap_or(0.0)
                     })
                     .sum();
+                // The state's own draw is on top of both, and for
+                // medicines it is the larger share.
+                let public = match c {
+                    Commodity::Medicine => markets[m].population * 0.012 / 365.0,
+                    Commodity::Machinery => markets[m].population * 0.0025 / 365.0,
+                    _ => 0.0,
+                };
+                let draw = works_draw
+                    + markets[m].population * c.per_capita_annual() / 365.0
+                    + public;
                 let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
                 if bought < 0.01 {
                     continue;
