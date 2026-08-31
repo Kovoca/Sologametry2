@@ -1143,6 +1143,23 @@ impl Region {
             unmet_demand: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
         };
+        // **Hang the distribution network under the transmission**, so a
+        // fault has somewhere to happen that is not national: a feeder to
+        // each town and a service connection to each works.
+        let names: Vec<(String, f64)> = economy
+            .markets
+            .iter()
+            .map(|m| (m.name.clone(), m.population))
+            .collect();
+        let supplies: Vec<(usize, usize, String)> = economy
+            .ledger
+            .sites
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (i, s.market, s.name.clone()))
+            .collect();
+        economy.grid.wire_up(&names, &supplies);
+
         // Start mid-harvest rather than in the depths of winter, so a
         // short run is not looking at an unrepresentative slice of the
         // year.

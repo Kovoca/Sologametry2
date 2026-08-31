@@ -758,8 +758,94 @@ pub enum Cause {
 }
 
 /// A transmission line. Spec B.2.
+/// **Where in the grid a thing sits, which is what decides how many
+/// people a fault takes out.**
+///
+/// A grid is not one wire. The whole point of the hierarchy is that the
+/// blast radius of a failure is set by where it happens, and the numbers
+/// are not close: real customers affected by a single failure run from
+/// one to tens of thousands.
+///
+/// | | customers off | typical repair |
+/// |---|---|---|
+/// | service drop | **1** | 2-6 hours |
+/// | distribution transformer | 5-50 | 4-8 hours, or weeks if it must be replaced |
+/// | feeder | 500-3,000 | 2-6 hours |
+/// | primary substation | 10,000-50,000 | hours to days |
+/// | transmission circuit | **usually none** | days |
+///
+/// **Transmission is built N-1**, meaning the network is designed to lose
+/// any single circuit without dropping a customer — which is why a
+/// pylon coming down is a news item and not a blackout. That is the fact
+/// the old model had exactly backwards: it pooled everything into one or
+/// two lines, so *any* fault was national.
+///
+/// Real reliability, for scale: a customer in Britain is off supply about
+/// **35 minutes a year** across roughly one interruption; Germany manages
+/// 12 minutes, the United States about 90 excluding major storms. Almost
+/// all of it is distribution, not transmission and not generation.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Level {
+    /// The wire into one building.
+    Service,
+    /// A pole or pad transformer: a street of them.
+    Transformer,
+    /// An 11 kV feeder: a district.
+    Feeder,
+    /// A primary substation: a town.
+    Substation,
+    /// A transmission circuit. Normally redundant.
+    Transmission,
+}
+
+impl Level {
+    pub fn name(self) -> &'static str {
+        match self {
+            Level::Service => "service connection",
+            Level::Transformer => "distribution transformer",
+            Level::Feeder => "feeder",
+            Level::Substation => "primary substation",
+            Level::Transmission => "transmission circuit",
+        }
+    }
+
+    /// **How long it takes to put right, in days**, once a crew is on it.
+    /// Travel, reporting and spares are handled separately — this is the
+    /// work itself.
+    pub fn repair_days(self) -> f64 {
+        match self {
+            Level::Service => 0.2,
+            Level::Transformer => 0.4,
+            Level::Feeder => 0.25,
+            Level::Substation => 1.0,
+            Level::Transmission => 3.0,
+        }
+    }
+}
+
 pub struct Line {
     pub name: String,
+    /// Where in the grid it sits.
+    pub level: Level,
+    /// Which market it serves, if it serves only one. `None` for
+    /// transmission, which serves everybody.
+    pub serves: Option<usize>,
+    /// Which sites it feeds. Empty means "everything downstream of the
+    /// pool", which is what transmission does.
+    pub feeds: Vec<usize>,
+    /// What is immediately upstream. **A substation going out takes its
+    /// feeders with it** — that is what makes the hierarchy a hierarchy
+    /// rather than a list.
+    pub parent: Option<usize>,
+    /// **Whether it can be back-fed from another direction.**
+    ///
+    /// Urban distribution is built as an open ring: on a fault the
+    /// operator switches and supply is back in minutes, long before
+    /// anybody repairs anything. Rural distribution is radial — one wire,
+    /// one path — so the village waits for a crew. That difference is why
+    /// the same fault is an hour in a city and most of a day in the
+    /// country, and it is one of the most real things about a grid.
+    pub ring_fed: bool,
     /// MWh per day it can carry.
     pub capacity: f64,
     /// 0..1. Falls with age and load, restored by maintenance. Below the
@@ -782,6 +868,14 @@ impl Grid {
     pub fn for_doctrine(d: Doctrine, peak: f64) -> Self {
         let line = |name: &str| Line {
             name: name.into(),
+            level: Level::Transmission,
+            serves: None,
+            feeds: Vec::new(),
+            parent: None,
+            // Transmission is meshed and built N-1: lose any single
+            // circuit and nobody notices. A pylon down is a news item,
+            // not a blackout.
+            ring_fed: true,
             capacity: peak * 1.25,
             condition: 1.0,
             up: true,
@@ -797,14 +891,156 @@ impl Grid {
         }
     }
 
+    /// **Hang the distribution network under the transmission.**
+    ///
+    /// A feeder to each town and a service connection to each works, which
+    /// is what gives a fault somewhere to happen that is not national.
+    /// Before this the grid was one pool with one or two lines in it, so
+    /// the only failure the model could express was "the country goes
+    /// dark" — and a line to a house going down took out everybody.
+    pub fn wire_up(
+        &mut self,
+        markets: &[(String, f64)],
+        sites: &[(usize, usize, String)],
+    ) {
+        /// **One primary substation to about thirty thousand people**, and
+        /// six or so feeders off each — real distribution planning. A
+        /// substation serves 10,000-50,000 customers and a feeder 500-3,000.
+        const PEOPLE_PER_SUBSTATION: f64 = 30_000.0;
+        const FEEDERS_PER_SUBSTATION: usize = 6;
+        /// A city of sixteen million would otherwise want five hundred
+        /// substations. The model samples the structure rather than
+        /// enumerating it; what matters is that a fault has a size.
+        const MOST_SUBSTATIONS: usize = 4;
+        /// **Ring-fed above this**, radial below. Real: dense networks are
+        /// built as open rings so an operator can switch round a fault;
+        /// the countryside gets one wire.
+        const RING_FED_ABOVE: f64 = 50_000.0;
+
+        for (m, (name, population)) in markets.iter().enumerate() {
+            let n = ((population / PEOPLE_PER_SUBSTATION).ceil() as usize)
+                .clamp(1, MOST_SUBSTATIONS);
+            for k in 0..n {
+                let sub = self.lines.len();
+                self.lines.push(Line {
+                    name: format!("{name} substation {}", k + 1),
+                    level: Level::Substation,
+                    serves: Some(m),
+                    feeds: Vec::new(),
+                    parent: None,
+                    // A primary substation carries two transformers, so it
+                    // survives losing one of them.
+                    ring_fed: true,
+                    capacity: 0.0,
+                    condition: 1.0,
+                    up: true,
+                    cause: None,
+                });
+                for j in 0..FEEDERS_PER_SUBSTATION {
+                    // **A feeder takes a share of the town, not all of
+                    // it.** Six feeders to a substation means a fault on
+                    // one is a sixth of a district in the dark, which is
+                    // the difference between an outage and a catastrophe.
+                    let mine: Vec<usize> = sites
+                        .iter()
+                        .filter(|(_, mk, _)| *mk == m)
+                        .map(|(site, _, _)| *site)
+                        .enumerate()
+                        .filter(|(idx, _)| idx % (n * FEEDERS_PER_SUBSTATION)
+                            == k * FEEDERS_PER_SUBSTATION + j)
+                        .map(|(_, site)| site)
+                        .collect();
+                    self.lines.push(Line {
+                        name: format!("{name} feeder {}-{}", k + 1, j + 1),
+                        level: Level::Feeder,
+                        serves: Some(m),
+                        feeds: mine,
+                        parent: Some(sub),
+                        ring_fed: *population > RING_FED_ABOVE,
+                        capacity: 0.0,
+                        condition: 1.0,
+                        up: true,
+                        cause: None,
+                    });
+                }
+            }
+        }
+
+        for (site, market, name) in sites {
+            self.lines.push(Line {
+                name: format!("{name} supply"),
+                level: Level::Service,
+                serves: None,
+                feeds: vec![*site],
+                parent: None,
+                // The wire into one building has nothing to switch to.
+                ring_fed: false,
+                capacity: 0.0,
+                condition: 1.0,
+                up: true,
+                cause: None,
+            });
+            let _ = market;
+        }
+    }
+
     /// Capacity actually available right now.
+    /// **How much the grid can carry — transmission only.**
+    ///
+    /// A cut feeder does not reduce what the country can generate or move;
+    /// it disconnects what is behind it. Counting distribution into
+    /// capacity is what made a fault anywhere a shortage everywhere.
     pub fn capacity(&self) -> f64 {
         self.lines
             .iter()
-            .filter(|l| l.up)
+            .filter(|l| l.up && l.level == Level::Transmission)
             .map(|l| l.capacity)
             .sum::<f64>()
             * (1.0 - self.loss)
+    }
+
+    /// **Whether this site is cut off from the grid**, whatever the grid
+    /// as a whole is doing. A downed service connection takes out one
+    /// building; a downed feeder takes out the market behind it.
+    pub fn cut_off(&self, site: usize, market: usize) -> bool {
+        let _ = market;
+        (0..self.lines.len()).any(|i| self.out(i) && self.lines[i].feeds.contains(&site))
+    }
+
+    /// **Whether a line is actually off supply**, which is not the same as
+    /// whether it is broken.
+    ///
+    /// Two reasons it may be broken and still carrying: it is **ring-fed**,
+    /// so the operator switched round the fault and supply was back in
+    /// minutes — the repair still has to happen, but nobody sat in the
+    /// dark for it. And transmission is meshed and built N-1, so a single
+    /// circuit out drops no customers at all.
+    ///
+    /// One reason it may be intact and still dead: **whatever feeds it is
+    /// out**. A substation going down takes its feeders with it, which is
+    /// what makes this a hierarchy rather than a list.
+    pub fn out(&self, line: usize) -> bool {
+        let l = &self.lines[line];
+        if !l.up && !l.ring_fed {
+            return true;
+        }
+        match l.parent {
+            Some(p) => self.out(p),
+            None => false,
+        }
+    }
+
+    /// Everything below transmission that is currently out.
+    pub fn faults_below_transmission(&self) -> usize {
+        self.lines
+            .iter()
+            .filter(|l| !l.up && l.level != Level::Transmission)
+            .count()
+    }
+
+    /// How many sites are off supply right now, and why. For reporting.
+    pub fn dark_sites(&self, n_sites: usize) -> usize {
+        (0..n_sites).filter(|&s| self.cut_off(s, 0)).count()
     }
 
     /// Whether the grid still carries peak load with its largest line out
@@ -1654,6 +1890,12 @@ impl Economy {
                 Some(r) => RECIPES[r].power * self.site_capacity(site),
                 None => 0.0,
             };
+            // **A cut feeder or service connection takes this site out
+            // whatever the grid is doing.** Without this, the only kind of
+            // fault the model had was a national one.
+            if self.grid.cut_off(site, s.market) {
+                continue;
+            }
             if need > 0.0 {
                 wants.push((site, need));
             }

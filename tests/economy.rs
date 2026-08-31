@@ -414,3 +414,125 @@ fn a_blackout_spoils_the_meat_and_only_delays_the_flour() {
     );
     assert!(after(Commodity::Grain, true, 4) > 0.99);
 }
+
+#[test]
+fn a_line_to_a_house_does_not_take_out_the_country() {
+    // **A grid is not one wire.** The old model pooled everything into one
+    // or two transmission lines, so the only failure it could express was
+    // "the country goes dark" — a service connection coming down took out
+    // everybody.
+    //
+    // Real structure: generation, meshed transmission, primary substation,
+    // feeder, distribution transformer, service connection. What decides
+    // how many people a fault affects is *where in that it happens*, and
+    // the numbers are not close — one customer for a service drop against
+    // tens of thousands for a substation.
+    use scale_sim::econ::{Doctrine, Level};
+    use scale_sim::polity::Polities;
+    use scale_sim::region::Region;
+    use scale_sim::{network::Network, settlement::Settlements, world::World};
+
+    let world = World::generate(256, 144, 20260828);
+    let pol = Polities::partition(&world, 30);
+    let set = Settlements::place(&world, &pol, 4000);
+    let net = Network::build(&world, &set, 900);
+    let id = pol.ranked()[2].0;
+    let r = Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
+        .expect("a nation to model");
+    let mut e = r.economy;
+    let n_sites = e.ledger.sites.len();
+
+    // Everything is on supply to start with.
+    assert_eq!(e.grid.dark_sites(n_sites), 0, "the lights are out before anything broke");
+
+    // **A service connection: one building.**
+    let service = e
+        .grid
+        .lines
+        .iter()
+        .position(|l| l.level == Level::Service)
+        .expect("no service connections in the grid");
+    e.grid.lines[service].up = false;
+    assert_eq!(
+        e.grid.dark_sites(n_sites),
+        1,
+        "a service connection came down and took out more than one building"
+    );
+    e.grid.lines[service].up = true;
+
+    // **A feeder: a share of a town, not a town and not a country.**
+    let feeder = e
+        .grid
+        .lines
+        .iter()
+        .position(|l| l.level == Level::Feeder && !l.ring_fed && !l.feeds.is_empty())
+        .or_else(|| {
+            e.grid
+                .lines
+                .iter()
+                .position(|l| l.level == Level::Feeder && !l.feeds.is_empty())
+        })
+        .expect("no feeders in the grid");
+    let was_ring = e.grid.lines[feeder].ring_fed;
+    e.grid.lines[feeder].ring_fed = false;
+    e.grid.lines[feeder].up = false;
+    let dark = e.grid.dark_sites(n_sites);
+    assert!(
+        dark > 0 && dark < n_sites,
+        "a feeder fault put {dark} of {n_sites} works in the dark"
+    );
+
+    // **Ring-fed distribution is switched round in minutes.** Dense
+    // networks are built as open rings so the operator restores supply
+    // long before anybody repairs anything; the countryside gets one wire
+    // and waits for a crew. That is why the same fault is an hour in a
+    // city and most of a day in the country.
+    e.grid.lines[feeder].ring_fed = true;
+    assert_eq!(
+        e.grid.dark_sites(n_sites),
+        0,
+        "a ring-fed feeder fault left people in the dark, with a second path standing"
+    );
+    e.grid.lines[feeder].ring_fed = was_ring;
+    e.grid.lines[feeder].up = true;
+
+    // **A substation takes its feeders with it**, which is what makes the
+    // hierarchy a hierarchy rather than a list.
+    let sub = e
+        .grid
+        .lines
+        .iter()
+        .position(|l| l.level == Level::Substation)
+        .expect("no substations in the grid");
+    e.grid.lines[sub].ring_fed = false;
+    e.grid.lines[sub].up = false;
+    let under_sub = e.grid.dark_sites(n_sites);
+    assert!(
+        under_sub > dark,
+        "a substation took out {under_sub} works against a single feeder's {dark}"
+    );
+    e.grid.lines[sub].up = true;
+
+    // **Transmission is meshed and built N-1**: lose one circuit and
+    // nobody notices, which is why a pylon coming down is a news item and
+    // not a blackout.
+    let trans = e
+        .grid
+        .lines
+        .iter()
+        .position(|l| l.level == Level::Transmission)
+        .expect("no transmission");
+    e.grid.lines[trans].up = false;
+    assert_eq!(
+        e.grid.dark_sites(n_sites),
+        0,
+        "one transmission circuit out and the country is dark"
+    );
+
+    // A fault below transmission does not reduce what the grid can carry —
+    // it disconnects what is behind it. Counting distribution into
+    // capacity is what made a fault anywhere a shortage everywhere.
+    let cap = e.grid.capacity();
+    e.grid.lines[service].up = false;
+    assert_eq!(e.grid.capacity(), cap, "a house's supply changed national capacity");
+}

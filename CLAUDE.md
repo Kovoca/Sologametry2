@@ -459,6 +459,47 @@ cargo from a glut market in one country to a dear market in another must
 clear three separate price-versus-freight tests in a row. Real trade is
 agents choosing a route end to end, not a pairwise test at every hop.
 
+**A grid is not one wire.** It was pooled into one or two transmission
+lines, so the only failure the model could express was *the country goes
+dark* — a service connection coming down took out everybody. Real
+structure: generation, meshed transmission, primary substation, feeder,
+distribution transformer, service connection. **What decides how many
+people a fault affects is where in that it happens**, and the numbers are
+not close:
+
+| | customers off | typical repair |
+|---|---|---|
+| service drop | **1** | 2-6 hours |
+| distribution transformer | 5-50 | 4-8 hours, weeks if it must be replaced |
+| feeder | 500-3,000 | 2-6 hours |
+| primary substation | 10,000-50,000 | hours to days |
+| transmission circuit | **usually none** | days |
+
+- **Transmission is meshed and built N-1**: lose any single circuit and no
+  customer notices, which is why a pylon coming down is a news item and
+  not a blackout.
+- **A substation takes its feeders with it.** That is what makes it a
+  hierarchy rather than a list.
+- **A feeder is one of about six**, so a fault on one is a share of a
+  district and not the district.
+- **Ring-fed against radial is the urban/rural difference.** Dense
+  networks are built as open rings, so the operator switches round a fault
+  and supply is back in minutes — the repair still has to happen, but
+  nobody sat in the dark for it. The countryside gets one wire and waits
+  for a crew. Same fault, an hour in a city and most of a day in the
+  country.
+- Planning figures: one primary substation to ~30,000 people, ~6 feeders
+  each. A city of 16M would want 500 substations, so the model **samples
+  the structure rather than enumerating it** — what matters is that a
+  fault has a size.
+- **A fault below transmission does not reduce capacity**, it disconnects
+  what is behind it. Counting distribution into capacity is what made a
+  fault anywhere a shortage everywhere.
+
+For scale: a customer in Britain is off supply about **35 minutes a year**,
+Germany 12, the United States ~90 excluding major storms — and almost all
+of it is distribution, not transmission and not generation.
+
 **Nothing is repaired on a schedule.** A fault must be noticed, reported
 over working comms, assigned to a crew, and travelled to before any work
 starts. Cut comms and it is never fixed at all.
