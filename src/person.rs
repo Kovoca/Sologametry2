@@ -109,6 +109,19 @@ pub enum Employment {
     /// Working on your own account. About 13% of the workforce, and the
     /// one way out of a town with no work in it.
     SelfEmployed,
+    /// **Work that only exists for part of the year.**
+    ///
+    /// Farming and fishing, chiefly. Real agricultural labour swings about
+    /// twofold between season and slack, and Britain brings in some 45,000
+    /// people a year on a seasonal visa purely to get the harvest in.
+    /// Fishing adds weather to the same shape: 30-50% of winter days in
+    /// the North Sea are lost to it outright.
+    ///
+    /// The consequence is a **year with a shape to it**: earn hard for
+    /// three months and make it last nine, or move. A wage that is
+    /// perfectly adequate in August is nothing at all in February, and
+    /// that is not unemployment — it is the job.
+    Seasonal,
     /// Not working.
     None,
 }
@@ -120,6 +133,7 @@ impl Employment {
             Employment::PartTime => "part-time",
             Employment::Casual => "casual",
             Employment::SelfEmployed => "self-employed",
+            Employment::Seasonal => "seasonal",
             Employment::None => "out of work",
         }
     }
@@ -138,6 +152,20 @@ impl Employment {
     pub fn is_contracted(self) -> bool {
         matches!(self, Employment::FullTime | Employment::PartTime)
     }
+
+    /// **How much work there is, given where the year is.**
+    ///
+    /// One for everybody whose work does not care about the season, and
+    /// for a seasonal hand it follows the harvest — which peaks over about
+    /// six weeks and falls away to a fraction of that. Real agricultural
+    /// employment swings about twofold; the ground still wants ploughing
+    /// and tending out of season, so the floor is well above nil.
+    pub fn in_season(self, harvest: f64) -> f64 {
+        match self {
+            Employment::Seasonal => (0.35 + 0.90 * harvest).clamp(0.0, 1.0),
+            _ => 1.0,
+        }
+    }
 }
 
 /// **How a trade is actually employed**, from the real industry figures.
@@ -155,6 +183,9 @@ pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
         // sector's.
         Trade::Shopworker => (0.30, 0.58, 0.12),
         // A works runs shifts and wants the same people on them.
+        // A works runs shifts and wants the same people on them — but a
+        // farm does not, and the same trade covers both. The seasonal
+        // share is drawn separately below.
         Trade::Labourer => (0.85, 0.10, 0.05),
         // Driving is full-time employment or your own lorry.
         Trade::Haulier => (0.60, 0.10, 0.30),
@@ -1470,6 +1501,18 @@ pub fn live_a_day_with(
             // Modelled as what it does: a contract makes work reliably
             // available on the days it covers, and slack in the wider
             // labour market cannot take that away.
+            // **A seasonal hand's year has a shape.** Work is plentiful
+            // for a few weeks and thin for the rest, which is not
+            // unemployment — it is the job, and it is why such a person
+            // must earn hard in August to eat in February.
+            if person.employment == Employment::Seasonal {
+                let harvest = econ
+                    .markets
+                    .get(person.market)
+                    .map(|m| m.harvest(day))
+                    .unwrap_or(1.0);
+                hiring *= person.employment.in_season(harvest);
+            }
             if person.employment.is_contracted() {
                 let due = person.employment.contracted_days_a_week() / 7.0;
                 if draw(&person.name, day ^ 0x51_C0_17) < due {
@@ -1528,7 +1571,16 @@ pub fn live_a_day_with(
             {
                 let (full, part, _casual) = employment_mix(person.trade);
                 let r = draw(&person.name, day ^ 0xC0_47_AC_17);
-                person.employment = if r < full {
+                // **Some of the land work is seasonal, and that is a
+                // different life.** Britain brings in ~45,000 people a
+                // year purely to get the harvest in, and real agricultural
+                // employment swings about twofold season to season.
+                const LAND_WORK_THAT_IS_SEASONAL: f64 = 0.30;
+                person.employment = if person.trade == Trade::Labourer
+                    && draw(&person.name, day ^ 0x5EA_50_4A) < LAND_WORK_THAT_IS_SEASONAL
+                {
+                    Employment::Seasonal
+                } else if r < full {
                     Employment::FullTime
                 } else if r < full + part {
                     Employment::PartTime

@@ -247,3 +247,72 @@ fn most_people_have_a_contract_and_some_have_nothing() {
         ft * 100.0
     );
 }
+
+#[test]
+fn a_seasonal_worker_has_a_year_with_a_shape() {
+    // **Not everybody's work is there all year.** Farming and fishing
+    // chiefly: real agricultural labour swings about twofold between
+    // season and slack, Britain brings in some 45,000 people a year on a
+    // seasonal visa purely to get the harvest in, and 30-50% of winter
+    // days in the North Sea are lost to weather outright.
+    //
+    // The consequence is a year with a shape to it — earn hard for three
+    // months and make it last nine, or move. A wage that is adequate in
+    // August is nothing in February, and that is not unemployment, it is
+    // the job.
+    use scale_sim::person::Employment;
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 60, 20260828);
+    for p in folk.people.iter_mut() {
+        p.trade = Trade::Labourer;
+    }
+
+    let mut by_quarter = [[0u64; 4]; 2]; // [seasonal, full-time]
+    let mut prev: Vec<u64> = folk.people.iter().map(|p| p.days_worked).collect();
+    for day in 0..(DAYS_PER_YEAR * 3) {
+        e.step();
+        folk.live_a_day(&mut e, day);
+        let q = ((day % DAYS_PER_YEAR) * 4 / DAYS_PER_YEAR) as usize;
+        for (i, p) in folk.people.iter().enumerate() {
+            if p.days_worked > prev[i] {
+                match p.employment {
+                    Employment::Seasonal => by_quarter[0][q] += 1,
+                    Employment::FullTime => by_quarter[1][q] += 1,
+                    _ => {}
+                }
+            }
+            prev[i] = p.days_worked;
+        }
+    }
+
+    let swing = |q: [u64; 4]| -> f64 {
+        *q.iter().max().unwrap() as f64 / (*q.iter().min().unwrap()).max(1) as f64
+    };
+    let seasonal = swing(by_quarter[0]);
+    let permanent = swing(by_quarter[1]);
+    assert!(
+        by_quarter[0].iter().sum::<u64>() > 100,
+        "nobody on the land is seasonal"
+    );
+
+    // **Real agricultural labour swings about twofold.** A permanent hand
+    // on the same land sees some of that — the farm's own output is
+    // seasonal — but far less of it, which is the whole difference
+    // between the two ways of being employed.
+    assert!(
+        (1.4..3.5).contains(&seasonal),
+        "seasonal work swings {seasonal:.1}x through the year, against a real ~2x"
+    );
+    assert!(
+        seasonal > permanent,
+        "seasonal work at {seasonal:.1}x is no more seasonal than permanent work at {permanent:.1}x"
+    );
+
+    // And the shape is the right way up: the lean quarter is not the busy
+    // one. A harvest is a harvest.
+    let s = by_quarter[0];
+    assert!(
+        s.iter().max().unwrap() > s.iter().min().unwrap(),
+        "every quarter is the same on the land"
+    );
+}

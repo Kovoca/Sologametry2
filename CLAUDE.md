@@ -988,6 +988,15 @@ Full-time overall comes out at 60% against a real 56%.
 - **A contract is something you get after they have seen you** — a
   probation of three to six months, which is why somebody new to a town is
   casual first however good they are.
+- **Not everybody's work is there all year.** Farming and fishing chiefly:
+  real agricultural labour swings about **twofold** between season and
+  slack, Britain brings in ~45,000 people a year on a seasonal visa purely
+  to get the harvest in, and **30-50% of winter days in the North Sea are
+  lost to weather** outright. A seasonal hand's year therefore has a
+  *shape*: earn hard for three months and make it last nine, or move. A
+  wage that is adequate in August is nothing in February — and that is not
+  unemployment, it is the job. Measured: seasonal work swings 1.9x through
+  the year against a permanent hand's 1.5x on the same land.
 - **A contract is a floor on the hours, not a ceiling.** Treating a day
   off as *forbidden* work put a part-time shop worker on 2.75 days a week
   flat, which after rent and food does not feed anybody, and left nobody
