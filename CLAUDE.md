@@ -1003,6 +1003,41 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### People share a roof, and that is most of how they afford one
+
+**Everybody was living alone and paying a full rent**, which is not how
+people live. Real British composition: one person 30%, a couple 27%, a
+couple with children 22%, a lone parent 10%, about 11% sharing or still at
+home. The average household is **2.36 people**, and **28% of 20-34 year
+olds live with their parents** — overwhelmingly about money.
+
+A household is cheaper per head than a person, and the measure is the
+**modified OECD equivalence scale**: first adult 1.0, each further adult
+0.5, each child 0.3. A second person does not double the rent, the heating
+or the cooking — a two-bed is not twice a one-bed.
+
+| household | carries each |
+|---|---|
+| alone | 1.00 |
+| a couple | **0.75** |
+| three sharing | 0.67 |
+| four | 0.63 |
+
+**A quarter off the cost of living for moving in with somebody.** Which is
+not a rounding — put a whole cohort into hospitality, the worst-paid and
+least secure work there is, and over two years:
+
+| household | homeless | money |
+|---|---|---|
+| **alone** | **32%** | 62 |
+| a couple | 0% | 188 |
+| sharing | 0% | 204 |
+
+**Living alone on those wages puts a third on the street; moving in with
+one other person houses all of them.** And it is exactly why lone parents
+are the poorest household type there is — one adult carrying a whole
+household's costs.
+
 ### The week decides who works when
 
 A year of 365 days was being lived as **365 identical ones**. Real working

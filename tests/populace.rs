@@ -401,3 +401,96 @@ fn the_week_decides_who_works_when() {
         "the mill closes at the weekend"
     );
 }
+
+#[test]
+fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
+    // **Everybody was living alone and paying a full rent**, which is not
+    // how people live. Real British composition: one person 30%, a couple
+    // 27%, a couple with children 22%, a lone parent 10%, about 11%
+    // sharing or still at home — and the average household is 2.36
+    // people, with 28% of 20-34 year olds living with their parents.
+    //
+    // A household is cheaper per head than a person. The measure is the
+    // **modified OECD equivalence scale**: first adult 1.0, each further
+    // adult 0.5, each child 0.3 — because a second person does not double
+    // the rent, the heating or the cooking. A two-bed is not twice a
+    // one-bed.
+    use scale_sim::person::{household_share_for, Housing};
+    use scale_sim::populace::Household;
+
+    // The scale itself.
+    assert_eq!(household_share_for(1), 1.0);
+    assert_eq!(household_share_for(2), 0.75, "a couple should each carry three quarters");
+    assert!((household_share_for(3) - 0.666).abs() < 0.01);
+    assert!(household_share_for(4) < household_share_for(3));
+
+    // **A quarter off the cost of living for moving in with somebody**,
+    // and that is not a rounding — it is the difference between a
+    // part-time wage keeping a roof and not.
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 70, 20260828);
+    // Put everybody in the worst-paid, least secure work there is, so the
+    // margin is where it can actually be seen.
+    for p in folk.people.iter_mut() {
+        p.trade = Trade::Hospitality;
+    }
+    for day in 0..(DAYS_PER_YEAR * 2) {
+        e.step();
+        folk.live_a_day(&mut e, day);
+    }
+
+    let homeless_share = |alone: bool| -> f64 {
+        let idx: Vec<usize> = (0..folk.people.len())
+            .filter(|&i| (folk.households[i] == Household::Alone) == alone)
+            .collect();
+        if idx.is_empty() {
+            return f64::NAN;
+        }
+        idx.iter()
+            .filter(|&&i| folk.people[i].housing == Housing::Homeless)
+            .count() as f64
+            / idx.len() as f64
+    };
+    let alone = homeless_share(true);
+    let shared = homeless_share(false);
+    assert!(
+        alone > shared,
+        "living alone on hospitality wages is no harder than sharing: \
+         {:.0}% against {:.0}% on the street",
+        alone * 100.0,
+        shared * 100.0
+    );
+    assert!(
+        alone > 0.05,
+        "nobody living alone on the worst wages in the country lost their roof"
+    );
+
+    // **Which is exactly why lone parents are the poorest household type
+    // there is**: one adult carrying a whole household's costs.
+    let money = |alone: bool| -> f64 {
+        let idx: Vec<usize> = (0..folk.people.len())
+            .filter(|&i| (folk.households[i] == Household::Alone) == alone)
+            .collect();
+        idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len().max(1) as f64
+    };
+    assert!(
+        money(false) > money(true) * 1.5,
+        "sharing left people no better off: {:.0} against {:.0}",
+        money(false),
+        money(true)
+    );
+
+    // And the composition is roughly right: real Britain is 30% one-person
+    // plus 10% lone-parent households, both of which carry costs alone.
+    let living_alone = folk
+        .households
+        .iter()
+        .filter(|h| **h == Household::Alone)
+        .count() as f64
+        / folk.households.len() as f64;
+    assert!(
+        (0.30..0.55).contains(&living_alone),
+        "{:.0}% of households carry their costs alone, against a real ~40%",
+        living_alone * 100.0
+    );
+}

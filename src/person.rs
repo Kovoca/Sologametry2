@@ -528,6 +528,24 @@ pub struct Person {
     /// **What hold they have on their work.** Most people have a contract
     /// with guaranteed hours; this model gave everybody casual work.
     pub employment: Employment,
+    /// **What share of a household's costs this person carries.**
+    ///
+    /// Everybody was living alone and paying a full rent, which is not how
+    /// people live: the **average British household is 2.36 people**, 30%
+    /// are one person, 27% a couple, 22% a couple with children, and about
+    /// one private renter in five shares.
+    ///
+    /// And a household is cheaper per head than a person is. The measure
+    /// is the **modified OECD equivalence scale** — the first adult counts
+    /// 1.0, each further adult 0.5, each child 0.3 — because a second
+    /// person does not double the rent, the heating or the cooking. A
+    /// two-bed is not twice a one-bed.
+    ///
+    /// So a couple needs 1.5 times a single person's income rather than
+    /// twice it, and each of them carries 0.75 of a full cost. **That 25%
+    /// is a large part of why people move in together**, and it is the
+    /// difference between a part-time retail wage keeping a roof and not.
+    pub household_share: f64,
     /// Days he has been sleeping out.
     pub days_homeless: u64,
     /// The contract in hand, if any.
@@ -607,6 +625,8 @@ impl Person {
             housing: Housing::Lodging,
             // Nobody arrives with a contract. One is something you get.
             employment: Employment::None,
+            // Alone until somebody says otherwise.
+            household_share: 1.0,
             days_homeless: 0,
             job: None,
             // **Ability varies from person to person**, and it has to be
@@ -654,6 +674,21 @@ impl Person {
 pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     const SHARE_OF_A_WAGE: f64 = 0.30;
     day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE
+}
+
+/// **What each member of a household of this size carries**, on the
+/// modified OECD equivalence scale.
+///
+/// First adult 1.0, each further adult 0.5, each child 0.3 — so a
+/// household of `n` adults costs `1 + 0.5(n-1)` and each carries that
+/// divided by `n`. One person carries 1.0, two carry 0.75 each, three
+/// 0.67, four 0.625.
+///
+/// This is the real reason shared housing exists, and it is not small:
+/// **a quarter off the cost of living** for moving in with somebody.
+pub fn household_share_for(adults: usize) -> f64 {
+    let n = adults.max(1) as f64;
+    (1.0 + 0.5 * (n - 1.0)) / n
 }
 
 /// Wage per day for a trade, from what the work is worth and how many
@@ -1363,7 +1398,11 @@ pub fn live_a_day_with(
     // cannot be gone without at all, so a bad fortnight puts somebody out
     // of a home that a bad fortnight of hunger would not have killed.
     {
-        let rent = rent_per_day(econ, person.market) * person.housing.share_of_rent();
+        // **Rent is a household's, not a person's**, and a household is
+        // cheaper per head than living alone.
+        let rent = rent_per_day(econ, person.market)
+            * person.housing.share_of_rent()
+            * person.household_share;
         if rent > 0.0 {
             if person.money >= rent {
                 person.money -= rent;

@@ -24,8 +24,51 @@
 //! reveal.
 
 use crate::econ::Economy;
-use crate::person::{live_a_day_with, Housing, Person, Trade};
+use crate::person::{household_share_for, live_a_day_with, Housing, Person, Trade};
 use crate::rng::Rng;
+
+/// **How people actually live**, which is not one to a house.
+///
+/// Real British composition: **one person 30%, a couple 27%, a couple with
+/// children 22%, a lone parent 10%, and about 11% other** — which is
+/// chiefly shared houses and adult children at home. The average household
+/// is **2.36 people**, and 28% of 20-34 year olds live with their parents.
+///
+/// The distinction that matters here is only how many adults are carrying
+/// the costs, because that is what the equivalence scale reads.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Household {
+    /// Living alone: 30% of households and the most expensive way to live.
+    Alone,
+    /// A couple, with or without children. Two adults on one rent.
+    Couple,
+    /// A shared house or flat: unrelated adults splitting the cost, which
+    /// is about one private renter in five.
+    Shared(usize),
+    /// An adult child still at home, or a parent taken in. 28% of 20-34
+    /// year olds, and it is overwhelmingly about money.
+    Family(usize),
+}
+
+impl Household {
+    /// How many adults are carrying it.
+    pub fn adults(self) -> usize {
+        match self {
+            Household::Alone => 1,
+            Household::Couple => 2,
+            Household::Shared(n) | Household::Family(n) => n.max(1),
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Household::Alone => "alone",
+            Household::Couple => "a couple",
+            Household::Shared(_) => "sharing",
+            Household::Family(_) => "family",
+        }
+    }
+}
 
 /// A person's fate over a run, kept so a cohort can be summarised without
 /// re-walking every log.
@@ -45,6 +88,9 @@ pub struct Populace {
     /// town's own figures, and what stops anybody mistaking a hundred
     /// simulated lives for a hundred thousand real ones.
     pub represents: Vec<f64>,
+    /// How each of them lives, which decides what share of a household's
+    /// costs they carry.
+    pub households: Vec<Household>,
     /// Everyone who has died, so a run can be judged on the people it
     /// killed as well as the ones still standing.
     pub gone: Vec<(String, u64)>,
@@ -75,6 +121,7 @@ impl Populace {
         let mut rng = Rng::new(seed ^ 0x5DEE_CE66_D9B0_1B0D);
         let mut people = Vec::new();
         let mut represents = Vec::new();
+        let mut households = Vec::new();
 
         for m in 0..econ.markets.len() {
             let pop = econ.markets[m].population;
@@ -96,6 +143,13 @@ impl Populace {
                 // very poor are rare — which is what a real distribution
                 // of anything looks like and what a flat draw does not.
                 p.diligence = ((rng.next_f32() + rng.next_f32() + rng.next_f32()) / 3.0) as f64;
+                // **Nobody lives one to a house.** Real composition: 30%
+                // alone, 27% a couple, 22% a couple with children, 10% a
+                // lone parent, ~11% sharing or family — average household
+                // 2.36 people.
+                let h = draw_household(&mut rng);
+                p.household_share = household_share_for(h.adults());
+                households.push(h);
                 people.push(p);
                 represents.push(pop / n as f64);
             }
@@ -104,6 +158,7 @@ impl Populace {
         Populace {
             people,
             represents,
+            households,
             gone: Vec::new(),
             rng,
         }
@@ -177,6 +232,9 @@ impl Populace {
             let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
             p.diligence = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
                 / 3.0) as f64;
+            let h = draw_household(&mut self.rng);
+            p.household_share = household_share_for(h.adults());
+            self.households[i] = h;
             self.people[i] = p;
         }
     }
@@ -257,6 +315,30 @@ pub struct Cohort {
 /// Retail is about a tenth of real employment and the works this economy
 /// models are about a fiftieth, which is why shop work dominates a
 /// sampled town — and why a haulier is uncommon rather than typical.
+/// **How people live**, in the real British proportions: one person 30%,
+/// a couple 27%, a couple with children 22%, a lone parent 10%, and about
+/// 11% sharing or family. A lone parent carries a household alone, so it
+/// counts as one adult.
+fn draw_household(rng: &mut Rng) -> Household {
+    let r = rng.next_f32();
+    if r < 0.30 {
+        Household::Alone
+    } else if r < 0.79 {
+        // Couple, with or without children: two adults on one rent either
+        // way, and children do not pay rent.
+        Household::Couple
+    } else if r < 0.89 {
+        // A lone parent is one adult carrying a household, which is
+        // exactly why lone parents are the poorest household type there
+        // is.
+        Household::Alone
+    } else if r < 0.95 {
+        Household::Shared(3)
+    } else {
+        Household::Family(2)
+    }
+}
+
 fn draw_trade(rng: &mut Rng) -> Trade {
     let r = rng.next_f32();
     if r < 0.55 {
