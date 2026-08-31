@@ -48,9 +48,24 @@ pub enum Commodity {
     /// coal still cannot make primary steel — which is the whole reason
     /// steel is hard to decarbonise, and a dependency worth having.
     Steel,
+    /// **Timber**, in tonnes of industrial roundwood. From the forest
+    /// `biota.rs` has been growing since it was written — standing stock
+    /// that until now nothing on the planet could cut down.
+    Timber,
+    /// **Crude oil**, in tonnes. From the petroleum `geology.rs` puts in
+    /// the ground, which had likewise never had a consumer.
+    Petroleum,
+    /// **Plastics**, in tonnes of resin. Cracked from oil, and the reason
+    /// a modern economy needs a petroleum industry for something other
+    /// than burning.
+    Plastics,
+    /// **Machinery**, in tonnes — tools, car parts, engines, pumps, the
+    /// capital goods of the design doc's "whole nine yards". The step
+    /// between a tonne of steel and a thing somebody buys.
+    Machinery,
 }
 
-pub const N_COMMODITIES: usize = 10;
+pub const N_COMMODITIES: usize = 14;
 
 impl Commodity {
     pub const ALL: [Commodity; N_COMMODITIES] = [
@@ -64,6 +79,10 @@ impl Commodity {
         Commodity::Meat,
         Commodity::IronOre,
         Commodity::Steel,
+        Commodity::Timber,
+        Commodity::Petroleum,
+        Commodity::Plastics,
+        Commodity::Machinery,
     ];
 
     pub fn name(self) -> &'static str {
@@ -78,6 +97,10 @@ impl Commodity {
             Commodity::Meat => "meat",
             Commodity::IronOre => "ore",
             Commodity::Steel => "steel",
+            Commodity::Timber => "timber",
+            Commodity::Petroleum => "oil",
+            Commodity::Plastics => "plastic",
+            Commodity::Machinery => "machines",
         }
     }
 
@@ -182,6 +205,13 @@ impl Commodity {
             // so violently on small changes in supply.
             Commodity::IronOre => -0.15,
             Commodity::Steel => -0.35,
+            Commodity::Timber => -0.4,
+            // Oil is the classic inelastic commodity: there is no
+            // substitute at short notice, which is why a few percent off
+            // supply moves the price by half.
+            Commodity::Petroleum => -0.1,
+            Commodity::Plastics => -0.4,
+            Commodity::Machinery => -0.6,
         }
     }
 
@@ -239,6 +269,13 @@ impl Commodity {
             // which is exactly what a strategic stockpile is.
             Commodity::IronOre => 30.0,
             Commodity::Steel => 25.0,
+            Commodity::Timber => 30.0,
+            // **A strategic stock, and a real one.** IEA members are
+            // obliged to hold 90 days of net oil imports, which is the
+            // single largest deliberate stockpile of anything anywhere.
+            Commodity::Petroleum => 60.0,
+            Commodity::Plastics => 20.0,
+            Commodity::Machinery => 20.0,
         }
     }
 
@@ -262,6 +299,16 @@ impl Commodity {
             // industry.
             Commodity::IronOre => 90.0,
             Commodity::Steel => 450.0,
+            // **Relative to steel, which is what actually matters here.**
+            // Real ratios against crude steel: sawn timber ~0.25x, crude
+            // oil ~1.0x, polymer resin ~2.3x. The upper end is compressed
+            // because the finished-goods price anchors the top of this
+            // scale — the model's currency is its own, pinned to the food
+            // chain, and only the ratios are meant to be read.
+            Commodity::Timber => 110.0,
+            Commodity::Petroleum => 220.0,
+            Commodity::Plastics => 430.0,
+            Commodity::Machinery => 620.0,
         }
     }
 }
@@ -384,6 +431,14 @@ pub enum SiteKind {
     Steelworks,
     /// **Where steel becomes things**: tools, parts, tins, machines.
     Works,
+    /// Felling. Wherever the forest is worth cutting.
+    Forestry,
+    /// An oil field, or the terminal where somebody else's oil is landed.
+    OilField,
+    /// A cracker, turning oil into polymer.
+    Cracker,
+    /// A machine works — the step between a tonne of steel and a thing.
+    MachineWorks,
     PowerPlant,
     Shop,
     /// Where goods from outside the modelled region arrive.
@@ -578,7 +633,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 16] = [
+pub const RECIPES: [Recipe; 22] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -757,19 +812,30 @@ pub const RECIPES: [Recipe; 16] = [
     },
     Recipe {
         name: "factory",
-        // Backed out of the real figure rather than chosen: **world crude
-        // steel is ~230 kg a head a year**, and households take a tonne of
-        // goods each, so a tonne of manufactured output carries 0.23 t of
-        // steel.
-        inputs: &[(Commodity::Steel, 0.23)],
+        // **Assembled, not conjured.** A tonne of what a household buys is
+        // machines, plastic and wood — and through the machines, steel,
+        // and through the steel, ore and coal. Every gram of it leads back
+        // to something somebody had to dig up or cut down, which is the
+        // whole point of the tree.
+        //
+        // The steel content is still anchored on the real figure: world
+        // crude steel is **~230 kg a head a year** and households take a
+        // tonne of goods each, so 0.28 t of machinery at 72% steel puts
+        // 0.20 t of steel in every tonne of goods.
+        //
+        // Timber at 0.20 gives ~200 kg a head a year against a real
+        // industrial roundwood figure of ~180, and the plastics come to
+        // ~62 kg against a real ~50.
+        inputs: &[
+            (Commodity::Machinery, 0.28),
+            (Commodity::Plastics, 0.04),
+            (Commodity::Timber, 0.20),
+        ],
         outputs: &[(Commodity::RetailGoods, 1.0)],
-        power: 1.0,
-        // **And this is where manufacturing employment actually is.** A
-        // car is 1.5 t and takes something like a hundred person-hours
-        // once its parts are counted; at ~55 hours a tonne the sector
-        // lands near its real 7.6% of the workforce, against the
-        // steelworks' 1.5. Fabrication is the labour, not the metal.
-        labour: 55.0,
+        power: 0.6,
+        // Final assembly and finishing. The bulk of manufacturing labour
+        // now sits in the machine works upstream.
+        labour: 30.0,
         needs_water: false,
     },
     // **A steel stockholder.** Most economies do not smelt their own —
@@ -783,6 +849,74 @@ pub const RECIPES: [Recipe; 16] = [
         outputs: &[(Commodity::Steel, 1.0)],
         power: 0.02,
         labour: 0.2,
+        needs_water: false,
+    },
+    // -----------------------------------------------------------------
+    // The rest of the tree: every good traceable to a primary resource.
+    //
+    // A single undifferentiated `RetailGoods` made at a depot said nothing
+    // about what a country could make or what it had to buy. These give
+    // the two resources the world had been generating and nobody had ever
+    // asked for — standing timber and petroleum — somewhere to go.
+    // -----------------------------------------------------------------
+    Recipe {
+        name: "forestry",
+        inputs: &[],
+        outputs: &[(Commodity::Timber, 1.0)],
+        power: 0.05,
+        // Mechanised harvesting is fast; the labour is in the haulage and
+        // the mill rather than the felling.
+        labour: 2.0,
+        needs_water: false,
+    },
+    Recipe {
+        name: "oil field",
+        inputs: &[],
+        outputs: &[(Commodity::Petroleum, 1.0)],
+        power: 0.10,
+        // **The most capital-intensive extraction there is.** A field
+        // worth billions is run by a few hundred people, which is exactly
+        // why oil wealth does not become employment and why a petro-state
+        // has a labour market problem its revenue cannot solve.
+        labour: 0.15,
+        needs_water: false,
+    },
+    Recipe {
+        name: "oil imports",
+        inputs: &[],
+        outputs: &[(Commodity::Petroleum, 1.0)],
+        power: 0.02,
+        labour: 0.1,
+        needs_water: false,
+    },
+    Recipe {
+        name: "timber imports",
+        inputs: &[],
+        outputs: &[(Commodity::Timber, 1.0)],
+        power: 0.02,
+        labour: 0.1,
+        needs_water: false,
+    },
+    Recipe {
+        name: "cracker",
+        // Real naphtha cracking runs about 1.3-1.5 t of feedstock per
+        // tonne of resin once the energy is counted.
+        inputs: &[(Commodity::Petroleum, 1.4)],
+        outputs: &[(Commodity::Plastics, 1.0)],
+        power: 1.2,
+        labour: 1.5,
+        needs_water: false,
+    },
+    Recipe {
+        name: "machine works",
+        // Tools, engines, car parts, pumps. Mostly steel, with the
+        // plastics a modern machine is full of.
+        inputs: &[(Commodity::Steel, 0.72), (Commodity::Plastics, 0.08)],
+        outputs: &[(Commodity::Machinery, 1.0)],
+        power: 1.4,
+        // Assembly is the labour-intensive end of manufacturing, which is
+        // why it is the part that moves to wherever labour is cheap.
+        labour: 60.0,
         needs_water: false,
     },
 ];
@@ -805,6 +939,12 @@ pub mod recipe {
     pub const STEELWORKS: usize = 13;
     pub const FACTORY: usize = 14;
     pub const STEEL_IMPORTS: usize = 15;
+    pub const FORESTRY: usize = 16;
+    pub const OIL_FIELD: usize = 17;
+    pub const OIL_IMPORTS: usize = 18;
+    pub const TIMBER_IMPORTS: usize = 19;
+    pub const CRACKER: usize = 20;
+    pub const MACHINE_WORKS: usize = 21;
 }
 
 // ---------------------------------------------------------------------------
@@ -2268,7 +2408,7 @@ impl Economy {
                 // The mine first: without coal nothing generates at all
                 // tomorrow, so starving it to keep a factory running today
                 // is how a grid talks itself into a blackout.
-                SiteKind::Mine | SiteKind::IronMine => 0,
+                SiteKind::Mine | SiteKind::IronMine | SiteKind::OilField => 0,
                 // The food chain.
                 SiteKind::Factory | SiteKind::Mill | SiteKind::Butcher => 1,
                 SiteKind::Farm => 2,
@@ -2278,9 +2418,9 @@ impl Economy {
                 // the works running stops the works a fortnight later for
                 // want of metal — the same reasoning that puts the
                 // colliery first.
-                SiteKind::Steelworks => 4,
+                SiteKind::Steelworks | SiteKind::Cracker => 4,
                 // Heavy manufacturing, on an interruptible tariff.
-                SiteKind::Works => 5,
+                SiteKind::Works | SiteKind::MachineWorks | SiteKind::Forestry => 5,
                 _ => 6,
             };
             rank(a.0)

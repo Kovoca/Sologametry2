@@ -136,3 +136,112 @@ fn household_power_is_residential_only() {
          against ~3.5 for the whole economy"
     );
 }
+
+/// **Every good leads back to something somebody dug up or cut down.**
+///
+/// Peter's requirement: recipes for each good, so primary resources go in
+/// and finished goods come out. A single undifferentiated `RetailGoods`
+/// made at a depot said nothing about what a country could make and what
+/// it had to buy.
+#[test]
+fn every_good_traces_back_to_a_primary_resource() {
+    /// A commodity nothing produces from anything — it comes out of the
+    /// ground, off the land, or off a ship.
+    fn primary(c: Commodity) -> bool {
+        matches!(
+            c,
+            Commodity::IronOre
+                | Commodity::Coal
+                | Commodity::Petroleum
+                | Commodity::Timber
+                | Commodity::Grain
+                | Commodity::Livestock
+                | Commodity::Electricity
+        )
+    }
+
+    // Walk the tree from retail goods down, and prove it terminates in
+    // primaries rather than in a depot.
+    fn roots(c: Commodity, depth: usize, seen: &mut Vec<Commodity>) {
+        assert!(depth < 8, "the goods tree does not terminate at {c}");
+        if primary(c) {
+            if !seen.contains(&c) {
+                seen.push(c);
+            }
+            return;
+        }
+        // Anything made must be made by a recipe that is not pure import.
+        let made_from: Vec<Commodity> = RECIPES
+            .iter()
+            .filter(|r| r.outputs.iter().any(|&(oc, _)| oc == c))
+            .filter(|r| !r.inputs.is_empty())
+            .flat_map(|r| r.inputs.iter().map(|&(ic, _)| ic))
+            .collect();
+        assert!(
+            !made_from.is_empty(),
+            "{c} is conjured out of nothing by every recipe that makes it"
+        );
+        for input in made_from {
+            roots(input, depth + 1, seen);
+        }
+    }
+
+    let mut seen = Vec::new();
+    roots(Commodity::RetailGoods, 0, &mut seen);
+    for want in [
+        Commodity::IronOre,
+        Commodity::Coal,
+        Commodity::Petroleum,
+        Commodity::Timber,
+    ] {
+        assert!(
+            seen.contains(&want),
+            "a tonne of goods does not lead back to {want}; it reaches {seen:?}"
+        );
+    }
+
+    // And the quantities are the real ones, per tonne of finished goods.
+    let f = &RECIPES[recipe::FACTORY];
+    let per = |c: Commodity| {
+        f.inputs
+            .iter()
+            .find(|&&(ic, _)| ic == c)
+            .map(|&(_, q)| q)
+            .unwrap_or(0.0)
+    };
+    let machinery = per(Commodity::Machinery);
+    let steel_in_machinery = RECIPES[recipe::MACHINE_WORKS]
+        .inputs
+        .iter()
+        .find(|&&(c, _)| c == Commodity::Steel)
+        .unwrap()
+        .1;
+    // World crude steel is ~230 kg a head a year and households take a
+    // tonne of goods each.
+    let steel_per_head = machinery * steel_in_machinery * 1000.0;
+    assert!(
+        (150.0..280.0).contains(&steel_per_head),
+        "a tonne of goods carries {steel_per_head:.0} kg of steel; real is ~230"
+    );
+    // Real industrial roundwood is ~180 kg a head a year.
+    let timber = per(Commodity::Timber) * 1000.0;
+    assert!(
+        (120.0..280.0).contains(&timber),
+        "{timber:.0} kg of timber a head a year; real is ~180"
+    );
+}
+
+/// **Oil is the most capital-intensive extraction there is**, which is why
+/// oil wealth does not become employment — a field worth billions is run
+/// by a few hundred people. It is a real and consequential fact about
+/// petro-states, and it falls out of the labour figure.
+#[test]
+fn an_oil_field_employs_almost_nobody() {
+    let oil = RECIPES[recipe::OIL_FIELD].labour;
+    let works = RECIPES[recipe::MACHINE_WORKS].labour;
+    assert!(
+        works > oil * 100.0,
+        "a machine works is {works} person-hours a tonne against an oil field's {oil}; \
+         the gap should be two orders of magnitude"
+    );
+}

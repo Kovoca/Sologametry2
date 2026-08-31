@@ -691,6 +691,52 @@ Two of these produced *famines*, which is the rule this file already
 states: a routine failure must not starve a country. Both times the cause
 was a shortage of **cans**.
 
+### Every good leads back to something dug up or cut down
+
+One undifferentiated `RetailGoods` said nothing about what a country could
+make and what it had to buy. Each good now has a recipe, and the tree
+terminates in primaries the world already generates:
+
+```
+ore + coal ──→ steel ──────┐
+petroleum ───→ plastics ───┼──→ machinery ──┐
+timber ────────────────────┘                ├──→ retail goods
+                            plastics, timber ┘
+```
+
+**Two resources the world had been generating since they were written now
+have a consumer** — `biota.timber` and `geology.petroleum`. A country's
+standing forest was a number nobody could ever fell.
+
+Quantities are the real ones, per tonne of what a household buys: 0.28 t
+of machinery at 72% steel puts **0.20 t of steel** in it *(world crude
+steel ~230 kg a head a year)*, 0.20 t of timber *(real industrial
+roundwood ~180 kg)*, and ~62 kg of plastics *(real ~50)*. Cracking runs
+1.4 t of oil per tonne of resin.
+
+- **An oil field employs almost nobody** — 0.15 person-hours a tonne
+  against a machine works' 60. A field worth billions is run by a few
+  hundred people, which is exactly why oil wealth does not become
+  employment and why a petro-state has a labour-market problem its revenue
+  cannot solve.
+- **A cracker stands on the oil.** Refineries are at the wellhead or the
+  tanker terminal and never inland.
+- **A forest worth felling carries 40+ m³/ha.** Boreal runs 100-200,
+  managed temperate 150-350, and scrub carries nothing.
+- **Petroleum gets a 60-day cover** because IEA members are obliged to
+  hold 90 days of net imports — the largest deliberate stockpile of
+  anything anywhere.
+- Price ratios against steel are the real ones *(timber 0.25x, oil ~1x,
+  resin 2.3x)*, compressed at the top because finished goods anchor this
+  scale. **The currency is the model's own, pinned to the food chain; only
+  the ratios are meant to be read.**
+
+**Every intermediate needs a merchant in every town.** The lesson from the
+steel famine generalises: with weak inter-town bulk distribution, a works
+a thousand kilometres from the only source of an input simply stops. Real
+economies import 30-50% of their steel even when they make it, so each
+town holds a stockholder and a timber yard for the balance.
+
 **Grid shed order is now fuel → food → shops → steel → heavy
 manufacturing.** Lumping all industry at one rank was fine with one kind
 of it; with two, "larger first" handed the whole supply to a goods factory

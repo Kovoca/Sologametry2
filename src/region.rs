@@ -105,6 +105,10 @@ struct Endowment {
     /// whichever modelled town is nearest it.
     best_coal: Option<usize>,
     best_ore: Option<usize>,
+    oil_cells: usize,
+    best_oil: Option<usize>,
+    timber_cells: usize,
+    best_timber: Option<usize>,
 }
 
 /// Deterministic settlement name from its position. Not in `settlement.rs`
@@ -427,6 +431,11 @@ const DOMESTIC_GOODS_SHARE: f64 = 0.75;
 /// **cans**.
 const DOMESTIC_STEEL_SHARE: f64 = 0.70;
 
+/// **A forest worth felling**, in cubic metres a hectare. Real: managed
+/// temperate forest carries 150-350, boreal 100-200, and anything under
+/// about 40 is scrub that nobody logs.
+const WORKABLE_TIMBER_M3_HA: f32 = 40.0;
+
 fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endowment {
     let g = &world.geology;
     let mut e = Endowment {
@@ -434,9 +443,15 @@ fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endow
         ore_cells: 0,
         best_coal: None,
         best_ore: None,
+        oil_cells: 0,
+        best_oil: None,
+        timber_cells: 0,
+        best_timber: None,
     };
     let mut best = 0.0f32;
     let mut best_o = 0.0f32;
+    let mut best_p = 0.0f32;
+    let mut best_t = 0.0f32;
 
     for i in 0..world.biomes.len() {
         if pol.owner[i] != polity {
@@ -454,6 +469,24 @@ fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endow
             if g.ore.data[i] > best_o {
                 best_o = g.ore.data[i];
                 e.best_ore = Some(i);
+            }
+        }
+        if g.petroleum.data[i] >= workable {
+            e.oil_cells += 1;
+            if g.petroleum.data[i] > best_p {
+                best_p = g.petroleum.data[i];
+                e.best_oil = Some(i);
+            }
+        }
+        // **Standing timber, at last given somebody to cut it.** A forest
+        // worth working is one carrying real stock: boreal forest runs
+        // 100-200 m3/ha and scrub carries nothing.
+        let t = world.biota.timber.data[i];
+        if t >= WORKABLE_TIMBER_M3_HA {
+            e.timber_cells += 1;
+            if t > best_t {
+                best_t = t;
+                e.best_timber = Some(i);
             }
         }
     }
@@ -865,7 +898,15 @@ impl Region {
         // and 0.8 t of coal go into each tonne of steel.
         let nation_pop: f64 = markets.iter().map(|m| m.population).sum();
         let goods_made = goods_day * DOMESTIC_GOODS_SHARE;
-        let steel_day = goods_made * 0.23 + cannery_rate * 0.035;
+        // **The tree, read off the recipes rather than guessed at.**
+        // Goods are machines, plastic and wood; machines are steel and
+        // plastic; steel is ore and coal; plastic is oil. Every figure
+        // here is the recipe coefficient.
+        let machinery_day = goods_made * 0.28;
+        let plastics_day = goods_made * 0.04 + machinery_day * 0.08;
+        let timber_day = goods_made * 0.20;
+        let oil_day = plastics_day * 1.4;
+        let steel_day = machinery_day * 0.72 + cannery_rate * 0.035;
         let ore_day = steel_day * DOMESTIC_STEEL_SHARE * 1.4 * 1.35;
         let coking_coal = steel_day * DOMESTIC_STEEL_SHARE * 0.8 * 1.35;
 
@@ -881,7 +922,11 @@ impl Region {
             + mill_rate * 0.08
             + built * 0.05
             + imported * 0.02
-            + goods_made * 1.0
+            + goods_made * 0.6
+            + machinery_day * 1.4
+            + plastics_day * 1.2
+            + timber_day * 0.05
+            + oil_day * 0.10
             + steel_day * 0.25
             + ore_day * 0.08
             + goods_day * 0.02
@@ -1185,11 +1230,15 @@ impl Region {
                 kind: SiteKind::Works,
                 market: m,
                 stock: cap(&[
-                    (Commodity::Steel, rate * 0.23 * 20.0),
+                    (Commodity::Machinery, rate * 0.28 * 20.0),
+                    (Commodity::Plastics, rate * 0.04 * 20.0),
+                    (Commodity::Timber, rate * 0.20 * 20.0),
                     (Commodity::RetailGoods, rate * 8.0),
                 ]),
                 capacity: cap(&[
-                    (Commodity::Steel, rate * 0.23 * 60.0),
+                    (Commodity::Machinery, rate * 0.28 * 60.0),
+                    (Commodity::Plastics, rate * 0.04 * 60.0),
+                    (Commodity::Timber, rate * 0.20 * 60.0),
                     (Commodity::RetailGoods, rate * 30.0),
                 ]),
                 recipe: Some(recipe::FACTORY),
@@ -1200,42 +1249,209 @@ impl Region {
             });
         }
 
+        // --- Timber, oil, plastic and machines ---
+        //
+        // The forest `biota.rs` grows and the petroleum `geology.rs` puts
+        // in the ground had no consumer until now: a country's standing
+        // stock was a number nobody could ever cut down.
+        if timber_day > 0.01 {
+            let (m, note) = match endow.best_timber {
+                Some(cell) if endow.timber_cells > 0 => {
+                    let m = towns
+                        .iter()
+                        .enumerate()
+                        .min_by(|(_, &a), (_, &b)| {
+                            distance_km(settlements.list[a].cell, cell, w_cells(world)).total_cmp(
+                                &distance_km(settlements.list[b].cell, cell, w_cells(world)),
+                            )
+                        })
+                        .map(|(m, _)| m)
+                        .unwrap_or(0);
+                    (
+                        m,
+                        format!(
+                            "{} cells of forest worth felling, worked out of {}",
+                            endow.timber_cells,
+                            markets[m].name
+                        ),
+                    )
+                }
+                _ => (
+                    port,
+                    format!(
+                        "no forest worth felling — timber is landed at {}",
+                        markets[port].name
+                    ),
+                ),
+            };
+            let recipe = if endow.timber_cells > 0 {
+                recipe::FORESTRY
+            } else {
+                recipe::TIMBER_IMPORTS
+            };
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} forestry"),
+                kind: SiteKind::Forestry,
+                market: m,
+                stock: cap(&[(Commodity::Timber, timber_day * 10.0)]),
+                capacity: cap(&[(Commodity::Timber, timber_day * 40.0)]),
+                recipe: Some(recipe),
+                throughput: timber_day * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+            notes.push(note);
+        }
+
+        if oil_day > 0.01 {
+            let (m, recipe, note) = match endow.best_oil {
+                Some(cell) if endow.oil_cells > 0 => {
+                    let m = towns
+                        .iter()
+                        .enumerate()
+                        .min_by(|(_, &a), (_, &b)| {
+                            distance_km(settlements.list[a].cell, cell, w_cells(world)).total_cmp(
+                                &distance_km(settlements.list[b].cell, cell, w_cells(world)),
+                            )
+                        })
+                        .map(|(m, _)| m)
+                        .unwrap_or(0);
+                    (
+                        m,
+                        recipe::OIL_FIELD,
+                        format!(
+                            "{} cells of workable petroleum, produced near {}",
+                            endow.oil_cells,
+                            markets[m].name
+                        ),
+                    )
+                }
+                _ => (
+                    port,
+                    recipe::OIL_IMPORTS,
+                    format!(
+                        "no petroleum of its own — every tonne is landed at {}",
+                        markets[port].name
+                    ),
+                ),
+            };
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} oil field"),
+                kind: SiteKind::OilField,
+                market: m,
+                stock: cap(&[(Commodity::Petroleum, oil_day * 20.0)]),
+                capacity: cap(&[(Commodity::Petroleum, oil_day * 60.0)]),
+                recipe: Some(recipe),
+                throughput: oil_day * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+            notes.push(note);
+
+            // **A cracker stands on the oil**, which is why refineries are
+            // at the wellhead or the tanker terminal and never inland.
+            sites.push(Site {
+                name: format!("{name} cracker"),
+                kind: SiteKind::Cracker,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Petroleum, oil_day * 15.0),
+                    (Commodity::Plastics, plastics_day * 10.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Petroleum, oil_day * 45.0),
+                    (Commodity::Plastics, plastics_day * 40.0),
+                ]),
+                recipe: Some(recipe::CRACKER),
+                throughput: plastics_day * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
+        // **Machine works follow the steel**, for the same reason the
+        // factories do: metal is the heavy input and 60 person-hours a
+        // tonne is the labour.
+        if machinery_day > 0.01 {
+            for m in 0..towns.len() {
+                let rate = if wsum > 0.0 {
+                    machinery_day * weights[m] / wsum
+                } else {
+                    0.0
+                };
+                if rate < 0.01 {
+                    continue;
+                }
+                let name = markets[m].name.clone();
+                sites.push(Site {
+                    name: format!("{name} machine works"),
+                    kind: SiteKind::MachineWorks,
+                    market: m,
+                    stock: cap(&[
+                        (Commodity::Steel, rate * 0.72 * 20.0),
+                        (Commodity::Plastics, rate * 0.08 * 20.0),
+                        (Commodity::Machinery, rate * 10.0),
+                    ]),
+                    capacity: cap(&[
+                        (Commodity::Steel, rate * 0.72 * 60.0),
+                        (Commodity::Plastics, rate * 0.08 * 60.0),
+                        (Commodity::Machinery, rate * 40.0),
+                    ]),
+                    recipe: Some(recipe::MACHINE_WORKS),
+                    throughput: rate * 1.35,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+            }
+        }
+
         // **A stockholder in every town.** Steel does not spoil and a
         // works keeps weeks of it, so this is a merchant's yard rather
         // than a factory — and it is what stops a distant works being
         // stopped for want of metal the country is making at the other
         // end of the map.
         for m in 0..towns.len() {
-            let draw: f64 = sites
-                .iter()
-                .filter(|x| x.market == m)
-                .filter_map(|x| x.recipe.map(|r| (r, x.throughput)))
-                .map(|(r, t)| {
-                    crate::econ::RECIPES[r]
-                        .inputs
-                        .iter()
-                        .find(|&&(c, _)| c == Commodity::Steel)
-                        .map(|&(_, q)| q * t)
-                        .unwrap_or(0.0)
-                })
-                .sum();
-            let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
-            if bought < 0.01 {
-                continue;
+            for (c, imports, label) in [
+                (Commodity::Steel, recipe::STEEL_IMPORTS, "steel stockholder"),
+                (Commodity::Timber, recipe::TIMBER_IMPORTS, "timber yard"),
+            ] {
+                let draw: f64 = sites
+                    .iter()
+                    .filter(|x| x.market == m)
+                    .filter_map(|x| x.recipe.map(|r| (r, x.throughput)))
+                    .map(|(r, t)| {
+                        crate::econ::RECIPES[r]
+                            .inputs
+                            .iter()
+                            .find(|&&(ic, _)| ic == c)
+                            .map(|&(_, q)| q * t)
+                            .unwrap_or(0.0)
+                    })
+                    .sum();
+                let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
+                if bought < 0.01 {
+                    continue;
+                }
+                let name = markets[m].name.clone();
+                sites.push(Site {
+                    name: format!("{name} {label}"),
+                    kind: SiteKind::Depot,
+                    market: m,
+                    stock: cap(&[(c, bought * 20.0)]),
+                    capacity: cap(&[(c, bought * 60.0)]),
+                    recipe: Some(imports),
+                    throughput: bought * 1.2,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
             }
-            let name = markets[m].name.clone();
-            sites.push(Site {
-                name: format!("{name} steel stockholder"),
-                kind: SiteKind::Depot,
-                market: m,
-                stock: cap(&[(Commodity::Steel, bought * 20.0)]),
-                capacity: cap(&[(Commodity::Steel, bought * 60.0)]),
-                recipe: Some(recipe::STEEL_IMPORTS),
-                throughput: bought * 1.2,
-                powered: true,
-                ran: 0.0,
-                fitted: None,
-            });
         }
 
         // --- Depot for goods from outside the region ---
