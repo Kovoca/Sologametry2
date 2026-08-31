@@ -280,6 +280,35 @@ pub struct Person {
     pub days_homeless: u64,
     /// The contract in hand, if any.
     pub job: Option<Contract>,
+    /// **How good they actually are at it**, 0 to 1. Fixed; this is the
+    /// person, not their reputation.
+    pub diligence: f64,
+    /// **How they are regarded**, 0 to 1 — which is a different thing.
+    ///
+    /// Promotion does not run on days worked. It runs on what the people
+    /// who decide believe about you, and that belief is a **noisy read of
+    /// the work plus everything else**: who saw it, who says so, how long
+    /// you have been about. Real performance ratings correlate with real
+    /// performance at something like 0.3-0.5 — good enough that being good
+    /// helps, far too weak to be the only thing that matters.
+    ///
+    /// Which is why two people with identical days worked get different
+    /// lives. Gated on tenure alone they got the same one.
+    pub standing: f64,
+    /// **How much the people who decide have actually seen of you**, 0 to
+    /// 1.
+    ///
+    /// The single strongest finding in the research on this: in **73% of
+    /// promotions the person had worked with the hiring manager or the
+    /// hiring manager's boss**. Proximity to whoever decides beats being
+    /// good at it, and managers are known to suppress the visibility of
+    /// people they do not want to lose.
+    ///
+    /// It has a real consequence here: a haulier is away and a shop worker
+    /// is in front of the manager every shift, so the same ability gets
+    /// noticed in one and not the other. Being good somewhere nobody
+    /// watches is worth very little.
+    pub visibility: f64,
     /// What has happened to them. The beginning of B4's memory log.
     pub log: Vec<String>,
     pub days_hungry: u64,
@@ -309,8 +338,11 @@ pub struct Person {
 
 impl Person {
     pub fn new(name: impl Into<String>, trade: Trade, market: usize, money: f64) -> Self {
+        let name: String = name.into();
+        let name_for_traits = name.as_str();
+        let diligence = hash_unit(name_for_traits, 0xD1_11_6E_CE);
         Person {
-            name: name.into(),
+            name: name.clone(),
             trade,
             market,
             money,
@@ -323,6 +355,13 @@ impl Person {
             housing: Housing::Lodging,
             days_homeless: 0,
             job: None,
+            // **Ability varies from person to person**, and it has to be
+            // stable and rebuildable from a seed, so it comes off the
+            // name. A caller with a real distribution to draw from can
+            // overwrite it.
+            diligence,
+            standing: 0.5,
+            visibility: 0.0,
             log: Vec::new(),
             days_hungry: 0,
             days_idle: 0,
@@ -868,7 +907,78 @@ fn deliver(
 ///
 /// Order matters and is the order a day happens in. You eat before you
 /// decide anything, because hunger is what decides it.
+/// A deterministic 0..1 from a name and a number. Reputation must rebuild
+/// identically from a seed like everything else.
+fn hash_unit(name: &str, salt: u64) -> f64 {
+    let mut h = salt ^ 0xA076_1D64_78BD_642F;
+    for b in name.as_bytes() {
+        h = (h ^ *b as u64).wrapping_mul(0x1000_0000_01B3);
+    }
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+    h ^= h >> 33;
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
 pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
+    live_a_day_with(person, econ, day, true)
+}
+
+/// The same, but the caller says whether there is a supervisor's post
+/// going.
+///
+/// **Advancement needs a real vacancy, not a timer.** Gated on days worked
+/// alone, every labourer in a three-year run was made up to chargehand —
+/// the whole cohort became supervisors, which is not a workforce. Real
+/// span of control is eight to fifteen, so about one in ten of a shop or a
+/// works is in charge of the rest, and the rest stay on the floor because
+/// there is nowhere to go.
+///
+/// The person cannot see that: it is a fact about the labour market, and
+/// whoever is running the labour market has to say.
+pub fn live_a_day_with(
+    person: &mut Person,
+    econ: &mut Economy,
+    day: u64,
+    vacancy_above: bool,
+) {
+    // **What people think of you moves on the days they see you work.**
+    //
+    // Toward how good you actually are, but never all the way and never
+    // cleanly: the read is noisy, and a fortnight's visible effort counts
+    // for more than a year of quiet competence nobody witnessed. Real
+    // performance ratings track real performance at about 0.3-0.5, which
+    // is exactly this shape — being good helps and does not settle it.
+    if person.state != State::Idle {
+        // **Being seen is most of it.** A day worked in front of whoever
+        // decides builds visibility; a day worked away from them does not.
+        // A haulier is on the road and a shop worker is across the counter
+        // from the manager, so the same ability gets noticed in one and
+        // not the other.
+        const HOW_FAST_YOU_GET_NOTICED: f64 = 1.0 / 200.0;
+        let in_sight = match person.trade {
+            Trade::Haulier => 0.25,
+            _ => 1.0,
+        };
+        person.visibility += (in_sight - person.visibility) * HOW_FAST_YOU_GET_NOTICED;
+
+        // Standing is the work, weighted by whether anybody watched it,
+        // plus the noise that makes a rating a rating. Visibility carries
+        // as much as ability, which is what the research on real promotion
+        // decisions actually shows.
+        const HOW_FAST_A_REPUTATION_SETTLES: f64 = 1.0 / 120.0;
+        let seen = 0.45 * person.diligence
+            + 0.40 * person.visibility
+            + 0.15 * hash_unit(&person.name, day ^ 0x9E37_79B9);
+        person.standing += (seen - person.standing) * HOW_FAST_A_REPUTATION_SETTLES;
+        person.standing = person.standing.clamp(0.0, 1.0);
+    }
+    // A reputation fades where nobody is watching. Out of work long
+    // enough and you are simply forgotten.
+    if person.state == State::Idle {
+        person.visibility *= 0.998;
+    }
+
     if !person.alive() {
         return;
     }
@@ -1189,8 +1299,14 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
             // cannot. Real promotion to supervisor runs two to three years
             // in, which is about where this sits.
             const YEARS_BEFORE_THEY_TRUST_YOU: u64 = 500;
+            // **Not a timer.** Time on the floor is necessary and nowhere
+            // near sufficient: what decides it is whether there is a post
+            // going and what the people who fill it think of you.
+            const WELL_ENOUGH_REGARDED: f64 = 0.62;
             let promotable = person.trade != Trade::Supervisor
-                && person.days_worked >= YEARS_BEFORE_THEY_TRUST_YOU;
+                && person.days_worked >= YEARS_BEFORE_THEY_TRUST_YOU
+                && vacancy_above
+                && person.standing >= WELL_ENOUGH_REGARDED;
             let taken = offers.into_iter().find(|c| {
                 let hired = c.stake() > 0.0 || drawn < hiring;
                 let qualified = c.trade == person.trade

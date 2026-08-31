@@ -400,17 +400,68 @@ fn the_floor_is_the_only_way_up() {
         "made chargehand on his first morning"
     );
 
-    // And with the years in, he is.
-    let mut old_hand = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    // **And with the years in he *may* be — which is not the same thing.**
+    //
+    // Time on the floor is necessary and nowhere near sufficient. What
+    // decides it is whether a post is going and what the people who fill
+    // it think of you, and the strongest finding in the research on real
+    // promotions is that **73% went to somebody who had worked with the
+    // hiring manager or the manager's boss**. Proximity beats ability.
+    //
+    // Gated on tenure alone, every labourer in a three-year run of a
+    // whole town was made up to chargehand and the cohort became all
+    // supervisors, which is not a workforce.
+    let mut good = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    good.diligence = 0.85;
+    let mut poor = Person::new("Wat", Trade::Shopworker, 0, 60.0);
+    poor.diligence = 0.05;
     for _ in 0..(DAYS_PER_YEAR * 4) {
         r.economy.step();
         let d = r.economy.ledger.day;
-        person::live_a_day(&mut old_hand, &mut r.economy, d);
+        person::live_a_day(&mut good, &mut r.economy, d);
+        person::live_a_day(&mut poor, &mut r.economy, d);
     }
     assert_eq!(
-        old_hand.trade,
+        good.trade,
         Trade::Supervisor,
-        "four years on the floor and never made up, having worked {} days",
-        old_hand.days_worked
+        "four years on the floor, well thought of, and never made up — \
+         worked {} days, standing {:.2}",
+        good.days_worked,
+        good.standing
+    );
+    assert_eq!(
+        poor.trade,
+        Trade::Shopworker,
+        "made up to chargehand on time served alone, standing {:.2}",
+        poor.standing
+    );
+    assert!(
+        good.standing > poor.standing,
+        "the better worker is no better regarded: {:.2} against {:.2}",
+        good.standing,
+        poor.standing
+    );
+
+    // **Being good somewhere nobody watches is worth very little.** A
+    // haulier is on the road and a shop worker is across the counter from
+    // whoever decides, so the same ability gets noticed in one and not the
+    // other.
+    let mut away = Person::new("Hal", Trade::Haulier, 0, 60.0);
+    away.diligence = 0.85;
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let d = r.economy.ledger.day;
+        person::live_a_day(&mut away, &mut r.economy, d);
+    }
+    let mut seen = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    seen.diligence = 0.85;
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let d = r.economy.ledger.day;
+        person::live_a_day(&mut seen, &mut r.economy, d);
+    }
+    assert!(
+        seen.visibility > away.visibility,
+        "the man on the road is as visible as the man behind the counter"
     );
 }

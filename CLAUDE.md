@@ -883,6 +883,61 @@ a stock gap starved him, because a city of 16M always holds more tonnes
 than a town of 2M so freight flowed one way and never back. **Compare days
 of cover, never tonnes** — but the real answer was to stop inventing.
 
+## A town of people (`src/populace.rs`)
+
+`labour.rs` says how many hands a town has and what share are idle;
+`person.rs` follows one man. This is the join: a **sample** of individuated
+people in every market, each running the same day the single man does.
+`cargo run --release --bin people`
+
+A city of 16M cannot be 16M `Person`s and should not be — the design doc's
+rule is that populations stay statistical until attention or consequence
+promotes them. Each individuated person stands for some thousands of real
+ones, which is what lets the sample be **checked against the statistics**.
+That check is the whole reason to run people rather than numbers.
+
+Three things it found immediately, which one man in one town never could:
+
+- **Everybody became a supervisor.** Gated on days worked alone, every
+  labourer in a three-year run was made up to chargehand. Real span of
+  control is 8-15, so about one in ten is in charge and the rest stay on
+  the floor **because there is nowhere to go**. Advancement needs a
+  vacancy, and the person cannot see that — it is a fact about the labour
+  market, so the caller has to say.
+- **The two models measure different populations.** `Workforce` counts the
+  trades the *works* employ; a shop worker is rostered by `building.rs`
+  and never appears in it. A town can carry idle industrial hands and busy
+  shops at once, so the comparison has to be trade by trade.
+- Measures that lie: `days_idle` counts days *since* the last work and
+  resets, so dividing by it gave every town 100% employment; and `larder <
+  1` is not hunger but *buying daily*, which nearly everybody does — it
+  put a prosperous town at 100% starving.
+
+### Promotion is not a timer
+
+**Time on the floor is necessary and nowhere near sufficient.** What
+decides it is whether a post is going and what the people who fill it
+think of you — and the strongest finding in the research is that **73% of
+promotions went to somebody who had worked with the hiring manager or the
+manager's boss**. Proximity beats ability, and managers are known to
+suppress the visibility of people they do not want to lose.
+
+So three things stand apart:
+
+- **`diligence`** — how good they actually are. Fixed; this is the person.
+- **`visibility`** — how much whoever decides has seen of them. A haulier
+  is on the road and a shop worker is across the counter, so the same
+  ability gets noticed in one and not the other. **Being good somewhere
+  nobody watches is worth very little.** It fades when out of work: stay
+  idle long enough and you are simply forgotten.
+- **`standing`** — what they are believed to be worth, which is a *noisy*
+  read of the work weighted by whether anybody watched it. Real
+  performance ratings track real performance at about 0.3-0.5 — good
+  enough that being good helps, far too weak to settle it.
+
+Which is why two people with identical days worked get different lives.
+Gated on tenure they got the same one.
+
 ## Buildings are built from fixtures (`src/building.rs`)
 
 The design doc's *"tile-layered data model, generalizing CDDA's

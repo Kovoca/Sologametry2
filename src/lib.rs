@@ -18,6 +18,7 @@ pub mod network;
 pub mod noise;
 pub mod person;
 pub mod polity;
+pub mod populace;
 pub mod region;
 pub mod rng;
 pub mod settlement;

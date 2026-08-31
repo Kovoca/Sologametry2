@@ -604,10 +604,10 @@ pub const RECIPES: [Recipe; 11] = [
         labour: 0.05,
         needs_water: false,
     },
-    /// **Stock on grass.** Very low power and very high labour per tonne
-    /// against arable — real extensive grazing runs one stockman to
-    /// several hundred head — and it needs water daily, which is the same
-    /// dependency a farm has and a different one from a factory's.
+    // **Stock on grass.** Very low power and very high labour per tonne
+    // against arable — real extensive grazing runs one stockman to
+    // several hundred head — and it needs water daily, which is the same
+    // dependency a farm has and a different one from a factory's.
     Recipe {
         name: "pasture",
         inputs: &[],
@@ -616,13 +616,13 @@ pub const RECIPES: [Recipe; 11] = [
         labour: 60.0,
         needs_water: true,
     },
-    /// **Live weight to retail meat.** Real dressing: a 450 kg beast
-    /// gives about 56% as carcass and 70% of that boned out, so roughly
-    /// 2.6 tonnes on the hoof for a tonne on the counter.
-    ///
-    /// The power is mostly chilling — a real meat plant runs 150-250 kWh
-    /// a tonne — which is why this is the one works whose output is
-    /// destroyed by a blackout rather than merely delayed by it.
+    // **Live weight to retail meat.** Real dressing: a 450 kg beast gives
+    // about 56% as carcass and 70% of that boned out, so roughly 2.6
+    // tonnes on the hoof for a tonne on the counter.
+    //
+    // The power is mostly chilling — a real meat plant runs 150-250 kWh a
+    // tonne — which is why this is the one works whose output is destroyed
+    // by a blackout rather than merely delayed by it.
     Recipe {
         name: "butcher",
         inputs: &[(Commodity::Livestock, 2.6)],
@@ -631,14 +631,14 @@ pub const RECIPES: [Recipe; 11] = [
         labour: 3.0,
         needs_water: false,
     },
-    /// **Meat landed from outside the region**, which is a thing that
-    /// only exists because of refrigerated shipping. The *Dunedin* carried
-    /// frozen lamb from New Zealand to London in 1882 and created this
-    /// trade; before it, a country short of meat ate less meat.
-    ///
-    /// It draws power for the same reason a butcher does — the cold store
-    /// on the quay — so a blackout at the port is a blackout in the
-    /// nation's meat supply.
+    // **Meat landed from outside the region**, which is a thing that only
+    // exists because of refrigerated shipping. The *Dunedin* carried
+    // frozen lamb from New Zealand to London in 1882 and created this
+    // trade; before it, a country short of meat ate less meat.
+    //
+    // It draws power for the same reason a butcher does — the cold store
+    // on the quay — so a blackout at the port is a blackout in the
+    // nation's meat supply.
     Recipe {
         name: "meat imports",
         inputs: &[],
