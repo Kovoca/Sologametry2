@@ -187,5 +187,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
         unserved_power: 0.0,
         unmet_demand: basket(),
         workforce: vec![crate::labour::Workforce::default(); markets_len],
+        government: None,
     }
 }

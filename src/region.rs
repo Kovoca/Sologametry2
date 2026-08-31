@@ -1141,6 +1141,7 @@ impl Region {
             unserved_power: 0.0,
             unmet_demand: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
+            government: None,
         };
         // **Hang the distribution network under the transmission**, so a
         // fault has somewhere to happen that is not national: a feeder to
@@ -1190,6 +1191,23 @@ impl Region {
                     + usize::from(u < total_spares % n_utilities),
             })
             .collect();
+
+        // **A state, raising revenue off the economy and spending it on
+        // services.** Those services are the largest single block of jobs
+        // in a developed country — 14-21% of the workforce — and without
+        // them a model of farms, mills and shops leaves a sixth of
+        // everybody with nowhere at all to go.
+        //
+        // Doctrine decides capacity here, on the same logic it decides
+        // maintenance and spares: a state that keeps its network up is a
+        // state that can collect what it is owed.
+        economy.government = Some(crate::state::Government::govern(
+            &economy,
+            match doctrine {
+                Doctrine::Prudent => crate::state::Capacity::Developed,
+                Doctrine::Negligent => crate::state::Capacity::Middling,
+            },
+        ));
 
         // Start mid-harvest rather than in the depths of winter, so a
         // short run is not looking at an unrepresentative slice of the

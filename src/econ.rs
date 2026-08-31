@@ -1644,6 +1644,11 @@ pub struct Economy {
     /// is recomputed every day from what the works actually managed to
     /// run, which is what makes a blackout put people out of work.
     pub workforce: Vec<crate::labour::Workforce>,
+    /// **The state, if this economy has one.** It raises revenue off the
+    /// economy and spends it on services, and those services are the
+    /// largest single block of jobs in a developed country — 14-21% of
+    /// the workforce, and none of it existed here.
+    pub government: Option<crate::state::Government>,
 }
 
 impl Economy {

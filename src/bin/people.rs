@@ -200,5 +200,6 @@ fn trade_name(t: Trade) -> &'static str {
         Trade::Labourer => "labourer",
         Trade::Shopworker => "shop work",
         Trade::Supervisor => "supervisor",
+        Trade::Public => "public",
     }
 }

@@ -883,6 +883,50 @@ a stock gap starved him, because a city of 16M always holds more tonnes
 than a town of 2M so freight flowed one way and never back. **Compare days
 of cover, never tonnes** — but the real answer was to stop inventing.
 
+## The state is an employer (`src/state.rs`)
+
+Spec C.1 and C.2, and the hole it fills is the size of the public sector.
+**Real government employment is 14-21% of the workforce** — UK 17%, US
+14%, France 21% — and none of it existed. People could work a farm, a
+mill, a cannery, a mine or a shop, which is about a tenth of what people
+actually do, and there was **nowhere at all for the other nine tenths to
+go**.
+
+Nothing here is a subsidy or a modifier. **A teacher is a job somebody
+holds**, paid out of a budget line that comes out of a tax take that comes
+out of the economy.
+
+Real staffing, which is what makes it a sixth of the workforce rather than
+a line in an accounts sheet:
+
+| | staff per head | |
+|---|---|---|
+| health | 1 in 45 | NHS 1.5M of 67M, plus social care |
+| education | 1 in 45 | ~1.5M school staff |
+| administration | 1 in 45 | civil service and local government |
+| safety | 1 in 350 | ~150k police, plus fire |
+| defence | 1 in 450 | ~150k regulars |
+
+They sum to ~8.7% of the population, which against a workforce of roughly
+half the population is the 17% Britain runs. Health, education and
+administration each dwarf the uniformed services, which is the real shape
+of a modern state and not what most people picture.
+
+- **A weak state cannot tax what it cannot reach.** Effective takes are
+  35-50% for a high-capacity developed state, 20-30% middle-income, 10-18%
+  where control is thin — and under-funding shows up as **fewer people**,
+  not a worse multiplier. A half-funded school has half the teachers.
+  Result: a developed state reaches 14.3% of the workforce and a weak one
+  5.8%, funding 41% of what its services want. That is the feedback loop
+  that keeps weak states weak.
+- **Public work is steady and shop work is not.** A school does not send
+  half its staff home because trade was slow, so public posts are offered
+  in weeks where a shop shift is a day at a time. Measured: public service
+  works 83% of days, a labourer 80%, a haulier 41%, a shop worker 40%.
+- **The state pays out of tax, not out of a stockpile.** A week teaching
+  moves no tonnage, which is exactly what a service is — and why a
+  hospital keeps working when the mill has shut.
+
 ## A town of people (`src/populace.rs`)
 
 `labour.rs` says how many hands a town has and what share are idle;

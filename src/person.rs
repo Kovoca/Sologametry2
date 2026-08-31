@@ -56,6 +56,15 @@ pub enum Trade {
     /// the economy, and until now it employed nobody, because a shop was
     /// a stockpile with a name over the door.
     Shopworker,
+    /// **Works for the state.** Teaching, nursing, clerking, policing —
+    /// the sixth of the workforce that a model of farms, mills and shops
+    /// left with nowhere to go at all.
+    ///
+    /// Real government employment is **14-21% of the workforce** (UK 17%,
+    /// US 14%, France 21%), and it is the largest single block of jobs in
+    /// a developed economy. Which post it is depends on the service; that
+    /// distinction lives on the contract, not on the person.
+    Public,
 }
 
 impl Trade {
@@ -65,6 +74,7 @@ impl Trade {
             Trade::Labourer => "labourer",
             Trade::Shopworker => "shop worker",
             Trade::Supervisor => "supervisor",
+            Trade::Public => "public service",
         }
     }
 }
@@ -117,6 +127,13 @@ pub enum Job {
     },
     /// A shift at a works that has orders to fill.
     Shift { site: usize, market: usize },
+    /// **A week in public service** — a school, a hospital, an office, a
+    /// station. No site, because the state's work is not a stockpile with
+    /// a door on it, and no cargo, because what it produces is a service.
+    Public {
+        market: usize,
+        service: crate::state::Service,
+    },
     /// A shift in a shop, at one of the jobs a shop actually contains.
     Counter {
         site: usize,
@@ -176,6 +193,12 @@ impl Contract {
             Job::Shift { site, .. } => format!(
                 "a shift at {} — {:.0} for {:.1} days",
                 econ.ledger.sites[*site].name, self.pay, self.days,
+            ),
+            Job::Public { market, service } => format!(
+                "a week in {} in {} — {:.0}",
+                service.name(),
+                econ.markets[*market].name,
+                self.pay,
             ),
         }
     }
@@ -456,6 +479,15 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // which is about the real premium and about what makes it worth
         // the aggravation.
         Trade::Supervisor => 8.5,
+        // **The public sector pays a little better at the bottom and
+        // rather worse at the top**, which is the real and well-measured
+        // shape of it: a cleaner or a clerk does better in the public
+        // sector than out of it, a senior professional does considerably
+        // worse. Averaged across teaching, nursing, clerking and policing
+        // it sits a shade above a labourer — and it comes with something
+        // the private jobs here do not have, which is that the work is
+        // steady.
+        Trade::Public => 6.5,
     };
     food * multiple
 }
@@ -733,6 +765,41 @@ pub fn work_available(
                 days: 1.0,
                 trade: Trade::Shopworker,
             });
+        }
+    }
+
+    // **Public service.** The state is an employer, and in a developed
+    // economy the largest single one there is: real government employment
+    // is 14-21% of the workforce. A model of farms, mills and shops left a
+    // sixth of everybody with nowhere to go.
+    //
+    // Two things separate it from the work above. **It is steady** — a
+    // school does not send half the staff home because trade was slow, so
+    // these are posted in weeks rather than days. And **it does not stop
+    // in a blackout**: a hospital and a police station keep working when
+    // the mill has shut, which is exactly why they are the services a
+    // state insists on funding.
+    if let Some(gov) = econ.government.as_ref() {
+        let posts = gov.posts_in(market);
+        if posts >= 1.0 {
+            let rate = day_rate(econ, market, Trade::Public);
+            // One offer per service that is actually staffed here, so a
+            // town with a hospital and a school has both going.
+            for service in crate::state::Service::ALL {
+                if gov.posts_for(econ, market, service) < 1.0 {
+                    continue;
+                }
+                out.push(Contract {
+                    kind: Job::Public { market, service },
+                    posted: day,
+                    expires: day + 7,
+                    // A week at a time: paid on completion like everything
+                    // else here, so the sum is seven days' rate.
+                    pay: rate * 7.0,
+                    days: 7.0,
+                    trade: Trade::Public,
+                });
+            }
         }
     }
 
@@ -1092,6 +1159,23 @@ pub fn live_a_day_with(
                 // again tomorrow and for ever — a treadmill rather than an
                 // economy.
                 match job.kind {
+                    // **The state pays out of tax, not out of a
+                    // stockpile.** A week teaching moves no tonnage, which
+                    // is exactly what a service is — and it is why a
+                    // school keeps going when the mill has shut.
+                    Job::Public { service, .. } => {
+                        person.money += job.pay;
+                        person.earned += job.pay;
+                        person.note(
+                            day,
+                            format!(
+                                "a week in {}, paid {:.0} — {:.0} in hand",
+                                service.name(),
+                                job.pay,
+                                person.money
+                            ),
+                        );
+                    }
                     Job::Haul {
                         commodity,
                         tonnes,

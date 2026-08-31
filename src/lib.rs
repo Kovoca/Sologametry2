@@ -22,6 +22,7 @@ pub mod populace;
 pub mod region;
 pub mod rng;
 pub mod settlement;
+pub mod state;
 pub mod slice;
 pub mod townplan;
 pub mod travel;
