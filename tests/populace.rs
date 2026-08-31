@@ -316,3 +316,88 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
         "every quarter is the same on the land"
     );
 }
+
+#[test]
+fn the_week_decides_who_works_when() {
+    // **A year of 365 days was being lived as 365 identical ones.** Real
+    // working life is shaped by the week far more sharply than by the
+    // season: an office keeps Monday to Friday, a shop is open seven days
+    // and is busiest at the weekend — real retail footfall peaks on
+    // Saturday at about 1.5 times a weekday — and a works or a hospital
+    // runs a rota that does not care what day it is.
+    //
+    // Which is why part-time and student work *is* weekend work. Not a
+    // preference: it is where the shifts that are going actually are,
+    // because the full-timers have Monday to Friday and somebody has to be
+    // on the till on Saturday.
+    use scale_sim::econ::Weekday;
+    use scale_sim::person::Employment;
+    use std::collections::HashMap;
+
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 60, 20260828);
+    for (i, p) in folk.people.iter_mut().enumerate() {
+        p.trade = match i % 3 {
+            0 => Trade::Office,
+            1 => Trade::Shopworker,
+            _ => Trade::Labourer,
+        };
+    }
+
+    let mut tally: HashMap<(&str, bool, bool), u64> = HashMap::new();
+    let mut prev: Vec<u64> = folk.people.iter().map(|p| p.days_worked).collect();
+    let days = DAYS_PER_YEAR * 2;
+    for day in 0..days {
+        e.step();
+        folk.live_a_day(&mut e, day);
+        let weekend = Weekday::on(day).is_weekend();
+        for (i, p) in folk.people.iter().enumerate() {
+            if p.days_worked > prev[i] {
+                let key = (p.trade.name(), p.employment == Employment::FullTime, weekend);
+                *tally.entry(key).or_insert(0) += 1;
+            }
+            prev[i] = p.days_worked;
+        }
+    }
+    let per_day = |t: &str, ft: bool, weekend: bool| -> f64 {
+        let n = *tally.get(&(t, ft, weekend)).unwrap_or(&0) as f64;
+        let of = if weekend { days * 2 / 7 } else { days * 5 / 7 };
+        n / of as f64
+    };
+
+    // **An office keeps Monday to Friday**, and that is most of why people
+    // want the job.
+    assert_eq!(
+        per_day("office work", true, true),
+        0.0,
+        "a full-time office worker came in at the weekend"
+    );
+    assert!(
+        per_day("office work", true, false) > 1.0,
+        "nobody is in the office on a Tuesday"
+    );
+
+    // **And the weekend shifts fall to whoever is not on a full-time
+    // contract.** This is the shape of student and part-time work.
+    let casual_weekend = per_day("shop worker", false, true);
+    let casual_weekday = per_day("shop worker", false, false);
+    assert!(
+        casual_weekend > casual_weekday,
+        "part-time shop work is no busier at the weekend: {casual_weekend:.1} against \
+         {casual_weekday:.1} a day"
+    );
+
+    // While the full-timers in the same shop are on weekdays.
+    let ft_weekend = per_day("shop worker", true, true);
+    let ft_weekday = per_day("shop worker", true, false);
+    assert!(
+        ft_weekend < ft_weekday,
+        "full-time shop staff work the weekend as hard as the week"
+    );
+
+    // A works runs a rota: quieter on a Sunday, not shut.
+    assert!(
+        per_day("labourer", true, true) > 0.0,
+        "the mill closes at the weekend"
+    );
+}

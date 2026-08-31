@@ -415,7 +415,13 @@ fn the_floor_is_the_only_way_up() {
     good.diligence = 0.85;
     let mut poor = Person::new("Wat", Trade::Shopworker, 0, 60.0);
     poor.diligence = 0.05;
-    for _ in 0..(DAYS_PER_YEAR * 4) {
+    // **Five years, not four**, because the working week now means a shop
+    // worker does not get 365 chances a year — and somebody who ends up
+    // part-time takes longer to reach the two years of *service* the
+    // threshold stands for. Which is real: part-timers are promoted more
+    // slowly, and it is one of the ways part-time work costs more than
+    // the hours it gives up.
+    for _ in 0..(DAYS_PER_YEAR * 5) {
         r.economy.step();
         let d = r.economy.ledger.day;
         person::live_a_day(&mut good, &mut r.economy, d);

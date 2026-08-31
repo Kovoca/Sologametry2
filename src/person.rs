@@ -185,6 +185,82 @@ impl Employment {
     }
 }
 
+/// **Which days of the week this trade works.**
+///
+/// A year of 365 days was being lived as 365 identical ones, and real
+/// working life is shaped by the week far more sharply than by the season.
+///
+/// - An **office** and **public administration** keep Monday to Friday.
+///   That is what those jobs *are*, and it is most of why people want them.
+/// - A **shop** or a **kitchen** is open seven days and is busiest at the
+///   weekend — real retail footfall peaks on Saturday at about 1.5 times a
+///   weekday.
+/// - A **works**, a **hospital**, a **power station** run rotas that do
+///   not care what day it is.
+/// - A **farm** does not care either. Animals do not observe Sunday.
+///
+/// Which is why part-timers and students work weekends: not by accident,
+/// but because that is when the trade is and when the full-timers will
+/// not.
+pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
+    use crate::econ::Weekday;
+    let wd = Weekday::on(day);
+    match trade {
+        // Monday to Friday, and that is the whole of it.
+        Trade::Office => {
+            if wd.is_weekend() {
+                0.0
+            } else {
+                1.0
+            }
+        }
+        // Mostly weekdays — teaching and administration keep school and
+        // office hours — but hospitals and police do not stop, so a share
+        // of it runs at the weekend.
+        Trade::Public => {
+            if wd.is_weekend() {
+                0.35
+            } else {
+                1.0
+            }
+        }
+        // **Open seven days, busiest at the weekend** — and the weekend
+        // shifts are covered by the people who are not on a full-time
+        // contract, because the full-timers have Monday to Friday and
+        // somebody has to be on the till on Saturday.
+        Trade::Shopworker | Trade::Hospitality => {
+            let trade_today = wd.retail_trade();
+            match employment {
+                Employment::FullTime => {
+                    if wd.is_weekend() {
+                        0.35
+                    } else {
+                        trade_today
+                    }
+                }
+                // **This is why student and part-time work is weekend
+                // work.** It is not a preference, it is where the shifts
+                // that are going actually are.
+                _ => {
+                    if wd.is_weekend() {
+                        trade_today * 1.6
+                    } else {
+                        trade_today * 0.7
+                    }
+                }
+            }
+        }
+        // Rotas, and a herd does not observe Sunday.
+        Trade::Labourer | Trade::Builder | Trade::Haulier | Trade::Supervisor => {
+            if wd == Weekday::Sunday {
+                0.55
+            } else {
+                1.0
+            }
+        }
+    }
+}
+
 /// **How a trade is actually employed**, from the real industry figures.
 ///
 /// Returns the chance of full-time, part-time and casual in that order.
@@ -628,8 +704,13 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         Trade::Labourer => 6.0,
         // Shop work is the worst-paid of the three and always has been:
         // it needs no licence, no ticket and no strength, so anybody can
-        // do it and the wage knows it.
-        Trade::Shopworker => 5.0,
+        // do it and the wage knows it. **But it is still a wage**, and
+        // this file already records the band: real low-wage work buys 6-10
+        // days of food. At 5.0 a shop worker who got 35% of the days —
+        // which is what part-time retail on a weekend rota actually is —
+        // could not keep a roof, and that is not the historical condition
+        // of shop work, it is destitution.
+        Trade::Shopworker => 6.0,
         // A chargehand is paid a third again over the people watched,
         // which is about the real premium and about what makes it worth
         // the aggravation.
@@ -647,8 +728,9 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // against £33k for all employees — and more for a skilled trade.
         Trade::Builder => 7.0,
         // **The worst-paid sector there is.** Around £20k against a £33k
-        // median, and the hours are not guaranteed either.
-        Trade::Hospitality => 4.0,
+        // median, and the hours are not guaranteed either — so it sits at
+        // the very bottom of the 6-10 band rather than below it.
+        Trade::Hospitality => 5.5,
         // Professional, technical and financial work is the best paid,
         // and it is why people move to cities for it.
         Trade::Office => 9.5,
@@ -1613,6 +1695,21 @@ pub fn live_a_day_with(
                 // and left nobody able to work the days needed to be
                 // promoted.
             }
+
+            // **The week, applied last.**
+            //
+            // A contract guarantees the days the *trade* works, not any
+            // five in seven: an office keeps Monday to Friday and that is
+            // what the contract is for. Applying this before the contract
+            // let the guarantee overwrite it, and full-time office workers
+            // came out working weekends at 0.87 times a weekday.
+            //
+            // A shop or a kitchen is open seven days and busiest on
+            // Saturday, and the weekend shifts fall to whoever is not on a
+            // full-time contract — which is why student and part-time work
+            // *is* weekend work. Not a preference: it is where the shifts
+            // that are going actually are.
+            hiring *= works_on(person.trade, day, person.employment);
             // **No address, no job.** A fixed address goes on the form,
             // and not having one is one of the largest barriers there is
             // to getting off the street — which is what makes homelessness

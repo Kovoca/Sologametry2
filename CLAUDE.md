@@ -1003,6 +1003,43 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### The week decides who works when
+
+A year of 365 days was being lived as **365 identical ones**. Real working
+life is shaped by the week far more sharply than by the season.
+
+| trade | weekday | weekend |
+|---|---|---|
+| office, any contract | 21-22 shifts/day | **0.00** |
+| shop worker, full-time | 5.50 | 2.33 |
+| **shop worker, part or casual** | 17.61 | **32.62** |
+| public service, full-time | 6.47 | 2.32 |
+
+- **An office keeps Monday to Friday**, and that is most of why people want
+  the job.
+- **A shop is open seven days and busiest at the weekend** — real retail
+  footfall peaks on Saturday at about 1.5x a weekday.
+- **Which is why part-time and student work *is* weekend work.** Not a
+  preference: it is where the shifts that are going actually are, because
+  the full-timers have Monday to Friday and somebody has to be on the till
+  on Saturday.
+- A works, a hospital and a farm run rotas that do not care what day it
+  is. Animals do not observe Sunday.
+
+Two things it broke, both real:
+
+- **A contract guarantees the days the *trade* works, not any five in
+  seven.** Applied before the contract, the guarantee overwrote it and
+  full-time office staff came out working weekends at 0.87x a weekday.
+- **A part-timer is promoted more slowly**, because the threshold is days
+  worked and they get fewer of them. Real, and one of the ways part-time
+  work costs more than the hours it gives up.
+- And it exposed a calibration this file already recorded: **low-wage work
+  buys 6-10 days of food**, and shop work was set at 5.0. At 35% of days —
+  which is what part-time retail on a weekend rota *is* — that could not
+  keep a roof, and destitution is not the historical condition of shop
+  work.
+
 ### Most people have a contract, and some have nothing
 
 Everything here was offered a shift at a time, which is how **casual** work

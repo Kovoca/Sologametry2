@@ -1238,6 +1238,76 @@ impl Surface {
 
 pub const DAYS_PER_YEAR: u64 = 365;
 
+/// **The week, which the model did not have.**
+///
+/// A year of 365 days was being lived as 365 identical ones. Real working
+/// life is shaped by the week far more sharply than by the season: an
+/// office keeps Monday to Friday, a shop is open seven days and is
+/// *busiest* at the weekend, and a factory or a hospital runs a rota that
+/// does not care what day it is.
+///
+/// Which is why part-timers and students work weekends — not by accident,
+/// but because that is when the trade is and when the full-timers will
+/// not.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Weekday {
+    Monday,
+    Tuesday,
+    Wednesday,
+    Thursday,
+    Friday,
+    Saturday,
+    Sunday,
+}
+
+impl Weekday {
+    /// Day 0 of the calendar is a Monday, which is as arbitrary and as
+    /// useful as any other choice.
+    pub fn on(day: u64) -> Weekday {
+        match day % 7 {
+            0 => Weekday::Monday,
+            1 => Weekday::Tuesday,
+            2 => Weekday::Wednesday,
+            3 => Weekday::Thursday,
+            4 => Weekday::Friday,
+            5 => Weekday::Saturday,
+            _ => Weekday::Sunday,
+        }
+    }
+
+    pub fn is_weekend(self) -> bool {
+        matches!(self, Weekday::Saturday | Weekday::Sunday)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Weekday::Monday => "Monday",
+            Weekday::Tuesday => "Tuesday",
+            Weekday::Wednesday => "Wednesday",
+            Weekday::Thursday => "Thursday",
+            Weekday::Friday => "Friday",
+            Weekday::Saturday => "Saturday",
+            Weekday::Sunday => "Sunday",
+        }
+    }
+
+    /// **How much trade a shop does today**, against an average day.
+    ///
+    /// Real retail footfall peaks on Saturday at something like 1.4-1.6
+    /// times a weekday, and Sunday is shorter hours in most of the West.
+    /// This is the reason weekend shifts exist at all, and therefore the
+    /// reason students and part-timers work them.
+    pub fn retail_trade(self) -> f64 {
+        match self {
+            Weekday::Saturday => 1.50,
+            Weekday::Sunday => 1.10,
+            Weekday::Friday => 1.10,
+            Weekday::Monday | Weekday::Tuesday => 0.85,
+            _ => 0.90,
+        }
+    }
+}
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Season {
     Spring,
