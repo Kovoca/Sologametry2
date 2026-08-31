@@ -605,6 +605,94 @@ impl Region {
         }
 
 
+        // --- Pasture and butchers ---
+        //
+        // **Stock is kept where the grazing is; a butcher stands where the
+        // people are.** That separation is the whole point: live weight
+        // travels well because it walks and does not spoil, and meat does
+        // not travel at all without a cold chain. It is why stockyards sat
+        // beside cities and why the meat trade only exists after 1882.
+        //
+        // Sized off what a herder could actually keep on this ground —
+        // `biota.stocking` — and what the population eats.
+        let meat_day: f64 = markets
+            .iter()
+            .map(|m| m.daily_household_demand(Commodity::ProcessedFood) * 0.0)
+            .sum::<f64>()
+            + markets
+                .iter()
+                .map(|m| m.population * Commodity::Meat.per_capita_annual() / 365.0)
+                .sum::<f64>();
+        // 2.6 tonnes on the hoof for a tonne on the counter.
+        let live_day = meat_day * 2.6 * 1.15;
+        for m in 0..towns.len() {
+            let share = markets[m].population / total_pop.max(1.0);
+            let name = markets[m].name.clone();
+
+            let graze = live_day * share;
+            if graze > 0.05 {
+                sites.push(Site {
+                    name: format!("{name} pasture"),
+                    kind: SiteKind::Pasture,
+                    market: m,
+                    // A herd is its own stockpile and needs no silo.
+                    stock: cap(&[(Commodity::Livestock, graze * 20.0)]),
+                    capacity: cap(&[(Commodity::Livestock, graze * 60.0)]),
+                    recipe: Some(recipe::PASTURE),
+                    throughput: graze,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+            }
+
+            // **A nation whose ground will not carry stock imports meat**,
+            // exactly as it imports grain — and takes on the same
+            // dependency, with a cold store on the quay that a blackout
+            // shuts. Sized against what this town's own pasture cannot
+            // supply.
+            let can_graze = graze.min(live_day * share);
+            let short = (live_day * share - can_graze).max(0.0) / 2.6;
+            if short > 0.02 && has_coastline(world, polities, polity) {
+                sites.push(Site {
+                    name: format!("{name} meat imports"),
+                    kind: SiteKind::Depot,
+                    market: m,
+                    stock: cap(&[(Commodity::Meat, short * 3.0)]),
+                    capacity: cap(&[(Commodity::Meat, short * 8.0)]),
+                    recipe: Some(recipe::MEAT_IMPORTS),
+                    throughput: short,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+            }
+
+            let cuts = meat_day * share * 1.1;
+            if cuts > 0.02 {
+                sites.push(Site {
+                    name: format!("{name} butcher"),
+                    kind: SiteKind::Butcher,
+                    market: m,
+                    // **Days, not weeks.** A butcher's stock is limited by
+                    // the shelf life and not by the size of the building.
+                    stock: cap(&[
+                        (Commodity::Livestock, cuts * 2.6 * 4.0),
+                        (Commodity::Meat, cuts * 2.0),
+                    ]),
+                    capacity: cap(&[
+                        (Commodity::Livestock, cuts * 2.6 * 10.0),
+                        (Commodity::Meat, cuts * 5.0),
+                    ]),
+                    recipe: Some(recipe::BUTCHER),
+                    throughput: cuts,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+            }
+        }
+
         // --- Mills and canneries, one set per market, sized to that
         // market's own population ---
         //

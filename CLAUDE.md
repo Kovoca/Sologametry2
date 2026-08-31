@@ -481,6 +481,38 @@ must be manufactured, or a region that cannot report its own emergency.
 `Doctrine` (prudent/negligent) sets redundancy, crew count, depot distance
 and spares together — one trait, four concrete purchases.
 
+**Butchers, and the cold chain.** Livestock and meat are commodities;
+pasture and butcher are works. **Stock is kept where the grazing is and a
+butcher stands where the people are**, which is the whole point: live
+weight travels well because it walks and does not spoil, and meat does not
+travel at all without refrigeration. Stockyards sat beside cities, and the
+meat trade only exists after 1882 — the *Dunedin* carried frozen lamb from
+New Zealand to London and created it.
+
+Real figures throughout: a 450 kg beast dresses at ~56% and bones out at
+~70% of that, so **2.6 tonnes on the hoof for a tonne on the counter**; a
+meat plant runs 150-250 kWh a tonne, mostly chilling; world average meat
+consumption is ~43 kg a head a year against ~150 kg of cereals.
+
+**A blackout spoils the meat and only delays the flour.** A mill loses
+production while the power is off and catches up after; a butcher loses
+the stock. Four days without power — the real time to fix a downed line —
+leaves under 10% of an unrefrigerated store and a silo untouched.
+
+- **A shelf life is not a loss rate**, and treating them as one destroyed
+  **40% of a nation's grain a year** and starved a country with a full
+  silo. A shelf life says how long something stays good; a loss rate says
+  how fast a store leaks. Real: grain in a decent silo loses 1-2% a *year*
+  to insects, rodents and damp (10-20% where storage is poor, which is a
+  real and enormous problem in hot countries), and a can loses nothing.
+- Meat is the outlier and the reason any of it exists: a day or two at
+  ambient, four to six weeks chilled.
+- **Stock on the hoof does not rot** — it is alive, which is exactly why
+  it was walked to market for most of history.
+- A nation whose ground will not carry stock **imports meat**, with a cold
+  store on the quay that a blackout shuts — the same dependency as the
+  grain fleet, and a newer one.
+
 **Seasons.** A calendar, a harvest curve (most of the year's grain lands in
 about six weeks, peaking in early autumn), and a weather multiplier redrawn
 each year. Southern-hemisphere regions run six months out of step. Farms

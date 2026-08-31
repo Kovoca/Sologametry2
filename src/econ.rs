@@ -27,9 +27,16 @@ pub enum Commodity {
     Electricity,
     Coal,
     RetailGoods,
+    /// Animals on the hoof, in tonnes of live weight. **Alive, so it does
+    /// not spoil** — which is exactly why it was moved live for most of
+    /// history, and why a stockyard sat next to every city.
+    Livestock,
+    /// Butchered meat, in tonnes of retail cuts. **The whole reason a
+    /// cold chain exists.**
+    Meat,
 }
 
-pub const N_COMMODITIES: usize = 6;
+pub const N_COMMODITIES: usize = 8;
 
 impl Commodity {
     pub const ALL: [Commodity; N_COMMODITIES] = [
@@ -39,6 +46,8 @@ impl Commodity {
         Commodity::Electricity,
         Commodity::Coal,
         Commodity::RetailGoods,
+        Commodity::Livestock,
+        Commodity::Meat,
     ];
 
     pub fn name(self) -> &'static str {
@@ -49,7 +58,72 @@ impl Commodity {
             Commodity::Electricity => "power",
             Commodity::Coal => "coal",
             Commodity::RetailGoods => "goods",
+            Commodity::Livestock => "stock",
+            Commodity::Meat => "meat",
         }
+    }
+
+    /// **How long it keeps before it is no longer food**, in days.
+    ///
+    /// Real: fresh meat at ambient temperature is finished in **one to two
+    /// days**; chilled and vacuum-packed it keeps **four to six weeks**;
+    /// frozen, six months to a year. Grain keeps for years in a dry silo,
+    /// flour about one, and a can indefinitely — which is what canning is
+    /// *for*.
+    ///
+    /// **This is the whole reason refrigeration matters.** Before
+    /// refrigerated shipping — the *Dunedin* carried frozen lamb from New
+    /// Zealand to London in 1882 — meat was eaten where it was killed or
+    /// it was salted. A cold chain turns a local product into a traded
+    /// one.
+    pub fn shelf_life_days(self, refrigerated: bool) -> Option<f64> {
+        match self {
+            Commodity::Meat => Some(if refrigerated { 30.0 } else { 2.0 }),
+            Commodity::Grain => Some(730.0),
+            Commodity::Flour => Some(365.0),
+            Commodity::ProcessedFood => Some(1_825.0),
+            // Livestock is alive, and electricity, coal and dry goods do
+            // not rot.
+            _ => None,
+        }
+    }
+
+    /// **What share of a stockpile is lost each day.**
+    ///
+    /// *Not* one over the shelf life, which was the first thing tried and
+    /// is wrong: a shelf life says how long something stays *good*, while
+    /// a loss rate says how fast a store leaks. Treating them as the same
+    /// destroyed **40% of a nation's grain a year** and starved a country
+    /// that had a full silo.
+    ///
+    /// Real figures. Grain in a decent silo loses **1-2% a year** to
+    /// insects, rodents and moisture — 10-20% where storage is poor, which
+    /// is a real and enormous problem in hot countries. Flour keeps less
+    /// well. A can loses nothing worth counting.
+    ///
+    /// **Meat is the outlier and the reason any of this exists**: at
+    /// ambient temperature it is finished in a day or two, and chilled it
+    /// keeps four to six weeks. That gap is what a cold chain buys.
+    pub fn spoilage_per_day(self, refrigerated: bool) -> f64 {
+        match self {
+            Commodity::Meat => {
+                if refrigerated {
+                    1.0 / 30.0
+                } else {
+                    0.5
+                }
+            }
+            Commodity::Grain => 0.02 / 365.0,
+            Commodity::Flour => 0.05 / 365.0,
+            Commodity::ProcessedFood => 0.005 / 365.0,
+            _ => 0.0,
+        }
+    }
+
+    /// Whether keeping it needs power, and therefore whether a blackout
+    /// destroys it rather than merely inconveniencing it.
+    pub fn needs_cold(self) -> bool {
+        self == Commodity::Meat
     }
 
     pub fn unit(self) -> &'static str {
@@ -79,6 +153,10 @@ impl Commodity {
             Commodity::Electricity => -0.1,
             Commodity::Coal => -0.4,
             Commodity::RetailGoods => -1.0,
+            // A staple in poor countries and a luxury in rich ones; it
+            // gives more readily than bread does.
+            Commodity::Meat => -0.6,
+            Commodity::Livestock => -0.5,
         }
     }
 
@@ -87,6 +165,10 @@ impl Commodity {
     pub fn per_capita_annual(self) -> f64 {
         match self {
             Commodity::ProcessedFood => 0.40,
+            // **Real world average meat consumption is ~43 kg a head a
+            // year**, against roughly 150 kg of cereals — a fifth of the
+            // diet by weight and rather more of its cost.
+            Commodity::Meat => 0.043,
             Commodity::Electricity => 3.0,
             Commodity::RetailGoods => 1.0,
             _ => 0.0,
@@ -107,6 +189,12 @@ impl Commodity {
             Commodity::Grain => 150.0,
             Commodity::Coal => 20.0,
             Commodity::RetailGoods => 14.0,
+            // **A butcher holds days, not weeks**, and that is not a
+            // choice — it is the shelf life. This is the number that makes
+            // a cold chain worth building.
+            Commodity::Meat => 3.0,
+            // Stock is held on the hoof and keeps itself.
+            Commodity::Livestock => 30.0,
         }
     }
 
@@ -120,6 +208,11 @@ impl Commodity {
             Commodity::Electricity => 60.0,
             Commodity::Coal => 90.0,
             Commodity::RetailGoods => 500.0,
+            // Real: beef runs about 4,000-6,000 a tonne wholesale against
+            // grain's 200-250, which is the tenfold-plus premium meat
+            // carries for the feed and the years that went into it.
+            Commodity::Meat => 4_200.0,
+            Commodity::Livestock => 1_600.0,
         }
     }
 }
@@ -223,6 +316,12 @@ impl Journal {
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum SiteKind {
     Farm,
+    /// Grazing. Not a farm: different labour, different water dependency,
+    /// and it can use ground no plough would touch.
+    Pasture,
+    /// **Where live weight becomes meat**, and the first works whose
+    /// output a blackout destroys rather than merely delays.
+    Butcher,
     /// Coal workings. Only exists where the geology put a deposit.
     Mine,
     Mill,
@@ -421,7 +520,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 8] = [
+pub const RECIPES: [Recipe; 11] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -505,6 +604,49 @@ pub const RECIPES: [Recipe; 8] = [
         labour: 0.05,
         needs_water: false,
     },
+    /// **Stock on grass.** Very low power and very high labour per tonne
+    /// against arable — real extensive grazing runs one stockman to
+    /// several hundred head — and it needs water daily, which is the same
+    /// dependency a farm has and a different one from a factory's.
+    Recipe {
+        name: "pasture",
+        inputs: &[],
+        outputs: &[(Commodity::Livestock, 1.0)],
+        power: 0.02,
+        labour: 60.0,
+        needs_water: true,
+    },
+    /// **Live weight to retail meat.** Real dressing: a 450 kg beast
+    /// gives about 56% as carcass and 70% of that boned out, so roughly
+    /// 2.6 tonnes on the hoof for a tonne on the counter.
+    ///
+    /// The power is mostly chilling — a real meat plant runs 150-250 kWh
+    /// a tonne — which is why this is the one works whose output is
+    /// destroyed by a blackout rather than merely delayed by it.
+    Recipe {
+        name: "butcher",
+        inputs: &[(Commodity::Livestock, 2.6)],
+        outputs: &[(Commodity::Meat, 1.0)],
+        power: 0.25,
+        labour: 3.0,
+        needs_water: false,
+    },
+    /// **Meat landed from outside the region**, which is a thing that
+    /// only exists because of refrigerated shipping. The *Dunedin* carried
+    /// frozen lamb from New Zealand to London in 1882 and created this
+    /// trade; before it, a country short of meat ate less meat.
+    ///
+    /// It draws power for the same reason a butcher does — the cold store
+    /// on the quay — so a blackout at the port is a blackout in the
+    /// nation's meat supply.
+    Recipe {
+        name: "meat imports",
+        inputs: &[],
+        outputs: &[(Commodity::Meat, 1.0)],
+        power: 0.10,
+        labour: 0.05,
+        needs_water: false,
+    },
 ];
 
 /// Indices into `RECIPES`, so scenarios read as places rather than numbers.
@@ -517,6 +659,9 @@ pub mod recipe {
     pub const COAL_MINE: usize = 5;
     pub const FUEL_IMPORTS: usize = 6;
     pub const GRAIN_IMPORTS: usize = 7;
+    pub const PASTURE: usize = 8;
+    pub const BUTCHER: usize = 9;
+    pub const MEAT_IMPORTS: usize = 10;
 }
 
 // ---------------------------------------------------------------------------
@@ -1206,6 +1351,10 @@ impl Economy {
         self.distribute();
         self.trade();
         self.update_prices();
+        // **At the end of the day, after everything has moved.** Meat
+        // that was sold this morning is not in the cold store tonight,
+        // and a cargo that arrived is.
+        self.spoil_stock();
         self.discard_unused_power();
 
         self.ledger.day += 1;
@@ -2009,6 +2158,47 @@ impl Economy {
                 let multiplier =
                     (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
                 self.markets[m].price[c as usize] = c.base_cost() * multiplier;
+            }
+        }
+    }
+
+    /// **Food goes off, and a cold chain is what stops it.**
+    ///
+    /// Real shelf lives: fresh meat is finished in one to two days at
+    /// ambient and keeps four to six weeks chilled; grain keeps for years,
+    /// a can indefinitely. So a site holding meat loses about half of it a
+    /// day with the power off and about a thirtieth with it on — which is
+    /// the difference between an inconvenience and a total loss, and the
+    /// reason a blackout is worse for a butcher than for a mill.
+    ///
+    /// A mill loses production while the power is off and catches up
+    /// after. A butcher loses the stock.
+    fn spoil_stock(&mut self) {
+        for site in 0..self.ledger.sites.len() {
+            let cold = self.ledger.sites[site].powered;
+            for c in Commodity::ALL {
+                if c == Commodity::Electricity {
+                    continue;
+                }
+                let rate = c.spoilage_per_day(cold || !c.needs_cold());
+                if rate <= 0.0 {
+                    continue;
+                }
+                let held = self.ledger.stock(site, c);
+                if held <= 1e-9 {
+                    continue;
+                }
+                let lost = (held * rate).min(held);
+                if lost > 1e-9 {
+                    self.ledger.apply(
+                        &mut self.journal,
+                        Event::Spoiled {
+                            site,
+                            commodity: c,
+                            qty: lost,
+                        },
+                    );
+                }
             }
         }
     }

@@ -360,3 +360,57 @@ fn the_slice_is_deterministic() {
     }
     assert_eq!(a.journal.len(), b.journal.len());
 }
+
+#[test]
+fn a_blackout_spoils_the_meat_and_only_delays_the_flour() {
+    // **The difference between an inconvenience and a total loss.**
+    //
+    // A mill with no power loses production while it is off and catches up
+    // afterwards. A butcher loses the stock: fresh meat is finished in a
+    // day or two at ambient temperature and keeps four to six weeks
+    // chilled, and that gap is the whole reason a cold chain exists.
+    //
+    // Before refrigerated shipping — the *Dunedin* carried frozen lamb
+    // from New Zealand to London in 1882 — meat was eaten where it was
+    // killed or it was salted.
+    use scale_sim::econ::Commodity;
+
+    // Ambient against chilled, in loss per day.
+    let warm = Commodity::Meat.spoilage_per_day(false);
+    let cold = Commodity::Meat.spoilage_per_day(true);
+    assert!(warm > 0.4, "meat left out keeps better than a day");
+    assert!(cold < 0.05, "a cold store loses {:.0}% of its stock a day", cold * 100.0);
+    assert!(warm > cold * 10.0, "refrigeration barely helps");
+
+    // **A shelf life is not a loss rate**, which was the first thing tried
+    // and is wrong: grain in a decent silo loses 1-2% a *year* to insects,
+    // rodents and damp. Reading one over the shelf life instead destroyed
+    // 40% of a nation's grain annually and starved a country with a full
+    // silo.
+    let grain_year = Commodity::Grain.spoilage_per_day(true) * 365.0;
+    assert!(
+        (0.005..0.06).contains(&grain_year),
+        "a silo loses {:.0}% of its grain a year",
+        grain_year * 100.0
+    );
+    // A can loses nothing worth counting, which is what canning is for.
+    assert!(Commodity::ProcessedFood.spoilage_per_day(true) * 365.0 < 0.02);
+    // Stock on the hoof does not rot: it is alive, which is exactly why it
+    // was walked to market for most of history.
+    assert_eq!(Commodity::Livestock.spoilage_per_day(false), 0.0);
+
+    // Over four days without power — the real time to fix a downed line —
+    // an unrefrigerated store is essentially gone and a silo is untouched.
+    let after = |c: Commodity, cold: bool, days: i32| {
+        let mut held = 1.0f64;
+        for _ in 0..days {
+            held -= held * c.spoilage_per_day(cold);
+        }
+        held
+    };
+    assert!(
+        after(Commodity::Meat, false, 4) < 0.10,
+        "four days without power and the meat is still good"
+    );
+    assert!(after(Commodity::Grain, true, 4) > 0.99);
+}
