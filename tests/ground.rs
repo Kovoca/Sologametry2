@@ -228,17 +228,28 @@ fn you_can_stand_on_a_lorry_but_not_in_a_shelf() {
     let artic = Vehicle::artic();
     g.park(&artic, (at.0 - 8, at.1));
 
-    let on_rig = g.tiles.iter().filter(|t| matches!(t, Tile::Vehicle(_))).count();
+    // **The lorry stands on the road; it does not replace it.** Parking
+    // used to overwrite the terrain, so a street with a vehicle on it had
+    // no surface left underneath and driving away would leave a hole.
+    let on_rig = g.over.iter().filter(|p| p.is_some()).count();
+    assert!(
+        g.tiles
+            .iter()
+            .filter(|t| matches!(t, Tile::Road | Tile::Marking))
+            .count()
+            > 0,
+        "the road under the lorry has been deleted"
+    );
     let (l, w) = artic.footprint();
     assert!(
         on_rig > (l * w / 2) as usize,
         "an artic of {l} by {w} put only {on_rig} tiles on the road"
     );
     assert!(
-        g.tiles
+        g.over
             .iter()
-            .filter(|t| matches!(t, Tile::Vehicle(_)))
-            .all(|t| t.walkable()),
+            .flatten()
+            .all(|&p| Tile::Vehicle(p).walkable()),
         "a lorry you cannot climb onto"
     );
 

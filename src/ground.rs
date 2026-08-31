@@ -31,6 +31,20 @@ use crate::world::Biome;
 /// a stairwell occupies one tile of plan and joins two levels.
 pub const METRES_PER_LEVEL: f64 = 3.0;
 
+// Box-drawing, so a wall's shape comes from its neighbours rather than
+// from a dozen separate terrain types.
+const BOX_H: char = '\u{2500}';
+const BOX_V: char = '\u{2502}';
+const BOX_NW: char = '\u{250C}';
+const BOX_NE: char = '\u{2510}';
+const BOX_SW: char = '\u{2514}';
+const BOX_SE: char = '\u{2518}';
+const BOX_TEE_E: char = '\u{251C}';
+const BOX_TEE_W: char = '\u{2524}';
+const BOX_TEE_S: char = '\u{252C}';
+const BOX_TEE_N: char = '\u{2534}';
+const BOX_CROSS: char = '\u{253C}';
+
 pub const BUBBLE_ON_FOOT: usize = 160;
 /// Further in a vehicle, because you cover ground faster and need to see
 /// the ambush before you are in it.
@@ -230,6 +244,14 @@ pub enum Room {
 pub struct Ground {
     /// Which storey you are looking at. 0 is the ground.
     pub z: i64,
+    /// **What is standing on the ground, which is not the ground.**
+    ///
+    /// A lorry parked on a road does not delete the road, and a bridge
+    /// does not delete the river under it. Parking used to overwrite the
+    /// terrain, so a street with a vehicle on it had no surface left
+    /// underneath. The person was already composited at render time and
+    /// vehicles were baked in, which was two mechanisms for one idea.
+    pub over: Vec<Option<Part>>,
     pub w: usize,
     pub h: usize,
     /// Tile coordinates of the top-left corner, within the town.
@@ -304,6 +326,7 @@ impl Ground {
         }
         Ground {
             z,
+            over: vec![None; tiles.len()],
             w,
             h,
             origin,
@@ -324,16 +347,23 @@ impl Ground {
             let i = ty as usize * self.w + tx as usize;
             // The most telling part on a tile wins, same as when a vehicle
             // is drawn on its own.
-            let keep = match self.tiles[i] {
-                Tile::Vehicle(old) => old.prominence() >= part.prominence(),
-                _ => false,
+            let keep = match self.over[i] {
+                Some(old) => old.prominence() >= part.prominence(),
+                None => false,
             };
             if !keep {
-                self.tiles[i] = Tile::Vehicle(part);
+                self.over[i] = Some(part);
             }
         }
     }
 
+    /// **The map is not the simulation; it is a viewport onto it.**
+    ///
+    /// Composited in priority order — person, then whatever stands on the
+    /// ground, then the ground itself — so nothing has to be destroyed in
+    /// order to be hidden. Walls take their glyph from their neighbours,
+    /// which is presentation and not terrain: the tile is a `Wall` either
+    /// way, and one terrain type yields corners, tees and crossings.
     pub fn render(&self, person: Option<(i64, i64)>) -> String {
         let mut out = String::with_capacity((self.w + 1) * self.h);
         for y in 0..self.h {
@@ -341,13 +371,55 @@ impl Ground {
                 let here = (self.origin.0 + x as i64, self.origin.1 + y as i64);
                 out.push(if person == Some(here) {
                     '@'
+                } else if let Some(part) = self.over[y * self.w + x] {
+                    part.glyph()
                 } else {
-                    self.at(x, y).glyph()
+                    self.glyph_at(x, y)
                 });
             }
             out.push('\n');
         }
         out
+    }
+
+    /// A wall run includes its doors and windows, because those are holes
+    /// in a wall and not gaps between two.
+    fn glyph_at(&self, x: usize, y: usize) -> char {
+        let t = self.at(x, y);
+        if t != Tile::Wall {
+            return t.glyph();
+        }
+        let joins = |dx: isize, dy: isize| -> bool {
+            let (nx, ny) = (x as isize + dx, y as isize + dy);
+            if nx < 0 || ny < 0 || nx as usize >= self.w || ny as usize >= self.h {
+                return false;
+            }
+            matches!(
+                self.at(nx as usize, ny as usize),
+                Tile::Wall | Tile::Door | Tile::Window
+            )
+        };
+        match (joins(0, -1), joins(0, 1), joins(-1, 0), joins(1, 0)) {
+            (true, true, true, true) => BOX_CROSS,
+            (true, true, true, false) => BOX_TEE_W,
+            (true, true, false, true) => BOX_TEE_E,
+            (true, false, true, true) => BOX_TEE_N,
+            (false, true, true, true) => BOX_TEE_S,
+            (true, true, false, false) => BOX_V,
+            (false, false, true, true) => BOX_H,
+            (true, false, true, false) => BOX_SE,
+            (true, false, false, true) => BOX_SW,
+            (false, true, true, false) => BOX_NE,
+            (false, true, false, true) => BOX_NW,
+            (true, false, false, false) | (false, true, false, false) => BOX_V,
+            _ => BOX_H,
+        }
+    }
+
+    /// What stands on this tile, if anything — a lorry's wheel, say, with
+    /// the road still underneath it.
+    pub fn standing_on(&self, x: usize, y: usize) -> Option<Part> {
+        self.over[y * self.w + x]
     }
 }
 

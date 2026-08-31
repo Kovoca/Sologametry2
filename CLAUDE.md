@@ -1067,6 +1067,27 @@ pavement honestly and `Road::Track` never appears. That is a hole in
 vehicles; `staked` is cargo still on the road, which is not a leak. Every
 money printer so far was caught by this identity failing.
 
+### The map is a viewport, not the map
+
+**A glyph describes what is seen; it does not define what exists.** The
+terrain was already an enum with `glyph()` as a method rather than
+characters in an array — but two things broke the rule and both mattered:
+
+- **Parking a lorry deleted the road.** `park()` wrote `Tile::Vehicle`
+  straight into the terrain, so a street with a vehicle on it had no
+  surface left underneath and driving away would have left a hole. The
+  person was already composited at render time while vehicles were baked
+  in — two mechanisms for one idea. There is now an `over` layer, and
+  render composites **person → what stands on the ground → the ground**.
+  The same rule is what lets a bridge sit above a river without replacing
+  it.
+- **A wall's shape comes from its neighbours**, not from a dozen terrain
+  types. `WALL_HORIZONTAL`, `WALL_CORNER`, `WALL_T_JUNCTION` are not
+  needed: the tile stays `Tile::Wall` and the renderer picks the
+  box-drawing character from which of the four sides join. A run includes
+  its doors and windows, because those are holes in a wall rather than
+  gaps between two.
+
 ## Reading the output
 
 Three views, three symbol sets. **A glyph must not mean two things in the
