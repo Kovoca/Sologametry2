@@ -24,6 +24,13 @@ use crate::world::World;
 
 /// Kilometres across one cell of the coarse map. Spec A1.1 puts a region
 /// at 16.384 km; the generated grid is that resolution.
+/// **What it costs to move a tonne a kilometre where there is no road.**
+///
+/// Real: a paved road runs $0.05-0.10 per tonne-km, unmade track and
+/// porterage several times that. A place the network does not reach is not
+/// unreachable — it is expensive, which is why it stays poor.
+const OFF_NETWORK_PER_TONNE_KM: f64 = 0.55;
+
 pub const KM_PER_CELL: f64 = 16.384;
 
 /// Freight cost per tonne-kilometre, by mode. Sea and inland water are
@@ -902,15 +909,54 @@ impl Region {
                         }
                     }
                 }
-                let Some((a, b, c)) = best else { break };
+                // **A town with no road to it is still reached.** Breaking
+                // out here left it off its own nation's network, which is
+                // the one thing this loop exists to prevent. Where the
+                // generated roads do not reach — an island, the far side
+                // of a range, ground no lorry crosses — the link is made
+                // over open country at open-country prices: real porterage
+                // and unmade track run several times the cost per tonne-km
+                // of a paved road, which is precisely why such places stay
+                // poor rather than becoming unreachable.
+                let (a, b, c) = match best {
+                    Some(found) => found,
+                    None => {
+                        let mut fallback: Option<(usize, usize, f64)> = None;
+                        for a in 0..towns.len() {
+                            if !joined[a] {
+                                continue;
+                            }
+                            for b in 0..towns.len() {
+                                if joined[b] {
+                                    continue;
+                                }
+                                let km = distance_km(
+                                    settlements.list[towns[a]].cell,
+                                    settlements.list[towns[b]].cell,
+                                    world.width,
+                                );
+                                if fallback.is_none_or(|(_, _, bk)| km < bk) {
+                                    fallback = Some((a, b, km));
+                                }
+                            }
+                        }
+                        let Some((a, b, km)) = fallback else { break };
+                        (a, b, km * OFF_NETWORK_PER_TONNE_KM)
+                    }
+                };
                 joined[b] = true;
 
+                let on_network = fields[a].cost[settlements.list[towns[b]].cell].is_finite();
                 let straight = distance_km(
                     settlements.list[towns[a]].cell,
                     settlements.list[towns[b]].cell,
                     world.width,
                 );
-                let along = road_km(a, b);
+                let along = if road_km(a, b).is_finite() {
+                    road_km(a, b)
+                } else {
+                    straight
+                };
                 let cell = settlements.list[towns[b]].cell;
                 // Traffic on this link, roughly: the smaller end's daily
                 // food demand stands for how much moves along it.
@@ -952,7 +998,11 @@ impl Region {
                     freight_cost: cost,
                     sound_cost: cost,
                     km: along,
-                    surface: surface_of(fields[a].worst[cell]),
+                    surface: if on_network {
+                        surface_of(fields[a].worst[cell])
+                    } else {
+                        Surface::Open
+                    },
                     crossing,
                     snowed_in: false,
                     // Real domestic freight runs to something like 24

@@ -366,6 +366,13 @@ pub struct Plan {
     /// planet put there, which `geology.rs` has known since it was written
     /// and nothing at ground level has ever asked about.
     pub rock: crate::geology::Rock,
+    /// **How much the ground rises and falls here**, in metres over a
+    /// kilometre. Real: a floodplain is 0-10, rolling country 30-100, and
+    /// mountains 300-1,000. Everything the tile layer does vertically is
+    /// scaled by this one figure.
+    pub relief_m: f64,
+    /// Height above the sea, in metres, at the middle of the plan.
+    pub elevation_m: f64,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -684,6 +691,8 @@ impl Plan {
             row_class: row,
             pattern,
             rock: crate::geology::Rock::Sedimentary,
+            relief_m: 20.0,
+            elevation_m: 60.0,
             ground,
         }
     }
@@ -692,6 +701,14 @@ impl Plan {
     /// generated world can read it off `world.geology.rock[cell]`.
     pub fn on_rock(mut self, rock: crate::geology::Rock) -> Self {
         self.rock = rock;
+        self
+    }
+
+    /// Tell the plan what the ground does. Callers with a generated world
+    /// read it off the elevation field.
+    pub fn on_ground(mut self, elevation_m: f64, relief_m: f64) -> Self {
+        self.elevation_m = elevation_m;
+        self.relief_m = relief_m;
         self
     }
 

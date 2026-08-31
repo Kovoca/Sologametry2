@@ -69,6 +69,10 @@ pub enum Tile {
 
     /// Soil and subsoil: what a spade goes through.
     Earth,
+    /// **A slope you can walk up.** DF's rule exactly: a change of level
+    /// is either ramped or it is a cliff, and a cliff is not a tile type
+    /// but the absence of a ramp.
+    Ramp,
 
     /// A stairwell. **High-density housing is a core with dwellings hung
     /// off it**, not a big room with partitions.
@@ -111,6 +115,7 @@ impl Tile {
             Tile::Window => 'o',
             Tile::Sky => ' ',
             Tile::Earth => '&',
+            Tile::Ramp => '<',
             Tile::Stairs => '>',
             Tile::Lift => 'V',
             Tile::Parking => '_',
@@ -141,6 +146,8 @@ impl Tile {
             Tile::Wall | Tile::Water | Tile::Tree | Tile::Window | Tile::Sky => false,
             // Undug ground is not somewhere you can be.
             Tile::Earth | Tile::Rock => false,
+            // A ramp is the whole point: it is the walkable step.
+            Tile::Ramp => true,
             Tile::Fitting(f) => matches!(
                 f,
                 Fixture::Till | Fixture::Counter | Fixture::LoadingBay
@@ -168,7 +175,7 @@ pub fn ground_legend(with_vehicle: bool) -> String {
 ");
     out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe
 ");
-    out.push_str("  vertical  > stair   V lift   ' ' open air   & earth   ^ rock
+    out.push_str("  vertical  > stair   V lift   < ramp   ' ' air   & earth   ^ rock
 ");
     out.push_str("  country   \" grass   T tree   * scrub   , sand   ^ rock   A snow   ~ water");
     if with_vehicle {
@@ -244,7 +251,13 @@ impl Ground {
         Self::around_on(seed, plan, centre, radius, 0)
     }
 
-    /// The same, on a chosen storey.
+    /// The same, `z` levels above or below the ground at `centre`.
+    ///
+    /// **Relative, because that is what a level means to somebody in the
+    /// world**: 0 is the ground you are standing on, +1 the floor above,
+    /// -1 the cellar. Absolute levels are the engine's business — a town
+    /// 60 m above the sea has its ground at absolute level 20, and asking
+    /// for 0 there gets you sixty metres of rock.
     pub fn around_on(
         seed: u64,
         plan: &Plan,
@@ -269,7 +282,7 @@ impl Ground {
         Self::window_on(seed, plan, centre, w, h, 0)
     }
 
-    /// The same, on a chosen storey.
+    /// The same, `z` levels above or below the ground at `centre`.
     pub fn window_on(
         seed: u64,
         plan: &Plan,
@@ -278,6 +291,7 @@ impl Ground {
         h: usize,
         z: i64,
     ) -> Self {
+        let z = surface_z(seed, plan, centre.0, centre.1) + z;
         let origin = (centre.0 - w as i64 / 2, centre.1 - h as i64 / 2);
         let mut tiles = Vec::with_capacity(w * h);
 
@@ -360,6 +374,29 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
     // height: a building stops being a floorplate with a number of storeys
     // asserted about it and becomes a stack you can stand on any floor of.
     // Everything else at this height is air.
+    // **Everything is relative to the ground here.**
+    //
+    // Terrain has height now, so level 0 is not a plane through the world
+    // — it is wherever this tile's ground happens to be. A building stands
+    // on the surface, a cellar is under it, and the sky starts above it.
+    let sz = surface_z(seed, plan, gx, gy);
+    let gz = gz - sz;
+
+    // **A step in the ground is a ramp or it is a cliff.** Where the
+    // neighbours are lower and the drop is one level, the ground slopes
+    // and you can walk it; a bigger drop, or hard rock that keeps its
+    // edge, and you cannot. Granite makes tors and chalk makes downland.
+    if gz == 0 {
+        let lower = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)]
+            .iter()
+            .map(|&(dx, dy)| sz - surface_z(seed, plan, gx + dx, gy + dy))
+            .max()
+            .unwrap_or(0);
+        if lower == 1 && !plan.rock.keeps_an_edge() {
+            return Tile::Ramp;
+        }
+    }
+
     // **Below the ground, the same ladder downward.**
     //
     // A cellar, then what a spade goes through, then the rock the planet
@@ -862,6 +899,73 @@ fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) 
     } else {
         Tile::Floor
     }
+}
+
+/// **The natural ground, in metres above the sea.**
+///
+/// Spec A1.3d again — interpolate the coarse field, add higher-frequency
+/// variation, store nothing — one rung further down than `locality.rs`
+/// does it. The plan carries the locality's relief and everything here is
+/// scaled by that single figure, so a floodplain comes out flat and a
+/// mountainside does not.
+///
+/// **What the arithmetic decides for you:** at a metre to the tile and
+/// three metres to a level, one level of step is a 300% gradient — a
+/// cliff. Real ground rises 5-30%, so natural terrain should cross a
+/// level every 10 to 60 metres. That is not a tuned number, it falls out,
+/// and it is why gentle country is genuinely flat at this scale and only
+/// hard country gets vertical structure.
+pub fn terrain_m(seed: u64, plan: &Plan, gx: i64, gy: i64) -> f64 {
+    // Three octaves: the shape of the hill, its shoulders, and the
+    // roughness underfoot. Wavelengths in metres, which is to say tiles.
+    let mut h = 0.0;
+    let mut amp = 1.0;
+    let mut wave = 900.0;
+    let mut norm = 0.0;
+    for oct in 0..3 {
+        let sx = (gx as f64 / wave).floor() as i64;
+        let sy = (gy as f64 / wave).floor() as i64;
+        let fx = (gx as f64 / wave) - sx as f64;
+        let fy = (gy as f64 / wave) - sy as f64;
+        // Bilinear between lattice corners, so the ground is smooth and a
+        // hillside is a hillside rather than a field of noise.
+        let c = |dx: i64, dy: i64| hash(seed, sx + dx, sy + dy, 20 + oct) as f64;
+        let (u, v) = (fx * fx * (3.0 - 2.0 * fx), fy * fy * (3.0 - 2.0 * fy));
+        let top = c(0, 0) * (1.0 - u) + c(1, 0) * u;
+        let bot = c(0, 1) * (1.0 - u) + c(1, 1) * u;
+        h += (top * (1.0 - v) + bot * v - 0.5) * amp;
+        norm += amp;
+        amp *= 0.45;
+        wave *= 0.28;
+    }
+    plan.elevation_m + (h / norm.max(1e-6)) * plan.relief_m
+}
+
+/// **The finished ground: what you actually stand on.**
+///
+/// Natural terrain, except that **anything made stands on a levelled
+/// platform**. That is not a simplification, it is what cut and fill is:
+/// nobody lays a floor on a slope and nobody builds a street that follows
+/// every hummock. A building pad and a graded road are both flat, and the
+/// step between a plot and its neighbour is where the retaining wall goes.
+pub fn surface_m(seed: u64, plan: &Plan, gx: i64, gy: i64) -> f64 {
+    let t = TILES_PER_PLOT as i64;
+    let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
+    let lot = if px < 0 || py < 0 || px >= plan.width as i64 || py >= plan.height as i64 {
+        Lot::Open
+    } else {
+        plan.at(px as usize, py as usize)
+    };
+    if lot == Lot::Open || lot == Lot::Park {
+        return terrain_m(seed, plan, gx, gy);
+    }
+    // Levelled to the middle of its own plot.
+    terrain_m(seed, plan, px * t + t / 2, py * t + t / 2)
+}
+
+/// Which Z level the ground is at here.
+pub fn surface_z(seed: u64, plan: &Plan, gx: i64, gy: i64) -> i64 {
+    (surface_m(seed, plan, gx, gy) / METRES_PER_LEVEL).floor() as i64
 }
 
 /// **Real room and dwelling sizes** *(UK nationally described space

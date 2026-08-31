@@ -778,6 +778,69 @@ what makes one tile of stairwell join two levels.
 - **A door to the street is on the ground floor only.** Above it the same
   wall carries a window; you get in by the stair.
 
+### The terrain has height (`ground.rs`)
+
+**This is the part of DF worth copying** — a tile is a cuboid at (x, y, z),
+not a square, and a mountain is not a special object but solid tiles
+occupying levels. Before this the z-axis existed only inside buildings and
+the ground was a plane at level 0 whether the cell was a floodplain or a
+5,000 m peak.
+
+- **Elevation had no metre scale at all.** The field was a bare 0..1, fine
+  for ranking biomes and useless the moment somebody has to stand on a
+  hillside. `world::MAX_LAND_M` is Everest, 8,848 m.
+- **Relief is not the regional gradient.** The coarse field is smoothed at
+  16 km, so the difference between neighbouring cells gave a town at
+  5,380 m in mountain country a relief of 11 m/km. A mountain cell holds
+  peaks and valleys the coarse field never resolved. Local relief is a
+  property of the *landform*: marsh and floodplain 2-10 m/km, plains
+  10-20, rolling country 30-60, mountain 300-600, high peaks 500-900. The
+  regional gradient is added on top.
+- **What the arithmetic decides for you:** at a metre to the tile and three
+  metres to a level, one level of step is a 300% gradient — a cliff. Real
+  ground rises 5-30%, so natural terrain crosses a level every 10-60 m.
+  Gentle country is genuinely flat at this scale and only hard country
+  gets vertical structure. Nothing was tuned to make that happen.
+- **A step is a ramp or it is a cliff** (DF's rule exactly; a cliff is not
+  a tile type but the *absence* of a ramp). Which one comes from the rock:
+  hard crystalline rock holds a face — granite tors, gritstone edges —
+  while softer bedded rock weathers to a rounded profile, which is why
+  chalk country is downland and not crags.
+- **Anything made stands on a levelled platform.** Not a simplification —
+  that is what cut and fill is. Nobody lays a floor on a slope or builds a
+  street that follows every hummock.
+- **Z is relative to the ground you are standing on.** 0 is here, +1 the
+  floor above, -1 the cellar. Absolute levels are the engine's business: a
+  town 60 m above the sea has its ground at absolute 20, and asking for 0
+  there gets you sixty metres of rock. Both exist; only one is the API.
+
+### Sedimentary rock covers most of the land
+
+The classifier gave **12% sedimentary and 73% metamorphic — the real world
+exactly inverted** *(sediment is ~8% of the crust by volume but blankets
+~73% of the continental surface; crystalline rock is exposed in shields,
+mountain cores and volcanic provinces)*. It was cosmetic until the tile
+layer started asking which rock keeps a cliff face, and then every hillside
+came out as crags.
+
+**Metamorphic has to be identified, not left over.** As the residual
+between two independent scores it swung between 1% and 20% of land from
+seed to seed and vanished on some worlds. Rock is metamorphic because it
+has been cooked and squeezed — orogenic belts and old shields, deformed
+crust deeply eroded — so it gets its own score and the three compete.
+
+Knock-ons worth recording, because a correct change broke two green tests:
+- Fertility moved, so a nation that used to be marginal became comfortable
+  and its grain cycle damped. That is the tension already recorded here;
+  the test's bar was at exactly 30% and real seasonality is 20-40%
+  pre-modern, 10-20% in modern futures.
+- Settlements moved, and one landed where the road network cannot reach.
+  `region.rs` was **breaking out of Prim's loop** and leaving it off its
+  own nation's network — the one thing that loop exists to prevent. Where
+  the roads do not reach, the link is made over open country at
+  open-country prices (~$0.55/t-km against $0.05-0.10 paved). Such a place
+  is not unreachable, it is expensive, which is why it stays poor.
+
 ### A room has a door and something in it
 
 A bare floor inside four walls is an area, not a place. Interiors

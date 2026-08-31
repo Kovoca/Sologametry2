@@ -83,32 +83,40 @@ fn generation_is_deterministic() {
 }
 
 #[test]
-fn every_rock_type_appears() {
-    // A world made entirely of one rock type means the classifier's cuts
-    // have drifted — the failure mode that made everything sedimentary.
+fn sedimentary_rock_covers_most_of_the_land() {
+    // **Real: sediment covers about 73% of the continental surface** — it
+    // is only ~8% of the crust by volume, but it blankets everything;
+    // igneous and metamorphic are exposed in shields, mountain cores and
+    // volcanic provinces. The cuts once gave 12% sedimentary and 73%
+    // metamorphic, which is the real world exactly inverted, and it
+    // stopped being cosmetic the moment the tile layer began asking which
+    // rock keeps a cliff face: nearly every hillside came out as crags.
+    //
+    // Worlds are *allowed* to differ — that is why the cuts are fixed and
+    // not percentiles — so this asserts the shape, not a ratio: sediment
+    // dominates everywhere, and each crystalline kind is somewhere.
+    let mut seen = [false; 3];
     for seed in [1u64, 42, 20260828, 7, 3] {
         let w = World::generate(256, 144, seed);
         let land: Vec<usize> = (0..w.biomes.len())
             .filter(|&i| w.elevation.data[i] >= w.sea_level)
             .collect();
         let land_n = land.len() as f32;
-
-        for rock in Rock::ALL {
-            let share =
-                land.iter().filter(|&&i| w.geology.rock[i] == rock).count() as f32 / land_n;
-            assert!(
-                share > 0.02,
-                "seed {seed}: {} is only {:.1}% of land",
-                rock.name(),
-                share * 100.0
-            );
-            assert!(
-                share < 0.90,
-                "seed {seed}: {} swallowed {:.0}% of land",
-                rock.name(),
-                share * 100.0
-            );
+        let share = |rock: Rock| {
+            land.iter().filter(|&&i| w.geology.rock[i] == rock).count() as f32 / land_n
+        };
+        let sed = share(Rock::Sedimentary);
+        assert!(
+            (0.50..0.97).contains(&sed),
+            "seed {seed}: sedimentary is {:.0}% of land, against ~73% on Earth",
+            sed * 100.0
+        );
+        for (k, rock) in Rock::ALL.iter().enumerate() {
+            seen[k] |= share(*rock) > 0.02;
         }
+    }
+    for (k, rock) in Rock::ALL.iter().enumerate() {
+        assert!(seen[k], "{} appears on no world at all", rock.name());
     }
 }
 

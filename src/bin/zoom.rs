@@ -98,7 +98,13 @@ fn main() {
         println!("  {line}");
     }
 
+    let (elevation_m, relief_m) = ground_of(&world, cell);
     // --- 2. the region cell, zoomed ---
+    // **How high, and how much it moves.** Absolute height from the
+    // elevation field against a real ceiling, and relief from how fast the
+    // field changes across the neighbouring cells — which is what decides
+    // whether the ground under a town is flat or a hillside.
+    let (elevation_m, relief_m) = ground_of(&world, cell);
     let loc = Locality::zoom(&world, cell);
     println!();
     println!(
@@ -119,7 +125,8 @@ fn main() {
     // The town stands on the middle of its own locality, so the ground
     // showing between the streets is the ground you would have walked in.
     let centre = loc.at(loc.size / 2, loc.size / 2);
-    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome).on_rock(world.geology.rock[cell]);
+    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome).on_rock(world.geology.rock[cell])
+        .on_ground(elevation_m, relief_m);
     println!();
     println!(
         "=== 3. THE TOWN — one character to {:.0} m, {:.1} km across ===",
@@ -173,4 +180,62 @@ fn fmt_pop(p: f64) -> String {
     } else {
         format!("{p:.0}")
     }
+}
+
+/// **Height and relief at a cell, in metres.**
+///
+/// Absolute height comes from the elevation field against a real ceiling
+/// *(Everest, 8,848 m)*.
+///
+/// **Relief is not the regional gradient**, which was the first thing I
+/// got wrong: the coarse field is smoothed at 16 km, so the difference
+/// between neighbouring cells gave a town at 5,380 m in mountain country
+/// a relief of 11 m/km. A mountain cell contains peaks and valleys the
+/// coarse field never resolved. Local relief is a property of the
+/// landform, so it comes from the biome — real figures for height range
+/// within a kilometre:
+///
+/// | | m/km |
+/// |---|---|
+/// | marsh, beach, floodplain | 2-10 |
+/// | plains — steppe, savanna, desert | 10-20 |
+/// | rolling country — forest, scrub | 30-60 |
+/// | mountain | 300-600 |
+/// | high peaks | 500-900 |
+///
+/// The regional gradient is then *added*, because a mountainside that is
+/// also on a steep regional slope is steeper still.
+fn ground_of(world: &World, cell: usize) -> (f64, f64) {
+    use scale_sim::world::Biome::*;
+    let (w, h) = (world.width, world.height);
+    let (cx, cy) = (cell % w, cell / w);
+    let at = |x: i64, y: i64| -> f64 {
+        let xx = x.rem_euclid(w as i64) as usize;
+        let yy = y.clamp(0, h as i64 - 1) as usize;
+        world.elevation.data[yy * w + xx] as f64
+    };
+    let here = at(cx as i64, cy as i64);
+    let sea = world.sea_level as f64;
+    let above = ((here - sea) / (1.0 - sea).max(1e-3)).max(0.0);
+    let elevation_m = above * scale_sim::world::MAX_LAND_M;
+
+    let landform = match world.biomes[cell] {
+        Ocean | Shallows | Swamp | Beach => 4.0,
+        Desert | Savanna | Grassland => 14.0,
+        Tundra => 25.0,
+        Rainforest => 35.0,
+        Forest | Shrubland | Taiga => 45.0,
+        Mountain => 420.0,
+        Snowcap => 650.0,
+    };
+
+    // The steepest neighbour, as metres per kilometre of regional slope.
+    let mut drop = 0.0f64;
+    for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+        drop = drop.max((here - at(cx as i64 + dx, cy as i64 + dy)).abs());
+    }
+    let regional = drop / (1.0 - sea).max(1e-3) * scale_sim::world::MAX_LAND_M
+        / scale_sim::region::KM_PER_CELL;
+
+    (elevation_m, (landform + regional).clamp(2.0, 900.0))
 }

@@ -79,9 +79,15 @@ fn main() {
     let pop = region.economy.markets[m].population;
     let cell = settlements.list[region.settlement_of_market[m]].cell;
 
+    // **How high, and how much it moves.** Absolute height from the
+    // elevation field against a real ceiling, and relief from how fast the
+    // field changes across the neighbouring cells — which is what decides
+    // whether the ground under a town is flat or a hillside.
+    let (elevation_m, relief_m) = ground_of(&world, cell);
     let loc = Locality::zoom(&world, cell);
     let ground_biome = loc.at(loc.size / 2, loc.size / 2).biome;
-    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome).on_rock(world.geology.rock[cell]);
+    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome).on_rock(world.geology.rock[cell])
+        .on_ground(elevation_m, relief_m);
 
     // Find somewhere worth standing.
     let want = match place.as_str() {
@@ -167,6 +173,13 @@ fn main() {
         }
     }
 
+    // **`--z` is relative to the ground you are standing on**, because
+    // that is what a level means to somebody in the world: 0 is here, +1
+    // is the floor above, -1 is the cellar. Absolute levels are the
+    // engine's business — at 60 m above the sea, absolute 0 is twenty
+    // levels underground.
+    let here_z = scale_sim::ground::surface_z(seed, &plan, centre.0, centre.1);
+
     // A viewport, not the bubble: 80 x 34 looks square in a terminal.
     // A corner is worth looking at further, because what is interesting
     // about one is the buildings on it, and those are a plot away.
@@ -186,11 +199,13 @@ fn main() {
 
     println!();
     println!(
-        "{name} — standing on {:?} at tile {},{}, level {z} ({:+.0} m)",
+        "{name} — standing on {:?} at tile {},{}, level {} (absolute {}, {:.0} m above the sea)",
         want,
         centre.0,
         centre.1,
-        z as f64 * scale_sim::ground::METRES_PER_LEVEL,
+        z,
+        here_z + z,
+        scale_sim::ground::surface_m(seed, &plan, centre.0, centre.1),
     );
     println!(
         "  {} m by {} m of the {} m you could see on foot, generated from the",
@@ -198,8 +213,10 @@ fn main() {
     );
     println!("  seed and never stored (spec A1.5)");
     println!(
-        "  the town stands in {ground_biome:?}, on {}",
-        plan.rock.name()
+        "  the town stands in {ground_biome:?}, on {} — {:.0} m up, relief {:.0} m/km",
+        plan.rock.name(),
+        elevation_m,
+        relief_m,
     );
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {
@@ -263,4 +280,62 @@ fn nearest(g: &Ground, want: Tile) -> Option<(i64, i64)> {
         }
     }
     best.map(|(p, _)| p)
+}
+
+/// **Height and relief at a cell, in metres.**
+///
+/// Absolute height comes from the elevation field against a real ceiling
+/// *(Everest, 8,848 m)*.
+///
+/// **Relief is not the regional gradient**, which was the first thing I
+/// got wrong: the coarse field is smoothed at 16 km, so the difference
+/// between neighbouring cells gave a town at 5,380 m in mountain country
+/// a relief of 11 m/km. A mountain cell contains peaks and valleys the
+/// coarse field never resolved. Local relief is a property of the
+/// landform, so it comes from the biome — real figures for height range
+/// within a kilometre:
+///
+/// | | m/km |
+/// |---|---|
+/// | marsh, beach, floodplain | 2-10 |
+/// | plains — steppe, savanna, desert | 10-20 |
+/// | rolling country — forest, scrub | 30-60 |
+/// | mountain | 300-600 |
+/// | high peaks | 500-900 |
+///
+/// The regional gradient is then *added*, because a mountainside that is
+/// also on a steep regional slope is steeper still.
+fn ground_of(world: &World, cell: usize) -> (f64, f64) {
+    use scale_sim::world::Biome::*;
+    let (w, h) = (world.width, world.height);
+    let (cx, cy) = (cell % w, cell / w);
+    let at = |x: i64, y: i64| -> f64 {
+        let xx = x.rem_euclid(w as i64) as usize;
+        let yy = y.clamp(0, h as i64 - 1) as usize;
+        world.elevation.data[yy * w + xx] as f64
+    };
+    let here = at(cx as i64, cy as i64);
+    let sea = world.sea_level as f64;
+    let above = ((here - sea) / (1.0 - sea).max(1e-3)).max(0.0);
+    let elevation_m = above * scale_sim::world::MAX_LAND_M;
+
+    let landform = match world.biomes[cell] {
+        Ocean | Shallows | Swamp | Beach => 4.0,
+        Desert | Savanna | Grassland => 14.0,
+        Tundra => 25.0,
+        Rainforest => 35.0,
+        Forest | Shrubland | Taiga => 45.0,
+        Mountain => 420.0,
+        Snowcap => 650.0,
+    };
+
+    // The steepest neighbour, as metres per kilometre of regional slope.
+    let mut drop = 0.0f64;
+    for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+        drop = drop.max((here - at(cx as i64 + dx, cy as i64 + dy)).abs());
+    }
+    let regional = drop / (1.0 - sea).max(1e-3) * scale_sim::world::MAX_LAND_M
+        / scale_sim::region::KM_PER_CELL;
+
+    (elevation_m, (landform + regional).clamp(2.0, 900.0))
 }

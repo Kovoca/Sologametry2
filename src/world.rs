@@ -407,6 +407,13 @@ impl Biome {
 // The generated world
 // ---------------------------------------------------------------------------
 
+/// **The top of the world, in metres.** Everest is 8,848 m, so the
+/// elevation field's 1.0 is that; sea level is wherever the percentile cut
+/// put it. Nothing had a metre scale before — elevation was a bare 0..1,
+/// which is fine for ranking biomes and useless the moment somebody has to
+/// stand on a hillside.
+pub const MAX_LAND_M: f64 = 8_848.0;
+
 pub struct World {
     pub width: usize,
     pub height: usize,
