@@ -975,3 +975,64 @@ fn people_grow_what_grows() {
         assert!(share < 0.45, "{} covers {:.0}% of the land", c.name(), share * 100.0);
     }
 }
+
+#[test]
+fn a_herder_keeps_what_lives_there() {
+    // **Earth animals on an Earth-like world**, and the same argument as
+    // the crops: one generic grazer everywhere says a tundra and a savanna
+    // support the same husbandry, when one carries reindeer on lichen and
+    // the other cattle on grass and neither could keep the other's herd
+    // alive.
+    //
+    // The distinctions that matter are few and real: what it eats, what
+    // cold it takes, how dry it will tolerate, and what it returns.
+    use scale_sim::biota::{best_herd, Herd};
+
+    let good_pasture = 500_000.0;
+    let scrub = 120_000.0;
+
+    // Good grass in a temperate climate is cattle country.
+    assert_eq!(best_herd(15.0, 0.9, good_pasture, false, false).0, Herd::Cattle);
+    // Dry scrub is not: cattle cannot live on it and a goat can.
+    assert_eq!(best_herd(24.0, 0.15, scrub, false, false).0, Herd::Goat);
+    // True desert is camel country and nothing else's.
+    assert_eq!(best_herd(30.0, 0.04, 40_000.0, false, false).0, Herd::Camel);
+    // Hard cold: reindeer on lichen, and yak only where it is also high.
+    assert_eq!(best_herd(-8.0, 0.4, 80_000.0, false, false).0, Herd::Reindeer);
+    assert_eq!(best_herd(-8.0, 0.4, 80_000.0, false, true).0, Herd::Yak);
+    // **Standing water is the buffalo's whole niche.** Cattle on
+    // permanently wet ground get foot rot and cannot work a paddy.
+    assert_eq!(best_herd(27.0, 1.5, good_pasture, true, false).0, Herd::Buffalo);
+
+    // Nothing at all where nothing can live.
+    assert_eq!(best_herd(-30.0, 0.5, 10_000.0, false, false).1, 0.0);
+    assert_eq!(best_herd(25.0, 0.01, 5_000.0, false, false).1, 0.0);
+
+    // **Domestic stocking runs several times the wild biomass** — real
+    // managed pasture carries 20,000-40,000 kg/km² against the
+    // Serengeti's 5,000 — because a herder waters the stock, moves it,
+    // keeps hay for the lean season and shoots the predators.
+    let (_, kg) = best_herd(15.0, 0.9, good_pasture, false, false);
+    assert!(
+        (15_000.0..60_000.0).contains(&kg),
+        "good pasture carries {kg:.0} kg/km2 of stock"
+    );
+
+    // And a planet keeps more than one animal.
+    let w = World::generate(256, 144, 20260828);
+    let land: Vec<usize> = (0..w.biomes.len())
+        .filter(|&i| w.elevation.data[i] >= w.sea_level)
+        .collect();
+    let kept: Vec<Herd> = Herd::ALL
+        .into_iter()
+        .filter(|&h| {
+            land.iter()
+                .any(|&i| w.biota.herd[i] == h && w.biota.stocking.data[i] > 100.0)
+        })
+        .collect();
+    assert!(
+        kept.len() >= 4,
+        "the whole planet keeps only {:?}",
+        kept.iter().map(|h| h.name()).collect::<Vec<_>>()
+    );
+}

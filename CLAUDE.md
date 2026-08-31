@@ -236,6 +236,36 @@ less, and what suffers is a wheat plant's ability to use it.
   harvested area does. Cropland-weighted yield 3.0 t/ha against a real
   3.5.
 
+### A herder keeps what lives there
+
+Earth animals, Earth-like world — the same argument as the crops. One
+generic grazer everywhere says a tundra and a savanna support the same
+husbandry, when one carries **reindeer on lichen** and the other **cattle
+on grass**, and neither could keep the other's herd alive.
+
+Seven animals, and the distinctions that matter are few and real: what it
+eats, what cold it takes, how dry it will tolerate, and what it returns to
+somebody keeping it. Good grass in a temperate climate is cattle; dry
+scrub is goats, which browse what a sheep would starve on; true desert is
+camels; hard cold is reindeer, and **yak only where it is also high** —
+Tibet, not the whole of the cold world.
+
+- **"Eats poor forage" is not "efficient on good grass."** As a flat
+  multiplier it gave goats **72% of the planet**, because a goat's edge on
+  rough ground was being applied to lush pasture too. It only bites where
+  the forage is poor.
+- **Standing water is the buffalo's whole niche**, and it cuts both ways:
+  pointless on dry ground, and everything else does badly on wet. Cattle
+  on permanently wet ground get foot rot and liver fluke and cannot work a
+  paddy at all.
+- **Domestic stocking runs several times the wild biomass** — real managed
+  pasture carries 20,000-40,000 kg/km² against the Serengeti's 5,000 —
+  because a herder waters the stock, moves it, keeps hay for the lean
+  season and shoots the predators.
+
+Result: cattle 52% of land, sheep 17%, reindeer 12%, yak 8%, goats 6%,
+buffalo 2%. Land *suited* to an animal, not land actually stocked.
+
 ### Groundwater is a resource in dry country and a liability in wet
 
 The water table only ever *limited* things — it could waterlog roots and

@@ -106,6 +106,10 @@ pub struct Biota {
     /// tonnes of grain-equivalent a hectare.
     pub crop: Vec<Crop>,
     pub crop_yield: Field,
+    /// **What a herder here would keep**, and how much of it in kg/km² of
+    /// live weight.
+    pub herd: Vec<Herd>,
+    pub stocking: Field,
 }
 
 /// Kilograms of herbivore per km² per unit of grazeable productivity.
@@ -478,6 +482,12 @@ pub fn generate(
     let mut aeration = Field::new(w, h);
     let mut crop = vec![Crop::Wheat; w * h];
     let mut crop_yield = Field::new(w, h);
+    let mut herd = vec![Herd::Sheep; w * h];
+    let mut stocking = Field::new(w, h);
+
+    // Above about 2,500 m: yak country rather than merely cold country.
+    let span = (1.0 - sea_level).max(1e-3);
+    let high_ground_cut = sea_level + span * (2500.0 / 8848.0);
 
     for i in 0..elev.data.len() {
         if elev.data[i] < sea_level {
@@ -510,6 +520,18 @@ pub fn generate(
         crop[i] = c;
         crop_yield.data[i] = y;
 
+        // Stock live on the same forage the wild herbivores do, so the
+        // figure the settling pass arrived at is the one to graze.
+        let (hd, kg) = best_herd(
+            s.season_c,
+            climatic_moisture.data[i],
+            forage_kg,
+            s.aeration < 0.5,
+            elev.data[i] > high_ground_cut,
+        );
+        herd[i] = hd;
+        stocking.data[i] = kg;
+
         // Timber tracks productivity as well as forest type: a boreal
         // forest and a tropical one are both forest and are not the same
         // standing volume.
@@ -534,7 +556,188 @@ pub fn generate(
         aeration,
         crop,
         crop_yield,
+        herd,
+        stocking,
     }
+}
+
+/// **What a herder here would actually keep.**
+///
+/// Earth animals, Earth-like world: the same argument as the crops. One
+/// generic grazer everywhere says a tundra and a savanna support the same
+/// husbandry, when in fact one carries reindeer on lichen and the other
+/// cattle on grass, and neither could keep the other's herd alive.
+///
+/// The distinctions that matter are real and few: **what it eats** (grass,
+/// browse, lichen), **what cold it takes**, **how far it goes between
+/// drinks**, and **what it yields to somebody keeping it**.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Herd {
+    /// Grass, water every day, and the highest yield per head. The
+    /// temperate and tropical grassland animal.
+    Cattle,
+    /// Hardier than cattle, takes hills, cold and poorer grass, and needs
+    /// less water. Which is why hill country keeps sheep.
+    Sheep,
+    /// **Browse, not grass** — it eats what a sheep will not, and drinks
+    /// little. The animal of dry scrub and rocky ground.
+    Goat,
+    /// **Lichen**, and cold no other stock survives. Tundra and taiga.
+    Reindeer,
+    /// Days without water, and heat nothing else works in. True desert.
+    Camel,
+    /// Thin air and hard cold on **high ground** — Tibet, not the whole
+    /// of the cold world, which is reindeer country.
+    Yak,
+    /// **Wet heat and standing water** — the paddy animal, and the one
+    /// that works ground too soft for anything else.
+    Buffalo,
+}
+
+struct HerdNeeds {
+    /// Season mean temperature it will take.
+    t_min: f32,
+    t_max: f32,
+    /// **How much of *poor* forage is food to it.** On good grass every
+    /// one of these does well and the difference is what they return; the
+    /// distinction only bites on scrub and browse. Treating it as a flat
+    /// multiplier gave goats 72% of the planet, because a goat's edge on
+    /// rough ground was being applied to lush pasture as well.
+    takes_poor_forage: f32,
+    /// How dry it will tolerate, as the climatic-moisture index below
+    /// which it fails.
+    driest: f32,
+    /// Live weight per head, kg — real.
+    head_kg: f32,
+    /// How productive it is to keep, against cattle at 1.0. Milk, meat,
+    /// wool, traction and hide together.
+    yield_index: f32,
+}
+
+impl Herd {
+    pub const ALL: [Herd; 7] = [
+        Herd::Cattle,
+        Herd::Sheep,
+        Herd::Goat,
+        Herd::Reindeer,
+        Herd::Camel,
+        Herd::Yak,
+        Herd::Buffalo,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Herd::Cattle => "cattle",
+            Herd::Sheep => "sheep",
+            Herd::Goat => "goats",
+            Herd::Reindeer => "reindeer",
+            Herd::Camel => "camels",
+            Herd::Yak => "yak",
+            Herd::Buffalo => "buffalo",
+        }
+    }
+
+    fn needs(self) -> HerdNeeds {
+        match self {
+            Herd::Cattle => HerdNeeds {
+                t_min: 2.0, t_max: 32.0, takes_poor_forage: 0.55,
+                driest: 0.30, head_kg: 450.0, yield_index: 1.00,
+            },
+            Herd::Sheep => HerdNeeds {
+                t_min: -4.0, t_max: 28.0, takes_poor_forage: 0.75,
+                driest: 0.18, head_kg: 60.0, yield_index: 0.80,
+            },
+            Herd::Goat => HerdNeeds {
+                t_min: 0.0, t_max: 36.0, takes_poor_forage: 1.00,
+                driest: 0.07, head_kg: 40.0, yield_index: 0.62,
+            },
+            Herd::Reindeer => HerdNeeds {
+                t_min: -20.0, t_max: 12.0, takes_poor_forage: 1.00,
+                driest: 0.10, head_kg: 100.0, yield_index: 0.55,
+            },
+            Herd::Camel => HerdNeeds {
+                t_min: 5.0, t_max: 42.0, takes_poor_forage: 1.00,
+                driest: 0.02, head_kg: 500.0, yield_index: 0.58,
+            },
+            Herd::Yak => HerdNeeds {
+                t_min: -18.0, t_max: 14.0, takes_poor_forage: 0.85,
+                driest: 0.12, head_kg: 350.0, yield_index: 0.70,
+            },
+            Herd::Buffalo => HerdNeeds {
+                t_min: 12.0, t_max: 38.0, takes_poor_forage: 0.60,
+                driest: 0.55, head_kg: 500.0, yield_index: 0.95,
+            },
+        }
+    }
+
+    /// Whether this animal can be kept here at all, and how well.
+    ///
+    /// **Domestic stocking runs several times the wild herbivore biomass**
+    /// — real managed pasture carries 20,000-40,000 kg/km² against the
+    /// Serengeti's 5,000 — because a herder waters the stock, moves it,
+    /// keeps hay for the lean season and shoots the predators.
+    pub fn stocking_kg_per_km2(
+        self,
+        season_c: f32,
+        moisture: f32,
+        forage_kg: f32,
+        wet_ground: bool,
+        high_ground: bool,
+    ) -> f32 {
+        let n = self.needs();
+        if season_c < n.t_min || season_c > n.t_max || moisture < n.driest {
+            return 0.0;
+        }
+        // Yak are a high-altitude animal, not simply a cold-weather one.
+        if self == Herd::Yak && !high_ground {
+            return 0.0;
+        }
+        // **A buffalo is kept on ground too soft for cattle**, and that
+        // cuts both ways: it is pointless on dry ground and everything
+        // else does badly on wet. Cattle on permanently wet ground get
+        // foot rot and liver fluke and cannot work a paddy at all, which
+        // is precisely the niche the buffalo occupies.
+        if self == Herd::Buffalo && !wet_ground {
+            return 0.0;
+        }
+        let soft_going = if wet_ground && self != Herd::Buffalo {
+            0.35
+        } else {
+            1.0
+        };
+        /// What a managed herd takes of the forage, against a wild
+        /// population's ~2.5% of standing crop.
+        const HERDED_SHARE: f32 = 0.09;
+        // How good the forage is: wet country grows grass, dry country
+        // grows scrub. On grass everybody eats well.
+        let richness = (moisture / 0.65).clamp(0.0, 1.0);
+        let usable = n.takes_poor_forage + (1.0 - n.takes_poor_forage) * richness;
+        forage_kg * HERDED_SHARE * usable * soft_going
+    }
+}
+
+/// **What a herder here would keep, and how much of it**, in kg/km² of
+/// live weight. Ties break by the order in `ALL`, so a seed rebuilds the
+/// same world.
+pub fn best_herd(
+    season_c: f32,
+    moisture: f32,
+    forage_kg: f32,
+    wet_ground: bool,
+    high_ground: bool,
+) -> (Herd, f32) {
+    let mut best = (Herd::Sheep, 0.0f32);
+    for herd in Herd::ALL {
+        let kg =
+            herd.stocking_kg_per_km2(season_c, moisture, forage_kg, wet_ground, high_ground);
+        // Judged on what it is worth to keep, not on its weight: a tonne
+        // of camel is not a tonne of cattle.
+        let worth = kg * herd.needs().yield_index;
+        if worth > best.1 * best.0.needs().yield_index {
+            best = (herd, kg);
+        }
+    }
+    best
 }
 
 /// **People grow what grows.**
