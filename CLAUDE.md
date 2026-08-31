@@ -782,6 +782,56 @@ the same number.
   box holding back real head, and pumps for ever — which real practice
   puts at 2-3x the structural cost.
 
+### What a building is for is not how it is built
+
+`Structure` says how a thing is put up; `Use` says what it is for, and
+collapsing the two was wrong. **A supermarket, a distribution warehouse
+and a sports hall are the same shed** — a steel portal frame on a concrete
+slab — and what differs is the trade inside, the fittings, the staff and
+where in a town it may stand. A school and an office block are much the
+same frame put to opposite purposes.
+
+Splitting the axes means materials come free: pick a use, get its usual
+construction, get its bill from that. 35 uses, from a dwelling to a buried
+shelter.
+
+**Floor area is a fixed part plus so much per occupant**, which is how
+real space standards are written — a school needs a hall and a kitchen
+whether it has 200 children or 400, which is exactly why small schools
+cost more per pupil:
+
+| | real standard |
+|---|---|
+| school | **350 m² + 4.1 m²/pupil** *(Building Bulletin 103)* |
+| hospital | **47.5 m²/bed**, all departments |
+| office | **10 m²/desk** *(BCO 2024, down from 15)* |
+| superstore | 2,800-4,650 m² against a corner shop's 250-1,000 |
+| shelter | ~1 m² a head — tighter than anywhere anybody lives |
+
+- **A shop that cannot be seen is not a shop**, and an artic has to reach
+  the door. A supermarket wants *both*, which is precisely why they are
+  hard to fit into an old town centre and ended up on bypasses.
+- **A hospital is never shed**, along with pumping and fire stations —
+  real grids hold them on protected feeders with standby generation.
+
+### A village has a pub; a university needs a city
+
+Nobody decides what a place contains — it falls out of **threshold
+populations**, which is how it works in reality. Real UK counts against 67
+million: ~46,000 pubs *(1 per 1,450)*, ~20,800 primary schools, ~6,700
+supermarkets *(1 per 10,000)*, ~800 cinemas *(1 per 84,000)*, ~165
+universities *(1 per 406,000)*.
+
+| | contains |
+|---|---|
+| hamlet, 300 | **nothing** — you drive to the next village |
+| village, 1,500 | pub, corner shop, cafe, school, place of worship |
+| market town, 20,000 | 13 kinds: adds chemist, clinic, supermarket, library, hotel, market hall, sports hall |
+| city, 500,000 | 19 kinds: adds fire and police stations, cinema, town hall, **hospital, university** |
+
+The commonest building in a city is the pub or the corner shop — 345 and
+357 of them — which is what a real high street is made of.
+
 ### A hospital is a place that holds supplies
 
 Peter's rule applied where it decides whether somebody lives: **the

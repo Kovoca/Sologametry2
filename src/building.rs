@@ -583,3 +583,410 @@ impl Structure {
         (2.0 + 0.35 * below).min(6.0)
     }
 }
+
+// ---------------------------------------------------------------------------
+// What a building is for
+// ---------------------------------------------------------------------------
+
+/// **What a building is used for**, which is a different question from how
+/// it is built.
+///
+/// Collapsing the two was the mistake `Structure` alone made. A
+/// supermarket, a distribution warehouse and a sports hall are the *same
+/// shed* — a steel portal frame on a concrete slab — and what makes them
+/// different is the trade going on inside, the fittings, the staff and
+/// where in a town they are allowed to stand. Equally, a school and an
+/// office block are much the same frame put to opposite purposes.
+///
+/// Splitting the axes means materials come free: pick a use, get its
+/// usual construction, get its bill of materials from that.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Use {
+    // --- somewhere to live ---
+    /// A house or a flat: the thing most of a town is made of.
+    Dwelling,
+    /// A room in somebody's building — a lodging house, a hostel, a
+    /// bedsit over a shop.
+    Lodgings,
+
+    // --- somewhere to buy things ---
+    /// The corner shop. Real: **250-1,000 m²** for a convenience store,
+    /// and most of the shops in the world are this rather than the other.
+    CornerShop,
+    /// Real UK superstores run **2,800-4,650 m²**, and over 10,000 for
+    /// the largest.
+    Supermarket,
+    /// Ironmonger, builders merchant, agricultural supplier.
+    Hardware,
+    /// The chemist, which is where retail remedies are actually sold.
+    Chemist,
+    /// A market hall — many traders under one roof, and the oldest form
+    /// of retail there is.
+    MarketHall,
+
+    // --- somewhere to eat, drink and sleep ---
+    Pub,
+    Cafe,
+    Hotel,
+
+    // --- somewhere to work ---
+    /// **10 m² a desk** *(British Council for Offices, 2024)*, down from
+    /// the 15 of the cellular era.
+    Office,
+    /// **The small maker.** A joiner, a smith, a two-person engineering
+    /// shop — the indie end of manufacturing, and still needing its
+    /// machinery.
+    Workshop,
+    Factory,
+    Warehouse,
+    /// Refrigerated. The building the meat trade cannot exist without.
+    ColdStore,
+    /// A silo or a granary. Bulk, dry, and mostly empty by midsummer.
+    Granary,
+
+    // --- what a state provides ---
+    /// **350 m² plus 4.1 m² a pupil** *(Building Bulletin 103)*.
+    School,
+    University,
+    /// **47.5 m² an inpatient bed**, which is why hospitals are the
+    /// largest buildings most towns have.
+    Hospital,
+    /// A surgery or health centre: the front door of a health service and
+    /// a fraction of the floor area.
+    Clinic,
+    PoliceStation,
+    FireStation,
+    TownHall,
+    Library,
+
+    // --- somewhere to go in the evening ---
+    Cinema,
+    SportsHall,
+    PlaceOfWorship,
+
+    // --- what keeps the place running ---
+    Substation,
+    PumpingStation,
+    /// A lorry depot or bus garage.
+    Depot,
+
+    // --- the country ---
+    Barn,
+    Glasshouse,
+    Stable,
+
+    // --- when things go wrong ---
+    /// Hardened, above ground.
+    Blockhouse,
+    /// Hardened and buried.
+    Shelter,
+}
+
+impl Use {
+    pub const ALL: [Use; 35] = [
+        Use::Dwelling,
+        Use::Lodgings,
+        Use::CornerShop,
+        Use::Supermarket,
+        Use::Hardware,
+        Use::Chemist,
+        Use::MarketHall,
+        Use::Pub,
+        Use::Cafe,
+        Use::Hotel,
+        Use::Office,
+        Use::Workshop,
+        Use::Factory,
+        Use::Warehouse,
+        Use::ColdStore,
+        Use::Granary,
+        Use::School,
+        Use::University,
+        Use::Hospital,
+        Use::Clinic,
+        Use::PoliceStation,
+        Use::FireStation,
+        Use::TownHall,
+        Use::Library,
+        Use::Cinema,
+        Use::SportsHall,
+        Use::PlaceOfWorship,
+        Use::Substation,
+        Use::PumpingStation,
+        Use::Depot,
+        Use::Barn,
+        Use::Glasshouse,
+        Use::Stable,
+        Use::Blockhouse,
+        Use::Shelter,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Use::Dwelling => "dwelling",
+            Use::Lodgings => "lodgings",
+            Use::CornerShop => "corner shop",
+            Use::Supermarket => "supermarket",
+            Use::Hardware => "hardware shop",
+            Use::Chemist => "chemist",
+            Use::MarketHall => "market hall",
+            Use::Pub => "pub",
+            Use::Cafe => "cafe",
+            Use::Hotel => "hotel",
+            Use::Office => "office",
+            Use::Workshop => "workshop",
+            Use::Factory => "factory",
+            Use::Warehouse => "warehouse",
+            Use::ColdStore => "cold store",
+            Use::Granary => "granary",
+            Use::School => "school",
+            Use::University => "university",
+            Use::Hospital => "hospital",
+            Use::Clinic => "clinic",
+            Use::PoliceStation => "police station",
+            Use::FireStation => "fire station",
+            Use::TownHall => "town hall",
+            Use::Library => "library",
+            Use::Cinema => "cinema",
+            Use::SportsHall => "sports hall",
+            Use::PlaceOfWorship => "place of worship",
+            Use::Substation => "substation",
+            Use::PumpingStation => "pumping station",
+            Use::Depot => "depot",
+            Use::Barn => "barn",
+            Use::Glasshouse => "glasshouse",
+            Use::Stable => "stable",
+            Use::Blockhouse => "blockhouse",
+            Use::Shelter => "shelter",
+        }
+    }
+
+    /// **How it is usually built**, which is where the materials come
+    /// from. The same shed serves a supermarket, a warehouse and a sports
+    /// hall.
+    pub fn construction(self) -> Structure {
+        match self {
+            Use::Dwelling => Structure::House,
+            Use::Lodgings => Structure::Tenement,
+            // A high street is terraces with shops in the bottom of them,
+            // which is why town centres have people living over the shops.
+            Use::CornerShop | Use::Chemist | Use::Cafe | Use::Pub | Use::Hardware => {
+                Structure::Terrace
+            }
+            Use::Hotel | Use::Office | Use::TownHall | Use::Library | Use::University => {
+                Structure::Tenement
+            }
+            Use::Supermarket
+            | Use::Warehouse
+            | Use::ColdStore
+            | Use::MarketHall
+            | Use::SportsHall
+            | Use::Cinema
+            | Use::Depot
+            | Use::Glasshouse => Structure::Warehouse,
+            Use::Factory | Use::Workshop | Use::PumpingStation => Structure::Works,
+            Use::School | Use::Hospital | Use::Clinic | Use::PoliceStation | Use::FireStation => {
+                Structure::Works
+            }
+            Use::PlaceOfWorship => Structure::Works,
+            Use::Granary | Use::Barn | Use::Stable | Use::Substation => Structure::Shed,
+            Use::Blockhouse => Structure::Shelter,
+            Use::Shelter => Structure::Bunker,
+        }
+    }
+
+    /// **Floor area**, as a fixed part plus so much per occupant — which
+    /// is how real space standards are actually written, because a school
+    /// needs a hall and a kitchen whether it has 200 children or 400.
+    ///
+    /// The occupant differs by use and that is the point: a pupil, a bed,
+    /// a desk, a seat, a room.
+    pub fn floor_area_m2(self, occupants: f64) -> f64 {
+        let (base, each) = match self {
+            // UK average new-build house 76 m², flat 61.
+            Use::Dwelling => (76.0, 0.0),
+            Use::Lodgings => (0.0, 20.0),
+            Use::CornerShop => (120.0, 0.0),
+            Use::Chemist => (110.0, 0.0),
+            Use::Hardware => (400.0, 0.0),
+            Use::Supermarket => (2_800.0, 0.0),
+            Use::MarketHall => (900.0, 0.0),
+            Use::Pub => (250.0, 0.0),
+            Use::Cafe => (110.0, 0.0),
+            // A hotel is corridors and a lobby plus the rooms.
+            Use::Hotel => (300.0, 28.0),
+            // **10 m² a work setting** — BCO 2024, and the HSE floor is
+            // 11 m³ of air, about 4.6 m² at an ordinary ceiling height.
+            Use::Office => (0.0, 10.0),
+            Use::Workshop => (150.0, 0.0),
+            Use::Factory => (3_000.0, 0.0),
+            Use::Warehouse => (4_000.0, 0.0),
+            Use::ColdStore => (1_500.0, 0.0),
+            Use::Granary => (800.0, 0.0),
+            // **Building Bulletin 103**: 350 m² plus 4.1 a pupil.
+            Use::School => (350.0, 4.1),
+            Use::University => (2_000.0, 9.0),
+            // **47.5 m² an inpatient bed**, all departments counted.
+            Use::Hospital => (0.0, 47.5),
+            Use::Clinic => (250.0, 0.0),
+            Use::PoliceStation => (600.0, 0.0),
+            Use::FireStation => (700.0, 0.0),
+            Use::TownHall => (1_200.0, 0.0),
+            Use::Library => (500.0, 0.0),
+            Use::Cinema => (1_400.0, 0.0),
+            Use::SportsHall => (1_000.0, 0.0),
+            Use::PlaceOfWorship => (400.0, 0.0),
+            Use::Substation => (80.0, 0.0),
+            Use::PumpingStation => (120.0, 0.0),
+            Use::Depot => (1_800.0, 0.0),
+            Use::Barn => (400.0, 0.0),
+            Use::Glasshouse => (2_000.0, 0.0),
+            Use::Stable => (200.0, 0.0),
+            Use::Blockhouse => (120.0, 0.0),
+            // A shelter is sized on the people in it, and tightly: real
+            // shelter standards run about a square metre a head.
+            Use::Shelter => (30.0, 1.0),
+        };
+        base + each * occupants.max(0.0)
+    }
+
+    /// **Does it want to be on the street?**
+    ///
+    /// A shop that cannot be seen is not a shop. This is what pushes
+    /// retail onto frontages and lets a warehouse sit behind anything.
+    pub fn wants_frontage(self) -> bool {
+        matches!(
+            self,
+            Use::CornerShop
+                | Use::Supermarket
+                | Use::Hardware
+                | Use::Chemist
+                | Use::MarketHall
+                | Use::Pub
+                | Use::Cafe
+                | Use::Hotel
+                | Use::Cinema
+                | Use::Library
+                | Use::TownHall
+                | Use::Clinic
+        )
+    }
+
+    /// **Does an artic have to get to the door?** Which is most of why
+    /// these end up on the edge of town on cheap land.
+    pub fn wants_lorry_access(self) -> bool {
+        matches!(
+            self,
+            Use::Supermarket
+                | Use::Warehouse
+                | Use::ColdStore
+                | Use::Granary
+                | Use::Factory
+                | Use::Depot
+                | Use::Hardware
+                | Use::MarketHall
+        )
+    }
+
+    /// **Does a blackout ruin what is inside?** The cold chain again: a
+    /// mill loses production and catches up, a cold store loses the stock.
+    pub fn needs_cold(self) -> bool {
+        matches!(self, Use::ColdStore)
+    }
+
+    /// **Must never lose supply.** Real grids hold these on protected
+    /// feeders with their own standby generation.
+    pub fn critical_supply(self) -> bool {
+        matches!(
+            self,
+            Use::Hospital | Use::PumpingStation | Use::FireStation | Use::Substation
+        )
+    }
+
+    /// What a building of this use costs to put up.
+    pub fn materials(self, occupants: f64) -> Bill {
+        self.construction()
+            .materials()
+            .times(self.floor_area_m2(occupants))
+    }
+
+    /// **How many people it takes to support one of these** — the
+    /// threshold population, and the reason a village has a pub and a
+    /// shop while a university needs a city.
+    ///
+    /// Real UK counts against a population of 67 million:
+    ///
+    /// | | how many | one per |
+    /// |---|---|---|
+    /// | pubs | ~46,000 | 1,450 |
+    /// | places of worship | ~40,000 | 1,700 |
+    /// | primary schools | ~20,800 | 3,200 |
+    /// | GP surgeries | ~7,500 | 8,900 |
+    /// | supermarkets | ~6,700 | 10,000 |
+    /// | secondary schools | ~3,400 | 19,700 |
+    /// | libraries | ~3,700 | 18,000 |
+    /// | fire stations | ~1,400 | 48,000 |
+    /// | cinemas | ~800 | 84,000 |
+    /// | universities | ~165 | 406,000 |
+    ///
+    /// `None` means it is not a public amenity that scales with
+    /// population — a warehouse or a barn exists because a trade needs
+    /// one, not because a certain number of people live nearby.
+    pub fn one_per_people(self) -> Option<f64> {
+        Some(match self {
+            Use::CornerShop => 1_400.0,
+            Use::Pub => 1_450.0,
+            Use::PlaceOfWorship => 1_700.0,
+            // A primary; secondaries are folded in at about a sixth the
+            // rate, which is why this comes out lower than the primary
+            // figure alone.
+            Use::School => 2_700.0,
+            Use::Cafe => 3_000.0,
+            Use::Chemist => 7_000.0,
+            Use::Clinic => 8_900.0,
+            Use::Supermarket => 10_000.0,
+            Use::Hardware => 14_000.0,
+            Use::Library => 18_000.0,
+            Use::MarketHall => 30_000.0,
+            Use::SportsHall => 35_000.0,
+            Use::Hotel => 40_000.0,
+            Use::FireStation => 48_000.0,
+            Use::PoliceStation => 55_000.0,
+            Use::Cinema => 84_000.0,
+            // Acute hospitals, not every cottage hospital: ~190 across
+            // the country.
+            Use::Hospital => 350_000.0,
+            Use::University => 406_000.0,
+            Use::TownHall => 180_000.0,
+            _ => return None,
+        })
+    }
+
+    /// **What a settlement of this size contains**, in descending order of
+    /// how many there are.
+    ///
+    /// The point is the shape rather than any single figure: a hamlet has
+    /// nothing, a village has a pub and a shop and perhaps a school, a
+    /// market town adds a chemist and a library, and a university or a
+    /// cinema needs a city. Nobody decides that — it falls out of the
+    /// threshold populations, which is how it works in reality too.
+    pub fn amenities_for(population: f64) -> Vec<(Use, usize)> {
+        let mut out: Vec<(Use, usize)> = Use::ALL
+            .iter()
+            .filter_map(|&u| {
+                let per = u.one_per_people()?;
+                // Rounded rather than truncated: a village of 800 has a
+                // pub, because the threshold is where it becomes usual and
+                // not where it becomes possible.
+                let n = (population / per).round() as usize;
+                if n == 0 {
+                    None
+                } else {
+                    Some((u, n))
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.name().cmp(b.0.name())));
+        out
+    }
+}
