@@ -368,15 +368,14 @@ fn hinterlands(world: &World, set: &Settlements, g: &Geology) -> Vec<Hinterland>
         // the things that decide whether a field is a field at all.
         let cropland = HECTARES_PER_CELL * f * ARABLE_SHARE_OF_PRIME;
 
-        // **What it yields comes from water.** It used to be
-        // `1 + 7 x fertility`, a soil score with no climate in it at all,
-        // which meant a dry country and a wet one with the same soil fed
-        // the same number of people. Yield now comes off the water the
-        // crop actually gets through its season — see
-        // `biota::crop_yield_t_per_ha` — so thin soil, a short season, a
-        // dry climate or a waterlogged floodplain each show up as less
-        // grain, by the route each of them really takes.
-        let yield_t = crate::biota::crop_yield_t_per_ha(world.biota.crop_water.data[i]) as f64;
+        // **What it yields comes from water, and from what will grow.**
+        // It used to be `1 + 7 x fertility`, a soil score with no climate
+        // in it, so a dry country and a wet one on the same soil fed the
+        // same number of people. Now the yield is whatever the best crop
+        // for this ground returns — which matters because assuming wheat
+        // everywhere gave a waterlogged floodplain nothing, when
+        // floodplain under rice is the most productive farmland there is.
+        let yield_t = world.biota.crop_yield.data[i] as f64;
         out[s as usize].grain_potential += cropland * yield_t;
     }
     out

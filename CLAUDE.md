@@ -207,6 +207,63 @@ Two calibration errors on the way:
   full growth left taiga and tundra at the bare floor, which is to say it
   left Canada and Siberia with no vegetation at all.
 
+### People grow what grows
+
+Assuming wheat everywhere **starves people who in reality eat perfectly
+well**. A waterlogged floodplain yielded nothing — when floodplain under
+rice is the most productive farmland on Earth and feeds billions. Too dry
+for wheat is sorghum country; too cold is barley; too hot and wet is rice.
+Land is not unproductive, it is *differently* productive.
+
+Six crops, each with a real temperature window, water-use efficiency and
+ceiling. **C4 crops — maize and sorghum — convert water half again as
+efficiently as wheat**, which is exactly why they hold the hot dry parts
+of the world. **Rice is grown in standing water**, so waterlogging is not
+a hazard to it but the method.
+
+Which is why the drowning penalty belongs to the *crop*, not to the water
+figure: at a shallow table there is **more** water in the root zone, not
+less, and what suffers is a wheat plant's ability to use it.
+
+- **A potato is 80% water**, and rating it on raw tonnage gave it a
+  quarter of the planet and left wheat with none — against real cropland
+  shares of 1.4% potatoes and 15% wheat. What the model rates is
+  *storable, shippable* food: a potato will not keep a year or survive a
+  long haul, and cannot be a reserve.
+- Result: barley 20% of land, sorghum 14%, maize 13%, wheat 10%, rice 6%,
+  potatoes 2% — measuring land *suited* to a crop rather than land
+  actually farmed, so the cold and dry margins run higher here than
+  harvested area does. Cropland-weighted yield 3.0 t/ha against a real
+  3.5.
+
+### Groundwater is a resource in dry country and a liability in wet
+
+The water table only ever *limited* things — it could waterlog roots and
+nothing else. But capillary rise carries water up out of it into the root
+zone, which is the whole reason a floodplain or an oasis grows anything in
+country that has no business growing anything. The Nile, in one sentence.
+
+**And it moves through the year**, falling as the dry season draws it down
+and recovering on recharge, lagging the rain by a month or two because
+water has to work its way down — which is exactly why a floodplain still
+has water under it well into a dry season. Real swings: 0.5-2 m in shallow
+alluvium, 1-5 in temperate aquifers, 5-15 between pre- and post-monsoon.
+
+For a crop that drowns the relationship is **humped** — too shallow and
+roots suffocate, too deep and it is out of reach, optimum a metre or two
+down, which is where field drainage aims to hold it:
+
+| depth to water | wheat, dry climate | wheat, wet climate |
+|---|---|---|
+| 0.3 m | drowned | drowned |
+| 1.5 m | **the optimum** | no better than deep |
+| 20 m | rain alone | rain alone, and enough |
+
+Reducing storage was not enough on its own to model drowning: capillary
+supply more than made up for it, so a table 30 cm down came out as the
+best land on the map when it is in fact a marsh. What waterlogging does is
+**suffocate roots** — real losses 20-50% from a few days of it.
+
 ### A yield comes from water, not from a score
 
 Farm yield was `1 + 7 x fertility` — a soil score with no climate in it —

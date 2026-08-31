@@ -96,9 +96,16 @@ pub struct Biota {
     /// seasonal grassland halves, an equatorial one barely moves.
     pub standing_summer: Field,
     pub standing_winter: Field,
-    /// **Growing-season water a crop actually gets**, in mm — the figure
-    /// a yield is built on. See [`crop_yield_t_per_ha`].
+    /// **Growing-season water a crop actually gets**, in mm.
     pub crop_water: Field,
+    /// Mean temperature over the growing months, °C.
+    pub season_c: Field,
+    /// How well drained the root zone is in its worst month, 0 to 1.
+    pub aeration: Field,
+    /// **What a farmer here would actually plant**, and what it yields in
+    /// tonnes of grain-equivalent a hectare.
+    pub crop: Vec<Crop>,
+    pub crop_yield: Field,
 }
 
 /// Kilograms of herbivore per km² per unit of grazeable productivity.
@@ -144,6 +151,13 @@ pub struct Settled {
     /// This is evapotranspiration that really happened, not rainfall —
     /// which is what a yield is built on.
     pub crop_water_mm: f32,
+    /// Mean temperature over the growing months, °C — which decides what
+    /// will grow, not merely how much.
+    pub season_c: f32,
+    /// **How well drained the root zone is in its worst month**, 0 to 1.
+    /// Kept apart from the water figure because whether it matters is a
+    /// property of the crop: rice is grown in standing water.
+    pub aeration: f32,
 }
 
 /// Months of a plant's own turnover, and how fast each animal closes on
@@ -172,6 +186,27 @@ const ROOTABLE_M: f32 = 1.2;
 /// 2-6 mm/°C/day.
 const MELT_MM_PER_DEGREE_DAY: f32 = 3.5;
 
+/// **How far water climbs out of the water table into the root zone.**
+///
+/// Capillary rise is why a shallow water table is a *resource* and not
+/// only a hazard: it feeds a crop from below through a dry season, which
+/// is what makes a floodplain or an oasis productive in country that has
+/// no business growing anything. Real heights depend on texture — sand
+/// 0.3-1 m, loam 1-2, clay 2-4 — and 1.5 m is the honest single figure
+/// until substrate distinguishes them.
+const CAPILLARY_RISE_M: f32 = 1.5;
+
+/// **The water table moves through the year**, falling as the dry season
+/// draws it down and recovering on recharge. Real seasonal swings: half a
+/// metre to two in shallow alluvium, one to five in temperate aquifers,
+/// and five to fifteen between pre- and post-monsoon in a strongly
+/// seasonal climate.
+///
+/// **And it lags the rain by a month or two**, because water has to work
+/// its way down. That lag is exactly why a floodplain still has water
+/// under it well into a dry season.
+const WATER_TABLE_LAG_MONTHS: f32 = 1.5;
+
 /// Run one cell to equilibrium. Public so the calibration tests can hold
 /// the climate fixed and vary one thing at a time, which is the only way
 /// to see what soil depth is buying: in the world at large, deep soil
@@ -189,12 +224,19 @@ pub fn settle(
     // **Soil depth turns a climate index into water a plant can drink.**
     // A deep soil banks the spring and pays it out through summer; a thin
     // one is dry a fortnight after rain, on identical rainfall.
-    // **Roots need air as much as water.** Where the water table stands
-    // inside the root zone the soil is waterlogged and roots die in it,
-    // which is why a floodplain reads wet and still roots shallow, and
-    // why field drainage is installed to hold the table below about a
-    // metre. Rice is the exception and is not modelled.
-    let aerated_m = (water_table_m - 0.3).max(0.0);
+    // How far the table swings between its wettest and driest month. A
+    // climate that delivers its rain in one season moves it a long way;
+    // an equable one barely moves it at all.
+    let concentration = ((summer_share - 0.5).abs() * 2.0).clamp(0.0, 1.0);
+    let swing_m = (0.5 + 5.0 * concentration).min(water_table_m * 0.8);
+
+    // **Roots need air as much as water**, and what kills them is the
+    // *wettest* month, not the average. Where the table stands inside the
+    // root zone the soil is waterlogged and roots drown in it, which is
+    // why field drainage is installed to hold it below about a metre.
+    // Rice is the exception and is not modelled.
+    let wettest_table_m = (water_table_m - swing_m * 0.5).max(0.0);
+    let aerated_m = (wettest_table_m - 0.3).max(0.0);
     let rootable = soil_depth_m.min(ROOTABLE_M).min(aerated_m);
     let capacity_mm = rootable * WATER_HELD_PER_METRE_MM;
     let mut storage_mm = capacity_mm * 0.5;
@@ -229,6 +271,9 @@ pub fn settle(
     let (mut peak, mut trough) = (0.0f32, f32::MAX);
     let mut standing_mean = capacity * 0.5;
     let mut month_et = [0.0f32; 12];
+    let mut season_c_sum = 0.0f32;
+    let mut season_months = 0.0f32;
+    let mut worst_aeration = 1.0f32;
 
     // A century of months is long past settling for populations that
     // move by tens of percent a year.
@@ -275,9 +320,42 @@ pub fn settle(
             0.0
         };
 
-        let available = storage_mm + arriving;
+        // --- Where the water table is standing this month ---
+        //
+        // It follows the rain, a month or two behind, because water has to
+        // work its way down.
+        let lag = ((m as f32 - WATER_TABLE_LAG_MONTHS) / 12.0) * std::f32::consts::TAU
+            - std::f32::consts::FRAC_PI_2;
+        let wet_season_phase = if summer_share >= 0.5 { lag.sin() } else { -lag.sin() };
+        let table_m = (water_table_m - swing_m * 0.5 * wet_season_phase).max(0.0);
+
+        // **Groundwater feeds the crop when it is close enough to reach.**
+        // Capillary rise carries water up out of the table into the root
+        // zone, which is the whole reason a floodplain in dry country
+        // grows anything at all — and it was doing nothing here, so the
+        // table could only ever be a hazard.
+        let reach = rootable + CAPILLARY_RISE_M;
+        let from_below = if table_m < reach {
+            // Full contribution when the table is at the root zone,
+            // tailing off to nothing at the top of the capillary fringe.
+            let closeness = ((reach - table_m) / CAPILLARY_RISE_M).clamp(0.0, 1.0);
+            pet * closeness * 0.8
+        } else {
+            0.0
+        };
+
+        // **A drowned crop does not grow, however much water it has.**
+        // Reducing the *storage* was not enough on its own: capillary
+        // supply more than made up for it, so a table 30 cm down came out
+        // as the best land on the map when it is in fact a marsh. What
+        // waterlogging does is suffocate roots — real yield losses run
+        // 20-50% from a few days of it — and field drainage exists to hold
+        // the table around a metre down for exactly this reason.
+        let aeration = ((table_m - 0.25) / 0.75).clamp(0.0, 1.0);
+
+        let available = storage_mm + arriving + from_below;
         let actual_et = pet.min(available);
-        storage_mm = (available - actual_et).clamp(0.0, capacity_mm);
+        storage_mm = (available - actual_et - from_below).clamp(0.0, capacity_mm);
 
         // **How well watered the plants were this month**: what they got
         // against what they wanted. A saturated soil scores 1 and a soil
@@ -287,7 +365,7 @@ pub fn settle(
         } else {
             (climatic_moisture / 0.65).clamp(0.0, 1.0)
         };
-        let growing = warm * wet;
+        let growing = warm * wet * aeration;
 
         let grazed = (herbivore * HERBIVORE_INTAKE_PER_YEAR / 12.0).min(plant * 0.5);
         plant += PLANT_REGROWTH_PER_MONTH * growing * (capacity - plant) - grazed;
@@ -311,7 +389,13 @@ pub fn settle(
             // the ground for 120-180 days and uses 350-650 mm in that
             // time; the best five months of the year is that season.
             if month_c > 5.0 {
+                // **Unpenalised**: whether waterlogging matters depends
+                // on the crop, and rice does not care. The aeration
+                // factor travels separately so the crop can decide.
                 month_et[m as usize] = actual_et;
+                season_c_sum += month_c;
+                season_months += 1.0;
+                worst_aeration = worst_aeration.min(aeration);
             }
         }
 
@@ -345,6 +429,12 @@ pub fn settle(
         herbivore,
         predator,
         crop_water_mm: crop_water,
+        season_c: if season_months > 0.0 {
+            season_c_sum / season_months
+        } else {
+            mean_c
+        },
+        aeration: worst_aeration,
     }
 }
 
@@ -384,6 +474,10 @@ pub fn generate(
     let mut standing_summer = Field::new(w, h);
     let mut standing_winter = Field::new(w, h);
     let mut crop_water = Field::new(w, h);
+    let mut season_c = Field::new(w, h);
+    let mut aeration = Field::new(w, h);
+    let mut crop = vec![Crop::Wheat; w * h];
+    let mut crop_yield = Field::new(w, h);
 
     for i in 0..elev.data.len() {
         if elev.data[i] < sea_level {
@@ -410,6 +504,11 @@ pub fn generate(
         standing_summer.data[i] = s.plant_summer;
         standing_winter.data[i] = s.plant_winter;
         crop_water.data[i] = s.crop_water_mm;
+        season_c.data[i] = s.season_c;
+        aeration.data[i] = s.aeration;
+        let (c, y) = best_crop(s.season_c, s.crop_water_mm, s.aeration);
+        crop[i] = c;
+        crop_yield.data[i] = y;
 
         // Timber tracks productivity as well as forest type: a boreal
         // forest and a tropical one are both forest and are not the same
@@ -431,7 +530,162 @@ pub fn generate(
         standing_summer,
         standing_winter,
         crop_water,
+        season_c,
+        aeration,
+        crop,
+        crop_yield,
     }
+}
+
+/// **People grow what grows.**
+///
+/// Assuming one crop everywhere is what made a waterlogged floodplain
+/// yield nothing — when floodplain under rice is the most productive
+/// farmland on Earth and feeds billions. A place too dry for wheat grows
+/// sorghum; too cold, barley; too hot and wet, rice. The land is not
+/// unproductive, it is *differently* productive, and pretending otherwise
+/// starves people who in reality eat perfectly well.
+///
+/// All figures real: season temperature window, water-use efficiency in
+/// kg of grain per hectare per millimetre, the bare-soil evaporation lost
+/// before the crop gets any, and a rainfed ceiling.
+///
+/// **C4 crops — maize, sorghum, millet — convert water half again as
+/// efficiently as wheat**, which is exactly why they hold the hot dry
+/// parts of the world.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Crop {
+    /// Cold and short-season: 5-20 °C, and it will take 250 mm.
+    Barley,
+    /// The temperate staple.
+    Wheat,
+    /// C4, hot, thirsty, and the highest rainfed yield there is.
+    Maize,
+    /// C4, hot and dry — grows on rain that would fail wheat outright.
+    Sorghum,
+    /// **Grown in standing water**, so waterlogging is not a hazard but
+    /// the method.
+    Rice,
+    /// Cool, short season, and enormous yields by dry matter.
+    Potato,
+}
+
+struct CropNeeds {
+    /// Season mean temperature the crop will take at all, and the band it
+    /// is happiest in.
+    t_min: f32,
+    t_opt_lo: f32,
+    t_opt_hi: f32,
+    t_max: f32,
+    /// kg of grain per hectare per millimetre of season water.
+    wue: f32,
+    /// Lost to bare-soil evaporation before the crop gets any.
+    loss_mm: f32,
+    /// Best a rainfed crop does.
+    ceiling: f32,
+    /// Whether standing water in the root zone is a problem.
+    drowns: bool,
+}
+
+impl Crop {
+    pub const ALL: [Crop; 6] = [
+        Crop::Barley,
+        Crop::Wheat,
+        Crop::Maize,
+        Crop::Sorghum,
+        Crop::Rice,
+        Crop::Potato,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Crop::Barley => "barley",
+            Crop::Wheat => "wheat",
+            Crop::Maize => "maize",
+            Crop::Sorghum => "sorghum",
+            Crop::Rice => "rice",
+            Crop::Potato => "potatoes",
+        }
+    }
+
+    fn needs(self) -> CropNeeds {
+        match self {
+            // Hardier and thirstier-tolerant than wheat, and lower
+            // yielding: which is why it is grown where wheat will not go
+            // and not where it will.
+            Crop::Barley => CropNeeds {
+                t_min: 2.0, t_opt_lo: 8.0, t_opt_hi: 18.0, t_max: 26.0,
+                wue: 19.0, loss_mm: 70.0, ceiling: 6.0, drowns: true,
+            },
+            Crop::Wheat => CropNeeds {
+                t_min: 5.0, t_opt_lo: 12.0, t_opt_hi: 22.0, t_max: 30.0,
+                wue: 22.0, loss_mm: 80.0, ceiling: 10.0, drowns: true,
+            },
+            // C4: more grain per drop, and it wants heat.
+            Crop::Maize => CropNeeds {
+                t_min: 12.0, t_opt_lo: 20.0, t_opt_hi: 30.0, t_max: 38.0,
+                wue: 30.0, loss_mm: 90.0, ceiling: 12.0, drowns: true,
+            },
+            // C4 and drought-hardy: a crop off 300 mm that would leave
+            // wheat with nothing.
+            Crop::Sorghum => CropNeeds {
+                t_min: 15.0, t_opt_lo: 22.0, t_opt_hi: 32.0, t_max: 42.0,
+                wue: 26.0, loss_mm: 55.0, ceiling: 6.0, drowns: true,
+            },
+            // Thirsty and low-efficiency per drop, but it is grown in the
+            // one place nothing else will grow at all.
+            Crop::Rice => CropNeeds {
+                t_min: 16.0, t_opt_lo: 22.0, t_opt_hi: 32.0, t_max: 40.0,
+                wue: 14.0, loss_mm: 60.0, ceiling: 9.0, drowns: false,
+            },
+            // **By dry matter a potato crop is enormous** — 40 t/ha fresh
+            // at ~20% dry matter — and it still is not the staple, which
+            // is the thing to get right. A potato is 80% water: it will
+            // not store through a year, will not survive a long haul, and
+            // cannot be a strategic reserve. Rated on raw tonnage it took
+            // a quarter of the planet and left wheat with none, against a
+            // real cropland share of 1.4% for potatoes and 15% for wheat.
+            // What is rated here is *storable, shippable* food.
+            Crop::Potato => CropNeeds {
+                t_min: 3.0, t_opt_lo: 10.0, t_opt_hi: 20.0, t_max: 27.0,
+                wue: 20.0, loss_mm: 75.0, ceiling: 6.5, drowns: true,
+            },
+        }
+    }
+
+    /// What this crop yields here, in tonnes of grain-equivalent a
+    /// hectare. Nil if the season is outside what it will take.
+    pub fn yield_t_per_ha(self, season_c: f32, water_mm: f32, aeration: f32) -> f32 {
+        let n = self.needs();
+        if season_c < n.t_min || season_c > n.t_max {
+            return 0.0;
+        }
+        // Full inside the optimum band, tailing off to the limits.
+        let heat = if season_c < n.t_opt_lo {
+            (season_c - n.t_min) / (n.t_opt_lo - n.t_min)
+        } else if season_c > n.t_opt_hi {
+            (n.t_max - season_c) / (n.t_max - n.t_opt_hi)
+        } else {
+            1.0
+        };
+        let water = if n.drowns { water_mm * aeration } else { water_mm };
+        let kg = n.wue * (water - n.loss_mm).max(0.0);
+        let drowning = if n.drowns { aeration } else { 1.0 };
+        (kg / 1000.0).min(n.ceiling) * heat.clamp(0.0, 1.0) * drowning
+    }
+}
+
+/// **What a farmer here would actually plant, and what it yields.**
+pub fn best_crop(season_c: f32, water_mm: f32, aeration: f32) -> (Crop, f32) {
+    let mut best = (Crop::Wheat, 0.0f32);
+    for c in Crop::ALL {
+        let y = c.yield_t_per_ha(season_c, water_mm, aeration);
+        // Ties break by the order in ALL, so a seed stays reproducible.
+        if y > best.1 {
+            best = (c, y);
+        }
+    }
+    best
 }
 
 /// **What a hectare yields, from the water the crop actually got.**

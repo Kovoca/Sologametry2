@@ -887,7 +887,7 @@ fn a_yield_comes_from_water_and_not_from_a_score() {
     let (mut num, mut den) = (0.0f64, 0.0f64);
     for &i in &land {
         let f = w.geology.fertility.data[i] as f64;
-        num += f * crop_yield_t_per_ha(w.biota.crop_water.data[i]) as f64;
+        num += f * w.biota.crop_yield.data[i] as f64;
         den += f;
     }
     let mean = num / den;
@@ -901,7 +901,7 @@ fn a_yield_comes_from_water_and_not_from_a_score() {
     // pinned a tenth of the planet at the theoretical maximum.
     let capped = land
         .iter()
-        .filter(|&&i| crop_yield_t_per_ha(w.biota.crop_water.data[i]) >= 9.99)
+        .filter(|&&i| w.biota.crop_yield.data[i] >= 9.99)
         .count() as f64
         / land.len() as f64;
     assert!(
@@ -909,4 +909,69 @@ fn a_yield_comes_from_water_and_not_from_a_score() {
         "{:.0}% of the planet yields the rainfed maximum",
         capped * 100.0
     );
+}
+
+#[test]
+fn people_grow_what_grows() {
+    // **Assuming one crop everywhere starves people who in reality eat
+    // perfectly well.** A waterlogged floodplain yielded nothing — when
+    // floodplain under rice is the most productive farmland on Earth. Too
+    // dry for wheat is sorghum country; too cold is barley; too hot and
+    // wet is rice. The land is not unproductive, it is *differently*
+    // productive.
+    use scale_sim::biota::{best_crop, Crop};
+
+    // Each crop wins where it should.
+    assert_eq!(best_crop(8.0, 300.0, 1.0).0, Crop::Barley, "cold and dry is barley country");
+    assert_eq!(best_crop(30.0, 200.0, 1.0).0, Crop::Sorghum, "hot and dry is sorghum country");
+    assert_eq!(best_crop(28.0, 900.0, 1.0).0, Crop::Maize, "hot and watered is maize country");
+
+    // **The one that matters.** Standing water is not a hazard to rice,
+    // it is the method — so the ground wheat cannot use at all is the
+    // ground that feeds the most people.
+    let (crop, y) = best_crop(28.0, 1200.0, 0.1);
+    assert_eq!(crop, Crop::Rice, "a flooded tropical delta grows nothing");
+    assert!(y > 6.0, "a rice paddy yields {y:.1} t/ha");
+    // Not literally nil — a drowned crop is a failed crop, 22 kg to the
+    // hectare, which is nothing anybody would harvest.
+    assert!(
+        Crop::Wheat.yield_t_per_ha(28.0, 1200.0, 0.1) < 0.1,
+        "wheat does well in standing water"
+    );
+
+    // Nothing grows outside its temperature window: that is what makes
+    // the tundra empty rather than merely poor.
+    assert_eq!(best_crop(-5.0, 600.0, 1.0).1, 0.0, "a crop at -5 °C");
+
+    let w = World::generate(256, 144, 20260828);
+    let land: Vec<usize> = (0..w.biomes.len())
+        .filter(|&i| w.elevation.data[i] >= w.sea_level)
+        .collect();
+
+    // **A planet grows more than one thing.** Real cropland shares are
+    // wheat ~15%, maize ~15%, rice ~12%, barley ~3.5%, sorghum ~2.7%,
+    // potatoes ~1.4% — and this measures land *suited* to a crop rather
+    // than land actually farmed, so the cold and dry margins run higher
+    // here than the harvested figures do.
+    let grown: Vec<Crop> = Crop::ALL
+        .into_iter()
+        .filter(|&c| {
+            land.iter()
+                .any(|&i| w.biota.crop[i] == c && w.biota.crop_yield.data[i] > 0.3)
+        })
+        .collect();
+    assert!(
+        grown.len() >= 4,
+        "the whole planet grows only {:?}",
+        grown.iter().map(|c| c.name()).collect::<Vec<_>>()
+    );
+    // No single crop owns the world.
+    for c in Crop::ALL {
+        let share = land
+            .iter()
+            .filter(|&&i| w.biota.crop[i] == c && w.biota.crop_yield.data[i] > 0.3)
+            .count() as f64
+            / land.len() as f64;
+        assert!(share < 0.45, "{} covers {:.0}% of the land", c.name(), share * 100.0);
+    }
 }

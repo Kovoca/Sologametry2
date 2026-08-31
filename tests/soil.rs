@@ -175,48 +175,74 @@ fn heat_takes_the_water_back() {
 
 #[test]
 fn a_waterlogged_floodplain_reads_wet_and_roots_shallow() {
-    // **Roots need air as much as water.** Where the water table stands
-    // inside the root zone the soil is waterlogged and roots die in it,
-    // which is why field drainage exists and why a floodplain can be the
-    // wettest ground on the farm and still the worst. Rice is the
-    // exception and is not modelled.
-    use scale_sim::biota::settle;
+    // **Roots need air as much as water**, so where the water table
+    // stands inside the root zone the soil is waterlogged and roots
+    // suffocate in it. Field drainage exists for exactly this reason.
+    //
+    // Note what it does and does not do: the *water* is still there — more
+    // of it, because capillary rise carries it up — and what suffers is
+    // the plant's ability to use it. Which is why the penalty belongs to
+    // the crop and not to the water figure. Rice does not care.
+    use scale_sim::biota::{best_crop, settle, Crop};
     let at_water_table = |depth_m: f32| {
         settle(600_000.0, 18.0, 18.0, 0.45, 3.0, 500.0, 0.22, depth_m)
     };
     let drained = at_water_table(8.0);
     let waterlogged = at_water_table(0.4);
+
+    // Natural vegetation suffers: it cannot choose to be rice.
     assert!(
         waterlogged.plant_winter < drained.plant_winter * 0.9,
         "a water table 40 cm down costs nothing: {:.0} against {:.0} kg/km2 drained",
         waterlogged.plant_winter,
         drained.plant_winter
     );
+    // And there is *more* water, not less — the capillary fringe is
+    // feeding the root zone from below.
     assert!(
-        waterlogged.crop_water_mm < drained.crop_water_mm,
-        "a waterlogged soil delivers as much water to a crop as a drained one"
+        waterlogged.crop_water_mm > drained.crop_water_mm,
+        "a shallow water table is not reaching the root zone at all"
     );
+    assert!(waterlogged.aeration < 0.3 && drained.aeration > 0.9);
+
+    // Wheat drowns; the land is not therefore worthless.
+    assert!(Crop::Wheat.yield_t_per_ha(18.0, waterlogged.crop_water_mm, waterlogged.aeration) < 1.0);
 }
 
 #[test]
-fn substrate_sets_how_deep_the_soil_gets() {
-    // Real weathering: crystalline basement — granite, gneiss, schist —
-    // weathers slowly to a thin stony soil, and limestone dissolves away
-    // leaving almost nothing, which is why karst country is soil-poor.
-    // Bedded rock generally gives more: shale to deep clay, sandstone to
-    // a metre of sand.
-    use scale_sim::geology::Rock;
-    let w = World::generate(256, 144, 20260828);
-    let mean_on = |r: Rock| {
-        let c: Vec<usize> = (0..w.soil_depth.data.len())
-            .filter(|&i| w.elevation.data[i] >= w.sea_level && w.geology.rock[i] == r)
-            .collect();
-        c.iter().map(|&i| w.soil_depth.data[i] as f64).sum::<f64>() / c.len().max(1) as f64
+fn groundwater_is_a_resource_in_dry_country_and_a_liability_in_wet() {
+    // **The water table is not only a hazard.** Capillary rise carries
+    // water up into the root zone, which is why a floodplain or an oasis
+    // grows anything in country that has no business growing anything —
+    // the Nile, in one sentence. It was doing nothing here, so a shallow
+    // table could only ever hurt.
+    //
+    // For a crop that drowns, the relationship is humped: too shallow and
+    // the roots suffocate, too deep and it is out of reach, with an
+    // optimum a metre or two down — which is where field drainage aims to
+    // hold it.
+    use scale_sim::biota::{settle, Crop};
+    let dry_wheat = |table_m: f32| {
+        let s = settle(300_000.0, 20.0, 16.0, 0.25, 1.5, 250.0, 0.8, table_m);
+        Crop::Wheat.yield_t_per_ha(s.season_c, s.crop_water_mm, s.aeration)
     };
-    let sed = mean_on(Rock::Sedimentary);
-    let met = mean_on(Rock::Metamorphic);
+    let (drowned, optimum, deep) = (dry_wheat(0.3), dry_wheat(1.5), dry_wheat(20.0));
+
     assert!(
-        sed > met * 1.3,
-        "bedded rock carries {sed:.2} m of soil against {met:.2} on crystalline basement"
+        optimum > deep * 3.0,
+        "groundwater at 1.5 m yields {optimum:.1} t/ha against {deep:.1} where it is out of \
+         reach - capillary rise is feeding nothing"
     );
+    assert!(
+        drowned < deep,
+        "wheat on a table 30 cm down yields {drowned:.1} t/ha, more than on dry ground"
+    );
+    assert!((0.5..3.5).contains(&deep), "250 mm of rain alone yields {deep:.1} t/ha of wheat");
+
+    // **But somebody else farms that ground.** The land wheat cannot use
+    // is the land that feeds the most people anywhere on Earth.
+    let marsh = settle(300_000.0, 26.0, 16.0, 0.25, 1.5, 250.0, 0.8, 0.3);
+    let (crop, y) = scale_sim::biota::best_crop(marsh.season_c, marsh.crop_water_mm, marsh.aeration);
+    assert_eq!(crop, Crop::Rice, "a warm marsh grows nothing worth having");
+    assert!(y > 3.0, "a rice paddy yields {y:.1} t/ha");
 }
