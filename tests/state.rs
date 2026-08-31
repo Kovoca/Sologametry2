@@ -126,3 +126,61 @@ fn public_work_is_steady_and_shop_work_is_not() {
     // teaching moves no tonnage — which is exactly what a service is.
     e.ledger.assert_conserved();
 }
+
+#[test]
+fn a_below_replacement_birth_rate_is_only_destiny_if_nobody_pays() {
+    // **The line that decides whether demographic decline is a fact or a
+    // choice.** Real family spending runs from **0.6% of GDP in the United
+    // States to about 4% in France**, OECD average 2%; Denmark, France,
+    // Hungary, Sweden and the UK are all above 3.5% while Japan, Korea,
+    // Spain and the US are under 1.5%.
+    //
+    // A state that leaves a nursery place at 65% of a wage gets the
+    // maternal employment and the birth rate that implies. Sweden caps
+    // what a parent pays at about 3% of income and gets both back.
+    let e = a_nation(Doctrine::Prudent).economy;
+
+    let strong = Government::govern(&e, Capacity::Developed);
+    let weak = Government::govern(&e, Capacity::Weak);
+
+    let borne_strong = strong.childcare_borne_by_parents();
+    let borne_weak = weak.childcare_borne_by_parents();
+    assert!(
+        borne_strong < borne_weak * 0.6,
+        "a funded family policy leaves parents bearing {:.0}% against an unfunded {:.0}%",
+        borne_strong * 100.0,
+        borne_weak * 100.0
+    );
+
+    // In real terms: 65% of a wage unsupported, and the Nordic figure is
+    // a few percent.
+    let real_cost = |g: &Government| 0.65 * g.childcare_borne_by_parents();
+    assert!(
+        real_cost(&strong) < 0.20,
+        "a well-funded state still leaves childcare at {:.0}% of a wage",
+        real_cost(&strong) * 100.0
+    );
+    assert!(
+        real_cost(&weak) > 0.35,
+        "a state funding a third of its family policy still makes childcare cheap"
+    );
+
+    // **And it employs people.** Nursery ratios of one adult to three
+    // under-twos are why this costs what it does, and why it is a real
+    // block of jobs rather than a cash transfer.
+    let staff: f64 = (0..e.markets.len())
+        .map(|m| strong.posts_for(&e, m, Service::Family))
+        .sum();
+    assert!(staff > 0.0, "family support that employs nobody");
+
+    // The honest caveat, recorded rather than modelled away: **spending
+    // does not simply buy births.** OECD fertility fell from 1.8 to 1.7
+    // between 2009 and 2017 across countries spending heavily, and Korea
+    // has cheap childcare and the lowest fertility on earth. What family
+    // spending reliably buys is that a parent can *work*.
+    assert!(
+        Service::Family.peacetime_share() > 0.015
+            && Service::Family.peacetime_share() < 0.045,
+        "family spending is outside the real 0.6-4% of GDP range"
+    );
+}

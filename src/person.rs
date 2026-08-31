@@ -1813,10 +1813,21 @@ pub fn live_a_day_with(
             // It has to be applied *here*, where the work is decided.
             // Charged afterwards it could not prevent anything, and
             // parents came out working more than the childless.
+            // **And how much of it the parent actually bears depends on
+            // the state.** A below-replacement birth rate is only destiny
+            // if nobody carries any of this: real family spending runs
+            // from 0.6% of GDP in the United States to about 4% in France,
+            // and Sweden caps what a parent pays at roughly 3% of income
+            // against England's 65% of a wage.
+            let borne = econ
+                .government
+                .as_ref()
+                .map(|g| g.childcare_borne_by_parents())
+                .unwrap_or(1.0);
             let childcare: f64 = person
                 .children
                 .iter()
-                .map(|&age| childcare_share_of_wage(age))
+                .map(|&age| childcare_share_of_wage(age) * borne)
                 .sum();
             if childcare > 0.0 {
                 // What is left of a day's pay after paying somebody to

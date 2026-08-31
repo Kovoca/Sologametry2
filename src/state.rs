@@ -68,15 +68,36 @@ pub enum Service {
     Safety,
     /// Real: 1-4% in peacetime, 10-40% at war, and it ratchets.
     Defence,
+    /// **Family support** — subsidised childcare, allowances, parental
+    /// leave. Real spending runs from **0.6% of GDP in the United States
+    /// to about 4% in France**, with an OECD average of 2%; Denmark,
+    /// France, Hungary, Sweden and the UK are all above 3.5%, while Japan,
+    /// Korea, Spain and the US are under 1.5%.
+    ///
+    /// **This is the line that decides whether a below-replacement
+    /// fertility rate is destiny.** A state that leaves a nursery place at
+    /// 65% of a wage gets the maternal employment and the birth rate that
+    /// implies; one that caps it — Sweden holds parents to about 3% of
+    /// income — gets both back.
+    ///
+    /// The honest caveat, and it matters: **spending does not simply buy
+    /// births.** OECD fertility fell from 1.8 to 1.7 between 2009 and 2017
+    /// across countries that were spending heavily, and Korea has cheap
+    /// childcare and the lowest fertility on earth. Housing, hours and
+    /// what is expected of a parent all bear on it. What family spending
+    /// reliably buys is that **a parent can work**; the birth rate
+    /// responds, but weakly.
+    Family,
 }
 
 impl Service {
-    pub const ALL: [Service; 5] = [
+    pub const ALL: [Service; 6] = [
         Service::Education,
         Service::Health,
         Service::Administration,
         Service::Safety,
         Service::Defence,
+        Service::Family,
     ];
 
     pub fn name(self) -> &'static str {
@@ -86,6 +107,7 @@ impl Service {
             Service::Administration => "administration",
             Service::Safety => "safety",
             Service::Defence => "defence",
+            Service::Family => "family support",
         }
     }
 
@@ -97,6 +119,8 @@ impl Service {
             Service::Administration => 0.035,
             Service::Safety => 0.010,
             Service::Defence => 0.020,
+            // OECD average 2% of the economy; France ~4%, the US 0.6%.
+            Service::Family => 0.025,
         }
     }
 
@@ -122,6 +146,9 @@ impl Service {
             Service::Administration => 1.0 / 45.0,
             Service::Safety => 1.0 / 350.0,
             Service::Defence => 1.0 / 450.0,
+            // Nursery and childcare staff. Ratios of one adult to three
+            // under-twos are why this employs so many for so few children.
+            Service::Family => 1.0 / 200.0,
         }
     }
 }
@@ -134,7 +161,7 @@ pub struct Government {
     /// What each line is funded at, 0 to 1 of what it wants. **Under-fund
     /// a line and it employs fewer people**, which is the whole point of
     /// the budget competing with itself.
-    pub funded: [f64; 5],
+    pub funded: [f64; 6],
     /// Public posts in each market, summed over the services.
     pub posts: Vec<f64>,
 }
@@ -173,7 +200,7 @@ impl Government {
             1.0
         };
 
-        let mut funded = [0.0f64; 5];
+        let mut funded = [0.0f64; 6];
         for (i, _s) in Service::ALL.iter().enumerate() {
             funded[i] = cover;
         }
@@ -198,6 +225,23 @@ impl Government {
             funded,
             posts,
         }
+    }
+
+    /// **What a family actually pays for childcare**, after what the state
+    /// carries.
+    ///
+    /// Real: an unsupported nursery place is 65% of a median take-home
+    /// wage in England; Sweden caps what a parent pays at about 3% of
+    /// income. A fully funded family policy therefore takes most of it
+    /// away, and that is the difference between a parent working and not.
+    pub fn childcare_borne_by_parents(&self) -> f64 {
+        let i = Service::ALL
+            .iter()
+            .position(|&s| s == Service::Family)
+            .unwrap_or(0);
+        // A fully funded policy leaves the parent about a sixth of it,
+        // which is roughly where the Nordic countries actually land.
+        1.0 - 0.84 * self.funded[i]
     }
 
     /// Public posts in one market.

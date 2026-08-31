@@ -1037,6 +1037,29 @@ working.
 could not prevent anything, and parents came out working *more* than the
 childless.
 
+**A below-replacement birth rate is only destiny if nobody pays.** Real
+family spending runs from **0.6% of GDP in the United States to about 4%
+in France**, OECD average 2%; Denmark, France, Hungary, Sweden and the UK
+are all above 3.5% while Japan, Korea, Spain and the US are under 1.5%.
+
+| state | family line funded | childcare left to parents |
+|---|---|---|
+| developed | 100% | **10% of a wage** |
+| middling | 93% | 14% |
+| weak | 36% | **45%** |
+
+Sweden caps what a parent pays at about 3% of income against England's
+65%. Put two under-fives in a country with no policy and the day stops
+being worth working; put them in one with a funded policy and it does not.
+
+**The honest caveat, recorded rather than modelled away:** spending does
+not simply buy births. OECD fertility fell from 1.8 to 1.7 between 2009
+and 2017 across countries spending heavily, and **Korea has cheap
+childcare and the lowest fertility on earth**. Housing, hours and what is
+expected of a parent all bear on it. What family spending reliably buys is
+that **a parent can work**; the birth rate responds, but weakly — France's
+4% of GDP buys 1.79 against Britain's 1.44, so about a fifth.
+
 **And a hospital is what keeps a birth alive.** Infant mortality is 3.9
 per 1,000 live births in Britain and over 25 where a state cannot fund a
 health service — which falls straight out of the budget line that already

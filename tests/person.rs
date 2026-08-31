@@ -433,8 +433,10 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
         "a nursery place is barely dearer than an after-school club"
     );
 
-    // Two identical people, one with a toddler.
+    // Two identical people, one with a toddler — **in a country with no
+    // family policy**, which is the case the 65% figure describes.
     let mut r = a_nation(20260828);
+    r.economy.government = None;
     let mut free = Person::new("Ann", Trade::Shopworker, 0, 200.0);
     let mut parent = Person::new("Ann", Trade::Shopworker, 0, 200.0);
     parent.children.push(1.0);
@@ -466,5 +468,31 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
     assert!(
         two.days_worked < parent.days_worked,
         "a second under-five cost nothing on top of the first"
+    );
+
+    // **And that is only destiny if nobody carries any of it.** Real
+    // family spending runs from 0.6% of GDP in the United States to about
+    // 4% in France; Sweden caps what a parent pays at roughly 3% of income
+    // against England's 65% of a wage. Put the same two children in a
+    // country with a funded family policy and the constraint largely goes
+    // away — which is the entire argument for having one.
+    let mut supported = a_nation(20260828);
+    supported.economy.government = Some(scale_sim::state::Government::govern(
+        &supported.economy,
+        scale_sim::state::Capacity::Developed,
+    ));
+    let mut helped = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    helped.children.push(1.0);
+    helped.children.push(3.0);
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        supported.economy.step();
+        let d = supported.economy.ledger.day;
+        person::live_a_day(&mut helped, &mut supported.economy, d);
+    }
+    assert!(
+        helped.days_worked > two.days_worked,
+        "a funded family policy bought nothing: {} days worked against {} without one",
+        helped.days_worked,
+        two.days_worked
     );
 }

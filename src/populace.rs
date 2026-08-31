@@ -227,7 +227,23 @@ impl Populace {
             // here.
             let age = self.people[i].age_years;
             if (20.0..40.0).contains(&age) {
-                let chance = FERTILITY / CHILDBEARING_YEARS / 2.0;
+                // **Family support lifts the birth rate — weakly.**
+                //
+                // The honest version, because the evidence is honest about
+                // it: OECD fertility fell from 1.8 to 1.7 between 2009 and
+                // 2017 across countries spending heavily, and Korea has
+                // cheap childcare and the lowest fertility on earth.
+                // Housing, hours and what is expected of a parent all bear
+                // on it. What family spending reliably buys is that a
+                // parent can *work*; the birth rate responds, but weakly —
+                // France's 4% of GDP buys 1.79 against Britain's 1.44, so
+                // call it a fifth either way.
+                let support = econ
+                    .government
+                    .as_ref()
+                    .map(|g| 1.0 - g.childcare_borne_by_parents())
+                    .unwrap_or(0.0);
+                let chance = FERTILITY * (1.0 + 0.22 * support) / CHILDBEARING_YEARS / 2.0;
                 if (self.rng.next_f32() as f64) < chance {
                     // **Born, and it may not live.** This is where a
                     // hospital shows up in a population rather than in a
