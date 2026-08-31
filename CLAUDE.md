@@ -1067,6 +1067,28 @@ pavement honestly and `Road::Track` never appears. That is a hole in
 vehicles; `staked` is cargo still on the road, which is not a leak. Every
 money printer so far was caught by this identity failing.
 
+### Terrain, material and layers are three different things
+
+Following DF's own model, which is the point of the exercise:
+
+- **A tile is `Rock`; *which* rock is a separate question.** Terrain and
+  material apart means no `GRANITE_WALL`, `LIMESTONE_WALL`, `BASALT_WALL`.
+- **A geological layer spans many Z levels, not one.** Real depths:
+  topsoil 0.1-0.3 m, subsoil to 1-2, weathered rock to ~10, sedimentary
+  cover 0 on a shield and 1-2 km on a continent, crystalline basement
+  under all of it. So six metres down is still something a spade goes
+  through — a test that asserted stone there was asserting a quarry face.
+- **Whether there is any cover is what the surface rock tells you.**
+  Standing on sedimentary rock means a basin with a kilometre of beds
+  under it; standing on igneous or metamorphic means the basement *is* the
+  surface, which is exactly what an exposed shield is.
+- **A stair is a connection both ends agree about.** A stair down at
+  (x, y, z) is only real if there is a stair up at (x, y, z-1). Held as
+  one tile's property the two can drift; asked as a question about both
+  ends they cannot.
+- **A ramp is a direction, not a glyph** — `Facing`, so nothing ever reads
+  a character to decide what is walkable.
+
 ### The map is a viewport, not the map
 
 **A glyph describes what is seen; it does not define what exists.** The

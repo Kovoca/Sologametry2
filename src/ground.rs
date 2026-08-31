@@ -20,6 +20,7 @@
 //! be legible.
 
 use crate::building::{Building, Fixture};
+use crate::geology::Rock;
 use crate::townplan::{Lot, Plan, StreetClass, TILES_PER_PLOT};
 use crate::vehicle::{Part, Vehicle};
 use crate::world::Biome;
@@ -109,7 +110,114 @@ pub enum Tile {
     Vehicle(Part),
 }
 
+/// **The sixteen colours, which is what DF actually runs on.**
+///
+/// The classic interface is CP437 in a 16-colour CGA palette, and the
+/// palette is not decoration — it is half the information. Sand, soil and
+/// mud are all `.` in DF and are told apart by colour alone. Adopting the
+/// glyph conventions without the colour would have collapsed distinctions
+/// this already draws separately.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Colour {
+    Black,
+    Blue,
+    Green,
+    Cyan,
+    Red,
+    Magenta,
+    Brown,
+    Grey,
+    DarkGrey,
+    LightBlue,
+    LightGreen,
+    LightCyan,
+    LightRed,
+    LightMagenta,
+    Yellow,
+    White,
+}
+
+impl Colour {
+    /// The ANSI escape for a foreground colour.
+    pub fn ansi(self) -> &'static str {
+        match self {
+            Colour::Black => "\x1b[30m",
+            Colour::Blue => "\x1b[34m",
+            Colour::Green => "\x1b[32m",
+            Colour::Cyan => "\x1b[36m",
+            Colour::Red => "\x1b[31m",
+            Colour::Magenta => "\x1b[35m",
+            Colour::Brown => "\x1b[33m",
+            Colour::Grey => "\x1b[37m",
+            Colour::DarkGrey => "\x1b[90m",
+            Colour::LightBlue => "\x1b[94m",
+            Colour::LightGreen => "\x1b[92m",
+            Colour::LightCyan => "\x1b[96m",
+            Colour::LightRed => "\x1b[91m",
+            Colour::LightMagenta => "\x1b[95m",
+            Colour::Yellow => "\x1b[93m",
+            Colour::White => "\x1b[97m",
+        }
+    }
+}
+
+/// **What the renderer decides**, kept apart from what the tile *is*.
+/// Spec §16 in the terrain note: a glyph describes what is seen, it does
+/// not define what exists.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub struct Display {
+    pub glyph: char,
+    pub fg: Colour,
+}
+
 impl Tile {
+    /// **DF's own conventions**, which are a functional mapping and not
+    /// anybody's expression: `.` open ground, `"` grass, `,` loose stone,
+    /// `≈` fluid, `█` solid rock, `♣` tree, `░` snow and ice, `+` door,
+    /// `<` and `>` stairs, `▲` ramp, `@` the player.
+    ///
+    /// Where DF has no opinion because it models no such thing — lane
+    /// markings, hard shoulders, footways, shop fittings — the glyph stays
+    /// what it was.
+    pub fn display(self) -> Display {
+        let (glyph, fg) = match self {
+            Tile::Grass => ('"', Colour::Green),
+            Tile::Scrub => ('"', Colour::Brown),
+            Tile::Sand => ('.', Colour::Yellow),
+            Tile::Rock => ('\u{2588}', Colour::DarkGrey),
+            Tile::Snow => ('\u{2591}', Colour::White),
+            Tile::Water => ('\u{2248}', Colour::Blue),
+            Tile::Tree => ('\u{2663}', Colour::LightGreen),
+            Tile::Earth => ('\u{2591}', Colour::Brown),
+            Tile::Ramp => ('\u{25B2}', Colour::Grey),
+            Tile::Sky => (' ', Colour::Black),
+            Tile::Stairs => ('>', Colour::White),
+            Tile::Lift => ('V', Colour::LightCyan),
+            Tile::Road => ('=', Colour::DarkGrey),
+            Tile::Marking => (':', Colour::White),
+            Tile::Shoulder => (';', Colour::DarkGrey),
+            Tile::Pavement => ('-', Colour::Grey),
+            Tile::Parking => ('_', Colour::DarkGrey),
+            Tile::Wall => ('\u{2588}', Colour::Grey),
+            Tile::Floor => ('.', Colour::Grey),
+            Tile::Door => ('+', Colour::Brown),
+            Tile::Window => ('o', Colour::LightCyan),
+            Tile::Fitting(f) => (
+                match f {
+                    Fixture::Till => '$',
+                    Fixture::Shelving => 'S',
+                    Fixture::StockRack => 'R',
+                    Fixture::LoadingBay => 'L',
+                    Fixture::Counter => 'C',
+                },
+                Colour::Yellow,
+            ),
+            Tile::Furnishing(f) => (f.glyph(), Colour::Brown),
+            Tile::Vehicle(p) => (p.glyph(), Colour::LightRed),
+        };
+        Display { glyph, fg }
+    }
+
     pub fn glyph(self) -> char {
         match self {
             Tile::Grass => '"',
@@ -177,32 +285,6 @@ impl Tile {
 /// **One legend for the tile view**, so every binary that draws ground
 /// says the same thing about it. The vehicle parts are listed only when
 /// there is a vehicle to explain.
-pub fn ground_legend(with_vehicle: bool) -> String {
-    let mut out = String::new();
-    out.push_str("  you       @
-");
-    out.push_str("  made      = carriageway   : lane marking   ; hard shoulder   - footway
-");
-    out.push_str("  building  # wall   / door   o window   . floor
-");
-    out.push_str("  fittings  $ till   S shelving   R racking   L loading bay   C counter
-");
-    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe
-");
-    out.push_str("  vertical  > stair   V lift   < ramp   ' ' air   & earth   ^ rock
-");
-    out.push_str("  country   \" grass   T tree   * scrub   , sand   ^ rock   A snow   ~ water");
-    if with_vehicle {
-        out.push_str("
-  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank");
-        out.push_str("
-            % seat   ! controls   b battery   a alternator");
-        out.push_str("
-            p solar   x refrigeration   w workshop rig   Y land gear");
-    }
-    out
-}
-
 /// **Furniture appropriate to the use**, which is the thing CDDA has and
 /// a bare floor does not. A room with nothing in it is not a room, it is
 /// an area.
@@ -238,6 +320,23 @@ pub enum Room {
     Bedroom,
     /// Circulation: hall, landing, stair. Deliberately empty.
     Hall,
+}
+
+pub fn ground_legend(with_vehicle: bool) -> String {
+    let mut out = String::new();
+    out.push_str("  you       @\n");
+    out.push_str("  country   \" grass/scrub   . sand   \u{2663} tree   \u{2588} rock   \u{2591} earth, snow   \u{2248} water\n");
+    out.push_str("  made      = carriageway   : marking   ; hard shoulder   - footway   _ parking\n");
+    out.push_str("  building  \u{2588}\u{2500}\u{2502} wall   + door   o window   . floor\n");
+    out.push_str("  vertical  > stair   V lift   \u{25B2} ramp   ' ' open air\n");
+    out.push_str("  fittings  $ till   S shelving   R racking   L loading bay   C counter\n");
+    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe");
+    if with_vehicle {
+        out.push_str("\n  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank");
+        out.push_str("\n            % seat   ! controls   b battery   a alternator");
+        out.push_str("\n            p solar   x refrigeration   w workshop rig   Y land gear");
+    }
+    out
 }
 
 /// A window of ground, real for as long as somebody is looking at it.
@@ -365,30 +464,51 @@ impl Ground {
     /// which is presentation and not terrain: the tile is a `Wall` either
     /// way, and one terrain type yields corners, tees and crossings.
     pub fn render(&self, person: Option<(i64, i64)>) -> String {
+        self.draw(person, false)
+    }
+
+    /// The same, in DF's sixteen colours.
+    pub fn render_in_colour(&self, person: Option<(i64, i64)>) -> String {
+        self.draw(person, true)
+    }
+
+    fn draw(&self, person: Option<(i64, i64)>, colour: bool) -> String {
         let mut out = String::with_capacity((self.w + 1) * self.h);
+        let mut last: Option<Colour> = None;
         for y in 0..self.h {
             for x in 0..self.w {
                 let here = (self.origin.0 + x as i64, self.origin.1 + y as i64);
-                out.push(if person == Some(here) {
-                    '@'
+                // Priority: the player, then whatever stands on the
+                // ground, then the ground itself.
+                let d = if person == Some(here) {
+                    Display { glyph: '@', fg: Colour::White }
                 } else if let Some(part) = self.over[y * self.w + x] {
-                    part.glyph()
+                    Display { glyph: part.glyph(), fg: Colour::LightRed }
                 } else {
-                    self.glyph_at(x, y)
-                });
+                    let mut d = self.at(x, y).display();
+                    // Topology decides a wall's line; the tile stays a wall.
+                    if self.at(x, y) == Tile::Wall {
+                        d.glyph = self.wall_glyph(x, y);
+                    }
+                    d
+                };
+                if colour && last != Some(d.fg) {
+                    out.push_str(d.fg.ansi());
+                    last = Some(d.fg);
+                }
+                out.push(d.glyph);
             }
             out.push('\n');
+        }
+        if colour {
+            out.push_str("\x1b[0m");
         }
         out
     }
 
     /// A wall run includes its doors and windows, because those are holes
     /// in a wall and not gaps between two.
-    fn glyph_at(&self, x: usize, y: usize) -> char {
-        let t = self.at(x, y);
-        if t != Tile::Wall {
-            return t.glyph();
-        }
+    fn wall_glyph(&self, x: usize, y: usize) -> char {
         let joins = |dx: isize, dy: isize| -> bool {
             let (nx, ny) = (x as isize + dx, y as isize + dy);
             if nx < 0 || ny < 0 || nx as usize >= self.w || ny as usize >= self.h {
@@ -1047,6 +1167,136 @@ pub fn surface_z(seed: u64, plan: &Plan, gx: i64, gy: i64) -> i64 {
 const ROOM_M2: i64 = 9;
 const FLAT_M2: i64 = 61;
 
+/// **What the ground is made of at a given depth.**
+///
+/// Terrain and material are separate things (a tile is `Rock`; *which*
+/// rock is a different question), and a geological layer spans many Z
+/// levels rather than being one of them. Real thicknesses:
+///
+/// | | depth below surface |
+/// |---|---|
+/// | topsoil | 0.1-0.3 m |
+/// | subsoil | to 1-2 m |
+/// | weathered rock | to ~10 m |
+/// | sedimentary cover | 0 on a shield, typically 1-2 km on a continent |
+/// | crystalline basement | below all of it |
+///
+/// **Whether there is any cover at all is what the surface rock tells
+/// you.** Standing on sedimentary rock means a basin with cover under it;
+/// standing on igneous or metamorphic means the basement *is* the
+/// surface, which is what an exposed shield is.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Stratum {
+    Topsoil,
+    Subsoil,
+    /// Broken, weathered rock: diggable with hand tools.
+    Regolith,
+    /// Bedded rock — sandstone, limestone, shale — where there is a basin.
+    Cover(Rock),
+    /// The crystalline floor everything else sits on.
+    Basement(Rock),
+}
+
+impl Stratum {
+    /// What it is made of. Soil is soil, whatever the rock beneath.
+    pub fn rock(self) -> Option<Rock> {
+        match self {
+            Stratum::Cover(r) | Stratum::Basement(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Stratum::Topsoil => "topsoil",
+            Stratum::Subsoil => "subsoil",
+            Stratum::Regolith => "weathered rock",
+            Stratum::Cover(_) => "bedded rock",
+            Stratum::Basement(_) => "basement",
+        }
+    }
+
+    /// Whether it is rock rather than something a spade goes through.
+    pub fn is_rock(self) -> bool {
+        matches!(self, Stratum::Cover(_) | Stratum::Basement(_))
+    }
+}
+
+/// **Which way a level change faces.**
+///
+/// A ramp is not a glyph, it is a direction: the simulation must never
+/// read the character to decide whether something is walkable. The
+/// renderer picks a symbol from this; nothing else does.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Facing {
+    North,
+    South,
+    East,
+    West,
+}
+
+/// **A vertical connection, which both ends have to agree about.**
+///
+/// A stair down at (x, y, z) is only real if there is a stair up at
+/// (x, y, z-1). Storing it as one tile's property lets the two drift; a
+/// function that answers for both ends cannot.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub struct Connections {
+    pub up: bool,
+    pub down: bool,
+}
+
+/// What connects vertically at this tile, computed for both ends at once.
+pub fn connections_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Connections {
+    let is_stair = |z: i64| tile_at(seed, plan, gx, gy, z) == Tile::Stairs;
+    Connections {
+        up: is_stair(gz) && is_stair(gz + 1),
+        down: is_stair(gz) && is_stair(gz - 1),
+    }
+}
+
+/// Which way a ramp at this tile falls, if it is one.
+pub fn ramp_facing(seed: u64, plan: &Plan, gx: i64, gy: i64) -> Option<Facing> {
+    if tile_at(seed, plan, gx, gy, surface_z(seed, plan, gx, gy)) != Tile::Ramp {
+        return None;
+    }
+    let here = surface_z(seed, plan, gx, gy);
+    [
+        (Facing::North, 0i64, -1i64),
+        (Facing::South, 0, 1),
+        (Facing::West, -1, 0),
+        (Facing::East, 1, 0),
+    ]
+    .into_iter()
+    .find(|&(_, dx, dy)| surface_z(seed, plan, gx + dx, gy + dy) < here)
+    .map(|(f, _, _)| f)
+}
+
+/// The layer at a given depth below the surface, in metres.
+pub fn stratum_at(plan: &Plan, depth_m: f64) -> Stratum {
+    // A shield has no cover: the basement reaches the surface, which is
+    // precisely what exposed igneous and metamorphic rock means.
+    let cover_m = match plan.rock {
+        Rock::Sedimentary => 1_500.0,
+        _ => 0.0,
+    };
+    if depth_m < 0.3 {
+        Stratum::Topsoil
+    } else if depth_m < 1.6 {
+        Stratum::Subsoil
+    } else if depth_m < 10.0 {
+        Stratum::Regolith
+    } else if depth_m < 10.0 + cover_m {
+        Stratum::Cover(Rock::Sedimentary)
+    } else {
+        // Under the cover, or straight away where there is none.
+        Stratum::Basement(match plan.rock {
+            Rock::Sedimentary => Rock::Metamorphic,
+            other => other,
+        })
+    }
+}
+
 /// **Whether the buildings here have cellars**, which is not a matter of
 /// taste but of two real, opposite constraints.
 ///
@@ -1090,10 +1340,16 @@ fn below_ground(
     gz: i64,
 ) -> Tile {
     let t = TILES_PER_PLOT as i64;
-    // Below the first level down, nothing is dug: soil for a metre or two
-    // and then rock. At 3 m to the level that puts bedrock at level -2.
+    // Below the first level down, nothing is dug — the terrain is
+    // whatever the strata put there. **Terrain, not material**: a tile is
+    // `Earth` or `Rock`, and which rock is `stratum_at`'s business.
     if gz < -1 {
-        return Tile::Rock;
+        let depth_m = -gz as f64 * METRES_PER_LEVEL;
+        return if stratum_at(plan, depth_m).is_rock() {
+            Tile::Rock
+        } else {
+            Tile::Earth
+        };
     }
 
     match lot {

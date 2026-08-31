@@ -647,11 +647,19 @@ fn down_is_a_direction_like_up() {
     );
     assert!(!cellar.tiles.iter().any(|t| *t == Tile::Sky), "sky below ground");
 
-    // Below the dug level it is rock all the way.
-    let deep = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -2);
+    // Below the dug level nothing is hollow — but it is not bedrock
+    // either. **Six metres down is still weathered rock**, which a spade
+    // goes through; regolith runs to about ten metres and the real rock
+    // is under that. Asserting stone at 6 m was asserting a quarry face.
+    let shallow = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -2);
+    assert!(
+        shallow.tiles.iter().all(|t| *t == Tile::Earth),
+        "six metres down is stone, or hollow"
+    );
+    let deep = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -10);
     assert!(
         deep.tiles.iter().all(|t| *t == Tile::Rock),
-        "something hollow at 6 m down that nobody dug"
+        "thirty metres down and still digging soil"
     );
     assert!(!Tile::Rock.walkable() && !Tile::Earth.walkable());
 }
@@ -682,4 +690,70 @@ fn cellars_follow_the_frost_line() {
     assert!(under(Biome::Taiga) > 20, "hard winters and no cellars");
     assert_eq!(under(Biome::Swamp), 0, "a cellar dug into a marsh");
     assert_eq!(under(Biome::Desert), 0, "a cellar nobody needed to dig");
+}
+
+#[test]
+fn a_geological_layer_spans_many_levels() {
+    // **Terrain and material are separate**, and a layer is not a level.
+    // Real thicknesses: topsoil 0.1-0.3 m, subsoil to 1-2, weathered rock
+    // to ~10, sedimentary cover 0 on a shield and 1-2 km on a continent,
+    // crystalline basement under all of it.
+    use scale_sim::geology::Rock;
+    use scale_sim::ground::{stratum_at, Stratum};
+
+    let basin = a_city().on_rock(Rock::Sedimentary);
+    assert_eq!(stratum_at(&basin, 0.1), Stratum::Topsoil);
+    assert_eq!(stratum_at(&basin, 1.0), Stratum::Subsoil);
+    assert_eq!(stratum_at(&basin, 5.0), Stratum::Regolith);
+    // The cover runs for a kilometre and more — hundreds of Z levels of
+    // the same layer, which is the whole point.
+    assert!(matches!(stratum_at(&basin, 50.0), Stratum::Cover(_)));
+    assert!(matches!(stratum_at(&basin, 1_000.0), Stratum::Cover(_)));
+    assert!(matches!(stratum_at(&basin, 2_000.0), Stratum::Basement(_)));
+
+    // **A shield has no cover**: exposed igneous or metamorphic rock at
+    // the surface is precisely what that means.
+    let shield = a_city().on_rock(Rock::Igneous);
+    assert!(matches!(stratum_at(&shield, 50.0), Stratum::Basement(Rock::Igneous)));
+    assert_eq!(stratum_at(&shield, 0.1), Stratum::Topsoil, "a shield with no soil on it");
+
+    // Soil is soil whatever is underneath.
+    assert_eq!(stratum_at(&basin, 1.0).rock(), None);
+    assert!(!stratum_at(&basin, 1.0).is_rock());
+}
+
+#[test]
+fn a_stair_is_a_connection_both_ends_agree_about() {
+    // A stair down at (x,y,z) is only real if there is a stair up at
+    // (x,y,z-1). Held as one tile's property the two can drift; asked as a
+    // question about both ends they cannot. And a ramp is a *direction* —
+    // the simulation must never read a glyph to decide what is walkable.
+    use scale_sim::ground::{connections_at, surface_z};
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Flats);
+    let sz = surface_z(1, &plan, at.0, at.1);
+
+    // Find the stairwell.
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    let mut found = None;
+    for y in 0..g.h {
+        for x in 0..g.w {
+            if g.at(x, y) == Tile::Stairs {
+                found = Some((g.origin.0 + x as i64, g.origin.1 + y as i64));
+            }
+        }
+    }
+    let (sx, sy) = found.expect("a block of flats with no stairwell");
+
+    let ground = connections_at(1, &plan, sx, sy, sz);
+    assert!(ground.up, "a stairwell that goes nowhere from the ground floor");
+    let upper = connections_at(1, &plan, sx, sy, sz + 1);
+    assert!(
+        upper.down,
+        "the floor above does not agree that the stair comes up to it"
+    );
+
+    // Away from the stairwell there is no connection at all.
+    let none = connections_at(1, &plan, sx + 9, sy + 9, sz);
+    assert!(!none.up && !none.down);
 }

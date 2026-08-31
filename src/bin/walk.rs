@@ -37,6 +37,7 @@ fn main() {
     let mut which = 4usize;
     let mut place = String::from("street");
     let mut z = 0i64;
+    let mut plain = false;
 
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -46,8 +47,9 @@ fn main() {
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--where" => place = it.next().unwrap_or_else(|| "street".into()),
             "--z" => z = it.next().and_then(|v| v.parse().ok()).unwrap_or(0),
+            "--plain" => plain = true,
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--plain] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -246,7 +248,14 @@ fn main() {
         }
         println!();
     }
-    print!("{}", g.render(Some(centre)));
+    print!(
+        "{}",
+        if plain {
+            g.render(Some(centre))
+        } else {
+            g.render_in_colour(Some(centre))
+        }
+    );
     println!();
     println!("{}", scale_sim::ground::ground_legend(true));
     println!();
