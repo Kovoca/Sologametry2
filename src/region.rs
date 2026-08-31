@@ -14,8 +14,7 @@
 
 use crate::econ::{
     basket, recipe, Commodity, Crossing, Doctrine, Economy, Grid, Journal, Ledger, Market,
-    Response, Route, Site, SiteKind, Surface, DAYS_PER_YEAR, N_COMMODITIES,
-};
+    Response, Route, Site, SiteKind, Surface, DAYS_PER_YEAR, N_COMMODITIES, Utility};
 use crate::geology::Geology;
 use crate::network::{Network, Road};
 use crate::polity::Polities;
@@ -1159,6 +1158,38 @@ impl Region {
             .map(|(i, s)| (i, s.market, s.name.clone()))
             .collect();
         economy.grid.wire_up(&names, &supplies);
+
+        // **Licence areas, not one national utility.**
+        //
+        // A grid is licensed out in territories and each holder keeps its
+        // own stores, which is what decides whose shelf gets emptied when
+        // something fails — and whether there is a neighbour to ask.
+        // Britain has fourteen distribution licence areas; the United
+        // States has hundreds of investor-owned, municipal and cooperative
+        // utilities.
+        //
+        // Split the nation's towns between two companies where there are
+        // enough of them, so mutual aid is a thing that can actually
+        // happen. The doctrine's spares are shared between them, which is
+        // the honest reading: a careful country stocks its network, not
+        // one company in it.
+        let n_utilities = if economy.markets.len() >= 4 { 2 } else { 1 };
+        let total_spares = economy.response.spare_transformers;
+        economy.response.utilities = (0..n_utilities)
+            .map(|u| Utility {
+                name: format!(
+                    "{} Power",
+                    economy.markets[u.min(economy.markets.len() - 1)].name
+                ),
+                serves: (0..economy.markets.len())
+                    .filter(|m| m % n_utilities == u)
+                    .collect(),
+                // Rounded so the remainder goes to the first, which is
+                // deterministic and mildly favours the capital's company.
+                spares: total_spares / n_utilities
+                    + usize::from(u < total_spares % n_utilities),
+            })
+            .collect();
 
         // Start mid-harvest rather than in the depths of winter, so a
         // short run is not looking at an unrepresentative slice of the

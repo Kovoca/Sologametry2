@@ -536,3 +536,79 @@ fn a_line_to_a_house_does_not_take_out_the_country() {
     e.grid.lines[service].up = false;
     assert_eq!(e.grid.capacity(), cap, "a house's supply changed national capacity");
 }
+
+#[test]
+fn a_utility_borrows_from_its_neighbour_rather_than_waiting_a_year() {
+    // **A grid is licensed out in territories and each holder keeps its
+    // own stores**, which is what decides whose shelf gets emptied — and
+    // whether there is anybody to ask. Britain has fourteen distribution
+    // licence areas; the United States has hundreds of investor-owned,
+    // municipal and cooperative utilities.
+    //
+    // **And they lend to each other.** Mutual assistance is a real
+    // formalised arrangement, and for the part that matters most there is
+    // a named scheme: the Spare Transformer Equipment Program, under which
+    // utilities pool large transformers and commit to releasing them. It
+    // exists because a large power transformer is built to order and
+    // cannot be bought in an emergency at any price.
+    use scale_sim::econ::{Doctrine, Response, Sourced, Utility};
+
+    let mut r = Response::for_doctrine(Doctrine::Prudent);
+    r.utilities = vec![
+        Utility { name: "North Power".into(), serves: vec![0, 2], spares: 1 },
+        Utility { name: "South Power".into(), serves: vec![1, 3], spares: 1 },
+    ];
+
+    // Its own shelf: a swap, measured in days.
+    let (own_days, how) = r.source_transformer(0);
+    assert_eq!(how, Sourced::Own);
+    assert!(own_days < 20, "fitting a spare took {own_days} days");
+
+    // North is now out. The next fault in its area is covered by South —
+    // and the delay is **haulage**, because a large power transformer is
+    // 100-400 tonnes and 3.5-4.5 m wide: an abnormal load, an order from
+    // the highway authority, a route surveyed for bridges, and a move at
+    // walking pace. Real mutual-aid delivery runs two to six weeks.
+    let (borrowed_days, how) = r.source_transformer(0);
+    assert_eq!(how, Sourced::Borrowed { from: "South Power".into() });
+    assert!(
+        borrowed_days > own_days && borrowed_days < 60,
+        "a borrowed transformer arrived in {borrowed_days} days"
+    );
+
+    // Now nobody has one, and it is a factory queue: **twelve to eighteen
+    // months**, because these are built to order. That gap — days, weeks,
+    // most of a year — is the single most consequential thing a utility's
+    // stores decide.
+    let (built_days, how) = r.source_transformer(0);
+    assert_eq!(how, Sourced::Built);
+    assert!(
+        built_days > 300,
+        "a transformer was built to order in {built_days} days"
+    );
+    assert!(
+        built_days > borrowed_days * 5,
+        "borrowing bought {borrowed_days} days against building's {built_days} — \
+         not worth the standing agreement"
+    );
+
+    // A nation of any size has more than one company in it, and they can
+    // reach each other.
+    let world = scale_sim::world::World::generate(256, 144, 20260828);
+    let pol = scale_sim::polity::Polities::partition(&world, 30);
+    let set = scale_sim::settlement::Settlements::place(&world, &pol, 4000);
+    let net = scale_sim::network::Network::build(&world, &set, 900);
+    let id = pol.ranked()[2].0;
+    let region = scale_sim::region::Region::extract(
+        &world, &pol, &set, &net, id, 5, Doctrine::Prudent,
+    )
+    .expect("a nation to model");
+    let us = &region.economy.response.utilities;
+    assert!(!us.is_empty(), "a nation with no utility company in it");
+    let served: usize = us.iter().map(|u| u.serves.len()).sum();
+    assert_eq!(
+        served,
+        region.economy.markets.len(),
+        "some towns are in nobody's licence area"
+    );
+}

@@ -1360,6 +1360,47 @@ impl Incident {
 /// A destroyed transformer is a swap of about a week *if a spare is in
 /// store*, and a twelve-to-eighteen-month wait if not — they are built to
 /// order. Everything about grid resilience turns on that difference.
+/// **The company that actually services an area.**
+///
+/// A grid is not owned by "the state" in one lump: it is licensed out in
+/// territories, and each holder keeps its own stores. Britain has fourteen
+/// distribution licence areas; the United States has hundreds of
+/// investor-owned, municipal and cooperative utilities. Which one serves
+/// the fault decides whose spare gets fitted.
+///
+/// **And they lend to each other.** Mutual assistance is a real,
+/// formalised arrangement — after a storm, thousands of linemen and their
+/// plant cross state lines under standing agreements — and for the one
+/// part that matters most there is a named scheme: the **Spare
+/// Transformer Equipment Program**, under which utilities pool large
+/// transformers and commit to releasing them to each other. Grid Assurance
+/// does the same commercially. It exists because a large power transformer
+/// is built to order and cannot be bought in an emergency at any price.
+pub struct Utility {
+    pub name: String,
+    /// The markets in its licence area.
+    pub serves: Vec<usize>,
+    /// Large transformers in store. Real utilities hold roughly one spare
+    /// per five to ten units in service, and it looks like waste every day
+    /// but one.
+    pub spares: usize,
+}
+
+/// Where a replacement transformer came from, which is the whole
+/// difference between a bad week and a bad year.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Sourced {
+    /// Off the servicing company's own shelf.
+    Own,
+    /// **Borrowed from a neighbour**, and then hauled. A large power
+    /// transformer is 100-400 tonnes and 3.5-4.5 m wide — an abnormal load
+    /// needing an order from the highway authority, a surveyed route and a
+    /// move at walking pace. Weeks, against the year it takes to build one.
+    Borrowed { from: String },
+    /// Nobody had one. Built to order.
+    Built,
+}
+
 pub struct Response {
     /// Are communications working? With comms down, nothing gets reported.
     pub comms_up: bool,
@@ -1381,6 +1422,10 @@ pub struct Response {
     /// Spare transformers in store. Holding these is expensive and looks
     /// like waste right up until the day it does not.
     pub spare_transformers: usize,
+    /// The companies servicing this economy's areas, and their stores.
+    /// Empty falls back to the pooled `spare_transformers`, which is what
+    /// the hand-built scenarios use.
+    pub utilities: Vec<Utility>,
     /// Days to have a new transformer built when the store is empty.
     /// Twelve to eighteen months in reality.
     pub transformer_lead_days: u64,
@@ -1484,8 +1529,56 @@ impl Response {
             // neighbouring utility would beat it, and is the obvious next
             // thing to model.
             transformer_lead_days: 400,
+            utilities: Vec::new(),
             incidents: Vec::new(),
         }
+    }
+
+    /// **Where the next transformer is coming from, and how long it
+    /// takes.**
+    ///
+    /// Own shelf, a neighbour's shelf, or a factory queue — and the three
+    /// answers are days, weeks and the better part of a year. This is the
+    /// single most consequential thing a utility's stores decide.
+    pub fn source_transformer(&mut self, market: usize) -> (u64, Sourced) {
+        /// Fitting one that is already on site.
+        const FIT_DAYS: u64 = 5;
+        /// **Hauling a borrowed one.** 100-400 tonnes and 3.5-4.5 m wide
+        /// is an abnormal load: an order from the highway authority, a
+        /// route surveyed for bridges and headroom, and a move at walking
+        /// pace. Real mutual-aid delivery runs two to six weeks.
+        const HAUL_DAYS: u64 = 21;
+
+        if self.utilities.is_empty() {
+            return if self.spare_transformers > 0 {
+                self.spare_transformers -= 1;
+                (self.repair_days + FIT_DAYS, Sourced::Own)
+            } else {
+                (self.transformer_lead_days, Sourced::Built)
+            };
+        }
+
+        // Whose area is this?
+        let mine = self
+            .utilities
+            .iter()
+            .position(|u| u.serves.contains(&market));
+        if let Some(i) = mine {
+            if self.utilities[i].spares > 0 {
+                self.utilities[i].spares -= 1;
+                return (self.repair_days + FIT_DAYS, Sourced::Own);
+            }
+        }
+        // Nothing on our own shelf: ask the neighbours. Deterministic
+        // order, so a seed rebuilds the same history.
+        if let Some(j) = (0..self.utilities.len())
+            .find(|&j| Some(j) != mine && self.utilities[j].spares > 0)
+        {
+            self.utilities[j].spares -= 1;
+            let from = self.utilities[j].name.clone();
+            return (self.repair_days + FIT_DAYS + HAUL_DAYS, Sourced::Borrowed { from });
+        }
+        (self.transformer_lead_days, Sourced::Built)
     }
 
     /// Whole days to reach the fault. Anything a lorry can cover inside a
@@ -1772,14 +1865,22 @@ impl Economy {
 
                 let work = match &self.response.incidents[i].what {
                     Fault::Line(_) => self.response.repair_days,
-                    Fault::Transformer(_) => {
-                        if self.response.spare_transformers > 0 {
-                            self.response.spare_transformers -= 1;
-                            self.response.repair_days + 5 // fit the spare
-                        } else {
-                            // Nothing in store: wait for one to be built.
-                            self.response.transformer_lead_days
-                        }
+                    Fault::Transformer(name) => {
+                        // **Whose area is it in?** The grid knows which
+                        // market each piece of plant serves, so the
+                        // company that services it is the one whose shelf
+                        // is emptied — and whose neighbours get asked.
+                        let market = self
+                            .grid
+                            .lines
+                            .iter()
+                            .find(|l| l.name == *name)
+                            .and_then(|l| l.serves)
+                            .unwrap_or(0);
+                        // Own shelf, a neighbour's shelf, or a factory
+                        // queue — days, weeks, or the better part of a
+                        // year.
+                        self.response.source_transformer(market).0
                     }
                 };
 

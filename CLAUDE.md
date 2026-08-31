@@ -500,6 +500,33 @@ For scale: a customer in Britain is off supply about **35 minutes a year**,
 Germany 12, the United States ~90 excluding major storms — and almost all
 of it is distribution, not transmission and not generation.
 
+**A company services an area, and they lend to each other.** A grid is
+not owned by "the state" in one lump — it is licensed out in territories,
+and each holder keeps its own stores. Britain has fourteen distribution
+licence areas; the United States has hundreds of investor-owned, municipal
+and cooperative utilities. **Which company serves the fault decides whose
+shelf is emptied, and whether there is a neighbour to ask.**
+
+Mutual assistance is real and formalised — after a storm, thousands of
+linemen and their plant cross state lines under standing agreements — and
+for the part that matters most there is a named scheme: the **Spare
+Transformer Equipment Program**, under which utilities pool large
+transformers and commit to releasing them to each other. It exists because
+a large power transformer is built to order and cannot be bought in an
+emergency at any price.
+
+Three answers, and they are days, weeks and most of a year:
+
+| source | delay | why |
+|---|---|---|
+| own shelf | ~a week | it is on site; fit it |
+| **a neighbour's shelf** | **~3 weeks** | 100-400 t and 3.5-4.5 m wide: an **abnormal load**, an order from the highway authority, a route surveyed for bridges, a move at walking pace |
+| built to order | 12-18 months | a place in a manufacturer's queue |
+
+The middle row is where the width rules and the repair model meet: the
+thing that makes a borrowed transformer take three weeks rather than three
+days is that it is too wide for an ordinary road.
+
 **Nothing is repaired on a schedule.** A fault must be noticed, reported
 over working comms, assigned to a crew, and travelled to before any work
 starts. Cut comms and it is never fixed at all.
