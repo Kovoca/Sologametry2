@@ -130,6 +130,153 @@ fn latitude_temp(w: usize, h: usize) -> Field {
     temp
 }
 
+/// **The water table is a subdued replica of the topography.**
+///
+/// That is the classic hydrogeological result and it is the whole model:
+/// groundwater follows the surface but with less relief, standing high
+/// under hills and falling toward valleys. Where it meets the surface you
+/// get a spring, a marsh, a lake or a perennial river — **that is why
+/// those are where they are**, rather than being placed and then
+/// explained.
+///
+/// Real depths to water: nil in a marsh, 1-5 m on a floodplain, 10-50 m
+/// on a hillside, and over 100 m in arid uplands. A hand-dug well reaches
+/// 10-30 m; below that you are drilling.
+///
+/// Two things set how closely it follows the ground:
+///
+/// - **Rainfall.** Recharge holds the table up, so humid country carries
+///   it at 60-80% of the local relief and arid country at 10-30%. This is
+///   why a desert can have a hill with no water in it at all.
+/// - **How fast the rock lets water move.** A transmissive aquifer —
+///   sandstone, limestone — drains laterally and flattens the table;
+///   tight rock holds it up in place, which is what perches a spring line
+///   on a hillside.
+///
+/// Then it is smoothed, because groundwater flows sideways and a real
+/// water table has no cliffs in it however sharp the ground above is.
+fn generate_water_table(
+    elev: &Field,
+    sea_level: f32,
+    rain_rank: &Field,
+    drain_rank: &Field,
+    river: &[bool],
+    lake: &[bool],
+    rock: &[crate::geology::Rock],
+) -> Field {
+    let (w, h) = (elev.width, elev.height);
+    let span = (1.0 - sea_level).max(1e-3);
+
+    // **The base level is local, not the sea.** Depth to water follows
+    // height above the *nearest drainage*, not height above sea level —
+    // measuring from the sea put the water 2,879 m below a mountain
+    // valley, when the river it drains to is a hundred metres away and
+    // fifty metres down. Heavy smoothing of the terrain gives the
+    // regional drainage surface each place actually sits above.
+    let mut base = elev.clone();
+    for _ in 0..40 {
+        let prev = base.data.clone();
+        for y in 0..h {
+            let ym = y.saturating_sub(1);
+            let yp = (y + 1).min(h - 1);
+            for x in 0..w {
+                let xm = (x + w - 1) % w;
+                let xp = (x + 1) % w;
+                base.data[y * w + x] = (prev[y * w + xm]
+                    + prev[y * w + xp]
+                    + prev[ym * w + x]
+                    + prev[yp * w + x])
+                    * 0.25;
+            }
+        }
+    }
+
+    // How deep water goes even on flat ground where it never rains. Real
+    // arid tables run 30-100 m below a plain; the deepest anywhere are
+    // ~300 m, so nothing is allowed past that.
+    const ARID_DEPTH_M: f32 = 90.0;
+    const DEEPEST_M: f32 = 300.0;
+    // **A river cell is not all floodplain.** At sixteen kilometres a
+    // cell carrying a river is mostly the ground either side of it, and
+    // how far down the water is there depends on the climate: beside a
+    // river in the wet tropics it is a metre or two, and beside an exotic
+    // river crossing a desert the ground a few hundred metres away is as
+    // dry as the rest of the desert. Pinning every watercourse cell to one
+    // shallow figure made six settlements out of eight read identically
+    // and gave none of them a cellar.
+    const RIVERSIDE_WET_M: f32 = 2.0;
+    const RIVERSIDE_DRY_M: f32 = 14.0;
+
+    let mut wt = Field::new(w, h);
+    for i in 0..elev.data.len() {
+        let e = elev.data[i];
+        if e < sea_level {
+            wt.data[i] = e;
+            continue;
+        }
+        if river[i] || lake[i] {
+            let wet = rain_rank.data[i];
+            let d = RIVERSIDE_WET_M + (1.0 - wet) * (RIVERSIDE_DRY_M - RIVERSIDE_WET_M);
+            wt.data[i] = e - d / MAX_LAND_M as f32 * span;
+            continue;
+        }
+
+        // **An aquifer is a property of the rock.** Sandstone and
+        // limestone transmit water and draw the table down toward the
+        // drainage; granite and gneiss hold only what their fractures
+        // carry, which is what perches a spring line on a hillside.
+        let aquifer = match rock[i] {
+            crate::geology::Rock::Sedimentary => 1.0,
+            _ => 0.25,
+        };
+        let wet = rain_rank.data[i];
+        let porous = (drain_rank.data[i] * 0.5 + aquifer * 0.5).clamp(0.0, 1.0);
+
+        // Height above the local drainage, and how much of that height the
+        // table gives up. Humid, tight ground keeps it high — 20-40% of
+        // the local relief; dry, porous ground lets it fall most of the
+        // way.
+        let above_base_m = ((e - base.data[i]).max(0.0) / span) * MAX_LAND_M as f32;
+        let gives_up = (0.30 + 0.55 * porous) * (1.0 - 0.45 * wet);
+        let dry_m = (1.0 - wet) * ARID_DEPTH_M * (0.4 + 0.6 * porous);
+
+        let depth_m = (above_base_m * gives_up + dry_m).min(DEEPEST_M);
+        wt.data[i] = e - depth_m / MAX_LAND_M as f32 * span;
+    }
+
+    // Groundwater moves sideways, so the table is smooth even where the
+    // ground is not. Watercourses are held through the smoothing, because
+    // they are what the table drains to.
+    for _ in 0..6 {
+        let prev = wt.data.clone();
+        for y in 0..h {
+            let ym = y.saturating_sub(1);
+            let yp = (y + 1).min(h - 1);
+            for x in 0..w {
+                let i = y * w + x;
+                if elev.data[i] < sea_level || river[i] || lake[i] {
+                    continue;
+                }
+                let xm = (x + w - 1) % w;
+                let xp = (x + 1) % w;
+                let mean = (prev[y * w + xm]
+                    + prev[y * w + xp]
+                    + prev[ym * w + x]
+                    + prev[yp * w + x])
+                    * 0.25;
+                // **Clamped on both sides, every pass.** Never above the
+                // ground, and never further below it than water goes
+                // anywhere on Earth: smoothing across a steep gradient
+                // otherwise drags a summit's table down toward the valley
+                // beside it, which put the water 990 m under a mountain.
+                let floor = elev.data[i] - DEEPEST_M / MAX_LAND_M as f32 * span;
+                wt.data[i] = (prev[i] * 0.45 + mean * 0.55).clamp(floor, elev.data[i]);
+            }
+        }
+    }
+    wt
+}
+
 /// Final temperature: the latitude band, cooled by altitude (lapse rate),
 /// roughened by a little local noise. Runs against the *carved* elevation.
 fn generate_temperature(elev: &Field, sea: f32, rng: &mut Rng) -> Field {
@@ -427,6 +574,11 @@ pub struct World {
     pub temperature: Field,
     pub rainfall: Field,
     pub drainage: Field,
+    /// **Where the groundwater sits**, on the same 0..1 scale as
+    /// elevation. See [`generate_water_table`]. Subtract it from
+    /// `elevation` to get depth to water; `depth_to_water_m` does that in
+    /// metres.
+    pub water_table: Field,
 
     /// Flow accumulation over the carved terrain — upstream catchment per
     /// cell. Kept for the debug overlay and for later navigable-water and
@@ -579,6 +731,24 @@ impl World {
             &elevation, sea_level, &rain_r, &drain_r, &temperature, &river, &lake, &mut rng,
         );
 
+        // 12. The water table, which closes the hydrology pass. It runs
+        // after geology because **an aquifer is a property of the rock**:
+        // sandstone and limestone carry water and crystalline rock has
+        // only what its fractures hold.
+        //
+        // Late in the order but early in the design (spec step 4) —
+        // wells, cellars, springs and contamination all need real ground
+        // truth to attach to rather than a proxy.
+        let water_table = generate_water_table(
+            &elevation,
+            sea_level,
+            &rain_r,
+            &drain_r,
+            &river,
+            &lake,
+            &geology.rock,
+        );
+
         World {
             width,
             height,
@@ -588,12 +758,25 @@ impl World {
             temperature,
             rainfall,
             drainage,
+            water_table,
             flow_accum: flow.accum,
             river,
             lake,
             biomes,
             geology,
         }
+    }
+
+    /// **How far down the water is**, in metres.
+    ///
+    /// Nil in a marsh or at a river, 1-5 m on a floodplain, 10-50 on a
+    /// hillside, over 100 in arid uplands. A hand-dug well reaches 10-30 m;
+    /// below that you are drilling.
+    pub fn depth_to_water_m(&self, cell: usize) -> f64 {
+        let e = self.elevation.data[cell] as f64;
+        let wt = self.water_table.data[cell] as f64;
+        let span = (1.0 - self.sea_level as f64).max(1e-3);
+        ((e - wt) / span * MAX_LAND_M).max(0.0)
     }
 
     /// Fraction of tiles that are dry land (everything above the shallows).

@@ -599,3 +599,77 @@ fn east_west_edges_are_seamless() {
         );
     }
 }
+
+#[test]
+fn the_water_table_is_a_subdued_replica_of_the_ground() {
+    // **The classic hydrogeological result**, and the whole model:
+    // groundwater follows the surface with less relief, standing high
+    // under hills and falling toward valleys. Where it meets the surface
+    // you get a spring, a marsh or a perennial river — which is *why*
+    // those are where they are.
+    //
+    // Real depths: nil at a watercourse, 1-5 m on a floodplain, 10-50 on a
+    // hillside, over 100 in arid uplands; the deepest anywhere ~300 m.
+    // A hand-dug well reaches 10-30 m.
+    for seed in [1u64, 20260828, 7] {
+        let w = World::generate(256, 144, seed);
+        let land: Vec<usize> = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .collect();
+
+        let mut deepest = 0.0f64;
+        for &i in &land {
+            let d = w.depth_to_water_m(i);
+            // Water never stands above the ground: that would be a lake,
+            // and the hydrology pass has already decided about those.
+            assert!(d >= 0.0, "seed {seed}: water above the ground");
+            deepest = deepest.max(d);
+        }
+        // 300 m is the limit the generator holds to, and real deepest
+        // water tables — the Sahara, the Australian outback, the High
+        // Plains — are of that order.
+        assert!(
+            deepest <= 300.5,
+            "seed {seed}: water {deepest:.0} m down — deeper than anywhere on Earth"
+        );
+        assert!(
+            deepest > 40.0,
+            "seed {seed}: nowhere on the planet is the water more than {deepest:.0} m down"
+        );
+
+        // **A watercourse is the table showing through.** Cells carrying
+        // one are far shallower than the land in general.
+        let mean = |v: &[usize]| {
+            v.iter().map(|&i| w.depth_to_water_m(i)).sum::<f64>() / v.len().max(1) as f64
+        };
+        let wet: Vec<usize> = land.iter().copied().filter(|&i| w.river[i] || w.lake[i]).collect();
+        let dry: Vec<usize> = land.iter().copied().filter(|&i| !w.river[i] && !w.lake[i]).collect();
+        if !wet.is_empty() {
+            assert!(
+                mean(&wet) < mean(&dry),
+                "seed {seed}: water is no shallower beside a river ({:.0} m) than away from one ({:.0} m)",
+                mean(&wet),
+                mean(&dry)
+            );
+        }
+
+        // **Rain holds the table up.** The wettest quarter of the land
+        // carries its water nearer the surface than the driest.
+        let mut by_rain: Vec<usize> = dry.clone();
+        by_rain.sort_by(|&a, &b| {
+            w.rainfall.data[a]
+                .total_cmp(&w.rainfall.data[b])
+                .then(a.cmp(&b))
+        });
+        let q = by_rain.len() / 4;
+        if q > 10 {
+            let driest = mean(&by_rain[..q]);
+            let wettest = mean(&by_rain[by_rain.len() - q..]);
+            assert!(
+                wettest < driest,
+                "seed {seed}: the wettest ground holds its water {wettest:.0} m down \
+                 against {driest:.0} m in the driest — rain is not recharging anything"
+            );
+        }
+    }
+}

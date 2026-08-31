@@ -373,6 +373,9 @@ pub struct Plan {
     pub relief_m: f64,
     /// Height above the sea, in metres, at the middle of the plan.
     pub elevation_m: f64,
+    /// **How far down the water is**, in metres. Decides whether you can
+    /// dig a cellar and how deep a well has to be.
+    pub water_m: f64,
     /// **The country the town is standing in.**
     ///
     /// A town is not built on a blank sheet: settle in a green zone and
@@ -693,6 +696,7 @@ impl Plan {
             rock: crate::geology::Rock::Sedimentary,
             relief_m: 20.0,
             elevation_m: 60.0,
+            water_m: 12.0,
             ground,
         }
     }
@@ -709,6 +713,12 @@ impl Plan {
     pub fn on_ground(mut self, elevation_m: f64, relief_m: f64) -> Self {
         self.elevation_m = elevation_m;
         self.relief_m = relief_m;
+        self
+    }
+
+    /// How far down the water is here.
+    pub fn with_water_at(mut self, water_m: f64) -> Self {
+        self.water_m = water_m;
         self
     }
 

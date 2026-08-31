@@ -158,6 +158,34 @@ Illustrative urban-form bands — *operating problems, not height caps*:
 | High-rise | 13-40 | multi-level parking/plant | pressure zones, lift banks, refuge floors, concentrated failure |
 | Very tall | 40+ | deep foundations/transit | internally zoned like several linked districts |
 
+### Building style follows concentration — not yet built
+
+*Parked deliberately: the density **gradient** exists (site coverage,
+party walls, terraces against detached, flats only where land is dear),
+but building **style** does not. The two are different things and only the
+first is done.*
+
+A small town is not a city with fewer people in it; it is a different
+**form**. What should vary with concentration:
+
+- **Suburban** (small town, town edge) — detached and semi-detached, deep
+  front and back gardens, a driveway and a garage, pitched roofs, cul-de-
+  sacs and crescents rather than a grid, low site coverage.
+- **Low urban / inner** (market town, city fringe) — terraces and
+  tenements on the back of the footway, rear yards and back lanes, shops
+  with dwellings over them, a party wall every 5-6 m.
+- **High density** (city core) — podium and tower, mixed use stacked
+  vertically, service cores, loading docks, no gardens at all, structured
+  parking below grade rather than a driveway.
+
+Era and wealth should cut across this: the same density band looks
+different built in different decades, and a poor district and a rich one
+at identical density differ in plot size, frontage and condition rather
+than in height.
+
+The tell that it is missing: at present a house in a village and a house
+on the edge of a city are the same object with a different setback.
+
 ### Physical utility-network model
 
 Power, water, sanitary sewer, storm drainage and communications share one

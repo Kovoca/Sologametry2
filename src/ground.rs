@@ -1386,29 +1386,30 @@ pub fn stratum_at(plan: &Plan, depth_m: f64) -> Stratum {
     }
 }
 
-/// **Whether the buildings here have cellars**, which is not a matter of
-/// taste but of two real, opposite constraints.
+/// **Whether the buildings here have cellars.**
+///
+/// Two real, opposite constraints, and now both are measured rather than
+/// guessed at from the biome.
 ///
 /// A footing has to go below the frost line or it heaves, so where the
 /// frost is deep you are digging that hole anyway and a basement is
-/// nearly free — real frost depths run 1.5 m in Minnesota, 1.2 m in New
-/// York and 0.13 m in Georgia, and basement prevalence follows almost
-/// exactly: ~80% across the Midwest and Northeast, under 10% in the South.
+/// nearly free — frost depths run 1.5 m in Minnesota, 1.2 in New York and
+/// 0.13 in Georgia, and US basement prevalence follows almost exactly:
+/// ~80% across the Midwest and Northeast, under 10% in the South.
 ///
-/// The opposite constraint is water. New Orleans has no basements because
-/// the water table is a metre down, and nor does anywhere built on a
-/// marsh.
-fn has_cellars(ground: Biome) -> bool {
+/// The opposite constraint is water. **New Orleans has no basements
+/// because the water table is a metre down**, and that was standing in as
+/// a biome test until the world generated a water table to ask instead.
+/// A cellar floor sits about 2.5 m down, so it wants the water at least
+/// three metres below the surface.
+fn has_cellars(plan: &Plan) -> bool {
     use Biome::*;
-    match ground {
-        // Hard winters: the hole is dug before you start.
-        Taiga | Tundra | Snowcap | Mountain => true,
-        // Temperate: sometimes, and historically often.
-        Forest | Shrubland | Grassland => true,
-        // Warm, or wet, or both. Nothing to gain and water in the way.
-        Desert | Savanna | Rainforest | Swamp | Beach => false,
-        Ocean | Shallows => false,
-    }
+    let cold_enough = matches!(
+        plan.ground,
+        Taiga | Tundra | Snowcap | Mountain | Forest | Shrubland | Grassland
+    );
+    // A cellar floor is ~2.5 m down; leave half a metre under it.
+    cold_enough && plan.water_m >= 3.0
 }
 
 /// **What is underneath.**
@@ -1442,7 +1443,7 @@ fn below_ground(
     }
 
     match lot {
-        Lot::House | Lot::Flats | Lot::Shop | Lot::Works if has_cellars(plan.ground) => {
+        Lot::House | Lot::Flats | Lot::Shop | Lot::Works if has_cellars(plan) => {
             let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
             let f = footprint_of(plan, lot, px, py);
             let (lo_y, hi_y) = (f.front, t - 1 - f.back);

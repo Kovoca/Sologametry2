@@ -89,7 +89,8 @@ fn main() {
     let loc = Locality::zoom(&world, cell);
     let ground_biome = loc.at(loc.size / 2, loc.size / 2).biome;
     let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome).on_rock(world.geology.rock[cell])
-        .on_ground(elevation_m, relief_m);
+        .on_ground(elevation_m, relief_m)
+        .with_water_at(world.depth_to_water_m(cell));
 
     // Find somewhere worth standing.
     let want = match place.as_str() {
@@ -219,6 +220,17 @@ fn main() {
         plan.rock.name(),
         elevation_m,
         relief_m,
+    );
+    println!(
+        "  water is {:.0} m down{}",
+        plan.water_m,
+        if plan.water_m < 3.0 {
+            " — too near the surface for cellars"
+        } else if plan.water_m > 30.0 {
+            " — too deep for a hand-dug well"
+        } else {
+            ""
+        }
     );
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {

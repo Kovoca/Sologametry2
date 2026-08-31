@@ -126,7 +126,8 @@ fn main() {
     // showing between the streets is the ground you would have walked in.
     let centre = loc.at(loc.size / 2, loc.size / 2);
     let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome).on_rock(world.geology.rock[cell])
-        .on_ground(elevation_m, relief_m);
+        .on_ground(elevation_m, relief_m)
+        .with_water_at(world.depth_to_water_m(cell));
     println!();
     println!(
         "=== 3. THE TOWN — one character to {:.0} m, {:.1} km across ===",

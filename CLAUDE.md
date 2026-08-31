@@ -109,8 +109,40 @@ navigable rivers (big flow, connected to the sea) and chokepoints (trunk
 cells with no parallel route: bridges, passes). Routing is 8-connected;
 4-connected comes out visibly axis-aligned.
 
-Not built yet: water table, named-region detection, rail/ports/airfields,
-flora/fauna, history sim.
+**Water table** (`generate_water_table`, spec pipeline step 4) — the last
+of the hydrology pass, and deliberately early because wells, cellars,
+springs and contamination need real ground truth rather than a proxy.
+
+The model is the classic result: **the water table is a subdued replica of
+the topography**, standing high under hills and falling toward valleys.
+Where it meets the surface you get a spring, a marsh or a perennial river
+— which is *why* those are where they are.
+
+- **Base level is local, not the sea.** Measuring from sea level put the
+  water 2,879 m below a mountain valley, when the river it drains to is a
+  hundred metres away and fifty metres down. A heavily smoothed elevation
+  field gives the regional drainage surface each place sits above.
+- **An aquifer is a property of the rock.** Sandstone and limestone
+  transmit water and draw the table down; crystalline rock holds only what
+  its fractures carry, which is what perches a spring line on a hillside.
+- **Rain holds it up.** Humid ground carries it near the surface, arid
+  ground lets it fall 30-100 m even on a plain.
+- **A river cell is not all floodplain.** At 16 km a cell carrying a river
+  is mostly the ground either side of it: beside a river in the wet
+  tropics the water is a metre or two down, beside an exotic river
+  crossing a desert it is as dry as the desert. One shallow figure for
+  every watercourse made six settlements out of eight read identically and
+  gave none of them a cellar.
+- **Clamp on both sides every smoothing pass.** Smoothing across a steep
+  gradient drags a summit's table toward the valley beside it, which put
+  water 990 m under a mountain. Real deepest tables — Sahara, Australian
+  outback, High Plains — are ~300 m, and nothing goes past it.
+
+Results: 106 m in arid uplands, 55 m on a mountainside, 6-13 m for
+riverside towns varying with climate. A hand-dug well reaches 10-30 m.
+
+Not built yet: named-region detection, rail/ports/airfields, flora/fauna,
+history sim.
 
 ## The economy (`src/econ.rs`, `src/slice.rs`)
 
