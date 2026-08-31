@@ -158,3 +158,92 @@ fn a_town_the_statistics_call_idle_is_one_where_people_find_less_work() {
         idlest.1 * 100.0
     );
 }
+
+#[test]
+fn most_people_have_a_contract_and_some_have_nothing() {
+    // **Everything here was offered a shift at a time**, which is how
+    // *casual* work is done and is not how most people work. Most people
+    // have a contract: guaranteed hours, paid whether or not trade was
+    // brisk, ended by notice rather than by nobody ringing.
+    //
+    // Real UK: **56% are permanent full-time and 44% are not**; part-time
+    // is 24% against an EU average of 17%; zero-hours is 2.9% of
+    // employment, about 900,000 people.
+    use scale_sim::person::Employment;
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 50, 20260828);
+    for (i, p) in folk.people.iter_mut().enumerate() {
+        if i % 6 == 0 {
+            p.trade = Trade::Public;
+        }
+    }
+    for day in 0..(DAYS_PER_YEAR * 2) {
+        e.step();
+        folk.live_a_day(&mut e, day);
+    }
+
+    let share = |t: Option<Trade>, kind: Employment| -> f64 {
+        let m: Vec<_> = folk
+            .people
+            .iter()
+            .filter(|p| t.is_none_or(|t| p.trade == t))
+            .collect();
+        m.iter().filter(|p| p.employment == kind).count() as f64 / m.len().max(1) as f64
+    };
+
+    let full = share(None, Employment::FullTime);
+    assert!(
+        (0.40..0.75).contains(&full),
+        "{:.0}% of the workforce is permanent full-time, against a real 56%",
+        full * 100.0
+    );
+
+    // **The unevenness is the point.** 28.8% of the accommodation and
+    // food workforce are on zero-hours contracts against 2.1% in public
+    // administration — a fourteenfold difference in whether you know you
+    // have work next week.
+    let public_casual = share(Some(Trade::Public), Employment::Casual);
+    let shop_casual = share(Some(Trade::Shopworker), Employment::Casual)
+        + share(Some(Trade::Shopworker), Employment::None);
+    assert!(
+        public_casual < 0.08,
+        "public service is {:.0}% casual, against a real 2%",
+        public_casual * 100.0
+    );
+    assert!(
+        shop_casual > public_casual * 2.0,
+        "shop work at {:.0}% insecure is no worse than public service at {:.0}%",
+        shop_casual * 100.0,
+        public_casual * 100.0
+    );
+
+    // **A contract is a hold on the work, not a daily audition.** Somebody
+    // on guaranteed hours works more days than somebody hunting for them,
+    // and that is what the security *is*.
+    let worked = |kind: Employment| -> f64 {
+        let m: Vec<_> = folk.people.iter().filter(|p| p.employment == kind).collect();
+        if m.is_empty() {
+            return f64::NAN;
+        }
+        let d: u64 = m.iter().map(|p| p.days_worked).sum();
+        d as f64 / (DAYS_PER_YEAR * 2 * m.len() as u64) as f64
+    };
+    let ft = worked(Employment::FullTime);
+    let casual = worked(Employment::Casual);
+    if !casual.is_nan() {
+        assert!(
+            ft > casual,
+            "a full-time contract found {:.0}% of days against casual work's {:.0}% — \
+             the contract is buying nothing",
+            ft * 100.0,
+            casual * 100.0
+        );
+    }
+    // And a full-timer works most of the week, because that is what five
+    // contracted days in seven means.
+    assert!(
+        (0.55..0.85).contains(&ft),
+        "a full-time contract works {:.0}% of days",
+        ft * 100.0
+    );
+}

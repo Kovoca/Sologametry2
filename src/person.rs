@@ -79,6 +79,89 @@ impl Trade {
     }
 }
 
+/// **What kind of hold somebody has on their work.**
+///
+/// Everything here was offered a shift at a time, which is how *casual*
+/// work is done and is not how most people work. Most people have a
+/// contract: guaranteed hours, paid whether or not trade was brisk, ended
+/// by notice rather than by nobody ringing.
+///
+/// Real UK shares — **56% are permanent full-time and 44% are not**;
+/// part-time is 24% (against an EU average of 17%); and zero-hours is
+/// 2.9% of employment, about 900,000 people.
+///
+/// The distribution is wildly uneven by trade, and that unevenness is the
+/// point: **28.8% of the accommodation and food workforce are on
+/// zero-hours contracts against 2.1% in public administration.** A
+/// fourteenfold difference in whether you know you have work next week.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Employment {
+    /// **A contract with guaranteed hours.** Paid on the contracted days
+    /// whether or not there was work to do, and ended by notice or
+    /// redundancy — not by the absence of a shift.
+    FullTime,
+    /// The same security, fewer days. A quarter of British employees.
+    PartTime,
+    /// **No guaranteed hours**: work is offered shift by shift and
+    /// declined the same way. This is what everybody here was, and it is
+    /// what 3% of people actually are.
+    Casual,
+    /// Working on your own account. About 13% of the workforce, and the
+    /// one way out of a town with no work in it.
+    SelfEmployed,
+    /// Not working.
+    None,
+}
+
+impl Employment {
+    pub fn name(self) -> &'static str {
+        match self {
+            Employment::FullTime => "full-time",
+            Employment::PartTime => "part-time",
+            Employment::Casual => "casual",
+            Employment::SelfEmployed => "self-employed",
+            Employment::None => "out of work",
+        }
+    }
+
+    /// **Days a week the contract guarantees.** Real full-time is five;
+    /// British part-timers average two and a half to three.
+    pub fn contracted_days_a_week(self) -> f64 {
+        match self {
+            Employment::FullTime => 5.0,
+            Employment::PartTime => 2.75,
+            _ => 0.0,
+        }
+    }
+
+    /// Whether they are paid without having to find the work first.
+    pub fn is_contracted(self) -> bool {
+        matches!(self, Employment::FullTime | Employment::PartTime)
+    }
+}
+
+/// **How a trade is actually employed**, from the real industry figures.
+///
+/// Returns the chance of full-time, part-time and casual in that order.
+/// Retail and hospitality carry the insecurity; public administration
+/// carries almost none of it.
+pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
+    match trade {
+        // Public administration is 2.1% zero-hours — the securest work
+        // there is, and a large part of why people take it.
+        Trade::Public => (0.70, 0.28, 0.02),
+        // **Retail is where the insecurity lives.** About 60% part-time,
+        // and the casual share is an order of magnitude above the public
+        // sector's.
+        Trade::Shopworker => (0.30, 0.58, 0.12),
+        // A works runs shifts and wants the same people on them.
+        Trade::Labourer => (0.85, 0.10, 0.05),
+        // Driving is full-time employment or your own lorry.
+        Trade::Haulier => (0.60, 0.10, 0.30),
+        Trade::Supervisor => (0.90, 0.08, 0.02),
+    }
+}
+
 /// Work somebody wants done, posted because the economy wants it done.
 #[derive(Clone, Debug)]
 pub struct Contract {
@@ -299,6 +382,9 @@ pub struct Person {
     pub conveyance: Conveyance,
     /// Where he sleeps, and what it costs him.
     pub housing: Housing,
+    /// **What hold they have on their work.** Most people have a contract
+    /// with guaranteed hours; this model gave everybody casual work.
+    pub employment: Employment,
     /// Days he has been sleeping out.
     pub days_homeless: u64,
     /// The contract in hand, if any.
@@ -376,6 +462,8 @@ impl Person {
             // Everybody starts in a rented room. Nobody arrives owning
             // anything, and this is the cheapest roof there is.
             housing: Housing::Lodging,
+            // Nobody arrives with a contract. One is something you get.
+            employment: Employment::None,
             days_homeless: 0,
             job: None,
             // **Ability varies from person to person**, and it has to be
@@ -1370,6 +1458,35 @@ pub fn live_a_day_with(
                 .get(person.market)
                 .map(|w| w.chance_of_work())
                 .unwrap_or(1.0);
+            // **A contract is a hold on the work, not a daily audition.**
+            //
+            // Somebody on guaranteed hours is paid on their contracted
+            // days whether or not trade was brisk; that is what a contract
+            // *is*, and it is what 56% of British employees have. Only
+            // casual work — 2.9% of employment, and 28.8% of the
+            // hospitality workforce against 2.1% of public
+            // administration — is offered shift by shift.
+            //
+            // Modelled as what it does: a contract makes work reliably
+            // available on the days it covers, and slack in the wider
+            // labour market cannot take that away.
+            if person.employment.is_contracted() {
+                let due = person.employment.contracted_days_a_week() / 7.0;
+                if draw(&person.name, day ^ 0x51_C0_17) < due {
+                    // A contracted day: the work is there whatever the
+                    // labour market is doing. That is what a contract is.
+                    hiring = 1.0;
+                }
+                // **And off a contracted day they can still pick something
+                // up.** A contract sets a floor on the hours, not a
+                // ceiling: real practice is that a part-timer takes extra
+                // shifts and about 1.2 million Britons — 3.7% — hold a
+                // second job outright. Treating a day off as *forbidden*
+                // work put a part-time shop worker on 2.75 days a week
+                // flat, which after rent and food does not feed anybody,
+                // and left nobody able to work the days needed to be
+                // promoted.
+            }
             // **No address, no job.** A fixed address goes on the form,
             // and not having one is one of the largest barriers there is
             // to getting off the street — which is what makes homelessness
@@ -1400,6 +1517,33 @@ pub fn live_a_day_with(
                     && (person.condition > 0.4 || c.days <= 3.0)
                     && c.stake() <= (person.money - reserve).max(0.0)
             });
+            // **A contract is something you get after they have seen
+            // you.** Real practice: a probation period, then permanent —
+            // typically three to six months. Which is why somebody new to
+            // a town is casual first however good they are, and why losing
+            // a job resets that.
+            const DAYS_BEFORE_THEY_PUT_YOU_ON_THE_BOOKS: u64 = 120;
+            if person.employment == Employment::None
+                && person.days_worked >= DAYS_BEFORE_THEY_PUT_YOU_ON_THE_BOOKS
+            {
+                let (full, part, _casual) = employment_mix(person.trade);
+                let r = draw(&person.name, day ^ 0xC0_47_AC_17);
+                person.employment = if r < full {
+                    Employment::FullTime
+                } else if r < full + part {
+                    Employment::PartTime
+                } else {
+                    Employment::Casual
+                };
+                person.note(
+                    day,
+                    format!(
+                        "put on the books {} after {} days",
+                        person.employment.name(),
+                        person.days_worked
+                    ),
+                );
+            }
             if let Some(c) = taken {
                 // Take the stripes and you keep them.
                 if c.trade == Trade::Supervisor && person.trade != Trade::Supervisor {

@@ -957,6 +957,43 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### Most people have a contract, and some have nothing
+
+Everything here was offered a shift at a time, which is how **casual** work
+is done and is not how most people work. Most people have a contract:
+guaranteed hours, paid whether or not trade was brisk, ended by notice
+rather than by nobody ringing.
+
+Real UK: **56% are permanent full-time and 44% are not**; part-time is 24%
+against an EU average of 17%; zero-hours is 2.9% of employment, about
+900,000 people.
+
+**The unevenness is the point.** 28.8% of the accommodation and food
+workforce are on zero-hours contracts against **2.1% in public
+administration** — a fourteenfold difference in whether you know you have
+work next week. Which is a large part of why people take a public job.
+
+Measured over two years, against those figures:
+
+| trade | full | part | casual | never on books | worked |
+|---|---|---|---|---|---|
+| public service | 66% | 32% | **2%** | 0% | 81% |
+| labourer | 83% | 9% | 2% | 6% | 71% |
+| supervisor | 83% | 8% | 0% | 8% | 76% |
+| haulier | 48% | 9% | **30%** | 13% | 36% |
+| shop worker | 34% | 40% | 6% | **20%** | **28%** |
+
+Full-time overall comes out at 60% against a real 56%.
+
+- **A contract is something you get after they have seen you** — a
+  probation of three to six months, which is why somebody new to a town is
+  casual first however good they are.
+- **A contract is a floor on the hours, not a ceiling.** Treating a day
+  off as *forbidden* work put a part-time shop worker on 2.75 days a week
+  flat, which after rent and food does not feed anybody, and left nobody
+  able to work the days needed to be promoted. Real: part-timers take
+  extra shifts, and 1.2 million Britons (3.7%) hold a second job outright.
+
 ### There is no ladder with room for everybody
 
 **The supply of promotions is a real figure**, not a ratio picked to look
