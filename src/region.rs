@@ -362,12 +362,21 @@ fn hinterlands(world: &World, set: &Settlements, g: &Geology) -> Vec<Hinterland>
         }
         let f = g.fertility.data[i] as f64;
         out[s as usize].food_capacity += f;
-        // Both the acreage worth ploughing and the yield off it rise with
-        // the soil, which is why good farming country is not a little
-        // better than bad but several times better.
+
+        // **How much of the cell is worth ploughing** still comes from
+        // fertility, which carries slope, stoniness and soil quality —
+        // the things that decide whether a field is a field at all.
         let cropland = HECTARES_PER_CELL * f * ARABLE_SHARE_OF_PRIME;
-        let yield_t =
-            YIELD_MARGINAL_T_PER_HA + (YIELD_PRIME_T_PER_HA - YIELD_MARGINAL_T_PER_HA) * f;
+
+        // **What it yields comes from water.** It used to be
+        // `1 + 7 x fertility`, a soil score with no climate in it at all,
+        // which meant a dry country and a wet one with the same soil fed
+        // the same number of people. Yield now comes off the water the
+        // crop actually gets through its season — see
+        // `biota::crop_yield_t_per_ha` — so thin soil, a short season, a
+        // dry climate or a waterlogged floodplain each show up as less
+        // grain, by the route each of them really takes.
+        let yield_t = crate::biota::crop_yield_t_per_ha(world.biota.crop_water.data[i]) as f64;
         out[s as usize].grain_potential += cropland * yield_t;
     }
     out

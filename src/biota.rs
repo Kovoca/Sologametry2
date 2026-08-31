@@ -96,6 +96,9 @@ pub struct Biota {
     /// seasonal grassland halves, an equatorial one barely moves.
     pub standing_summer: Field,
     pub standing_winter: Field,
+    /// **Growing-season water a crop actually gets**, in mm — the figure
+    /// a yield is built on. See [`crop_yield_t_per_ha`].
+    pub crop_water: Field,
 }
 
 /// Kilograms of herbivore per km² per unit of grazeable productivity.
@@ -137,6 +140,10 @@ pub struct Settled {
     /// Standing large-herbivore and large-carnivore biomass, kg/km².
     pub herbivore: f32,
     pub predator: f32,
+    /// **Water a crop actually gets through the growing season**, in mm.
+    /// This is evapotranspiration that really happened, not rainfall —
+    /// which is what a yield is built on.
+    pub crop_water_mm: f32,
 }
 
 /// Months of a plant's own turnover, and how fast each animal closes on
@@ -177,11 +184,19 @@ pub fn settle(
     soil_depth_m: f32,
     rain_mm_per_year: f32,
     summer_share: f32,
+    water_table_m: f32,
 ) -> Settled {
     // **Soil depth turns a climate index into water a plant can drink.**
     // A deep soil banks the spring and pays it out through summer; a thin
     // one is dry a fortnight after rain, on identical rainfall.
-    let capacity_mm = soil_depth_m.min(ROOTABLE_M) * WATER_HELD_PER_METRE_MM;
+    // **Roots need air as much as water.** Where the water table stands
+    // inside the root zone the soil is waterlogged and roots die in it,
+    // which is why a floodplain reads wet and still roots shallow, and
+    // why field drainage is installed to hold the table below about a
+    // metre. Rice is the exception and is not modelled.
+    let aerated_m = (water_table_m - 0.3).max(0.0);
+    let rootable = soil_depth_m.min(ROOTABLE_M).min(aerated_m);
+    let capacity_mm = rootable * WATER_HELD_PER_METRE_MM;
     let mut storage_mm = capacity_mm * 0.5;
     let mut snow_mm = 0.0f32;
 
@@ -213,6 +228,7 @@ pub fn settle(
     let mut predator = 0.0f32;
     let (mut peak, mut trough) = (0.0f32, f32::MAX);
     let mut standing_mean = capacity * 0.5;
+    let mut month_et = [0.0f32; 12];
 
     // A century of months is long past settling for populations that
     // move by tens of percent a year.
@@ -287,6 +303,16 @@ pub fn settle(
         if month >= 1188 {
             peak = peak.max(plant);
             trough = trough.min(plant);
+            // **What a crop drinks over its season** — its season, not
+            // the year. Summing every month above 5 °C counted a whole
+            // year of evapotranspiration by natural vegetation, which in
+            // the tropics is twelve months, and pinned a tenth of the
+            // planet at the theoretical maximum yield. A cereal occupies
+            // the ground for 120-180 days and uses 350-650 mm in that
+            // time; the best five months of the year is that season.
+            if month_c > 5.0 {
+                month_et[m as usize] = actual_et;
+            }
         }
 
         // **What the grass that actually grew will carry**, not what the
@@ -309,11 +335,16 @@ pub fn settle(
         predator = predator.max(0.0);
     }
 
+    // The five best months of the year: one crop's season.
+    month_et.sort_by(|a, b| b.total_cmp(a));
+    let crop_water: f32 = month_et[..5].iter().sum();
+
     Settled {
         plant_summer: peak,
         plant_winter: trough,
         herbivore,
         predator,
+        crop_water_mm: crop_water,
     }
 }
 
@@ -341,6 +372,7 @@ pub fn generate(
     climatic_moisture: &Field,
     soil_depth: &Field,
     rain_season: &Field,
+    water_table_m: &Field,
     elev: &Field,
     sea_level: f32,
 ) -> Biota {
@@ -351,6 +383,7 @@ pub fn generate(
     let mut timber = Field::new(w, h);
     let mut standing_summer = Field::new(w, h);
     let mut standing_winter = Field::new(w, h);
+    let mut crop_water = Field::new(w, h);
 
     for i in 0..elev.data.len() {
         if elev.data[i] < sea_level {
@@ -370,11 +403,13 @@ pub fn generate(
             soil_depth.data[i],
             rainfall_mm.data[i],
             rain_season.data[i],
+            water_table_m.data[i],
         );
         game.data[i] = s.herbivore;
         predators.data[i] = s.predator;
         standing_summer.data[i] = s.plant_summer;
         standing_winter.data[i] = s.plant_winter;
+        crop_water.data[i] = s.crop_water_mm;
 
         // Timber tracks productivity as well as forest type: a boreal
         // forest and a tropical one are both forest and are not the same
@@ -395,5 +430,32 @@ pub fn generate(
         timber,
         standing_summer,
         standing_winter,
+        crop_water,
     }
+}
+
+/// **What a hectare yields, from the water the crop actually got.**
+///
+/// The French-Schultz relation, which is what dryland agronomy actually
+/// uses: yield is water-use efficiency times growing-season water, less
+/// what the soil surface evaporates before the crop can reach it.
+///
+/// Real figures: wheat converts about **20 kg of grain per hectare per
+/// millimetre** of growing-season water, and about **110 mm** is lost to
+/// bare-soil evaporation before any of it becomes grain. Which gives 1.8
+/// t/ha on 200 mm, 5.8 on 400 and 8.8 on 550 — against a real spread of
+/// under 1 t/ha on marginal ground, 3.5 as a world average and 8 in
+/// France and the UK.
+pub fn crop_yield_t_per_ha(crop_water_mm: f32) -> f32 {
+    // **Modern parameters, because this is a modern world.** The classic
+    // French-Schultz figures — 20 kg/ha/mm and 110 mm of loss — describe
+    // dryland wheat with few inputs. Modern varieties with fertiliser
+    // reach 22-25, and stubble retention and no-till cut evaporation loss
+    // to 60-80 mm by keeping the surface covered.
+    const KG_PER_HA_PER_MM: f32 = 22.0;
+    const EVAPORATED_BEFORE_THE_CROP_MM: f32 = 80.0;
+    /// Nothing rainfed beats this; irrigation is a separate question.
+    const BEST_RAINFED_T_PER_HA: f32 = 10.0;
+    let kg = KG_PER_HA_PER_MM * (crop_water_mm - EVAPORATED_BEFORE_THE_CROP_MM).max(0.0);
+    (kg / 1000.0).min(BEST_RAINFED_T_PER_HA)
 }

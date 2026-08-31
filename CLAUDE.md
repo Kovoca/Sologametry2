@@ -207,6 +207,37 @@ Two calibration errors on the way:
   full growth left taiga and tundra at the bare floor, which is to say it
   left Canada and Siberia with no vegetation at all.
 
+### A yield comes from water, not from a score
+
+Farm yield was `1 + 7 x fertility` — a soil score with no climate in it —
+so a dry country and a wet one on the same soil fed the same number of
+people. It now comes from **the French-Schultz relation**, which is what
+dryland agronomy actually uses: yield is water-use efficiency times
+growing-season water, less what the bare soil evaporates before the crop
+can reach it.
+
+Modern parameters, because the design doc specifies a modern world: **22 kg
+of grain per hectare per millimetre** and **80 mm lost to evaporation**
+*(the classic figures, 20 and 110, describe dryland wheat with few inputs;
+modern varieties reach 22-25 and stubble retention cuts the loss to
+60-80)*. Which gives 2.6 t/ha on 200 mm, 4.8 on 300, and a rainfed ceiling
+of 10.
+
+**How much of a cell is worth ploughing still comes from fertility** —
+that carries slope, stoniness and soil quality, the things that decide
+whether a field is a field. What it yields comes from water.
+
+Result: median 1.6 t/ha over all land, 2.8 weighted by ground worth
+ploughing, 4% at the rainfed ceiling. **Under Earth's 3.5 on purpose** —
+Earth's farmland is not a random sample of its land, and people farm the
+best of it.
+
+One thing to get right: **a crop's season is a season, not a year.**
+Summing evapotranspiration over every month above 5 °C counted twelve
+months of tropical growth by natural vegetation and pinned a tenth of the
+planet at the theoretical maximum yield. A cereal holds the ground for
+120-180 days and uses 350-650 mm, so the season is the best five months.
+
 ### Soil depth, and the water it holds
 
 **Soil is measured in metres, not Z levels.** A level is 3 m and almost

@@ -298,10 +298,27 @@ fn generate_soil_depth(
     river: &[bool],
     lake: &[bool],
     flow: &Field,
+    rock: &[crate::geology::Rock],
 ) -> Field {
     let (w, h) = (elev.width, elev.height);
-    /// What a planar slope carries before terrain redistributes it.
-    const REGIONAL_DEPTH_M: f32 = 1.5;
+    /// **What a planar slope carries, by what is under it.**
+    ///
+    /// Real weathering depths: crystalline basement — granite, gneiss,
+    /// schist — weathers slowly to a thin sandy or stony soil, 0.3-0.8 m,
+    /// and limestone dissolves away leaving almost nothing, which is why
+    /// karst country is famously soil-poor. Bedded rock generally gives
+    /// more: shale and mudstone weather to a deep clay, sandstone to a
+    /// metre or so of sand.
+    ///
+    /// This is the constant the note said substrate would replace, and it
+    /// replaces it without disturbing anything around it.
+    let regional_depth_m = |r: crate::geology::Rock| -> f32 {
+        match r {
+            crate::geology::Rock::Metamorphic => 0.7,
+            crate::geology::Rock::Igneous => 1.0,
+            crate::geology::Rock::Sedimentary => 1.8,
+        }
+    };
     const DEEPEST_ALLUVIUM_M: f32 = 8.0;
 
     let span = (1.0 - sea_level).max(1e-3);
@@ -341,7 +358,7 @@ fn generate_soil_depth(
             // Concave gains, convex loses, bounded either way.
             let shape = (curve / 40.0).clamp(-0.6, 1.4);
 
-            let mut depth = REGIONAL_DEPTH_M * keeps * (1.0 + shape);
+            let mut depth = regional_depth_m(rock[i]) * keeps * (1.0 + shape);
 
             // **Floodplains are deposited, not weathered**, so they are
             // deeper than anything the hillside above them carries.
@@ -1030,8 +1047,16 @@ impl World {
         }
         let seasonality = generate_seasonality(&elevation, sea_level);
         let soil_depth =
-            generate_soil_depth(&elevation, sea_level, &river, &lake, &flow.accum);
+            generate_soil_depth(&elevation, sea_level, &river, &lake, &flow.accum, &geology.rock);
         let rain_season = generate_rain_season(&elevation, sea_level, &seasonality);
+        // Depth to water in metres, which the settling pass needs to know
+        // how much of the soil is aerated enough for roots.
+        let mut water_depth_m = Field::new(width, height);
+        let wspan = (1.0 - sea_level).max(1e-3);
+        for i in 0..elevation.data.len() {
+            water_depth_m.data[i] =
+                ((elevation.data[i] - water_table.data[i]) / wspan * MAX_LAND_M as f32).max(0.0);
+        }
         let climatic_moisture =
             generate_climatic_moisture(&temp_c, &rain_mm, &drain_r, &elevation, sea_level);
         let biota = biota::generate(
@@ -1042,6 +1067,7 @@ impl World {
             &climatic_moisture,
             &soil_depth,
             &rain_season,
+            &water_depth_m,
             &elevation,
             sea_level,
         );

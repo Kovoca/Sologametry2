@@ -81,6 +81,7 @@ fn deep_soil_carries_a_dry_season_and_thin_soil_does_not() {
             soil_m,
             500.0, // mm of rain a year
             0.22,  // winter-wet: a Mediterranean dry season
+            8.0,   // water table well below the root zone
         )
     };
     let thin = climate(0.25);
@@ -169,5 +170,53 @@ fn heat_takes_the_water_back() {
     assert!(
         cool > hot,
         "at the same rainfall, hot ground holds {hot:.2} against cool ground's {cool:.2}"
+    );
+}
+
+#[test]
+fn a_waterlogged_floodplain_reads_wet_and_roots_shallow() {
+    // **Roots need air as much as water.** Where the water table stands
+    // inside the root zone the soil is waterlogged and roots die in it,
+    // which is why field drainage exists and why a floodplain can be the
+    // wettest ground on the farm and still the worst. Rice is the
+    // exception and is not modelled.
+    use scale_sim::biota::settle;
+    let at_water_table = |depth_m: f32| {
+        settle(600_000.0, 18.0, 18.0, 0.45, 3.0, 500.0, 0.22, depth_m)
+    };
+    let drained = at_water_table(8.0);
+    let waterlogged = at_water_table(0.4);
+    assert!(
+        waterlogged.plant_winter < drained.plant_winter * 0.9,
+        "a water table 40 cm down costs nothing: {:.0} against {:.0} kg/km2 drained",
+        waterlogged.plant_winter,
+        drained.plant_winter
+    );
+    assert!(
+        waterlogged.crop_water_mm < drained.crop_water_mm,
+        "a waterlogged soil delivers as much water to a crop as a drained one"
+    );
+}
+
+#[test]
+fn substrate_sets_how_deep_the_soil_gets() {
+    // Real weathering: crystalline basement — granite, gneiss, schist —
+    // weathers slowly to a thin stony soil, and limestone dissolves away
+    // leaving almost nothing, which is why karst country is soil-poor.
+    // Bedded rock generally gives more: shale to deep clay, sandstone to
+    // a metre of sand.
+    use scale_sim::geology::Rock;
+    let w = World::generate(256, 144, 20260828);
+    let mean_on = |r: Rock| {
+        let c: Vec<usize> = (0..w.soil_depth.data.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level && w.geology.rock[i] == r)
+            .collect();
+        c.iter().map(|&i| w.soil_depth.data[i] as f64).sum::<f64>() / c.len().max(1) as f64
+    };
+    let sed = mean_on(Rock::Sedimentary);
+    let met = mean_on(Rock::Metamorphic);
+    assert!(
+        sed > met * 1.3,
+        "bedded rock carries {sed:.2} m of soil against {met:.2} on crystalline basement"
     );
 }

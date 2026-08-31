@@ -856,3 +856,57 @@ fn plant_biomass_shifts_and_populations_do_not() {
         "hot country holds more plant-available water than cold"
     );
 }
+
+#[test]
+fn a_yield_comes_from_water_and_not_from_a_score() {
+    // **The French-Schultz relation**, which is what dryland agronomy
+    // actually uses: yield is water-use efficiency times growing-season
+    // water, less what the bare soil evaporates before the crop can reach
+    // it. Yield used to be `1 + 7 x fertility` — a soil score with no
+    // climate in it — so a dry country and a wet one on the same soil fed
+    // the same number of people.
+    use scale_sim::biota::crop_yield_t_per_ha;
+    assert_eq!(crop_yield_t_per_ha(80.0), 0.0, "a crop grows on evaporated water");
+    let y300 = crop_yield_t_per_ha(300.0);
+    assert!(
+        (3.5..6.5).contains(&y300),
+        "300 mm of season water yields {y300:.1} t/ha against a real 4-5"
+    );
+    // Rainfed farming has a ceiling; irrigation is a separate question.
+    assert!(crop_yield_t_per_ha(2000.0) <= 10.0);
+
+    let w = World::generate(256, 144, 20260828);
+    let land: Vec<usize> = (0..w.biomes.len())
+        .filter(|&i| w.elevation.data[i] >= w.sea_level)
+        .collect();
+
+    // **Weighted by the ground worth ploughing**, which is what a world
+    // average yield means. Real: 3.5 t/ha across Earth's cropland — and
+    // this comes out under that on purpose, because Earth's farmland is
+    // not a random sample of its land. People farm the best of it.
+    let (mut num, mut den) = (0.0f64, 0.0f64);
+    for &i in &land {
+        let f = w.geology.fertility.data[i] as f64;
+        num += f * crop_yield_t_per_ha(w.biota.crop_water.data[i]) as f64;
+        den += f;
+    }
+    let mean = num / den;
+    assert!(
+        (1.5..4.0).contains(&mean),
+        "the planet averages {mean:.1} t/ha over the ground worth ploughing"
+    );
+
+    // A crop's season is a season, not a year. Summing every month above
+    // 5 °C counted twelve months of tropical evapotranspiration and
+    // pinned a tenth of the planet at the theoretical maximum.
+    let capped = land
+        .iter()
+        .filter(|&&i| crop_yield_t_per_ha(w.biota.crop_water.data[i]) >= 9.99)
+        .count() as f64
+        / land.len() as f64;
+    assert!(
+        capped < 0.10,
+        "{:.0}% of the planet yields the rainfed maximum",
+        capped * 100.0
+    );
+}
