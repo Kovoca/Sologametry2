@@ -2314,6 +2314,15 @@ pub struct Economy {
     /// **The private services** — construction, hospitality, recreation,
     /// offices. About 43% of all employment, and none of it existed.
     pub services: Option<crate::services::Services>,
+    /// **Who actually moves the goods.**
+    ///
+    /// `distribute` is a pull and `trade` is a per-hop price test; both
+    /// are pairwise, so a cargo three towns down the road has to clear a
+    /// separate test at every hop and usually never sets off. A freight
+    /// operator plans the whole journey before the lorry leaves, which is
+    /// a different algorithm rather than a better-tuned version of the
+    /// same one.
+    pub logistics: Option<crate::logistics::Logistics>,
 }
 
 impl Economy {
@@ -2351,6 +2360,14 @@ impl Economy {
         // housed.
         crate::labour::update(self);
         self.distribute();
+        // **After the local pull, before the arbitrage.** A firm restocks
+        // down the road first, then rings a haulier for what it cannot get
+        // locally; speculating on a price gap is a different business
+        // again, and it comes last.
+        if let Some(mut freight) = self.logistics.take() {
+            freight.haul(self, self.ledger.day);
+            self.logistics = Some(freight);
+        }
         self.trade();
         self.update_prices();
         // **At the end of the day, after everything has moved.** Meat

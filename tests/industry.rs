@@ -358,7 +358,11 @@ fn medicine_is_made_from_oil_and_a_hospital_needs_it() {
     // A country that makes its own has hospitals that keep working; the
     // state's delivered health is staffing and supply together.
     let mut e = a_nation(20260828, 2).economy;
-    for _ in 0..200 {
+    // Long enough to settle. Hospitals open with a month's stock and the
+    // carriers take a while to level the country out, so a reading at 200
+    // days measures the industry finding its feet rather than the state
+    // it settles in.
+    for _ in 0..400 {
         e.step();
     }
     e.ledger.assert_conserved();
@@ -385,14 +389,13 @@ fn medicine_is_made_from_oil_and_a_hospital_needs_it() {
     }
 
     let gov = e.government.as_ref().expect("a nation with a state");
-    // **Known gap, recorded rather than tuned away.** Two hospitals in
-    // five run at ~72% because distribution is a per-site pull rather
-    // than a haulier moving loads along a route: a town far from the
-    // works draws its stock down faster than the pairwise test refills
-    // it. That is the same weakness `nations.rs` already documents for
-    // trade, and it is what a logistics operator would fix.
+    // **This was 72% until the country had hauliers.** Medical grade is
+    // made in one town and wanted in all of them, and no pairwise
+    // mechanism could move it: no shop sells it and no recipe consumes
+    // it, so there is no chain of adjacent price gaps to walk it down.
+    // `logistics.rs` plans the journey end to end and it comes right.
     assert!(
-        gov.supplied > 0.70,
+        gov.supplied > 0.98,
         "a working nation could only supply {:.0}% of its hospitals",
         gov.supplied * 100.0
     );

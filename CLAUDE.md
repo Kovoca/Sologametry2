@@ -863,12 +863,8 @@ ordinary recipe: a batch is one person served for one day.
 on a protected feeder with their own generators — the one load an operator
 will black out a district to keep.
 
-**Known gap, named in `medicine_is_made_from_oil_and_a_hospital_needs_it`:**
-two hospitals in five run at ~72%, because distribution is a per-site pull
-rather than a haulier moving loads along a route. A town far from the works
-draws down faster than the pairwise test refills it — the same weakness
-`nations.rs` already documents for trade, and what a logistics operator
-would fix.
+**This ran at 72% until the country had hauliers**, and `logistics.rs`
+closed it.
 
 **Grid shed order is now hospitals → fuel → food → shops → chemicals and
 steel → heavy manufacturing.** Lumping all industry at one rank was fine with one kind
@@ -876,6 +872,70 @@ of it; with two, "larger first" handed the whole supply to a goods factory
 and shut the food chain down. Real grids shed this way too, and the
 heaviest users are *paid* to go first — an **interruptible tariff** buys a
 smelter cheaper power in exchange for being cut on demand.
+
+## Who actually moves the goods (`src/logistics.rs`)
+
+There were two ways for a tonne to travel and neither was a haulier.
+`distribute` is a **pull** — every site looks round for a supplier and
+takes what it can reach. `trade` is a **price test** — on each route
+separately, if the gap between two adjacent markets beats the freight,
+something moves. Both are pairwise, so a cargo three towns down the road
+must clear a separate test at every hop and usually never sets off.
+
+A freight operator does neither: it is paid to move somebody else's stock
+from where it is to where it is wanted, and it **plans the whole journey
+before the lorry leaves**. Dijkstra over the open routes, all-pairs,
+re-surveyed daily because a pass shuts in winter. That is a different
+algorithm, not a better-tuned version of the same one.
+
+- **It runs on days of cover, never on tonnes.** A city of sixteen million
+  always holds more tonnes than a town of two.
+- **Value density decides how far a thing travels**, and nobody wrote that
+  rule — a haul is refused when the freight exceeds half what the goods
+  are worth. Which is exactly why there is a cement works in every region
+  on earth and a pharmaceutical plant in hardly any country at all.
+- Real shape: UK road freight moves ~1.6 bn t and ~150 bn t-km a year, so
+  the **average haul is ~94 km**; ~60% of operators run one or two
+  vehicles; transport and storage is **5.0% of employment**.
+
+**What it fixed, and what it did not.** Food cover was already even
+without it — `distribute` handles a commodity every town both makes and
+sells, because a shop short of food is pulling on a mill in the same
+street. The gap was **medical grade**: made in one town, wanted in every
+town, sold by no shop and consumed by no recipe, so there is no chain of
+adjacent price gaps to walk it down. Hospitals went **86% → 100%**.
+
+Three ways a haulier can wreck an economy, all found by tests:
+
+- **Deliver to a consignee, not to whatever shelf has room.** Dropping a
+  load wherever there was space put a town's food into a cannery's output
+  store where households cannot buy it — stock in the town, ledger
+  balanced, people hungry.
+- **Never collect from a site that consumes the stuff.** A market's
+  surplus is the whole town's holding above its reserve, and that reserve
+  can be a merchant's yard while a works runs on what is in its own
+  hopper. Backing a lorry up to a cannery and carrying off its tinplate
+  stopped it, and the shortage came out as a famine two commodities
+  downstream.
+- **A carrier with nothing to move is not hiring.** Offering a day's
+  driving because a firm owns lorries kept a man employed in an economy
+  whose roads were shut and whose works had all stopped.
+
+### Judge a job by what it pays a day
+
+Two pre-existing bugs that only surfaced once carriers competed for the
+same work:
+
+- **`find` took the first offer in list order**, so a fourteen-day haul
+  beat a day's driving at the same daily rate purely by being longer and
+  earlier in the list. Offers are now ranked by pay per day, shorter
+  first on a tie — which is why a steady job at a haulage firm is worth
+  more than a speculative cargo at the same money.
+- **A venture advertised its gross sale price** with neither the cost of
+  the cargo nor the diesel taken off — turnover offered as though it were
+  income. It looked like three times the going rate, so a haulier took one
+  every time and came out of a full year on **2.66 a day against a rate of
+  5.18**.
 
 ## People (`src/person.rs`)
 

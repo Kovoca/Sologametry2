@@ -310,6 +310,21 @@ pub struct Contract {
 
 #[derive(Clone, Debug)]
 pub enum Job {
+    /// **A day driving for a carrier.**
+    ///
+    /// The difference between this and `Haul` is the difference between a
+    /// job and a gig. A haul is a load somebody happened to want shifted
+    /// today; this is a firm with a fleet, a depot and a rota, and it is
+    /// where most real driving work actually is — road haulage is an
+    /// industry of operators, not of men with lorries waiting for a
+    /// cargo to turn up.
+    ///
+    /// The goods have already moved: `logistics.rs` shipped them through
+    /// the journal this morning. This is the wage for having driven.
+    Driving {
+        carrier: usize,
+        km: f64,
+    },
     /// Move somebody else's goods along a route for a wage. The margin is
     /// theirs; the driver is paid by the day, and ends up at the far end.
     Haul {
@@ -413,6 +428,16 @@ impl Contract {
             Job::Shift { site, .. } => format!(
                 "a shift at {} — {:.0} for {:.1} days",
                 econ.ledger.sites[*site].name, self.pay, self.days,
+            ),
+            Job::Driving { carrier, km } => format!(
+                "a day on the road for {} — {:.0} km, {:.0}",
+                econ.logistics
+                    .as_ref()
+                    .and_then(|l| l.carriers.get(*carrier))
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("a carrier"),
+                km,
+                self.pay,
             ),
             Job::Service { market, sector } => format!(
                 "a day in {} in {} — {:.0}",
@@ -1097,9 +1122,22 @@ pub fn work_available(
                     },
                     posted: day,
                     expires: day + 7,
-                    // Expected, not guaranteed: what it fetches is whatever
-                    // the far market will pay on the day it arrives.
-                    pay: econ.price(to, c) * affordable,
+                    // **What he clears, not what the load fetches.**
+                    //
+                    // This advertised the gross sale price with neither
+                    // the cost of the cargo nor the diesel taken off —
+                    // turnover offered as though it were income. Against a
+                    // wage it looked like three times the going rate, so
+                    // once offers were ranked by what they pay a day a
+                    // haulier took a venture every time and came out of a
+                    // full year on 2.66 a day against a rate of 5.18.
+                    //
+                    // Expected, not guaranteed: what it fetches is
+                    // whatever the far market will pay on the day it
+                    // arrives, and the cargo may be gone before he gets
+                    // there — which is what makes it a risk and not a
+                    // better wage.
+                    pay: (econ.price(to, c) * affordable - outlay - running).max(0.0),
                     days,
                     trade: Trade::Haulier,
                 });
@@ -1159,6 +1197,69 @@ pub fn work_available(
             days,
             trade: Trade::Haulier,
         });
+    }
+
+    // **Driving for a carrier.**
+    //
+    // Founding a freight industry and leaving the drivers out of it was
+    // an odd sort of omission: the carriers shifted four thousand tonnes
+    // a day and employed nobody, while the one man with a lorry watched
+    // the price gaps he used to live on close up behind them. That second
+    // part is real — a competitive haulage industry does compete away the
+    // arbitrage a lone trader was making — but it has to come with the
+    // wages it pays, or the model has taken his living and given nothing
+    // back.
+    //
+    // Real transport and storage is **5.0% of employment**, and almost
+    // none of it is self-employed arbitrage.
+    if let Some(freight) = econ.logistics.as_ref() {
+        // **A carrier with nothing to move is not hiring.** Offering a
+        // day's driving purely because a firm owns lorries kept a man
+        // employed in an economy whose roads were shut and whose works
+        // had all stopped — which is the one situation the model must get
+        // right, because destitution is what the person layer exists to
+        // be able to show.
+        //
+        // Gated on the industry rather than the individual firm: a
+        // haulier does not lay off his drivers because Tuesday was quiet,
+        // which is the labour-hoarding rule this project already follows
+        // everywhere else.
+        let anything_moving = freight.hauled_today() > 0.0;
+        for (i, carrier) in freight.carriers.iter().enumerate() {
+            if !anything_moving {
+                break;
+            }
+            if carrier.home != market || carrier.drivers() < 1.0 {
+                continue;
+            }
+            // **Not gated on how busy the trunk fleet looks.**
+            //
+            // The fleet is sized on the town's whole freight task — the
+            // real 24 tonnes a head a year — while `haul` only does the
+            // long-distance balancing, because collection and delivery
+            // inside a town are handled abstractly by `distribute` and
+            // never put a lorry on the road. So measured utilisation runs
+            // at a few percent and means nothing, and gating hiring on it
+            // put a driver out of work in a town whose carrier ran seven
+            // hundred vehicles — on a threshold of five percent against a
+            // reading of 4.9.
+            //
+            // A carrier employs drivers because it has a fleet. Whether
+            // he gets a shift is the labour market's business, and
+            // `chance_of_work` already decides that.
+            let rate = day_rate(econ, market, Trade::Haulier);
+            out.push(Contract {
+                kind: Job::Driving {
+                    carrier: i,
+                    km: freight.mean_haul_km(),
+                },
+                posted: day,
+                expires: day + 1,
+                pay: rate,
+                days: 1.0,
+                trade: Trade::Haulier,
+            });
+        }
     }
 
     // **Carting about the town.**
@@ -1654,6 +1755,19 @@ pub fn live_a_day_with(
                     // stockpile.** A week teaching moves no tonnage, which
                     // is exactly what a service is — and it is why a
                     // school keeps going when the mill has shut.
+                    // **The goods already moved this morning.** The
+                    // carrier shipped them through the journal; this is
+                    // the wage for having driven, and paying it again in
+                    // tonnage would be inventing freight that did not
+                    // happen.
+                    Job::Driving { km, .. } => {
+                        person.money += job.pay;
+                        person.earned += job.pay;
+                        person.note(
+                            day,
+                            format!("drove {km:.0} km for a carrier, {:.0}", job.pay),
+                        );
+                    }
                     // A day's service work: it produces nothing that
                     // moves, which is what a service is.
                     Job::Service { sector, .. } => {
@@ -1990,6 +2104,27 @@ pub fn live_a_day_with(
                 && person.days_worked >= YEARS_BEFORE_THEY_TRUST_YOU
                 && vacancy_above
                 && person.standing >= WELL_ENOUGH_REGARDED;
+            // **Judge a job by what it pays a day, not by its total.**
+            //
+            // `find` took the first offer in list order, so a fourteen-day
+            // haul beat a day's driving for the same daily rate purely by
+            // being longer and earlier in the list — and hauls are
+            // settled on what was actually delivered, so the long one
+            // routinely paid a fraction of what it promised. A man came
+            // out of a full year on 2.66 a day against a going rate of
+            // 5.18.
+            //
+            // Where the daily rate ties, the shorter job wins: a week
+            // committed to one load is a week of not taking anything
+            // else, which is exactly why a steady job at a haulage firm
+            // is worth more than a speculative cargo at the same money.
+            let mut offers = offers;
+            offers.sort_by(|a, b| {
+                let per_day = |c: &Contract| c.pay / c.days.max(1.0);
+                per_day(b)
+                    .total_cmp(&per_day(a))
+                    .then(a.days.total_cmp(&b.days))
+            });
             let taken = offers.into_iter().find(|c| {
                 let hired = c.stake() > 0.0 || drawn < hiring;
                 // **You cannot take work you are not qualified for.**

@@ -1878,6 +1878,7 @@ impl Region {
             unmet_demand: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
             government: None,
+            logistics: None,
             services: None,
         };
         // **Hang the distribution network under the transmission**, so a
@@ -1896,6 +1897,10 @@ impl Region {
             .map(|(i, s)| (i, s.market, s.name.clone()))
             .collect();
         economy.grid.wire_up(&names, &supplies);
+        // **The country has hauliers.** Founded after the towns and the
+        // roads exist, because a carrier's fleet is sized on the tonnage
+        // it has to shift over the distances it actually has to cover.
+        economy.logistics = Some(crate::logistics::Logistics::found(&economy));
 
         // **Licence areas, not one national utility.**
         //
