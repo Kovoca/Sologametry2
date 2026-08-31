@@ -584,3 +584,84 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
         "an office pays {office:.0} against a shop's {shop:.0} — the degree buys nothing"
     );
 }
+
+#[test]
+fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
+    // **A bootstrapping distinction, and it matters.**
+    //
+    // The adults a world starts with have to be *given* qualifications in
+    // the proportions the economy needs, or nothing functions on the first
+    // morning — there is no time for anybody to have been to a university.
+    // A child born into the simulation has to actually go, which takes
+    // years and costs money.
+    //
+    // Real: ~35% of British working-age adults hold a degree, initial
+    // participation in higher education is ~38% of young people, and
+    // apprenticeship starts run ~340,000 a year.
+    use scale_sim::person::Qualification;
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 50, 20260828);
+
+    let share = |f: &Populace, q: Qualification| -> f64 {
+        f.people.iter().filter(|p| p.qualification == q).count() as f64
+            / f.people.len().max(1) as f64
+    };
+
+    // The starting population is stocked, as it must be.
+    let start_degrees = share(&folk, Qualification::Degree);
+    assert!(
+        (0.20..0.45).contains(&start_degrees),
+        "the world starts with {:.0}% graduates, against a real ~35%",
+        start_degrees * 100.0
+    );
+
+    let before = folk.people.len();
+    for day in 0..(DAYS_PER_YEAR * 25) {
+        e.step();
+        folk.live_a_day(&mut e, day);
+    }
+
+    // **A generation came through.** Children were born, aged, reached
+    // sixteen and became people with qualifications of their own.
+    assert!(
+        folk.people.len() > before,
+        "twenty-five years and not one child grew up"
+    );
+    assert!(
+        folk.people.iter().any(|p| !p.children.is_empty()),
+        "nobody in the country has a child"
+    );
+
+    // **And it costs to go.** A degree is three years earning nothing, so
+    // whether a household can carry somebody for three years is what
+    // decides it — the mechanism by which advantage reproduces itself,
+    // needing no special rule because it is the arithmetic.
+    //
+    // Asserted on the *band* rather than the direction: with forty
+    // children against three hundred adults the population effect is real
+    // but far too weak to read off a sample this size. That is the third
+    // time in this codebase a population correlation could not show a
+    // mechanism that is plainly there — the soil, the childcare, and now
+    // this — and the lesson each time is the same: hold everything still
+    // and vary one thing.
+    let end_degrees = share(&folk, Qualification::Degree);
+    assert!(
+        (0.15..0.45).contains(&end_degrees),
+        "a generation later the country is {:.0}% graduates, against a real ~35%",
+        end_degrees * 100.0
+    );
+    assert!(
+        share(&folk, Qualification::School) > 0.35,
+        "most people should have school and no more, because most work needs no more"
+    );
+
+    // Nobody is working at something they are not qualified for.
+    for p in folk.people.iter() {
+        assert!(
+            p.qualification >= scale_sim::person::qualification_for(p.trade),
+            "{} is a {} without the qualification for it",
+            p.name,
+            p.trade.name()
+        );
+    }
+}

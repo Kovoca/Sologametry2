@@ -1027,6 +1027,27 @@ family background far more than the other — and the payoff is real: office
 work pays half as much again as shop work, which is exactly what makes the
 three years worth spending.
 
+**The adults are given their skills; the children must go and get them.**
+A bootstrapping distinction, and it matters: the adults a world starts with
+have to be *stocked* with qualifications in the proportions the economy
+needs, or nothing functions on the first morning — there is no time for
+anybody to have been to a university. A child born into the simulation ages,
+reaches sixteen, and then goes or does not.
+
+**And whether it goes is decided by what its household can carry.** Three
+years earning nothing is the barrier, so it is the arithmetic — not a rule
+— by which advantage reproduces itself. A state that funds education
+carries some of it, which is most of what a maintenance grant is for. And
+an **apprenticeship is paid**, badly, so it is far less gated by what a
+family has, which is exactly why it is the route for people a degree is out
+of reach for.
+
+One more thing to get right: **a replacement in a sampled cohort is a
+cross-section of the population, not a school-leaver.** Drawing their
+qualification off their trade meant every death diluted the country's
+skills, and the graduate share fell 31% to 18% over twenty-five years for
+no reason anybody had decided.
+
 Which is also what schools and universities are *for* in the model. They
 were already the second-largest block of public employment; now they
 produce something, and it opens doors that were previously open to
@@ -1612,6 +1633,21 @@ position, not from a dice roll: the room off the front door is the one you
 live in, the kitchen backs onto the yard where the drains and bins are.
 
 Computed per tile, never stored, like the rest of this layer.
+
+### A population correlation cannot show a mechanism
+
+Three times now, and it is worth stating as a rule. **The soil**: deep soil
+correlates with floodplains, so a quartile comparison across cells said the
+opposite of the truth. **Childcare**: a parent's work record is a lifetime
+and the child was only small for part of it. **Education**: forty children
+against three hundred adults is far too weak to read a generational effect
+off.
+
+Each time the mechanism was plainly there and the population statistic
+could not see it. The fix each time was the same — **hold everything still
+and vary one thing** — which is why `biota::settle` and `person::live_a_day`
+are public: so a test can run two identical cases that differ in one
+respect.
 
 ## The scale ladder
 

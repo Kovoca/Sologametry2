@@ -25,7 +25,8 @@
 
 use crate::econ::Economy;
 use crate::person::{
-    household_share_for, live_a_day_with, qualification_for, Housing, Person, Qualification, Trade,
+    day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
+    Qualification, Trade,
 };
 use crate::rng::Rng;
 
@@ -231,15 +232,32 @@ impl Populace {
         let infant_deaths = INFANT_DEATHS_WITHOUT
             + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health;
 
+        let mut grown: Vec<(usize, f64)> = Vec::new();
         for i in 0..self.people.len() {
             self.people[i].age_years += 1.0;
             for c in self.people[i].children.iter_mut() {
                 *c += 1.0;
             }
-            // Grown children leave the household.
+            // **A child who reaches sixteen leaves and becomes somebody.**
+            //
+            // This is the difference between the adults the world starts
+            // with and the ones it makes. The starting population is
+            // *given* qualifications — it has to be, or nothing functions
+            // on the first morning — but a child born into the simulation
+            // has to actually go and get one, and whether it can is
+            // decided by what its household could carry.
+            let leaving: Vec<f64> = self.people[i]
+                .children
+                .iter()
+                .copied()
+                .filter(|&c| c >= crate::person::SCHOOL_ENDS)
+                .collect();
             self.people[i]
                 .children
-                .retain(|&c| c < crate::person::SCHOOL_ENDS + 2.0);
+                .retain(|&c| c < crate::person::SCHOOL_ENDS);
+            for _ in leaving {
+                grown.push((i, self.rng.next_f32() as f64));
+            }
 
             // **Whether a child arrives this year.** Spread over the
             // childbearing span, so a lifetime comes to the fertility
@@ -280,6 +298,72 @@ impl Populace {
                     }
                 }
             }
+        }
+
+        // **Who goes on, and who goes to work.**
+        //
+        // Real participation: about **38% of young people enter higher
+        // education** and apprenticeship starts run ~340,000 a year, with
+        // the rest leaving at sixteen or eighteen. But it is not a lottery
+        // — a degree is three years earning nothing, and **whether a
+        // household can carry somebody for three years is what decides
+        // it**. That is the mechanism by which advantage reproduces
+        // itself, and it needs no special rule: it is the arithmetic.
+        for (parent, roll) in grown {
+            let household = &self.people[parent];
+            // What the family can carry, roughly: money in hand against
+            // three years of somebody not earning.
+            let three_years = day_rate(econ, household.market, Trade::Shopworker)
+                * crate::econ::DAYS_PER_YEAR as f64
+                * 3.0;
+            let can_carry = (household.money / three_years.max(1.0)).clamp(0.0, 1.0);
+
+            // A state that funds education carries some of it instead, and
+            // that is most of what a maintenance grant is for.
+            let helped = econ
+                .government
+                .as_ref()
+                .map(|g| {
+                    let i = crate::state::Service::ALL
+                        .iter()
+                        .position(|&s| s == crate::state::Service::Education)
+                        .unwrap_or(0);
+                    g.funded[i]
+                })
+                .unwrap_or(0.0);
+            let afford = (can_carry + 0.35 * helped).clamp(0.0, 1.0);
+
+            let qualification = if roll < 0.38 * afford {
+                Qualification::Degree
+            } else if roll < 0.38 * afford + 0.20 {
+                // An apprenticeship is paid, so it is far less gated by
+                // what a family has — which is exactly why it is the route
+                // for people a degree is out of reach for.
+                Qualification::Vocational
+            } else {
+                Qualification::School
+            };
+
+            let market = household.market;
+            let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
+            let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
+            // A trade they are actually qualified for.
+            let trade = loop {
+                let t = draw_trade(&mut self.rng);
+                if qualification >= qualification_for(t) {
+                    break t;
+                }
+            };
+            let mut p = Person::new(format!("{first} {last}"), trade, market, 30.0);
+            p.qualification = qualification;
+            p.age_years = 16.0 + qualification.years_to_earn();
+            p.diligence =
+                ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
+            let h = draw_household(&mut self.rng);
+            p.household_share = household_share_for(h.adults());
+            self.people.push(p);
+            self.households.push(h);
+            self.represents.push(self.represents.get(parent).copied().unwrap_or(1.0));
         }
     }
 
@@ -355,6 +439,22 @@ impl Populace {
             let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
             p.diligence = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
                 / 3.0) as f64;
+            // **A replacement is somebody else from the population, not a
+            // school-leaver.** Drawing their qualification off the trade
+            // meant every death diluted the country's skills, and the
+            // degree share fell from 31% to 18% over twenty-five years for
+            // no reason anybody had decided.
+            let q = self.rng.next_f32();
+            p.qualification = if q < 0.32 {
+                Qualification::Degree
+            } else if q < 0.52 {
+                Qualification::Vocational
+            } else {
+                Qualification::School
+            };
+            if p.qualification < qualification_for(p.trade) {
+                p.trade = Trade::Shopworker;
+            }
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
             self.households[i] = h;
