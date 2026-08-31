@@ -34,9 +34,23 @@ pub enum Commodity {
     /// Butchered meat, in tonnes of retail cuts. **The whole reason a
     /// cold chain exists.**
     Meat,
+    /// **Iron ore**, in tonnes. Mined only where the geology put metal —
+    /// the field `geology.rs` has generated since it was written and
+    /// nothing had ever asked for.
+    IronOre,
+    /// **Crude steel**, in tonnes. The intermediate everything physical
+    /// passes through: a tin can, a plough, a lorry, a substation.
+    ///
+    /// **Coal here is not fuel, it is the reductant.** A blast furnace
+    /// uses carbon to strip the oxygen off iron oxide, which is why the
+    /// real recipe is 1.4 t of ore and 0.8 t of coal but only 200-300 kWh
+    /// of *electricity* per tonne. A country with unlimited power and no
+    /// coal still cannot make primary steel — which is the whole reason
+    /// steel is hard to decarbonise, and a dependency worth having.
+    Steel,
 }
 
-pub const N_COMMODITIES: usize = 8;
+pub const N_COMMODITIES: usize = 10;
 
 impl Commodity {
     pub const ALL: [Commodity; N_COMMODITIES] = [
@@ -48,6 +62,8 @@ impl Commodity {
         Commodity::RetailGoods,
         Commodity::Livestock,
         Commodity::Meat,
+        Commodity::IronOre,
+        Commodity::Steel,
     ];
 
     pub fn name(self) -> &'static str {
@@ -60,6 +76,8 @@ impl Commodity {
             Commodity::RetailGoods => "goods",
             Commodity::Livestock => "stock",
             Commodity::Meat => "meat",
+            Commodity::IronOre => "ore",
+            Commodity::Steel => "steel",
         }
     }
 
@@ -157,6 +175,13 @@ impl Commodity {
             // gives more readily than bread does.
             Commodity::Meat => -0.6,
             Commodity::Livestock => -0.5,
+            // **Industrial demand does not respond to price the way a
+            // household does.** A steelworks needs 1.4 tonnes of ore per
+            // tonne of steel whatever ore costs — there is no substitute
+            // and no doing without, which is why raw-material prices swing
+            // so violently on small changes in supply.
+            Commodity::IronOre => -0.15,
+            Commodity::Steel => -0.35,
         }
     }
 
@@ -169,8 +194,22 @@ impl Commodity {
             // year**, against roughly 150 kg of cereals — a fifth of the
             // diet by weight and rather more of its cost.
             Commodity::Meat => 0.043,
-            Commodity::Electricity => 3.0,
+            // **Residential only, and that is the whole point.** Real
+            // world electricity is ~3.5 MWh a head a year *in total*, of
+            // which households take about 0.9 — industry is ~42% and
+            // commerce most of the rest. 3.0 stood in for the entire
+            // economy's demand back when no industry was modelled, and the
+            // moment factories and a steelworks existed the country
+            // counted them twice: household demand alone came to 271,000
+            // MWh a day against industry's 4,000, so the station burnt
+            // every tonne raised to supply it and the steelworks on the
+            // same coalfield never smelted anything.
+            Commodity::Electricity => 0.9,
             Commodity::RetailGoods => 1.0,
+            // Nobody buys a tonne of crude steel. It reaches a household
+            // inside a cooker, a car and a tin, which is what makes it an
+            // *industrial* demand and why pricing it off household
+            // purchases would give it no price at all.
             _ => 0.0,
         }
     }
@@ -195,6 +234,11 @@ impl Commodity {
             Commodity::Meat => 3.0,
             // Stock is held on the hoof and keeps itself.
             Commodity::Livestock => 30.0,
+            // Bulk raw material, stockpiled at the works. Real steelworks
+            // hold weeks of ore and coal against a shipping interruption,
+            // which is exactly what a strategic stockpile is.
+            Commodity::IronOre => 30.0,
+            Commodity::Steel => 25.0,
         }
     }
 
@@ -213,6 +257,11 @@ impl Commodity {
             // carries for the feed and the years that went into it.
             Commodity::Meat => 4_200.0,
             Commodity::Livestock => 1_600.0,
+            // Real: iron ore runs $80-120 a tonne delivered, crude steel
+            // $500-700. The gap between them is the whole of a steel
+            // industry.
+            Commodity::IronOre => 90.0,
+            Commodity::Steel => 450.0,
         }
     }
 }
@@ -326,6 +375,15 @@ pub enum SiteKind {
     Mine,
     Mill,
     Factory,
+    /// **Where the metal comes out of the ground.** Only exists where the
+    /// geology put ore, exactly like the colliery.
+    IronMine,
+    /// **Ore and coal in, steel out.** Sited on a coalfield, on an
+    /// orefield, or on tidewater where both can be landed — which is the
+    /// real history of the industry in one line.
+    Steelworks,
+    /// **Where steel becomes things**: tools, parts, tins, machines.
+    Works,
     PowerPlant,
     Shop,
     /// Where goods from outside the modelled region arrive.
@@ -520,7 +578,7 @@ pub struct Recipe {
     pub needs_water: bool,
 }
 
-pub const RECIPES: [Recipe; 11] = [
+pub const RECIPES: [Recipe; 16] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -539,7 +597,11 @@ pub const RECIPES: [Recipe; 11] = [
     },
     Recipe {
         name: "cannery",
-        inputs: &[(Commodity::Flour, 0.9)],
+        // **A can is made of steel**, and canning was born of the tinplate
+        // industry rather than alongside it. 35 kg of steel per tonne of
+        // canned food puts metal packaging at ~14 kg a head a year, which
+        // is what developed countries actually get through.
+        inputs: &[(Commodity::Flour, 0.9), (Commodity::Steel, 0.035)],
         outputs: &[(Commodity::ProcessedFood, 1.0)],
         power: 0.35,
         labour: 1.2,
@@ -647,6 +709,82 @@ pub const RECIPES: [Recipe; 11] = [
         labour: 0.05,
         needs_water: false,
     },
+    // -----------------------------------------------------------------
+    // Ore, steel, and the things made of it.
+    //
+    // Until this existed, goods appeared at a depot from nowhere and the
+    // metal `geology.rs` had been placing since it was written had no
+    // consumer at all.
+    // -----------------------------------------------------------------
+    Recipe {
+        name: "iron mine",
+        inputs: &[],
+        outputs: &[(Commodity::IronOre, 1.0)],
+        power: 0.08,
+        // **Ore mining barely employs anybody.** The Pilbara moves ~900 Mt
+        // a year with about 60,000 people — 15,000 tonnes each — which is
+        // why an ore province can be enormously valuable and still not be
+        // a place many people live.
+        labour: 0.4,
+        needs_water: false,
+    },
+    // A nation with no orefield buys ore, exactly as one with no coalfield
+    // buys fuel. Japan and Korea run world-class steel industries on
+    // entirely imported ore and coal, so this is not a poor country's
+    // recipe — it is the normal one.
+    Recipe {
+        name: "ore imports",
+        inputs: &[],
+        outputs: &[(Commodity::IronOre, 1.0)],
+        power: 0.02,
+        labour: 0.15,
+        needs_water: false,
+    },
+    Recipe {
+        name: "steelworks",
+        // **Real BF-BOF figures: 1.4 t of ore and 0.8 t of coal per tonne
+        // of crude steel.** The coal is doing chemistry, not just heating.
+        inputs: &[(Commodity::IronOre, 1.4), (Commodity::Coal, 0.8)],
+        outputs: &[(Commodity::Steel, 1.0)],
+        // **Only 200-300 kWh a tonne of *electricity*** — the 24 GJ of
+        // total energy is mostly the coal itself. Which is why a steelworks
+        // is a huge consumer of fuel and a modest one of grid power.
+        power: 0.25,
+        // Basic materials are capital-intensive; it is *fabrication* that
+        // employs people. A modern mill runs 0.5-2 person-hours a tonne.
+        labour: 1.5,
+        needs_water: false,
+    },
+    Recipe {
+        name: "factory",
+        // Backed out of the real figure rather than chosen: **world crude
+        // steel is ~230 kg a head a year**, and households take a tonne of
+        // goods each, so a tonne of manufactured output carries 0.23 t of
+        // steel.
+        inputs: &[(Commodity::Steel, 0.23)],
+        outputs: &[(Commodity::RetailGoods, 1.0)],
+        power: 1.0,
+        // **And this is where manufacturing employment actually is.** A
+        // car is 1.5 t and takes something like a hundred person-hours
+        // once its parts are counted; at ~55 hours a tonne the sector
+        // lands near its real 7.6% of the workforce, against the
+        // steelworks' 1.5. Fabrication is the labour, not the metal.
+        labour: 55.0,
+        needs_water: false,
+    },
+    // **A steel stockholder.** Most economies do not smelt their own —
+    // there are about fifty countries with a steel industry and two
+    // hundred without — and a small one buys plate and bar from a service
+    // centre like any other input. The same shape as fuel and ore
+    // imports, and the same dependency.
+    Recipe {
+        name: "steel imports",
+        inputs: &[],
+        outputs: &[(Commodity::Steel, 1.0)],
+        power: 0.02,
+        labour: 0.2,
+        needs_water: false,
+    },
 ];
 
 /// Indices into `RECIPES`, so scenarios read as places rather than numbers.
@@ -662,6 +800,11 @@ pub mod recipe {
     pub const PASTURE: usize = 8;
     pub const BUTCHER: usize = 9;
     pub const MEAT_IMPORTS: usize = 10;
+    pub const IRON_MINE: usize = 11;
+    pub const ORE_IMPORTS: usize = 12;
+    pub const STEELWORKS: usize = 13;
+    pub const FACTORY: usize = 14;
+    pub const STEEL_IMPORTS: usize = 15;
 }
 
 // ---------------------------------------------------------------------------
@@ -1991,8 +2134,37 @@ impl Economy {
 
     /// Power plants burn fuel and generate. Limited by what the grid can
     /// actually carry — generating into a severed line is pointless.
+    /// **What the country will actually draw today.**
+    ///
+    /// The transmission capacity is a ceiling, not a target: a grid
+    /// dispatches against load. Without this a station burned every tonne
+    /// it could reach and generated to fill the wires, which made it a
+    /// coal incinerator — raise the colliery's output and it simply burnt
+    /// more, so the steelworks beside it on the same coalfield never got a
+    /// tonne however much was mined.
+    pub fn power_demand(&self) -> f64 {
+        let mut want = 0.0;
+        for site in 0..self.ledger.sites.len() {
+            let s = &self.ledger.sites[site];
+            if s.kind == SiteKind::PowerPlant {
+                continue;
+            }
+            if self.grid.cut_off(site, s.market) {
+                continue;
+            }
+            if let Some(r) = s.recipe {
+                want += RECIPES[r].power * self.runnable(site);
+            }
+        }
+        for m in self.markets.iter() {
+            want += m.daily_household_demand(Commodity::Electricity);
+        }
+        want
+    }
+
     fn generate_power(&mut self) {
-        let carry = self.grid.capacity();
+        // Dispatch against load, capped by what the wires can carry.
+        let carry = self.grid.capacity().min(self.power_demand());
         let mut remaining = carry;
 
         for site in 0..self.ledger.sites.len() {
@@ -2066,7 +2238,7 @@ impl Economy {
                 continue;
             }
             let need = match s.recipe {
-                Some(r) => RECIPES[r].power * self.site_capacity(site),
+                Some(r) => RECIPES[r].power * self.runnable(site),
                 None => 0.0,
             };
             // **A cut feeder or service connection takes this site out
@@ -2079,19 +2251,37 @@ impl Economy {
                 wants.push((site, need));
             }
         }
-        // Industry before shops before homes; within a class, larger first,
-        // so a shortage stops whole plants rather than crippling all of
-        // them.
+        // **Fuel, then food, then shops, then heavy industry.** Lumping
+        // all industry together at one rank was wrong the moment there was
+        // more than one kind of it: a goods factory draws 1.0 MWh a tonne
+        // against a cannery's 0.35 and is several times the size, so
+        // "larger first" handed it the whole supply and shut the food
+        // chain down. **Making cutlery is not more important than making
+        // food.**
+        //
+        // Real grids shed in this order too, and the heaviest users are
+        // *paid* to be first out: an **interruptible tariff** buys a
+        // steelworks or a smelter cheaper power in exchange for being cut
+        // on demand, which is exactly why they sit below a bakery here.
         wants.sort_by(|a, b| {
             let rank = |i: usize| match self.ledger.sites[i].kind {
                 // The mine first: without coal nothing generates at all
                 // tomorrow, so starving it to keep a factory running today
                 // is how a grid talks itself into a blackout.
-                SiteKind::Mine => 0,
-                SiteKind::Factory | SiteKind::Mill => 1,
+                SiteKind::Mine | SiteKind::IronMine => 0,
+                // The food chain.
+                SiteKind::Factory | SiteKind::Mill | SiteKind::Butcher => 1,
                 SiteKind::Farm => 2,
                 SiteKind::Shop => 3,
-                _ => 4,
+                // **Steel before the factories that eat it.** They are
+                // both heavy industry, but shedding the steelworks to keep
+                // the works running stops the works a fortnight later for
+                // want of metal — the same reasoning that puts the
+                // colliery first.
+                SiteKind::Steelworks => 4,
+                // Heavy manufacturing, on an interruptible tariff.
+                SiteKind::Works => 5,
+                _ => 6,
             };
             rank(a.0)
                 .cmp(&rank(b.0))
@@ -2118,6 +2308,30 @@ impl Economy {
     #[inline]
     fn site_capacity(&self, site: usize) -> f64 {
         self.ledger.sites[site].throughput
+    }
+
+    /// **What a site can actually run today**, given the inputs it holds.
+    ///
+    /// A plant with nothing to work draws no power, and pricing its demand
+    /// off its rated capacity instead is how a grid talks itself into a
+    /// famine. The factories here wanted 1.0 MWh a tonne against a rating
+    /// they had no steel to meet; the station burned the coal to supply
+    /// them, and that coal was exactly what the steelworks next door
+    /// needed to make the steel. Six attempts at fixing it elsewhere —
+    /// bigger collieries, shed priorities, two-pass distribution — changed
+    /// nothing at all, because every one of them was feeding a demand that
+    /// should never have existed.
+    fn runnable(&self, site: usize) -> f64 {
+        let s = &self.ledger.sites[site];
+        let Some(r) = s.recipe else { return 0.0 };
+        let mut batches = s.throughput;
+        for &(c, per) in RECIPES[r].inputs {
+            if per <= 0.0 {
+                continue;
+            }
+            batches = batches.min(self.ledger.stock(site, c) / per);
+        }
+        batches.max(0.0)
     }
 
     /// Everything that is not a power plant runs its recipe as far as
@@ -2264,6 +2478,26 @@ impl Economy {
     /// stockbuilding demand of spec A.4, and it is what makes a shortage
     /// self-reinforcing when cover falls everywhere at once.
     fn distribute(&mut self) {
+        // **Everybody's running needs before anybody's stockpile.**
+        //
+        // One pass in site-index order let the first consumer on the list
+        // fill its yard to a three-day cover before the second had run at
+        // all. It never showed while each commodity had a single consumer;
+        // the moment a steelworks and a power station both wanted coal,
+        // the station — earlier in the list, and asking for three days of
+        // a national grid's burn — took every tonne the pit raised, and
+        // the works beside it on the same coalfield made no steel. No
+        // tinplate, so no cans, so the canneries stopped, so a country
+        // with full granaries went hungry.
+        //
+        // Two passes fix it, and it is what a real allocator does under
+        // rationing: cover everyone's daily draw first, then let whoever
+        // is short build inventory with what is left.
+        self.distribute_to_cover(1.0);
+        self.distribute_to_cover(3.0);
+    }
+
+    fn distribute_to_cover(&mut self, days: f64) {
         // Which markets each market can be supplied from: everywhere the
         // open route network reaches, not merely its direct neighbours.
         // Goods transship — a town at the end of a chain is supplied
@@ -2289,7 +2523,7 @@ impl Economy {
                         if daily <= 0.0 {
                             continue;
                         }
-                        daily * c.target_cover_days()
+                        daily * c.target_cover_days() * (days / 3.0)
                     }
                     _ => {
                         let Some(r) = self.ledger.sites[dst].recipe else {
@@ -2301,7 +2535,25 @@ impl Economy {
                             .find(|&&(ic, _)| ic == c)
                             .map(|&(_, q)| q);
                         let Some(per) = per else { continue };
-                        per * self.ledger.sites[dst].throughput * 3.0
+                        // **A power station's `throughput` is a sentinel**
+                        // meaning "whatever the grid can carry" (1e9), and
+                        // reading it as a rate here asked for 0.38 x 1e9 x
+                        // 3 — a billion tonnes of coal. The station then
+                        // took every tonne the pit raised and the
+                        // steelworks in the same town, on the same
+                        // coalfield, stood with nothing to smelt.
+                        //
+                        // This is the second time the sentinel has bitten:
+                        // read as a rate it once staffed one station with
+                        // 4.1M people. It only surfaced now because until
+                        // there was a steel industry nothing else in the
+                        // country wanted coal.
+                        let rate = if self.ledger.sites[dst].kind == SiteKind::PowerPlant {
+                            self.grid.capacity().min(self.power_demand())
+                        } else {
+                            self.ledger.sites[dst].throughput
+                        };
+                        per * rate * days
                     }
                 };
 

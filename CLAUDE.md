@@ -619,6 +619,85 @@ Things that were wrong first time, and would be again:
   capacity. Multiplying by the mills' headroom too gave a permanent 14%
   surplus and a floored price.
 
+### Ore, steel, and the things made of steel (`econ.rs`, `region.rs`)
+
+Goods used to appear at a depot from nowhere, and the metal `geology.rs`
+had been placing since it was written had no consumer at all. Two
+commodities and four recipes close it: **iron ore → crude steel →
+manufactures**, with a tin can as the link into the food chain.
+
+**Coal is the reductant, not the fuel.** Real BF-BOF: **1.4 t of ore and
+0.8 t of coal per tonne of steel, but only 200-300 kWh of *electricity***
+— the 24 GJ of energy is mostly the coal itself, doing chemistry. A
+country with unlimited power and no coal cannot make primary steel, which
+is the whole reason steel is hard to decarbonise.
+
+- **Basic materials are capital-intensive; fabrication is the labour.**
+  A steelworks runs 1.5 person-hours a tonne, a factory 55 — a car is
+  1.5 t and takes ~100 hours once its parts are counted. Works employment
+  comes out at 8.8% of the workforce against a real ~10% for agriculture,
+  manufacturing, mining and utilities together.
+- **A can is made of steel**, and canning was born of the tinplate
+  industry. 35 kg a tonne of canned food is ~14 kg a head a year, which is
+  real metal packaging.
+- **The factory's steel content was backed out of a real figure**, not
+  chosen: world crude steel is ~230 kg a head a year and households take a
+  tonne of goods each, so a tonne of goods carries 0.23 t of steel.
+- **A works is only sited correctly if its inputs can reach it.** Sited on
+  the orefield, the steelworks landed at the remotest town in the nation,
+  1,300 km from the only colliery, and sat on 105,000 t of ore with no coal.
+  Real siting is the coalfield (the Ruhr, Pittsburgh, South Wales) or
+  tidewater where both are landed (Japan, Korea). The **ore mine is placed
+  at the works**, which is what an integrated steel company is — it owns
+  its mines and runs captive unit trains.
+- **Most countries import steel.** Fifty have an industry and a hundred and
+  fifty do not, and real import dependency runs 30-50% even among
+  producers. Every town gets a stockholder for 30% of its draw.
+
+**Six things broke on the way, and only the last two were about steel.**
+Adding a real consumer to coal and a real input to the cannery exposed
+long-standing bugs that had never had a second claimant to reveal them:
+
+- **The cannery had nowhere to put the tinplate.** A new recipe input with
+  no matching `capacity` entry can never be received — the site's storage
+  is per-commodity and silently zero.
+- **A power station's `throughput` is a sentinel** (1e9, "whatever the grid
+  can carry"). `distribute` read it as a rate and asked for 0.38 x 1e9 x 3
+  — a billion tonnes of coal — so the station took every tonne raised.
+  Second time this sentinel has bitten; the first staffed one station with
+  4.1M people.
+- **An idle plant must draw no power.** Demand was priced off *rated*
+  capacity, so factories with no steel drew 91,000 MWh and the station
+  burnt the very coal the steelworks needed to make their steel. Six
+  attempts at fixing this elsewhere — bigger collieries, shed priorities,
+  two-pass distribution — changed the output not one byte, because every
+  one of them was feeding a demand that should never have existed.
+- **Everybody's running needs before anybody's stockpile.** One pass in
+  site-index order let the first consumer fill a three-day yard before the
+  second had run at all. `distribute` now covers every daily draw, then
+  lets whoever is short build inventory.
+- **`per_capita_annual(Electricity)` was the whole economy's power**, 3.0
+  MWh a head, standing in for industry that did not exist yet. Real
+  residential is ~0.9 of ~3.5 total. Once factories were real the country
+  counted them twice: household demand came to 271,000 MWh a day against
+  industry's 4,000.
+- **A tenth of headroom cannot build a stockpile.** A mill sized at 1.1x
+  consumption ran flat out and never filled its customers' 25-day cover, so
+  steel priced at 2.2x cost for ever — a permanent shortage of a thing the
+  country was making enough of. **A commodity settles at cost only if
+  somebody can build stock in it.**
+
+Two of these produced *famines*, which is the rule this file already
+states: a routine failure must not starve a country. Both times the cause
+was a shortage of **cans**.
+
+**Grid shed order is now fuel → food → shops → steel → heavy
+manufacturing.** Lumping all industry at one rank was fine with one kind
+of it; with two, "larger first" handed the whole supply to a goods factory
+and shut the food chain down. Real grids shed this way too, and the
+heaviest users are *paid* to go first — an **interruptible tariff** buys a
+smelter cheaper power in exchange for being cut on demand.
+
 ## People (`src/person.rs`)
 
 The first human in the simulation, and the smallest thing that makes this

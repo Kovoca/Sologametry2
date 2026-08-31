@@ -104,6 +104,7 @@ struct Endowment {
     /// Cell of the richest coal ground, so the colliery can be sited at
     /// whichever modelled town is nearest it.
     best_coal: Option<usize>,
+    best_ore: Option<usize>,
 }
 
 /// Deterministic settlement name from its position. Not in `settlement.rs`
@@ -405,14 +406,37 @@ fn national_grain_potential(world: &World, pol: &Polities, polity: u16) -> f64 {
     total
 }
 
+/// **What share of its own manufactured goods a country makes.**
+///
+/// No economy makes everything; manufactured imports run a quarter to a
+/// half of consumption nearly everywhere, and the rest of a country's
+/// goods come off its own shop floors.
+const DOMESTIC_GOODS_SHARE: f64 = 0.75;
+
+/// **What share of its steel a country rolls itself.**
+///
+/// There are perhaps fifty countries with a steel industry and a hundred
+/// and fifty without, and even the producers import: real steel import
+/// dependency runs 30-50% across most of Europe. A town buys the rest
+/// from a stockholder, exactly as a town short of grain buys grain.
+///
+/// This is not a convenience. Making the food chain depend on a single
+/// domestic intermediate meant a nation whose works were a thousand
+/// kilometres from its one steelworks could not put food in a tin, and
+/// 84 of a sample of 150 died of it — a famine caused by a shortage of
+/// **cans**.
+const DOMESTIC_STEEL_SHARE: f64 = 0.70;
+
 fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endowment {
     let g = &world.geology;
     let mut e = Endowment {
         coal_cells: 0,
         ore_cells: 0,
         best_coal: None,
+        best_ore: None,
     };
     let mut best = 0.0f32;
+    let mut best_o = 0.0f32;
 
     for i in 0..world.biomes.len() {
         if pol.owner[i] != polity {
@@ -427,6 +451,10 @@ fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endow
         }
         if g.ore.data[i] >= workable {
             e.ore_cells += 1;
+            if g.ore.data[i] > best_o {
+                best_o = g.ore.data[i];
+                e.best_ore = Some(i);
+            }
         }
     }
     e
@@ -739,10 +767,16 @@ impl Region {
                 stock: cap(&[
                     (Commodity::Flour, cannery_rate * 0.9 * 3.0),
                     (Commodity::ProcessedFood, cannery_rate * 3.0),
+                    // **Tinplate, and it has to be held for weeks.** A can
+                    // does not spoil and the works that rolls it is often
+                    // the far side of the country, so a cannery sits on a
+                    // stock of it the way it never would on flour.
+                    (Commodity::Steel, cannery_rate * 0.035 * 20.0),
                 ]),
                 capacity: cap(&[
                     (Commodity::Flour, cannery_rate * 0.9 * 12.0),
                     (Commodity::ProcessedFood, cannery_rate * 12.0),
+                    (Commodity::Steel, cannery_rate * 0.035 * 60.0),
                 ]),
                 recipe: Some(recipe::CANNERY),
                 throughput: cannery_rate,
@@ -824,14 +858,67 @@ impl Region {
         // old figure left the station unable to carry them: a town would
         // sit on three thousand tonnes of grain with its mill shut,
         // which reads as a famine and is a blackout.
+        // --- What the country's own industry needs ---
+        //
+        // Every tonne of goods carries 0.23 t of steel and every tonne of
+        // canned food 0.035 t of tinplate, both real figures; 1.4 t of ore
+        // and 0.8 t of coal go into each tonne of steel.
+        let nation_pop: f64 = markets.iter().map(|m| m.population).sum();
+        let goods_made = goods_day * DOMESTIC_GOODS_SHARE;
+        let steel_day = goods_made * 0.23 + cannery_rate * 0.035;
+        let ore_day = steel_day * DOMESTIC_STEEL_SHARE * 1.4 * 1.35;
+        let coking_coal = steel_day * DOMESTIC_STEEL_SHARE * 0.8 * 1.35;
+
+        // **A grid is sized for industry, not for farms.** The old figure
+        // charged goods at 0.02 MWh a tonne because they arrived at a
+        // depot and nobody made them; a factory actually draws 1.0 and a
+        // steelworks 0.25, so building the industry multiplies national
+        // demand several times over. That is the right answer — real
+        // industry takes something like 40% of all electricity generated,
+        // and a model where farms dominate the load is a model of a
+        // country that manufactures nothing.
         let peak_power = cannery_rate * 0.35
             + mill_rate * 0.08
             + built * 0.05
             + imported * 0.02
+            + goods_made * 1.0
+            + steel_day * 0.25
+            + ore_day * 0.08
             + goods_day * 0.02
+            // **Households, which were never in this sum at all.** Real
+            // residential demand is ~0.9 MWh a head a year and it is a
+            // quarter of a country's electricity; leaving it out of the
+            // sizing while the ledger charged for it is what put the
+            // station permanently over its coal.
+            + nation_pop * 0.9 / 365.0
             + 5.0;
-        let coal_day = peak_power * 0.38; // station burns 0.38 t per MWh
+        // **Size the station for the plant that was actually installed**,
+        // not for the estimate. Every works is built at 1.1x its rated
+        // rate and draws power against that headroom, and the collieries
+        // and terminals draw some of their own — so a grid priced off the
+        // bare estimate comes out about a tenth short, which is a rolling
+        // blackout rather than a margin. This is the same lesson the farms
+        // taught and it had to be learned twice.
+        let peak_power = peak_power * 1.18;
+        // The station burns 0.38 t per MWh; the furnaces burn their own,
+        // and it has to come out of the same ground or the same ship.
+        let station_coal = peak_power * 0.38;
+        // **A colliery is not built to exactly meet the burn.** Sized at
+        // the sum of the station's and the furnaces' demand it came out
+        // perfectly balanced against generation alone, and the steelworks
+        // beside it got nothing at all: the station was generating for
+        // factories that had no steel to work, and burning the very coal
+        // the steelworks needed to make it. Real pits carry spare
+        // capacity, and a country that cannot both keep the lights on and
+        // smelt is a country that has not finished building its industry.
+        let coal_day = (station_coal + coking_coal) * 1.25;
 
+        // **A power station's yard holds its own burn, not the whole
+        // pit's output.** Sized off the colliery instead, the station's
+        // stockyard swallowed every tonne raised and the steelworks next
+        // door — in the same town, on the same coalfield — stood with
+        // nothing to smelt. Real stations hold 20-40 days of stock.
+        //
         // Site the colliery at whichever modelled town is nearest the best
         // coal ground the nation holds.
         let coal_town = endow.best_coal.and_then(|coal_cell| {
@@ -875,8 +962,8 @@ impl Region {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
                     market: m,
-                    stock: cap(&[(Commodity::Coal, coal_day * 20.0)]),
-                    capacity: cap(&[(Commodity::Coal, coal_day * 60.0), (Commodity::Electricity, 1e9)]),
+                    stock: cap(&[(Commodity::Coal, station_coal * 15.0)]),
+                    capacity: cap(&[(Commodity::Coal, station_coal * 30.0), (Commodity::Electricity, 1e9)]),
                     recipe: Some(recipe::POWER_PLANT),
                     throughput: 1e9,
                     powered: true,
@@ -913,9 +1000,9 @@ impl Region {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
                     market: port,
-                    stock: cap(&[(Commodity::Coal, coal_day * 20.0)]),
+                    stock: cap(&[(Commodity::Coal, station_coal * 15.0)]),
                     capacity: cap(&[
-                        (Commodity::Coal, coal_day * 60.0),
+                        (Commodity::Coal, station_coal * 30.0),
                         (Commodity::Electricity, 1e9),
                     ]),
                     recipe: Some(recipe::POWER_PLANT),
@@ -936,22 +1023,238 @@ impl Region {
                 ));
             }
         }
-        if endow.ore_cells > 0 {
+        // --- Ore, steel, and the things made of steel ---
+        //
+        // Until this existed the ore field `geology.rs` had been placing
+        // since it was written had no consumer at all, and goods appeared
+        // at a depot from nowhere.
+        let port = towns
+            .iter()
+            .position(|&t| settlements.list[t].coastal)
+            .unwrap_or(0);
+
+        // **A steelworks goes to the fuel, and that is the history of the
+        // industry in one line**: the Ruhr, Pittsburgh, South Wales, the
+        // Black Country — all coalfields. Where the coal is imported it
+        // goes to tidewater instead, which is every modern greenfield mill
+        // from Japan to Korea.
+        //
+        // Siting it on the *orefield* instead was the first attempt and it
+        // failed instructively: the works landed at the smallest, remotest
+        // town in the nation, 1,300 km from the only colliery, and sat on
+        // 105,000 t of ore with no coal to smelt it. Nothing was made, so
+        // there was no tinplate, so the canneries stopped, so a country
+        // with full granaries went hungry. **A works is only sited
+        // correctly if its inputs can actually reach it.**
+        let steel_town = coal_town.map(|(m, _)| m).unwrap_or(port);
+        let steel_name = markets[steel_town].name.clone();
+
+        // **The mine is placed at the works, not at the ore body**, and
+        // that is what an integrated steel company is: it owns its mines
+        // and runs captive unit trains from them. The ore body's real
+        // distance is reported rather than modelled as a market hop,
+        // because a dedicated railway is a cost and not a barrier.
+        match endow.best_ore {
+            Some(ore_cell) if endow.ore_cells > 0 => {
+                let haul_km = distance_km(
+                    settlements.list[towns[steel_town]].cell,
+                    ore_cell,
+                    w_cells(world),
+                );
+                sites.push(Site {
+                    name: format!("{steel_name} iron mine"),
+                    kind: SiteKind::IronMine,
+                    market: steel_town,
+                    stock: cap(&[(Commodity::IronOre, ore_day * 10.0)]),
+                    capacity: cap(&[(Commodity::IronOre, ore_day * 25.0)]),
+                    recipe: Some(recipe::IRON_MINE),
+                    throughput: ore_day * 1.1,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+                notes.push(format!(
+                    "{} ore cells in the nation; the workings are {:.0} km from {steel_name} \
+                     and railed in",
+                    endow.ore_cells, haul_km
+                ));
+            }
+            _ => {
+                // **Importing ore is the normal case, not the poor one.**
+                // Japan and Korea run world-class steel industries on
+                // entirely imported ore, which is exactly why their mills
+                // sit on tidewater.
+                sites.push(Site {
+                    name: format!("{steel_name} ore terminal"),
+                    kind: SiteKind::IronMine,
+                    market: steel_town,
+                    stock: cap(&[(Commodity::IronOre, ore_day * 10.0)]),
+                    capacity: cap(&[(Commodity::IronOre, ore_day * 25.0)]),
+                    recipe: Some(recipe::ORE_IMPORTS),
+                    throughput: ore_day * 1.1,
+                    powered: true,
+                    ran: 0.0,
+                    fitted: None,
+                });
+                notes.push(format!(
+                    "no workable ore — every tonne of iron is landed at {steel_name}"
+                ));
+            }
+        }
+
+        let steel_home = steel_day * DOMESTIC_STEEL_SHARE;
+        if steel_home > 0.01 {
+            sites.push(Site {
+                name: format!("{steel_name} steelworks"),
+                kind: SiteKind::Steelworks,
+                market: steel_town,
+                stock: cap(&[
+                    (Commodity::IronOre, ore_day * 15.0),
+                    (Commodity::Coal, coking_coal * 15.0),
+                    (Commodity::Steel, steel_day * 10.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::IronOre, ore_day * 45.0),
+                    (Commodity::Coal, coking_coal * 45.0),
+                    (Commodity::Steel, steel_day * 40.0),
+                ]),
+                recipe: Some(recipe::STEELWORKS),
+                // **A tenth of headroom cannot build a stockpile.** Sized
+                // at 1.1x consumption the mill ran flat out and still
+                // never filled the works' 25-day cover, so steel priced at
+                // 2.2x its cost for ever — a permanent shortage of a thing
+                // the country was making enough of. A commodity's price
+                // settles at cost only if somebody can build stock in it.
+                throughput: steel_home * 1.35,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
             notes.push(format!(
-                "{} ore cells held — nothing in the economy uses metal yet",
-                endow.ore_cells
+                "steelworks at {steel_name}: {:.0} t/day on {:.0} t of ore and {:.0} t of coal, \
+                 {:.0}% of what the country works",
+                steel_home,
+                ore_day,
+                coking_coal,
+                DOMESTIC_STEEL_SHARE * 100.0
             ));
         }
 
+        // **Factories follow the steel as well as the people.** Heavy
+        // manufacturing concentrates near its metal — the Midlands, the
+        // Ruhr, the Great Lakes — and a town a thousand kilometres up the
+        // road gets a small works rather than its per-head share. Spread
+        // purely by population, a remote town was given a works it could
+        // never supply and it stood idle.
+        let total_pop: f64 = markets.iter().map(|m| m.population).sum();
+        let mut weights: Vec<f64> = Vec::with_capacity(towns.len());
+        for m in 0..towns.len() {
+            let pop = if total_pop > 0.0 {
+                markets[m].population / total_pop
+            } else {
+                0.0
+            };
+            // Freight from the steelworks, on the roads the nation built.
+            let near = if m == steel_town {
+                1.0
+            } else {
+                let km = distance_km(
+                    settlements.list[towns[m]].cell,
+                    settlements.list[towns[steel_town]].cell,
+                    w_cells(world),
+                );
+                // Half-weight at 400 km, which is about where road
+                // haulage of bulk steel stops being worth it.
+                1.0 / (1.0 + km / 400.0)
+            };
+            weights.push(pop * near);
+        }
+        let wsum: f64 = weights.iter().sum();
+        for m in 0..towns.len() {
+            let rate = if wsum > 0.0 {
+                goods_made * weights[m] / wsum
+            } else {
+                0.0
+            };
+            if rate < 0.01 {
+                continue;
+            }
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} works"),
+                kind: SiteKind::Works,
+                market: m,
+                stock: cap(&[
+                    (Commodity::Steel, rate * 0.23 * 20.0),
+                    (Commodity::RetailGoods, rate * 8.0),
+                ]),
+                capacity: cap(&[
+                    (Commodity::Steel, rate * 0.23 * 60.0),
+                    (Commodity::RetailGoods, rate * 30.0),
+                ]),
+                recipe: Some(recipe::FACTORY),
+                throughput: rate * 1.1,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
+        // **A stockholder in every town.** Steel does not spoil and a
+        // works keeps weeks of it, so this is a merchant's yard rather
+        // than a factory — and it is what stops a distant works being
+        // stopped for want of metal the country is making at the other
+        // end of the map.
+        for m in 0..towns.len() {
+            let draw: f64 = sites
+                .iter()
+                .filter(|x| x.market == m)
+                .filter_map(|x| x.recipe.map(|r| (r, x.throughput)))
+                .map(|(r, t)| {
+                    crate::econ::RECIPES[r]
+                        .inputs
+                        .iter()
+                        .find(|&&(c, _)| c == Commodity::Steel)
+                        .map(|&(_, q)| q * t)
+                        .unwrap_or(0.0)
+                })
+                .sum();
+            let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
+            if bought < 0.01 {
+                continue;
+            }
+            let name = markets[m].name.clone();
+            sites.push(Site {
+                name: format!("{name} steel stockholder"),
+                kind: SiteKind::Depot,
+                market: m,
+                stock: cap(&[(Commodity::Steel, bought * 20.0)]),
+                capacity: cap(&[(Commodity::Steel, bought * 60.0)]),
+                recipe: Some(recipe::STEEL_IMPORTS),
+                throughput: bought * 1.2,
+                powered: true,
+                ran: 0.0,
+                fitted: None,
+            });
+        }
+
         // --- Depot for goods from outside the region ---
+        //
+        // **Now a residual, not the whole supply.** Before the factories
+        // existed this depot conjured every manufactured article the
+        // country used out of nothing. What remains is the share a real
+        // economy genuinely imports — no country makes everything, and
+        // manufactured imports run a quarter to a half of consumption
+        // nearly everywhere.
+        let bought_in = goods_day * (1.0 - DOMESTIC_GOODS_SHARE);
         sites.push(Site {
             name: format!("{capital_name} depot"),
             kind: SiteKind::Depot,
             market: 0,
-            stock: cap(&[(Commodity::RetailGoods, goods_day * 10.0)]),
-            capacity: cap(&[(Commodity::RetailGoods, goods_day * 40.0)]),
+            stock: cap(&[(Commodity::RetailGoods, bought_in * 10.0)]),
+            capacity: cap(&[(Commodity::RetailGoods, bought_in * 40.0)]),
             recipe: Some(recipe::DEPOT),
-            throughput: goods_day * 1.1,
+            throughput: bought_in * 1.1,
             powered: true,
             ran: 0.0,
             fitted: None,

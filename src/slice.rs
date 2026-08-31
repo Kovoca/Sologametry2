@@ -89,8 +89,18 @@ pub fn build(doctrine: Doctrine) -> Economy {
             name: "Ashford cannery".into(),
             kind: SiteKind::Factory,
             market: ASHFORD,
-            stock: cap(&[(Flour, 300.0), (ProcessedFood, 200.0)]),
-            capacity: cap(&[(Flour, 1500.0), (ProcessedFood, 1500.0)]),
+            // A cannery holds weeks of tinplate: it does not spoil and the
+            // works that rolls it is somebody else's country.
+            stock: cap(&[
+                (Flour, 300.0),
+                (ProcessedFood, 200.0),
+                (Steel, cannery_rate * 0.035 * 20.0),
+            ]),
+            capacity: cap(&[
+                (Flour, 1500.0),
+                (ProcessedFood, 1500.0),
+                (Steel, cannery_rate * 0.035 * 60.0),
+            ]),
             recipe: Some(2),
             throughput: cannery_rate,
             powered: true,
@@ -105,6 +115,22 @@ pub fn build(doctrine: Doctrine) -> Economy {
             capacity: cap(&[(Coal, 40_000.0), (Electricity, 1e9)]),
             recipe: Some(3),
             throughput: 1e9,
+            powered: true,
+            ran: 0.0,
+            fitted: None,
+        },
+        Site {
+            // **Two towns do not smelt their own steel.** A slice this
+            // size buys plate and bar from a stockholder, which is what
+            // most of the world does — and it is the same dependency the
+            // fuel terminal is.
+            name: "Ashford steel stockholder".into(),
+            kind: SiteKind::Depot,
+            market: ASHFORD,
+            stock: cap(&[(Steel, cannery_rate * 0.035 * 30.0)]),
+            capacity: cap(&[(Steel, cannery_rate * 0.035 * 90.0)]),
+            recipe: Some(crate::econ::recipe::STEEL_IMPORTS),
+            throughput: cannery_rate * 0.035 * 1.2,
             powered: true,
             ran: 0.0,
             fitted: None,
