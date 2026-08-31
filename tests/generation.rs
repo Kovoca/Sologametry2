@@ -673,3 +673,87 @@ fn the_water_table_is_a_subdued_replica_of_the_ground() {
         }
     }
 }
+
+#[test]
+fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
+    // **The Miami model** *(Lieth, 1975)* — a published model rather than
+    // a curve picked to look right. Growth is limited by whichever of heat
+    // and water is scarcer, which is why a hot desert and a wet tundra are
+    // both unproductive for opposite reasons.
+    use scale_sim::biota::miami_npp;
+    // Real reference points, checked against the model directly.
+    assert!(miami_npp(25.0, 2500.0) > 1800.0, "the wet tropics are not productive");
+    assert!(miami_npp(25.0, 50.0) < 150.0, "a hot desert grows something");
+    assert!(miami_npp(-10.0, 400.0) < 250.0, "tundra is not productive");
+
+    for seed in [1u64, 20260828] {
+        let w = World::generate(256, 144, seed);
+        let land: Vec<usize> = (0..w.biomes.len())
+            .filter(|&i| w.elevation.data[i] >= w.sea_level)
+            .collect();
+        let mean = |f: &dyn Fn(usize) -> f64| {
+            land.iter().map(|&i| f(i)).sum::<f64>() / land.len() as f64
+        };
+
+        // **Two real anchors**, which is what the climate fields are
+        // calibrated on: Earth's land mean annual temperature is ~8.5 °C
+        // and its land mean annual precipitation ~715 mm. The rainfall
+        // field was never on a 0..1 scale — its land mean is about 0.064
+        // and it never reaches 0.4 — so reading it as one put the whole
+        // planet in a drought at 230 mm and dragged productivity with it.
+        let t = mean(&|i| w.temperature_c(i) as f64);
+        let r = mean(&|i| w.rainfall_mm(i) as f64);
+        assert!((-6.0..20.0).contains(&t), "seed {seed}: land mean {t:.1} °C");
+        assert!((350.0..1400.0).contains(&r), "seed {seed}: land mean {r:.0} mm of rain");
+
+        // The global land mean of net primary productivity is about
+        // 700 g/m²/yr.
+        let npp = mean(&|i| w.biota.npp.data[i] as f64);
+        assert!(
+            (400.0..1100.0).contains(&npp),
+            "seed {seed}: land mean productivity {npp:.0} g/m²/yr against a real ~700"
+        );
+
+        // **A rainforest is the most productive land there is and carries
+        // less game than a savanna half as productive**, because forest
+        // production is locked up in wood forty metres overhead. That is
+        // the whole reason grazing is not a multiple of productivity.
+        let by_biome = |b: scale_sim::world::Biome, f: &dyn Fn(usize) -> f64| {
+            let c: Vec<usize> = land.iter().copied().filter(|&i| w.biomes[i] == b).collect();
+            if c.is_empty() {
+                return None;
+            }
+            Some(c.iter().map(|&i| f(i)).sum::<f64>() / c.len() as f64)
+        };
+        use scale_sim::world::Biome::*;
+        let npp_of = |b| by_biome(b, &|i| w.biota.npp.data[i] as f64);
+        let game_of = |b| by_biome(b, &|i| w.biota.game.data[i] as f64);
+        if let (Some(rf_npp), Some(gr_npp), Some(rf_game), Some(gr_game)) =
+            (npp_of(Rainforest), npp_of(Grassland), game_of(Rainforest), game_of(Grassland))
+        {
+            assert!(rf_npp > gr_npp, "seed {seed}: grassland out-grows rainforest");
+            assert!(
+                gr_game > rf_game,
+                "seed {seed}: rainforest carries more game ({rf_game:.0} kg/km²) than \
+                 grassland ({gr_game:.0}) — the wood is being counted as fodder"
+            );
+        }
+
+        // **Timber is accumulated, not annual.** A boreal forest grows
+        // slowly and stands for centuries, so it carries 100-200 m³/ha on
+        // a fraction of the tropics' productivity; scaling stock straight
+        // off productivity gave taiga 42, which is scrub.
+        if let Some(taiga) = by_biome(Taiga, &|i| w.biota.timber.data[i] as f64) {
+            assert!(
+                (60.0..250.0).contains(&taiga),
+                "seed {seed}: taiga carries {taiga:.0} m³/ha of standing timber"
+            );
+        }
+
+        // Two trophic steps is a hundredfold loss, so predators are rare
+        // everywhere and not merely where it is cold.
+        let g = mean(&|i| w.biota.game.data[i] as f64);
+        let p = mean(&|i| w.biota.predators.data[i] as f64);
+        assert!(p < g * 0.05 && p > 0.0, "seed {seed}: predators at {p:.0} against {g:.0} of prey");
+    }
+}

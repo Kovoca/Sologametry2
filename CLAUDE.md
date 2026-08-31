@@ -141,8 +141,39 @@ Where it meets the surface you get a spring, a marsh or a perennial river
 Results: 106 m in arid uplands, 55 m on a mountainside, 6-13 m for
 riverside towns varying with climate. A hand-dug well reaches 10-30 m.
 
-Not built yet: named-region detection, rail/ports/airfields, flora/fauna,
-history sim.
+**Flora and fauna** (`src/biota.rs`, spec pipeline step 5) — nothing is
+placed. Productivity comes from the climate through a published model,
+standing biomass from productivity, what you can hunt from that.
+
+- **Net primary productivity by the Miami model** *(Lieth, 1975)*: growth
+  is limited by whichever of heat and water is scarcer, so the answer is
+  the lesser of the two limits — which is why a hot desert and a wet
+  tundra are both unproductive for opposite reasons. Land mean comes out
+  at 755 g/m²/yr against a real ~700.
+- **Temperature and rainfall had no units either**, the same gap elevation
+  had. Calibrated on two real anchors: Earth's land mean annual
+  temperature ~8.5 °C, land mean precipitation ~715 mm. **The rainfall
+  field was never on a 0..1 scale** — its land mean is ~0.064 and it never
+  reaches 0.4 — so reading it as one put the planet in a drought at 230 mm
+  and dragged productivity down with it.
+- **A rainforest is the most productive land on Earth and carries less
+  game than a savanna half as productive**, because forest production is
+  locked up in wood forty metres overhead. Grazing is therefore not a
+  multiple of productivity; what feeds herbivores is the share at ground
+  level.
+- **Timber is accumulated, not annual.** A boreal forest grows slowly and
+  stands for centuries, so it carries 100-200 m³/ha on a fraction of the
+  tropics' productivity. Scaling stock straight off productivity gave
+  taiga 42 m³/ha, which is scrub.
+- Carnivores run at 1-2% of the herbivores they live on *(Serengeti:
+  ~100 kg/km² against ~5,000)*. Two trophic steps is a hundredfold loss.
+
+Known wart: biomes are classified by **rank over land**, so the labels are
+relative bands — a wet world's "Desert" gets real rainfall and really is
+more productive than the Sahara. The productivity is right; the label is
+comparative.
+
+Not built yet: named-region detection, rail/ports/airfields, history sim.
 
 ## The economy (`src/econ.rs`, `src/slice.rs`)
 

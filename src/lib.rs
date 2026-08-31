@@ -4,6 +4,7 @@
 //! fields, and biomes that emerge from how those fields interact. Nothing
 //! past biome classification lives here yet.
 
+pub mod biota;
 pub mod building;
 pub mod econ;
 pub mod field;

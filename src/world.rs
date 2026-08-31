@@ -19,6 +19,7 @@
 //! Passes 6–7 run *after* pass 4 on purpose: climate must describe the
 //! terrain water shaped, not the raw noise.
 
+use crate::biota;
 use crate::field::Field;
 use crate::geology::{self, Geology};
 use crate::hydrology;
@@ -561,6 +562,31 @@ impl Biome {
 /// stand on a hillside.
 pub const MAX_LAND_M: f64 = 8_848.0;
 
+/// **Real units for the climate fields.**
+///
+/// Temperature and rainfall were bare 0..1 like the elevation was — fine
+/// for ranking biomes and useless the moment anything needs a number.
+///
+/// Mean annual land temperature on Earth runs from about -55 °C on the
+/// Antarctic plateau to +30 °C in the Danakil; rainfall from nil in the
+/// Atacama to 11,900 mm at Mawsynram, with most land between 100 and
+/// 2,000. The ceiling here is set where nearly all land falls under it.
+/// Calibrated against **two real anchors**: Earth's land mean annual
+/// temperature is about 8.5 °C and its land mean annual precipitation
+/// about 715 mm. The spatial pattern is the model's own; these only fix
+/// what the numbers mean.
+pub const TEMP_MIN_C: f32 = -32.0;
+pub const TEMP_MAX_C: f32 = 35.0;
+
+/// **Millimetres of rain a year per unit of the rainfall field.**
+///
+/// Not a maximum: the rainfall field is an advection model's output and
+/// was never on a 0..1 scale — its land mean is about 0.064 and it never
+/// reaches 0.4. Treating it as 0..1 and scaling to a plausible ceiling
+/// put the whole planet in a drought, at a land mean of 230 mm against
+/// Earth's 715, and dragged productivity down with it.
+pub const RAIN_MM_PER_UNIT: f32 = 11_000.0;
+
 pub struct World {
     pub width: usize,
     pub height: usize,
@@ -579,6 +605,8 @@ pub struct World {
     /// `elevation` to get depth to water; `depth_to_water_m` does that in
     /// metres.
     pub water_table: Field,
+    /// **What grows and what lives on it** — spec pipeline step 5.
+    pub biota: crate::biota::Biota,
 
     /// Flow accumulation over the carved terrain — upstream catchment per
     /// cell. Kept for the debug overlay and for later navigable-water and
@@ -749,6 +777,17 @@ impl World {
             &geology.rock,
         );
 
+        // 13. Flora and fauna. Productivity from the climate fields
+        // through a published model, standing biomass from productivity,
+        // and what you can hunt from that — nothing placed.
+        let mut temp_c = Field::new(width, height);
+        let mut rain_mm = Field::new(width, height);
+        for i in 0..temperature.data.len() {
+            temp_c.data[i] = TEMP_MIN_C + temperature.data[i] * (TEMP_MAX_C - TEMP_MIN_C);
+            rain_mm.data[i] = rainfall.data[i] * RAIN_MM_PER_UNIT;
+        }
+        let biota = biota::generate(&biomes, &temp_c, &rain_mm, &elevation, sea_level);
+
         World {
             width,
             height,
@@ -759,6 +798,7 @@ impl World {
             rainfall,
             drainage,
             water_table,
+            biota,
             flow_accum: flow.accum,
             river,
             lake,
@@ -777,6 +817,16 @@ impl World {
         let wt = self.water_table.data[cell] as f64;
         let span = (1.0 - self.sea_level as f64).max(1e-3);
         ((e - wt) / span * MAX_LAND_M).max(0.0)
+    }
+
+    /// Mean annual temperature at a cell, in degrees Celsius.
+    pub fn temperature_c(&self, cell: usize) -> f32 {
+        TEMP_MIN_C + self.temperature.data[cell] * (TEMP_MAX_C - TEMP_MIN_C)
+    }
+
+    /// Annual rainfall at a cell, in millimetres.
+    pub fn rainfall_mm(&self, cell: usize) -> f32 {
+        self.rainfall.data[cell] * RAIN_MM_PER_UNIT
     }
 
     /// Fraction of tiles that are dry land (everything above the shallows).
