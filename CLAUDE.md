@@ -168,10 +168,50 @@ standing biomass from productivity, what you can hunt from that.
 - Carnivores run at 1-2% of the herbivores they live on *(Serengeti:
   ~100 kg/km² against ~5,000)*. Two trophic steps is a hundredfold loss.
 
+**Two fields step 5 needed that the pipeline did not have:**
+
+- **Seasonality** — summer-to-winter temperature range. An annual mean
+  hides the thing that decides what grows: two places at 8 °C are not
+  alike if one runs 4-12 and the other -20 to +36. The driver is
+  **continentality** — the sea takes a season to warm and a season to
+  cool, so it holds the coast steady. Real: Singapore ~2 °C, Valentia ~8,
+  Bergen ~13, Winnipeg ~38, Yakutsk ~57.
+- **Soil moisture** — rainfall against potential evapotranspiration, not
+  rainfall. 500 mm is generous where it is cold and a drought where it is
+  hot. PET follows Holdridge (`58.93 x biotemperature`), and the ratio is
+  what the UNEP aridity bands are defined on.
+
+**The settling pass** (5E) then runs a century of months: plants grow
+toward what the climate allows and are grazed, herbivores track the forage
+on a lag, predators track the herbivores on a longer one. Nothing
+simulates a hunt — it only has to produce a plausible standing state. The
+result is the thing worth having:
+
+| mean temp | NPP | summer crop | winter crop |
+|---|---|---|---|
+| -40..-10 °C | 130 | 405 | 405 (never grows) |
+| -10..0 °C | 396 | 16,460 | **7,839 — halves** |
+| 0..10 °C | 740 | 123,881 | 98,633 |
+| 20..40 °C | 1,088 | 179,314 | 179,314 (no season) |
+
+**Plant biomass shifts and the animals do not**, which is what makes a
+population stable rather than a mirror of this month's grass.
+
+Two calibration errors on the way:
+- **Grazing offtake is ~5% of *total* productivity, not the 15-50% the
+  literature quotes** — those figures mean *aboveground* production, and
+  half of NPP is roots while much of the rest is stem nobody eats. Taking
+  the quoted figure gave grassland 19,800 kg/km² of game, four times what
+  the Serengeti carries.
+- **Boreal conifers photosynthesise from about 0 °C.** Requiring 14 °C for
+  full growth left taiga and tundra at the bare floor, which is to say it
+  left Canada and Siberia with no vegetation at all.
+
 Known wart: biomes are classified by **rank over land**, so the labels are
-relative bands — a wet world's "Desert" gets real rainfall and really is
-more productive than the Sahara. The productivity is right; the label is
-comparative.
+relative bands — this world's "Taiga" lands on cells averaging -40 °C,
+which is polar desert and correctly bare. The physics is right; the label
+is comparative, and reading results by temperature rather than by biome
+name is the honest check.
 
 Not built yet: named-region detection, rail/ports/airfields, history sim.
 

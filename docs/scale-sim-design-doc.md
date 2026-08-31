@@ -137,6 +137,30 @@ Tiered by individuation status, to keep cost bounded:
   destination floor, then local room path. Never one flat search across
   forty expanded floors.
 
+### Vertical regimes
+
+Three, matching the horizontal ladder, because the ratio from a 3 m tile
+to orbit is 10^8 and one unit cannot span it.
+
+1. **Tile Z — a local generated window, not a planetary range.** Local Z 0
+   is the ground you are standing on, and absolute height is derived:
+   `absolute elevation = local surface elevation + local Z x 3 m`. A
+   settlement on a 4,000 m plateau therefore has ordinary surface tiles
+   rather than a coordinate 1,300 levels up, and there is no planetary Z
+   range to bound. For scale at 3 m a level: the deepest mine on Earth is
+   −1,333 and the tallest building +276.
+2. **Air — altitude in metres, position at locality or region scale.**
+   Aircraft, artillery, drones, migrating flocks. Ceiling ~20 km, the
+   Armstrong limit, where a body needs a pressure suit regardless.
+3. **Orbit — orbital elements, no map position.** Something in low orbit
+   crosses the planet in 90 minutes; "which cell is it over" is derived,
+   not where it lives.
+
+**An entity enters tile space when it needs tile-resolution movement or
+collision** — not merely because it *could* affect tiles. Migrating geese
+are one Air-layer flock; they reify into individual birds when they land.
+The same rule covers a helicopter at 2,000 m against one on the ground.
+
 ### Density is more than building height
 
 Enough values to tell a tall isolated tower from a genuinely dense

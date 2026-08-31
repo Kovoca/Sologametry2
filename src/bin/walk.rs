@@ -202,13 +202,12 @@ fn main() {
 
     println!();
     println!(
-        "{name} — standing on {:?} at tile {},{}, level {} (absolute {}, {:.0} m above the sea)",
+        "{name} — standing on {:?} at tile {},{}, level {} — {:.0} m above the sea",
         want,
         centre.0,
         centre.1,
         z,
-        here_z + z,
-        scale_sim::ground::surface_m(seed, &plan, centre.0, centre.1),
+        scale_sim::ground::elevation_at_level(seed, &plan, centre.0, centre.1, z),
     );
     println!(
         "  {} m by {} m of the {} m you could see on foot, generated from the",

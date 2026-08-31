@@ -131,6 +131,103 @@ fn latitude_temp(w: usize, h: usize) -> Field {
     temp
 }
 
+/// **How far the temperature swings between summer and winter.**
+///
+/// An annual mean hides the thing that actually decides what grows: a
+/// growing season. Two places at 8 °C are not alike if one runs 4-12 and
+/// the other -20 to +36.
+///
+/// The driver is **continentality** — the sea takes a season to warm and
+/// a season to cool, so it holds the coast steady. Real annual ranges:
+/// Singapore ~2 °C, Valentia in Ireland ~8, Bergen ~13, Winnipeg ~38,
+/// Ulaanbaatar ~40, Yakutsk ~57. Latitude sets the base and distance from
+/// the sea multiplies it.
+fn generate_seasonality(elev: &Field, sea_level: f32) -> Field {
+    let (w, h) = (elev.width, elev.height);
+
+    // Distance to open water, in cells, by flood fill from the sea.
+    let mut dist = vec![u16::MAX; w * h];
+    let mut queue = std::collections::VecDeque::new();
+    for i in 0..w * h {
+        if elev.data[i] < sea_level {
+            dist[i] = 0;
+            queue.push_back(i);
+        }
+    }
+    while let Some(i) = queue.pop_front() {
+        let (x, y) = (i % w, i / w);
+        let d = dist[i];
+        for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+            let nx = (x as i64 + dx).rem_euclid(w as i64) as usize;
+            let ny = y as i64 + dy;
+            if ny < 0 || ny >= h as i64 {
+                continue;
+            }
+            let j = ny as usize * w + nx;
+            if dist[j] == u16::MAX {
+                dist[j] = d.saturating_add(1);
+                queue.push_back(j);
+            }
+        }
+    }
+
+    // Saturates around a thousand kilometres inland, which is about where
+    // real continentality stops increasing.
+    let saturate = (1000.0 / crate::region::KM_PER_CELL) as f32;
+
+    let mut season = Field::new(w, h);
+    for y in 0..h {
+        let lat = ((y as f32 / (h - 1) as f32) * 2.0 - 1.0).abs();
+        for x in 0..w {
+            let i = y * w + x;
+            let inland = (dist[i] as f32 / saturate).min(1.0);
+            // ~3 °C at the equator rising past 35 at high latitude, then
+            // multiplied by how far it is from the moderating sea. The
+            // first pass topped out at 14.7 °C across a whole planet,
+            // which is a maritime range everywhere: it gave boreal
+            // forest a summer of 1 °C and no growing season at all.
+            let base = 3.0 + 34.0 * lat.powf(1.6);
+            season.data[i] = base * (0.50 + 1.50 * inland);
+        }
+    }
+    season
+}
+
+/// **How much water is actually available to a plant.**
+///
+/// Rainfall alone does not say: 500 mm is generous in a cold place and a
+/// drought in a hot one, because heat takes the water back. The real
+/// measure is rainfall against potential evapotranspiration, and the
+/// ratio is what the aridity bands are defined on *(UNEP: hyper-arid
+/// under 0.05, arid to 0.20, semi-arid to 0.50, dry sub-humid to 0.65,
+/// humid above)*.
+///
+/// PET follows Holdridge: `58.93 x biotemperature`, where biotemperature
+/// is the mean annual temperature clamped to 0-30 °C, because plants do
+/// nothing below freezing and the demand stops rising above thirty.
+fn generate_soil_moisture(
+    temp_c: &Field,
+    rain_mm: &Field,
+    drain_rank: &Field,
+    elev: &Field,
+    sea_level: f32,
+) -> Field {
+    let mut m = Field::new(temp_c.width, temp_c.height);
+    for i in 0..temp_c.data.len() {
+        if elev.data[i] < sea_level {
+            continue;
+        }
+        let biotemp = temp_c.data[i].clamp(0.0, 30.0);
+        let pet = (58.93 * biotemp).max(1.0);
+        let index = rain_mm.data[i] / pet;
+        // Free-draining ground holds less of what falls on it; heavy
+        // ground holds more and waterlogs.
+        let holds = 1.20 - 0.45 * drain_rank.data[i];
+        m.data[i] = (index * holds).min(3.0);
+    }
+    m
+}
+
 /// **The water table is a subdued replica of the topography.**
 ///
 /// That is the classic hydrogeological result and it is the whole model:
@@ -605,6 +702,11 @@ pub struct World {
     /// `elevation` to get depth to water; `depth_to_water_m` does that in
     /// metres.
     pub water_table: Field,
+    /// Summer-to-winter temperature range, in degrees Celsius.
+    pub seasonality: Field,
+    /// Rainfall against potential evapotranspiration: **plant-available
+    /// water**, not rainfall. Under 0.2 is arid, over 0.65 humid.
+    pub soil_moisture: Field,
     /// **What grows and what lives on it** — spec pipeline step 5.
     pub biota: crate::biota::Biota,
 
@@ -786,7 +888,18 @@ impl World {
             temp_c.data[i] = TEMP_MIN_C + temperature.data[i] * (TEMP_MAX_C - TEMP_MIN_C);
             rain_mm.data[i] = rainfall.data[i] * RAIN_MM_PER_UNIT;
         }
-        let biota = biota::generate(&biomes, &temp_c, &rain_mm, &elevation, sea_level);
+        let seasonality = generate_seasonality(&elevation, sea_level);
+        let soil_moisture =
+            generate_soil_moisture(&temp_c, &rain_mm, &drain_r, &elevation, sea_level);
+        let biota = biota::generate(
+            &biomes,
+            &temp_c,
+            &rain_mm,
+            &seasonality,
+            &soil_moisture,
+            &elevation,
+            sea_level,
+        );
 
         World {
             width,
@@ -798,6 +911,8 @@ impl World {
             rainfall,
             drainage,
             water_table,
+            seasonality,
+            soil_moisture,
             biota,
             flow_accum: flow.accum,
             river,

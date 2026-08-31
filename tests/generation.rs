@@ -757,3 +757,99 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
         assert!(p < g * 0.05 && p > 0.0, "seed {seed}: predators at {p:.0} against {g:.0} of prey");
     }
 }
+
+#[test]
+fn plant_biomass_shifts_and_populations_do_not() {
+    // **The ecology prototype's whole test** (spec 5E): does a settling
+    // pass produce standing crop that rises and falls through the year,
+    // with animal populations that ride it out rather than mirroring it?
+    // If it does, the same architecture takes more species without
+    // changing shape.
+    let w = World::generate(256, 144, 20260828);
+    let land: Vec<usize> = (0..w.biomes.len())
+        .filter(|&i| w.elevation.data[i] >= w.sea_level)
+        .collect();
+
+    let band = |lo: f32, hi: f32| -> Vec<usize> {
+        land.iter()
+            .copied()
+            .filter(|&i| {
+                let t = w.temperature_c(i);
+                t >= lo && t < hi
+            })
+            .collect()
+    };
+    let mean = |c: &[usize], f: &dyn Fn(usize) -> f64| {
+        c.iter().map(|&i| f(i)).sum::<f64>() / c.len().max(1) as f64
+    };
+    let summer = |i: usize| w.biota.standing_summer.data[i] as f64;
+    let winter = |i: usize| w.biota.standing_winter.data[i] as f64;
+
+    // **A cold place has a growing season and a hot one does not.** Real:
+    // temperate and boreal standing crop roughly halves between the end of
+    // summer and the end of winter; equatorial grassland barely moves.
+    let cold = band(-10.0, 0.0);
+    let hot = band(20.0, 40.0);
+    assert!(cold.len() > 100 && hot.len() > 100, "not enough of the world to compare");
+    let cold_swing = mean(&cold, &summer) / mean(&cold, &winter).max(1.0);
+    let hot_swing = mean(&hot, &summer) / mean(&hot, &winter).max(1.0);
+    assert!(
+        cold_swing > 1.4,
+        "cold country's standing crop only moves {cold_swing:.2}x through the year"
+    );
+    assert!(
+        hot_swing < 1.15,
+        "equatorial standing crop swings {hot_swing:.2}x — it has no winter to swing into"
+    );
+
+    // **Nothing grows below about -10 °C mean.** Polar desert is bare, and
+    // it is bare for a reason rather than by a rule.
+    let polar = band(-40.0, -10.0);
+    if !polar.is_empty() {
+        assert!(
+            mean(&polar, &summer) < mean(&cold, &summer) * 0.1,
+            "polar desert carries a standing crop"
+        );
+    }
+
+    // **Populations settled somewhere real.** Large-herbivore standing
+    // biomass, kg/km²: savanna and grassland 3,000-7,000 (Serengeti
+    // ~5,000), temperate forest 500-1,500, boreal 100-400.
+    let by_biome = |b: scale_sim::world::Biome, f: &dyn Fn(usize) -> f64| {
+        let c: Vec<usize> = land.iter().copied().filter(|&i| w.biomes[i] == b).collect();
+        (!c.is_empty()).then(|| mean(&c, f))
+    };
+    use scale_sim::world::Biome::*;
+    let game = |i: usize| w.biota.game.data[i] as f64;
+    if let Some(g) = by_biome(Grassland, &game) {
+        assert!(
+            (800.0..8000.0).contains(&g),
+            "grassland settled at {g:.0} kg/km² of game against a real 1,000-7,000"
+        );
+    }
+    if let Some(g) = by_biome(Rainforest, &game) {
+        assert!(
+            (100.0..1500.0).contains(&g),
+            "rainforest settled at {g:.0} kg/km² — the canopy is being counted as fodder"
+        );
+    }
+
+    // **Continentality**: the sea holds the coast steady. Real annual
+    // ranges run from ~2 °C at Singapore to ~57 at Yakutsk, and the driver
+    // is latitude times distance from the sea.
+    let equator = band(20.0, 40.0);
+    let s = |i: usize| w.seasonality.data[i] as f64;
+    assert!(
+        mean(&equator, &s) < mean(&cold, &s),
+        "the tropics swing as hard through the year as the sub-arctic"
+    );
+
+    // Plant-available water is rainfall against evaporative demand, not
+    // rainfall: 500 mm is generous where it is cold and a drought where it
+    // is hot. So the hottest ground is not the wettest.
+    let m = |i: usize| w.soil_moisture.data[i] as f64;
+    assert!(
+        mean(&hot, &m) < mean(&cold, &m),
+        "hot country holds more plant-available water than cold"
+    );
+}

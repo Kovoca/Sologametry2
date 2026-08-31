@@ -1244,6 +1244,23 @@ pub fn surface_m(seed: u64, plan: &Plan, gx: i64, gy: i64) -> f64 {
     terrain_m(seed, plan, px * t + t / 2, py * t + t / 2)
 }
 
+/// **Tile Z is a local window, not a planetary range.**
+///
+/// A settlement on a 4,000 m plateau needs ordinary surface tiles, not a
+/// coordinate 1,300 levels up. Local Z is the primary number — 0 is the
+/// ground you are standing on — and absolute height is *derived*:
+///
+/// ```text
+/// absolute elevation = local surface elevation + local Z x 3 m
+/// ```
+///
+/// There is therefore no planetary Z range to bound, and none is defined.
+/// What bounds a window is what is generated near somebody, which is the
+/// same rule the horizontal ladder already runs on.
+pub fn elevation_at_level(seed: u64, plan: &Plan, gx: i64, gy: i64, local_z: i64) -> f64 {
+    surface_m(seed, plan, gx, gy) + local_z as f64 * METRES_PER_LEVEL
+}
+
 /// Which Z level the ground is at here.
 pub fn surface_z(seed: u64, plan: &Plan, gx: i64, gy: i64) -> i64 {
     (surface_m(seed, plan, gx, gy) / METRES_PER_LEVEL).floor() as i64
