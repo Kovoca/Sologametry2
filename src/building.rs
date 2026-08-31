@@ -127,6 +127,84 @@ impl Fixture {
 /// which is what a span of ten produces once it is applied twice.
 pub const SPAN_OF_CONTROL: f64 = 10.0;
 
+/// **Who owns it, which is a different question from who runs it.**
+///
+/// Position and ownership are separate axes — the design doc's rule — and
+/// the form follows the size, because the reason to incorporate is that
+/// the thing has grown past what one purse can carry or one person can be
+/// liable for.
+///
+/// Real distribution *(US)*: about **73% of firms are sole
+/// proprietorships and 19% corporations**, and yet corporations take some
+/// **81% of business receipts** and nearly all the employment. Almost
+/// every *business* is one person; almost every *job* is at a company.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Ownership {
+    /// One owner, who works in it. **Unlimited liability**: the business's
+    /// debts are his debts, and there is no capital but his own and what
+    /// he can borrow against his house.
+    SoleTrader,
+    /// A few owners who work in it and are liable together. The
+    /// professions run this way — law, medicine, accountancy — and so do
+    /// most farms.
+    Partnership,
+    /// **A separate legal person.** Liability stops at the company, it can
+    /// raise money by selling shares in itself, and the owners generally
+    /// do not work there at all. That last part is what makes a manager a
+    /// position rather than a proprietor: real authority, answerable
+    /// upward to somebody who owns it and is somewhere else.
+    Corporation,
+}
+
+impl Ownership {
+    /// **The form follows the size**, because the reasons to incorporate
+    /// are reasons that only arrive with scale: more capital than one
+    /// person has, more risk than one person will carry, and more people
+    /// than one person can be personally answerable for.
+    ///
+    /// The thresholds are where real businesses actually change form:
+    /// below about six hands the owner is working alongside them, and past
+    /// fifty or so almost everything is incorporated.
+    pub fn for_size(staff: f64) -> Ownership {
+        if staff < SMALL_ENOUGH_TO_RUN_YOURSELF {
+            Ownership::SoleTrader
+        } else if staff < 50.0 {
+            Ownership::Partnership
+        } else {
+            Ownership::Corporation
+        }
+    }
+
+    /// Whether whoever owns it is also on the premises working.
+    pub fn owner_works_there(self) -> bool {
+        self != Ownership::Corporation
+    }
+
+    /// Whether a bad year can take the owner's house.
+    pub fn unlimited_liability(self) -> bool {
+        self != Ownership::Corporation
+    }
+
+    /// Whether it can raise money from people who will never set foot in
+    /// it. This is the whole reason the form exists.
+    pub fn can_sell_shares(self) -> bool {
+        self == Ownership::Corporation
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Ownership::SoleTrader => "sole trader",
+            Ownership::Partnership => "partnership",
+            Ownership::Corporation => "company",
+        }
+    }
+}
+
+/// **Nobody runs more than about this many layers deep.** Real large
+/// organisations are five to eight; Walmart's two million people are about
+/// seven. Past that a hierarchy stops being able to hear its own bottom.
+pub const MOST_LAYERS: usize = 8;
+
 /// Below this many hands, nobody is a full-time anything.
 ///
 /// **The owner works the till.** A corner shop has a proprietor who
@@ -218,7 +296,48 @@ impl Building {
             // The owner. He is also the manager, and the cashier.
             return 0.0;
         }
-        (self.supervisors() / SPAN_OF_CONTROL).ceil().max(1.0) + 1.0
+        // **Depth follows size, and it stacks.** One layer of supervision
+        // is not enough once there are supervisors enough to need
+        // supervising, so the pyramid is built up until the top layer is
+        // small enough for one person to hold. Two fixed layers put the
+        // same shape on a corner shop and a distribution centre.
+        let mut layer = self.supervisors();
+        let mut above = 0.0;
+        for _ in 0..MOST_LAYERS {
+            if layer <= 1.0 {
+                break;
+            }
+            layer = (layer / SPAN_OF_CONTROL).ceil();
+            above += layer;
+        }
+        // And whoever owns it, who is not one of the managers.
+        above + 1.0
+    }
+
+    /// **How many layers there are between the floor and the top**, which
+    /// is what "the depth depends on the size" means.
+    ///
+    /// Real organisations run five to eight layers at the very largest —
+    /// Walmart's two million people are about seven deep — and a corner
+    /// shop is one. The arithmetic is just repeated division by the span:
+    /// ten hands need one chargehand, a hundred need a manager over the
+    /// chargehands, a thousand need somebody over the managers.
+    /// Who owns this one.
+    pub fn ownership(&self) -> Ownership {
+        Ownership::for_size(self.staff())
+    }
+
+    pub fn layers(&self) -> usize {
+        let mut n = self.floor_staff();
+        if n < SMALL_ENOUGH_TO_RUN_YOURSELF {
+            return 1; // the owner, who also works
+        }
+        let mut layers = 1;
+        while n > SPAN_OF_CONTROL && layers < MOST_LAYERS {
+            n = (n / SPAN_OF_CONTROL).ceil();
+            layers += 1;
+        }
+        layers + 1 // whoever owns it
     }
 
     /// **The rota for today**, in worker-shifts.

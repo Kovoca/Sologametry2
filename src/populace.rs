@@ -115,13 +115,19 @@ impl Populace {
     /// economy inside the loop would let each person trade against a
     /// slightly different world and quietly break conservation.
     pub fn live_a_day(&mut self, econ: &mut Economy, day: u64) {
-        // **Is there a post going?** Real span of control is eight to
-        // fifteen, so about one in ten of a workforce is in charge of the
-        // rest. Without this every labourer in a three-year run was made
-        // up to chargehand and the cohort became all supervisors, which is
-        // not a workforce — it is a promotion timer with nobody to
-        // supervise.
-        const SPAN_OF_CONTROL: f64 = 10.0;
+        // **Is there a post going?**
+        //
+        // Not a ratio picked to look right: the number of supervisory
+        // posts is a real figure the labour model already computes from
+        // the works and shops that exist, at a span of control of about
+        // ten. **There is no ladder with room for everybody on it**, and
+        // without this every labourer in a three-year run was made up to
+        // chargehand — the cohort became all supervisors, which is a
+        // promotion timer with nobody left to supervise.
+        //
+        // The cohort is a sample, so the posts are scaled to it: if the
+        // town has one supervisory post per twenty hands, so does the
+        // sample.
         let n_markets = econ.markets.len();
         let mut vacancy = vec![false; n_markets];
         for m in 0..n_markets {
@@ -129,8 +135,14 @@ impl Populace {
             if mine.is_empty() {
                 continue;
             }
+            let w = &econ.workforce[m];
+            let share = if w.posts > 1e-9 {
+                (w.supervisory_posts / w.posts).clamp(0.0, 0.35)
+            } else {
+                0.0
+            };
             let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count() as f64;
-            vacancy[m] = bosses < mine.len() as f64 / SPAN_OF_CONTROL;
+            vacancy[m] = bosses < mine.len() as f64 * share;
         }
 
         for p in self.people.iter_mut() {

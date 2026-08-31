@@ -465,3 +465,66 @@ fn the_floor_is_the_only_way_up() {
         "the man on the road is as visible as the man behind the counter"
     );
 }
+
+#[test]
+fn the_form_and_the_depth_both_follow_the_size() {
+    // **Position and ownership are separate axes**, and both follow scale
+    // — because the reasons to incorporate and the reasons to add a layer
+    // of management are reasons that only arrive with size.
+    use scale_sim::building::{Building, Ownership};
+
+    // A corner shop: one person, who serves, orders, sweeps up and does
+    // the books. Invent a manager for him and you get three staff of whom
+    // two supervise.
+    let corner = Building::shop(0.6, 4.0);
+    assert_eq!(corner.ownership(), Ownership::SoleTrader);
+    assert!(corner.ownership().owner_works_there());
+    assert!(corner.ownership().unlimited_liability(), "his debts are the shop's");
+    assert!(!corner.ownership().can_sell_shares());
+    assert_eq!(corner.supervisors(), 0.0, "somebody supervising four people");
+    assert_eq!(corner.layers(), 1, "a corner shop with a hierarchy");
+
+    // A supermarket: incorporated, the owner is somewhere else, and there
+    // are layers between the till and the top.
+    let big = Building::shop(75.0, 4.0);
+    assert_eq!(big.ownership(), Ownership::Corporation);
+    assert!(
+        !big.ownership().owner_works_there(),
+        "the shareholders are stacking shelves"
+    );
+    assert!(
+        !big.ownership().unlimited_liability(),
+        "liability has to stop at the company — that is what a company is"
+    );
+    assert!(big.ownership().can_sell_shares());
+    assert!(big.supervisors() > 0.0);
+    assert!(
+        big.layers() >= 3,
+        "a supermarket only {} layers deep",
+        big.layers()
+    );
+
+    // **Depth stacks rather than being fixed at two.** One layer of
+    // supervision is not enough once there are supervisors enough to need
+    // supervising, and real large organisations run five to eight — two
+    // million people at Walmart are about seven deep.
+    let vast = Building::shop(4_000.0, 4.0);
+    assert!(
+        vast.layers() > big.layers(),
+        "a distribution centre is no deeper than a supermarket"
+    );
+    assert!(
+        vast.layers() <= 8,
+        "{} layers, which is deeper than any real organisation",
+        vast.layers()
+    );
+
+    // Management stays a sensible share: real organisations run a tenth to
+    // a seventh of employment in supervision and management together.
+    let overhead = (big.supervisors() + big.managers()) / big.staff();
+    assert!(
+        (0.05..0.30).contains(&overhead),
+        "{:.0}% of a supermarket is management",
+        overhead * 100.0
+    );
+}

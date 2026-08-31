@@ -913,6 +913,39 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### There is no ladder with room for everybody
+
+**The supply of promotions is a real figure**, not a ratio picked to look
+right: `labour.rs` counts supervisory posts off the works and shops that
+actually exist, at a span of control of about ten. A cohort settles at
+7-11% supervisors against the economy's own 6% of posts.
+
+**The form and the depth both follow the size**, because the reasons to
+add a layer of management and the reasons to incorporate only arrive with
+scale:
+
+| staff | ownership | layers |
+|---|---|---|
+| under 6 | **sole trader** — works there, unlimited liability, no capital but his own | 1 |
+| 6-50 | **partnership** — a few owners who work in it and are liable together | 2-3 |
+| 50+ | **company** — a separate legal person; liability stops at it, it can sell shares, and **the owners generally do not work there** | 3-8 |
+
+Real *(US)*: about **73% of firms are sole proprietorships and 19%
+corporations**, and yet corporations take some **81% of business
+receipts** and nearly all the employment. Almost every *business* is one
+person; almost every *job* is at a company.
+
+**Depth stacks rather than being fixed at two.** One layer of supervision
+is not enough once there are supervisors enough to need supervising, so
+the pyramid builds until the top layer is small enough for one person to
+hold — five to eight at the largest, and Walmart's two million people are
+about seven deep.
+
+That last row is what makes a manager a *position* rather than a
+proprietor: real authority, answerable upward to somebody who owns it and
+is somewhere else. Which is the design doc's rule that position and
+ownership are separate axes.
+
 ### Promotion is not a timer
 
 **Time on the floor is necessary and nowhere near sufficient.** What

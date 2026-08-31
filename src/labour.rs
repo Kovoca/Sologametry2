@@ -64,6 +64,11 @@ const WORKFORCE_DRIFT_PER_YEAR: f64 = 0.35;
 /// The labour market of one town, in the trades this economy has.
 #[derive(Clone, Debug)]
 pub struct Workforce {
+    /// **Posts that are somebody being in charge of others**, as against
+    /// posts on the floor. Real span of control is 8-15, so about a tenth
+    /// of a workforce — and that is the whole supply of promotions there
+    /// is. There is no ladder with room for everybody on it.
+    pub supervisory_posts: f64,
     /// Posts the town's works would fill running flat out.
     pub posts: f64,
     /// Posts actually being worked today, from what the works actually
@@ -92,6 +97,7 @@ pub struct Workforce {
 impl Default for Workforce {
     fn default() -> Self {
         Workforce {
+            supervisory_posts: 0.0,
             posts: 0.0,
             working: 0.0,
             hands: 0.0,
@@ -149,6 +155,7 @@ pub fn update(econ: &mut Economy) {
     }
     let mut posts = vec![0.0f64; n];
     let mut working = vec![0.0f64; n];
+    let mut supervisory = vec![0.0f64; n];
 
     let grid_capacity = econ.grid.capacity();
     for site in econ.ledger.sites.iter() {
@@ -240,6 +247,14 @@ pub fn update(econ: &mut Economy) {
         };
         posts[site.market] += with_charge(hands_for(rated, labour));
         working[site.market] += with_charge(hands_for(actual, labour));
+        // **The supply of promotions**, counted separately, because it is
+        // not a share of employment — it is a fixed number of posts and
+        // most people will never hold one.
+        let floor = hands_for(rated, labour);
+        if floor >= 6.0 {
+            let sup = (floor / SPAN_OF_CONTROL).ceil();
+            supervisory[site.market] += sup + (sup / SPAN_OF_CONTROL).ceil().max(1.0);
+        }
     }
 
     let food_price: Vec<f64> = (0..n)
@@ -249,6 +264,7 @@ pub fn update(econ: &mut Economy) {
     for m in 0..n {
         let w = &mut econ.workforce[m];
         w.posts = posts[m];
+        w.supervisory_posts = supervisory[m];
 
         // **Nobody is hired and fired by the day.**
         //

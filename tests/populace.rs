@@ -83,11 +83,24 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
         }
         let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count();
         let share = bosses as f64 / mine.len() as f64;
+        // **The supply of promotions is a real figure**, not a ratio
+        // picked to look right: the labour model counts supervisory posts
+        // from the works and shops that actually exist, at a span of
+        // control of about ten. The cohort should settle near it.
+        let w = &e.workforce[m];
+        let real_share = w.supervisory_posts / w.posts.max(1e-9);
         assert!(
-            share < 0.30,
-            "{} is {:.0}% supervisors after three years",
+            (0.03..0.15).contains(&real_share),
+            "{} has {:.0}% of its posts supervising, against a real 6-10%",
             e.markets[m].name,
-            share * 100.0
+            real_share * 100.0
+        );
+        assert!(
+            share < real_share * 2.5 + 0.02,
+            "{} is {:.0}% supervisors after three years against {:.0}% of posts",
+            e.markets[m].name,
+            share * 100.0,
+            real_share * 100.0
         );
         // And the floor is still there to supervise.
         assert!(
