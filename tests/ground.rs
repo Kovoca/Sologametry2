@@ -757,3 +757,62 @@ fn a_stair_is_a_connection_both_ends_agree_about() {
     let none = connections_at(1, &plan, sx + 9, sy + 9, sz);
     assert!(!none.up && !none.down);
 }
+
+#[test]
+fn what_happened_beats_what_was_generated() {
+    // **The generator gives the initial state; the tile wins.**
+    //
+    // Everything below the world map is a pure function of seed and
+    // coordinates, which is what keeps a save bounded — and it also meant
+    // nothing could ever change. Knock a hole in a wall and the wall came
+    // back the moment you looked away, because the generator has no memory
+    // and it is the generator that answers.
+    use scale_sim::ground::Changes;
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Flats);
+    let z = scale_sim::ground::surface_z(1, &plan, at.0, at.1);
+
+    // Find a wall to knock through.
+    let before = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    let mut wall = None;
+    for y in 0..before.h {
+        for x in 0..before.w {
+            if before.at(x, y) == Tile::Wall {
+                wall = Some((before.origin.0 + x as i64, before.origin.1 + y as i64));
+            }
+        }
+    }
+    let (wx, wy) = wall.expect("a block of flats with no walls");
+
+    let mut changes = Changes::new();
+    assert!(changes.is_empty());
+    changes.set((wx, wy, z), Tile::Floor);
+
+    // Look away and look back: the hole is still there.
+    let after = Ground::around_with(1, &plan, at, TILES_PER_PLOT, 0, &changes);
+    let (vx, vy) = ((wx - after.origin.0) as usize, (wy - after.origin.1) as usize);
+    assert_eq!(
+        after.at(vx, vy),
+        Tile::Floor,
+        "the wall grew back the moment nobody was looking"
+    );
+
+    // **A save costs what was done to the world, not what was seen of
+    // it.** One knocked-through wall is one stored tile, however far the
+    // player walked to reach it.
+    assert_eq!(changes.len(), 1);
+
+    // And nothing else moved: the rest is still the generator's answer.
+    let plain = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    let differing = (0..plain.h)
+        .flat_map(|y| (0..plain.w).map(move |x| (x, y)))
+        .filter(|&(x, y)| plain.at(x, y) != after.at(x, y))
+        .count();
+    assert_eq!(differing, 1, "changing one tile changed {differing}");
+
+    // Reverting hands it back to the generator.
+    changes.revert((wx, wy, z));
+    let restored = Ground::around_with(1, &plan, at, TILES_PER_PLOT, 0, &changes);
+    assert_eq!(restored.at(vx, vy), Tile::Wall);
+    assert!(changes.is_empty());
+}

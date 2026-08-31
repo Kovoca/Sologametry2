@@ -339,6 +339,59 @@ pub fn ground_legend(with_vehicle: bool) -> String {
     out
 }
 
+/// **What has actually happened, as against what was generated.**
+///
+/// Everything below the world map is a pure function of seed and
+/// coordinates (spec A1.5, rule R5), which is what keeps a save bounded —
+/// and it also meant **nothing could ever change**. Knock a hole in a wall
+/// and the wall came back the moment you looked away, because the
+/// generator has no memory and it is the generator that answers.
+///
+/// The resolution is the one CDDA and DF both use: **generation gives the
+/// initial state, and the tile wins.** A blueprint says a wall should be
+/// here; this says whether it still is. Only tiles somebody actually
+/// changed are stored, so a save stays proportional to what was done to
+/// the world rather than to how much of it was visited.
+///
+/// A `BTreeMap` rather than a hash, because a save must write in the same
+/// order every time.
+#[derive(Default, Clone, Debug)]
+pub struct Changes {
+    edits: std::collections::BTreeMap<(i64, i64, i64), Tile>,
+}
+
+impl Changes {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Record what a tile is *now*, whatever it was generated as.
+    pub fn set(&mut self, at: (i64, i64, i64), tile: Tile) {
+        self.edits.insert(at, tile);
+    }
+
+    /// Put a tile back under the generator's authority — which is not the
+    /// same as setting it to what the generator currently says, because
+    /// the generator can legitimately change when the world does.
+    pub fn revert(&mut self, at: (i64, i64, i64)) {
+        self.edits.remove(&at);
+    }
+
+    pub fn get(&self, at: (i64, i64, i64)) -> Option<Tile> {
+        self.edits.get(&at).copied()
+    }
+
+    /// How much of the world has been touched. This, and not the size of
+    /// the world, is what a save costs.
+    pub fn len(&self) -> usize {
+        self.edits.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.edits.is_empty()
+    }
+}
+
 /// A window of ground, real for as long as somebody is looking at it.
 pub struct Ground {
     /// Which storey you are looking at. 0 is the ground.
@@ -396,6 +449,19 @@ impl Ground {
         Self::window_on(seed, plan, centre, radius * 2 + 1, radius * 2 + 1, z)
     }
 
+    /// The same, with whatever has happened to the world laid over it.
+    pub fn around_with(
+        seed: u64,
+        plan: &Plan,
+        centre: (i64, i64),
+        radius: usize,
+        z: i64,
+        changes: &Changes,
+    ) -> Self {
+        let r = radius * 2 + 1;
+        Self::window_with(seed, plan, centre, r, r, z, changes)
+    }
+
     /// A window of a given size, for *looking at* rather than standing in.
     /// Terminals are about twice as tall as they are wide, so a view meant
     /// to look square on screen is not square in metres.
@@ -412,6 +478,25 @@ impl Ground {
         h: usize,
         z: i64,
     ) -> Self {
+        Self::window_with(seed, plan, centre, w, h, z, &Changes::default())
+    }
+
+    /// The same, with whatever has happened to the world laid over it.
+    ///
+    /// The overlay is applied *here*, where tiles are materialised, and
+    /// not inside `tile_at` — the generator stays a pure function of its
+    /// coordinates, which is what it is for. What changed is a separate
+    /// fact about the world, not a different generator.
+    #[allow(clippy::too_many_arguments)]
+    pub fn window_with(
+        seed: u64,
+        plan: &Plan,
+        centre: (i64, i64),
+        w: usize,
+        h: usize,
+        z: i64,
+        changes: &Changes,
+    ) -> Self {
         let z = surface_z(seed, plan, centre.0, centre.1) + z;
         let origin = (centre.0 - w as i64 / 2, centre.1 - h as i64 / 2);
         let mut tiles = Vec::with_capacity(w * h);
@@ -420,7 +505,11 @@ impl Ground {
             for tx in 0..w {
                 let gx = origin.0 + tx as i64;
                 let gy = origin.1 + ty as i64;
-                tiles.push(tile_at(seed, plan, gx, gy, z));
+                tiles.push(
+                    changes
+                        .get((gx, gy, z))
+                        .unwrap_or_else(|| tile_at(seed, plan, gx, gy, z)),
+                );
             }
         }
         Ground {

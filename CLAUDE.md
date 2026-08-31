@@ -1067,6 +1067,26 @@ pavement honestly and `Road::Track` never appears. That is a hole in
 vehicles; `staked` is cargo still on the road, which is not a leak. Every
 money printer so far was caught by this identity failing.
 
+### What happened beats what was generated
+
+**Generated, never stored** (A1.5, R5) is what keeps a save bounded — and
+on its own it also meant **nothing could ever change**. Knock a hole in a
+wall and the wall came back the moment you looked away, because the
+generator has no memory and it is the generator that answers.
+
+The resolution is the one CDDA and DF both use, and it does not give up the
+rule: **generation is the initial state, and the tile wins.** A blueprint
+says a wall should be here; `Changes` says whether it still is. Only tiles
+somebody actually changed are stored, so **a save costs what was done to
+the world, not what was seen of it** — one knocked-through wall is one
+stored tile however far you walked to reach it.
+
+The overlay is applied where tiles are materialised, not inside `tile_at`:
+the generator stays a pure function of its coordinates, which is what it is
+for. What changed is a separate fact about the world, not a different
+generator. A `BTreeMap`, because a save must write in the same order every
+time.
+
 ### Terrain, material and layers are three different things
 
 Following DF's own model, which is the point of the exercise:
