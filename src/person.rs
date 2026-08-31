@@ -528,6 +528,22 @@ pub struct Person {
     /// **What hold they have on their work.** Most people have a contract
     /// with guaranteed hours; this model gave everybody casual work.
     pub employment: Employment,
+    /// **How old they are.** The model had no ages at all, so there were
+    /// no children, nobody retired, and nobody was replaced.
+    ///
+    /// Real: working age is 16-64, life expectancy about 81, and the mean
+    /// age at a first birth is 29. A population is roughly 18% under 16,
+    /// 64% working age and 19% over 65 — which is a dependency ratio of
+    /// about 57 dependents to every 100 working.
+    pub age_years: f64,
+    /// **Children in the household, and how old.**
+    ///
+    /// They cost, and what they cost falls off a cliff when they start
+    /// school: full-time nursery for an under-two is **65% of a median
+    /// take-home wage in England**, and after-school care for a five to
+    /// eleven year old is **17%**. That cliff is why maternal employment
+    /// with under-fives is **just over 60%** against about 75% overall.
+    pub children: Vec<f64>,
     /// **What share of a household's costs this person carries.**
     ///
     /// Everybody was living alone and paying a full rent, which is not how
@@ -627,6 +643,9 @@ impl Person {
             employment: Employment::None,
             // Alone until somebody says otherwise.
             household_share: 1.0,
+            // Grown, and nobody's parent, until somebody says otherwise.
+            age_years: 30.0,
+            children: Vec::new(),
             days_homeless: 0,
             job: None,
             // **Ability varies from person to person**, and it has to be
@@ -651,7 +670,7 @@ impl Person {
         self.state != State::Dead
     }
 
-    fn note(&mut self, day: u64, what: impl Into<String>) {
+    pub fn note(&mut self, day: u64, what: impl Into<String>) {
         self.log.push(format!("day {day}: {}", what.into()));
     }
 }
@@ -674,6 +693,36 @@ impl Person {
 pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     const SHARE_OF_A_WAGE: f64 = 0.30;
     day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE
+}
+
+/// **When a child stops being ruinously expensive**, in years.
+///
+/// School. Real: compulsory education starts at five in Britain and runs
+/// to sixteen, and the change in what a child costs on that birthday is
+/// the sharpest financial cliff most households ever cross.
+pub const SCHOOL_STARTS: f64 = 5.0;
+pub const SCHOOL_ENDS: f64 = 16.0;
+
+/// **What looking after a child costs a day**, as a share of one adult's
+/// wage.
+///
+/// The real English figures, and they are extraordinary: **a full-time
+/// nursery place for a child under two takes 65% of a median take-home
+/// wage**; after-school care for a five to eleven year old takes 17%; and
+/// from sixteen it is nothing but food and a roof.
+///
+/// The reason is staffing ratios, which are tighter in England than
+/// almost anywhere in Europe — a nursery keeps one adult to three
+/// under-twos. You cannot make childcare cheap without making it worse,
+/// which is why it is expensive everywhere that regulates it.
+pub fn childcare_share_of_wage(child_age: f64) -> f64 {
+    if child_age < SCHOOL_STARTS {
+        0.65
+    } else if child_age < SCHOOL_ENDS {
+        0.17
+    } else {
+        0.0
+    }
 }
 
 /// **What each member of a household of this size carries**, on the
@@ -1403,6 +1452,7 @@ pub fn live_a_day_with(
         let rent = rent_per_day(econ, person.market)
             * person.housing.share_of_rent()
             * person.household_share;
+
         if rent > 0.0 {
             if person.money >= rent {
                 person.money -= rent;
@@ -1749,6 +1799,32 @@ pub fn live_a_day_with(
             // *is* weekend work. Not a preference: it is where the shifts
             // that are going actually are.
             hiring *= works_on(person.trade, day, person.employment);
+
+            // **A child under school age is a reason people do not work.**
+            //
+            // Not a metaphor — it is arithmetic a parent actually does. A
+            // full-time nursery place for an under-two takes **65% of a
+            // median take-home wage** in England; after-school care for a
+            // five to eleven year old takes 17%. If the childcare costs
+            // more than the day pays, the day is not worth working, and
+            // that is why maternal employment with under-fives is **just
+            // over 60% against about 75% overall**.
+            //
+            // It has to be applied *here*, where the work is decided.
+            // Charged afterwards it could not prevent anything, and
+            // parents came out working more than the childless.
+            let childcare: f64 = person
+                .children
+                .iter()
+                .map(|&age| childcare_share_of_wage(age))
+                .sum();
+            if childcare > 0.0 {
+                // What is left of a day's pay after paying somebody to
+                // mind them. At 65% for one and 130% for two, the second
+                // child is what actually stops people.
+                let worth_it = (1.0 - childcare).max(0.0);
+                hiring *= worth_it;
+            }
             // **No address, no job.** A fixed address goes on the form,
             // and not having one is one of the largest barriers there is
             // to getting off the street — which is what makes homelessness

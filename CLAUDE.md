@@ -1003,6 +1003,51 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### Growth and replenishment — children, and what they cost
+
+The model had **no ages at all**, so there were no children, nobody
+retired, and nobody was replaced. A population that could only shrink, by
+starving.
+
+Real figures: working age 16-64, life expectancy ~81, mean age at a first
+birth 29, and a population that is roughly 18% under 16, 64% working age
+and 19% over 65 — a dependency ratio of about 57 to every 100 working.
+**Total fertility is 1.44 in Britain against a replacement rate of 2.1**;
+most developed countries are below replacement and hold their numbers by
+immigration.
+
+**What a child costs falls off a cliff on its fifth birthday**, and the
+figures are extraordinary:
+
+| | share of a median take-home wage |
+|---|---|
+| full-time nursery, under two | **65%** |
+| after-school care, 5-11 | **17%** |
+| from 16 | nothing but food and a roof |
+
+The reason is staffing ratios — a nursery keeps **one adult to three
+under-twos**, tighter than almost anywhere in Europe — and you cannot make
+childcare cheap without making it worse. Which is why **maternal
+employment with under-fives is just over 60% against about 75% overall**,
+and why a second child is what actually stops people: at 65% each, two
+under-fives cost more than the day pays and the day stops being worth
+working.
+
+**It has to be applied where the work is decided.** Charged afterwards it
+could not prevent anything, and parents came out working *more* than the
+childless.
+
+**And a hospital is what keeps a birth alive.** Infant mortality is 3.9
+per 1,000 live births in Britain and over 25 where a state cannot fund a
+health service — which falls straight out of the budget line that already
+exists, and is the single largest difference public spending makes to how
+long anybody lives.
+
+Measurement lesson, the same one the soil work taught: **a population
+correlation cannot show this.** A parent's work record is a lifetime and
+the child was only small for part of it, so the comparison has to hold
+everything else still and vary one thing.
+
 ### People share a roof, and that is most of how they afford one
 
 **Everybody was living alone and paying a full rent**, which is not how

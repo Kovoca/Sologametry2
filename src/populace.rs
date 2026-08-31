@@ -149,6 +149,10 @@ impl Populace {
                 // 2.36 people.
                 let h = draw_household(&mut rng);
                 p.household_share = household_share_for(h.adults());
+                // **A working-age spread**, not everybody thirty. Real:
+                // 64% of a population is 16-64, and a cohort of workers is
+                // drawn from that span.
+                p.age_years = 18.0 + rng.next_f32() as f64 * 45.0;
                 households.push(h);
                 people.push(p);
                 represents.push(pop / n as f64);
@@ -161,6 +165,85 @@ impl Populace {
             households,
             gone: Vec::new(),
             rng,
+        }
+    }
+
+    /// **A year older, and some of them new.**
+    ///
+    /// The model had no ages, so there were no children, nobody retired
+    /// and nobody was replaced — a population that could only shrink, by
+    /// starving. This is the replenishment: people age, some have
+    /// children, and children grow up and start costing less.
+    ///
+    /// Real figures throughout. **Total fertility is 1.44 in Britain
+    /// against a replacement rate of 2.1** — most developed countries are
+    /// below replacement and only hold their numbers by immigration. Mean
+    /// age at a first birth is 29, working age is 16-64, and life
+    /// expectancy is about 81.
+    ///
+    /// **And a health service is what keeps that number up.** Infant
+    /// mortality is 3.9 per thousand live births in Britain and over 25 in
+    /// a state that cannot fund a hospital — which is the single largest
+    /// difference public spending makes to how long anybody lives, and it
+    /// falls straight out of the budget line that already exists.
+    fn a_year_passes(&mut self, econ: &Economy, day: u64) {
+        /// Births per woman over a lifetime. Replacement is 2.1.
+        const FERTILITY: f64 = 1.7;
+        /// Roughly the span over which they arrive: 20 to 40.
+        const CHILDBEARING_YEARS: f64 = 20.0;
+        /// Real: 3.9 per 1,000 live births where there is a health
+        /// service, and 25 or worse where there is not.
+        const INFANT_DEATHS_WITH_A_HOSPITAL: f64 = 0.0039;
+        const INFANT_DEATHS_WITHOUT: f64 = 0.055;
+
+        // How well the state funds its hospitals, 0 to 1.
+        let health = econ
+            .government
+            .as_ref()
+            .map(|g| {
+                let i = crate::state::Service::ALL
+                    .iter()
+                    .position(|&s| s == crate::state::Service::Health)
+                    .unwrap_or(0);
+                g.funded[i]
+            })
+            .unwrap_or(0.0);
+        let infant_deaths = INFANT_DEATHS_WITHOUT
+            + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health;
+
+        for i in 0..self.people.len() {
+            self.people[i].age_years += 1.0;
+            for c in self.people[i].children.iter_mut() {
+                *c += 1.0;
+            }
+            // Grown children leave the household.
+            self.people[i]
+                .children
+                .retain(|&c| c < crate::person::SCHOOL_ENDS + 2.0);
+
+            // **Whether a child arrives this year.** Spread over the
+            // childbearing span, so a lifetime comes to the fertility
+            // rate; halved because it takes two and only one carries it
+            // here.
+            let age = self.people[i].age_years;
+            if (20.0..40.0).contains(&age) {
+                let chance = FERTILITY / CHILDBEARING_YEARS / 2.0;
+                if (self.rng.next_f32() as f64) < chance {
+                    // **Born, and it may not live.** This is where a
+                    // hospital shows up in a population rather than in a
+                    // budget.
+                    if (self.rng.next_f32() as f64) >= infant_deaths {
+                        self.people[i].children.push(0.0);
+                        // A child in the house changes what the household
+                        // costs, on the same equivalence scale.
+                        let adults = self.households[i].adults();
+                        self.people[i].household_share = household_share_for(adults)
+                            * (1.0 + 0.3 * self.people[i].children.len() as f64 / adults as f64);
+                    } else {
+                        self.people[i].note(day, "the child did not live".to_string());
+                    }
+                }
+            }
         }
     }
 
@@ -208,6 +291,10 @@ impl Populace {
             live_a_day_with(p, econ, day, free);
         }
         self.bury_the_dead(day);
+        // A year turns.
+        if day > 0 && day % crate::econ::DAYS_PER_YEAR == 0 {
+            self.a_year_passes(econ, day);
+        }
     }
 
     /// **Somebody who starves is replaced, because the town has not

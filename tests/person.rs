@@ -398,3 +398,73 @@ fn a_price_shock_can_put_a_working_man_on_the_street() {
         "bread quintupled and a man on shop wages kept his tenancy throughout"
     );
 }
+
+#[test]
+fn a_child_under_school_age_is_a_reason_people_do_not_work() {
+    // **The sharpest financial cliff most households ever cross.**
+    //
+    // Real English figures: a full-time nursery place for a child under
+    // two takes **65% of a median take-home wage**; after-school care for
+    // a five to eleven year old takes **17%**; from sixteen it is nothing
+    // but food and a roof. The reason is staffing ratios — a nursery keeps
+    // one adult to three under-twos, tighter than almost anywhere in
+    // Europe — and you cannot make childcare cheap without making it
+    // worse.
+    //
+    // Which is why maternal employment with under-fives is **just over
+    // 60% against about 75% overall**.
+    //
+    // Held still and compared one thing at a time, because in a population
+    // the effect is buried: a parent's work record is a lifetime and the
+    // child was only small for part of it.
+    use scale_sim::person::{childcare_share_of_wage, Person, Trade, SCHOOL_ENDS, SCHOOL_STARTS};
+
+    // The cliff itself.
+    assert_eq!(childcare_share_of_wage(1.0), 0.65, "an under-two");
+    assert_eq!(childcare_share_of_wage(4.9), 0.65, "still not at school");
+    assert_eq!(
+        childcare_share_of_wage(SCHOOL_STARTS),
+        0.17,
+        "the fifth birthday is the cliff"
+    );
+    assert_eq!(childcare_share_of_wage(SCHOOL_ENDS), 0.0, "school is over");
+    assert!(
+        childcare_share_of_wage(1.0) > childcare_share_of_wage(6.0) * 3.0,
+        "a nursery place is barely dearer than an after-school club"
+    );
+
+    // Two identical people, one with a toddler.
+    let mut r = a_nation(20260828);
+    let mut free = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    let mut parent = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    parent.children.push(1.0);
+
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let d = r.economy.ledger.day;
+        person::live_a_day(&mut free, &mut r.economy, d);
+        person::live_a_day(&mut parent, &mut r.economy, d);
+    }
+
+    assert!(
+        parent.days_worked < free.days_worked,
+        "a toddler cost nothing: {} days worked against {}",
+        parent.days_worked,
+        free.days_worked
+    );
+    // **A second child is what actually stops people**: at 65% each, two
+    // under-fives cost more than the day pays, and the day stops being
+    // worth working at all.
+    let mut two = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    two.children.push(1.0);
+    two.children.push(3.0);
+    for _ in 0..(DAYS_PER_YEAR * 2) {
+        r.economy.step();
+        let d = r.economy.ledger.day;
+        person::live_a_day(&mut two, &mut r.economy, d);
+    }
+    assert!(
+        two.days_worked < parent.days_worked,
+        "a second under-five cost nothing on top of the first"
+    );
+}
