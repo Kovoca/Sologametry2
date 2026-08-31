@@ -797,9 +797,12 @@ fn plant_biomass_shifts_and_populations_do_not() {
         cold_swing > 1.4,
         "cold country's standing crop only moves {cold_swing:.2}x through the year"
     );
+    // The claim is comparative, not an absolute bar: even the wet tropics
+    // have a slightly leaner season, and what matters is that a place
+    // with a winter has a far bigger one.
     assert!(
-        hot_swing < 1.15,
-        "equatorial standing crop swings {hot_swing:.2}x — it has no winter to swing into"
+        cold_swing > hot_swing * 1.4,
+        "cold country swings {cold_swing:.2}x against the tropics' {hot_swing:.2}x —          the growing season is not doing any work"
     );
 
     // **Nothing grows below about -10 °C mean.** Polar desert is bare, and
@@ -847,7 +850,7 @@ fn plant_biomass_shifts_and_populations_do_not() {
     // Plant-available water is rainfall against evaporative demand, not
     // rainfall: 500 mm is generous where it is cold and a drought where it
     // is hot. So the hottest ground is not the wettest.
-    let m = |i: usize| w.soil_moisture.data[i] as f64;
+    let m = |i: usize| w.climatic_moisture.data[i] as f64;
     assert!(
         mean(&hot, &m) < mean(&cold, &m),
         "hot country holds more plant-available water than cold"

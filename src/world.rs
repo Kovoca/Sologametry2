@@ -193,19 +193,21 @@ fn generate_seasonality(elev: &Field, sea_level: f32) -> Field {
     season
 }
 
-/// **How much water is actually available to a plant.**
+/// **Rainfall against evaporative demand: a climate index.**
 ///
-/// Rainfall alone does not say: 500 mm is generous in a cold place and a
-/// drought in a hot one, because heat takes the water back. The real
-/// measure is rainfall against potential evapotranspiration, and the
-/// ratio is what the aridity bands are defined on *(UNEP: hyper-arid
-/// under 0.05, arid to 0.20, semi-arid to 0.50, dry sub-humid to 0.65,
-/// humid above)*.
+/// Rainfall alone does not say how wet a place is — 500 mm is generous
+/// where it is cold and a drought where it is hot, because heat takes the
+/// water back. The ratio is what the aridity bands are defined on *(UNEP:
+/// hyper-arid under 0.05, arid to 0.20, semi-arid to 0.50, dry sub-humid
+/// to 0.65, humid above)*.
 ///
-/// PET follows Holdridge: `58.93 x biotemperature`, where biotemperature
-/// is the mean annual temperature clamped to 0-30 °C, because plants do
-/// nothing below freezing and the demand stops rising above thirty.
-fn generate_soil_moisture(
+/// PET here follows Holdridge — `58.93 x biotemperature`, biotemperature
+/// being the annual mean clamped to 0-30 °C — which is an **annual**
+/// classification index. **This is not soil moisture**, and calling it
+/// that claimed a memory it does not have: real soil moisture needs a
+/// storage capacity and carry-over from month to month, which is the
+/// settling pass's job and needs a soil depth to do it.
+fn generate_climatic_moisture(
     temp_c: &Field,
     rain_mm: &Field,
     drain_rank: &Field,
@@ -226,6 +228,131 @@ fn generate_soil_moisture(
         m.data[i] = (index * holds).min(3.0);
     }
     m
+}
+
+/// **When the rain falls, not just how much.**
+///
+/// Soil storage is pointless against rain spread evenly over the year:
+/// there is never a surplus big enough to fill a deep profile, so depth
+/// buys nothing and the dry-season carryover that makes deep soil worth
+/// having never happens. Concentration is the whole point.
+///
+/// Returns the share of the year's rain falling in the warm half. Real
+/// patterns: monsoon and continental interiors are summer-wet (0.7-0.9),
+/// equatorial is near even, and the **Mediterranean band at roughly
+/// 30-40° is winter-wet** (0.2-0.3) because the subtropical high sits
+/// over it all summer and slides away in winter.
+fn generate_rain_season(elev: &Field, sea_level: f32, seasonality: &Field) -> Field {
+    let (w, h) = (elev.width, elev.height);
+    let mut share = Field::new(w, h);
+    for y in 0..h {
+        let lat = ((y as f32 / (h - 1) as f32) * 2.0 - 1.0).abs();
+        // How Mediterranean this latitude is: a bell over the subtropics.
+        let med = (-((lat - 0.40) / 0.09).powi(2)).exp();
+        for x in 0..w {
+            let i = y * w + x;
+            if elev.data[i] < sea_level {
+                continue;
+            }
+            // Seasonal climates concentrate their rain; equable ones do not.
+            let concentration = (seasonality.data[i] / 30.0).clamp(0.0, 1.0);
+            let summer_wet = 0.5 + 0.35 * concentration;
+            let winter_wet = 0.5 - 0.28 * concentration.max(0.45);
+            share.data[i] = summer_wet * (1.0 - med) + winter_wet * med;
+        }
+    }
+    share
+}
+
+/// **How deep the soil is, in metres.**
+///
+/// Deliberately *not* in Z levels: a level is three metres and almost
+/// every difference that matters to farming, roots, erosion or digging
+/// happens well inside the first one. Movement and structures keep the
+/// levels; soil is measured in metres and consumed in metres.
+///
+/// Generated as a regional baseline redistributed by the shape of the
+/// ground, which is what actually moves soil about:
+///
+/// | position | soil |
+/// |---|---|
+/// | cliff, sharp ridge | near nil |
+/// | convex upper slope | thin |
+/// | planar slope | the regional average |
+/// | concave hollow, footslope | deep, accumulated |
+/// | floodplain, delta | deep, deposited |
+///
+/// Slope and curvature are well-supported first-order predictors: soil
+/// thins on convex ground where it is shed and thickens in concave ground
+/// where it collects. Real total depths run from bare rock through
+/// 0.2-0.5 m on steep ground and 1-2 m on planar slopes to several metres
+/// of alluvium on a floodplain.
+///
+/// **The regional baseline is neutral until substrate exists.** Lithology
+/// is the obvious later refinement — granite and shale weather to very
+/// different depths — and it drops into this constant without changing
+/// anything around it.
+fn generate_soil_depth(
+    elev: &Field,
+    sea_level: f32,
+    river: &[bool],
+    lake: &[bool],
+    flow: &Field,
+) -> Field {
+    let (w, h) = (elev.width, elev.height);
+    /// What a planar slope carries before terrain redistributes it.
+    const REGIONAL_DEPTH_M: f32 = 1.5;
+    const DEEPEST_ALLUVIUM_M: f32 = 8.0;
+
+    let span = (1.0 - sea_level).max(1e-3);
+    let mut soil = Field::new(w, h);
+    // Flow accumulation says which lowlands actually collect sediment.
+    let mut flow_max = 0.0f32;
+    for i in 0..flow.data.len() {
+        flow_max = flow_max.max(flow.data[i]);
+    }
+
+    for y in 0..h {
+        let ym = y.saturating_sub(1);
+        let yp = (y + 1).min(h - 1);
+        for x in 0..w {
+            let i = y * w + x;
+            if elev.data[i] < sea_level {
+                continue;
+            }
+            let xm = (x + w - 1) % w;
+            let xp = (x + 1) % w;
+            let e = elev.data[i];
+            let (l, r) = (elev.data[y * w + xm], elev.data[y * w + xp]);
+            let (u, d) = (elev.data[ym * w + x], elev.data[yp * w + x]);
+
+            // Slope in metres per kilometre across the cell.
+            let dz = ((r - l).abs().max((d - u).abs()) * 0.5) / span * MAX_LAND_M as f32;
+            let slope_m_per_km = dz / crate::region::KM_PER_CELL as f32;
+
+            // **Curvature.** Neighbours higher than here means a hollow
+            // that collects; neighbours lower means a ridge that sheds.
+            let mean = (l + r + u + d) * 0.25;
+            let curve = ((mean - e) / span) * MAX_LAND_M as f32 / crate::region::KM_PER_CELL as f32;
+
+            // Steep ground keeps almost nothing: soil is shed as fast as
+            // it weathers. Halves by ~120 m/km, near nil past 400.
+            let keeps = 1.0 / (1.0 + (slope_m_per_km / 120.0).powi(2));
+            // Concave gains, convex loses, bounded either way.
+            let shape = (curve / 40.0).clamp(-0.6, 1.4);
+
+            let mut depth = REGIONAL_DEPTH_M * keeps * (1.0 + shape);
+
+            // **Floodplains are deposited, not weathered**, so they are
+            // deeper than anything the hillside above them carries.
+            let carries = (flow.data[i] / flow_max.max(1e-6)).sqrt();
+            if river[i] || lake[i] {
+                depth = depth.max(2.0 + carries * (DEEPEST_ALLUVIUM_M - 2.0));
+            }
+            soil.data[i] = depth.clamp(0.0, DEEPEST_ALLUVIUM_M);
+        }
+    }
+    soil
 }
 
 /// **The water table is a subdued replica of the topography.**
@@ -704,9 +831,22 @@ pub struct World {
     pub water_table: Field,
     /// Summer-to-winter temperature range, in degrees Celsius.
     pub seasonality: Field,
-    /// Rainfall against potential evapotranspiration: **plant-available
-    /// water**, not rainfall. Under 0.2 is arid, over 0.65 humid.
-    pub soil_moisture: Field,
+    /// **Share of the year's rain falling in the warm half.** Over 0.5 is
+    /// summer-wet (monsoon, continental); under is winter-wet
+    /// (Mediterranean). Soil storage is pointless without this.
+    pub rain_season: Field,
+    /// **Rainfall against evaporative demand — a climate index, not soil
+    /// moisture.** Under 0.2 is arid, over 0.65 humid *(UNEP bands)*.
+    ///
+    /// Real soil moisture needs storage capacity and carry-over between
+    /// months, which is what `biota`'s settling pass computes from this
+    /// and the soil depth. Calling an annual ratio "soil moisture" claims
+    /// a memory it does not have.
+    pub climatic_moisture: Field,
+    /// **How deep the soil is, in metres.** Not in Z levels: almost every
+    /// agriculturally meaningful difference happens well inside three
+    /// metres.
+    pub soil_depth: Field,
     /// **What grows and what lives on it** — spec pipeline step 5.
     pub biota: crate::biota::Biota,
 
@@ -889,14 +1029,19 @@ impl World {
             rain_mm.data[i] = rainfall.data[i] * RAIN_MM_PER_UNIT;
         }
         let seasonality = generate_seasonality(&elevation, sea_level);
-        let soil_moisture =
-            generate_soil_moisture(&temp_c, &rain_mm, &drain_r, &elevation, sea_level);
+        let soil_depth =
+            generate_soil_depth(&elevation, sea_level, &river, &lake, &flow.accum);
+        let rain_season = generate_rain_season(&elevation, sea_level, &seasonality);
+        let climatic_moisture =
+            generate_climatic_moisture(&temp_c, &rain_mm, &drain_r, &elevation, sea_level);
         let biota = biota::generate(
             &biomes,
             &temp_c,
             &rain_mm,
             &seasonality,
-            &soil_moisture,
+            &climatic_moisture,
+            &soil_depth,
+            &rain_season,
             &elevation,
             sea_level,
         );
@@ -912,7 +1057,9 @@ impl World {
             drainage,
             water_table,
             seasonality,
-            soil_moisture,
+            rain_season,
+            climatic_moisture,
+            soil_depth,
             biota,
             flow_accum: flow.accum,
             river,

@@ -50,9 +50,10 @@ fn grazeable_share(biome: Biome) -> f32 {
         // Lichen and dwarf willow feed reindeer, but thinly.
         Tundra => 0.35,
         Swamp => 0.45,
-        Forest | Taiga => 0.30,
-        // Productive, and almost none of it within reach.
-        Rainforest => 0.08,
+        Forest | Taiga => 0.22,
+        // Productive, and almost none of it within reach — and what is
+        // within reach in a closed forest is largely not worth eating.
+        Rainforest => 0.04,
         // Sparse, and much of what grows there is not worth eating.
         Desert => 0.15,
         Beach => 0.35,
@@ -129,11 +130,13 @@ const TIMBER_AT_FULL_COVER: f32 = 380.0;
 ///
 /// Real rates: a large ungulate herd can grow ~30% a year at best and
 /// loses 8-15% to mortality; large carnivores manage ~15% and lose ~10%.
-struct Settled {
-    plant_summer: f32,
-    plant_winter: f32,
-    herbivore: f32,
-    predator: f32,
+pub struct Settled {
+    /// Standing plant biomass at its yearly peak and trough, kg/km².
+    pub plant_summer: f32,
+    pub plant_winter: f32,
+    /// Standing large-herbivore and large-carnivore biomass, kg/km².
+    pub herbivore: f32,
+    pub predator: f32,
 }
 
 /// Months of a plant's own turnover, and how fast each animal closes on
@@ -146,12 +149,62 @@ const PREDATOR_APPROACH_PER_YEAR: f32 = 0.15;
 const HERBIVORE_INTAKE_PER_YEAR: f32 = 0.025 * 365.0;
 const CARNIVORE_INTAKE_PER_YEAR: f32 = 0.04 * 365.0;
 
-fn settle(
+/// **Available water capacity, millimetres per metre of soil.**
+///
+/// Real: sand holds ~100 mm/m, loam 150-200, clay a lot but gives much of
+/// it up grudgingly. 150 is the honest single figure until substrate
+/// exists to distinguish them.
+const WATER_HELD_PER_METRE_MM: f32 = 150.0;
+
+/// **How much of the soil roots actually reach.** Most grasses and crops
+/// work the top 0.5-1.5 m; water below the root zone is present and
+/// inaccessible, which is a real distinction and not a rounding.
+const ROOTABLE_M: f32 = 1.2;
+
+/// **Degree-day snowmelt**, mm per °C per day. Real snowpack melts at
+/// 2-6 mm/°C/day.
+const MELT_MM_PER_DEGREE_DAY: f32 = 3.5;
+
+/// Run one cell to equilibrium. Public so the calibration tests can hold
+/// the climate fixed and vary one thing at a time, which is the only way
+/// to see what soil depth is buying: in the world at large, deep soil
+/// correlates with floodplains and the comparison confounds.
+pub fn settle(
     forage_per_year_kg: f32,
     mean_c: f32,
     season_range_c: f32,
-    moisture: f32,
+    climatic_moisture: f32,
+    soil_depth_m: f32,
+    rain_mm_per_year: f32,
+    summer_share: f32,
 ) -> Settled {
+    // **Soil depth turns a climate index into water a plant can drink.**
+    // A deep soil banks the spring and pays it out through summer; a thin
+    // one is dry a fortnight after rain, on identical rainfall.
+    let capacity_mm = soil_depth_m.min(ROOTABLE_M) * WATER_HELD_PER_METRE_MM;
+    let mut storage_mm = capacity_mm * 0.5;
+    let mut snow_mm = 0.0f32;
+
+    // Thornthwaite's annual heat index, which sets the shape of the
+    // monthly PET curve. Months below freezing contribute nothing.
+    let month_temp = |m: i32| {
+        let phase =
+            ((m as f32 / 12.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2).sin();
+        mean_c + phase * season_range_c * 0.5
+    };
+    let heat_index: f32 = (0..12)
+        .map(|m| {
+            let t = month_temp(m);
+            if t > 0.0 {
+                (t / 5.0).powf(1.514)
+            } else {
+                0.0
+            }
+        })
+        .sum();
+    let a = 6.75e-7 * heat_index.powi(3) - 7.71e-5 * heat_index.powi(2)
+        + 1.792e-2 * heat_index
+        + 0.49239;
     // Standing crop a cell can hold: roughly half a year's production for
     // open country, which is what a grassland carries at peak.
     let capacity = forage_per_year_kg * 0.5;
@@ -159,6 +212,7 @@ fn settle(
     let mut herbivore = 0.0f32;
     let mut predator = 0.0f32;
     let (mut peak, mut trough) = (0.0f32, f32::MAX);
+    let mut standing_mean = capacity * 0.5;
 
     // A century of months is long past settling for populations that
     // move by tens of percent a year.
@@ -175,13 +229,59 @@ fn settle(
         // and tundra at the bare floor — which is to say it left Canada
         // and Siberia with no vegetation at all.
         let warm = (month_c / 10.0).clamp(0.0, 1.0);
-        let wet = (moisture / 0.65).clamp(0.0, 1.0);
+
+        // --- The month's water balance ---
+        //
+        // **Precipitation below freezing is snow**, and it feeds nothing
+        // until it thaws. Without a snow store a boreal cell was watering
+        // its plants in January and dry in June, which is backwards.
+        // **Rain arrives in a season.** Spread evenly there is never a
+        // surplus big enough to fill a deep soil, so depth buys nothing —
+        // which is exactly what the first version showed.
+        let wet_half = phase > 0.0; // warm half of the year
+        let month_rain = rain_mm_per_year / 6.0
+            * if wet_half { summer_share } else { 1.0 - summer_share };
+        if month_c <= 0.0 {
+            snow_mm += month_rain;
+        }
+        let melt = if month_c > 0.0 {
+            (month_c * MELT_MM_PER_DEGREE_DAY * 30.0).min(snow_mm)
+        } else {
+            0.0
+        };
+        snow_mm -= melt;
+        let arriving = melt + if month_c > 0.0 { month_rain } else { 0.0 };
+
+        // Thornthwaite monthly PET, in mm.
+        let pet = if month_c > 0.0 && heat_index > 0.0 {
+            16.0 * (10.0 * month_c / heat_index).powf(a)
+        } else {
+            0.0
+        };
+
+        let available = storage_mm + arriving;
+        let actual_et = pet.min(available);
+        storage_mm = (available - actual_et).clamp(0.0, capacity_mm);
+
+        // **How well watered the plants were this month**: what they got
+        // against what they wanted. A saturated soil scores 1 and a soil
+        // that could not meet demand scores the shortfall.
+        let wet = if pet > 0.0 {
+            (actual_et / pet).clamp(0.0, 1.0)
+        } else {
+            (climatic_moisture / 0.65).clamp(0.0, 1.0)
+        };
         let growing = warm * wet;
 
         let grazed = (herbivore * HERBIVORE_INTAKE_PER_YEAR / 12.0).min(plant * 0.5);
         plant += PLANT_REGROWTH_PER_MONTH * growing * (capacity - plant) - grazed;
-        // Standing crop dies back out of season whether or not it is eaten.
-        plant -= plant * 0.06 * (1.0 - growing);
+        // **Standing crop cures and falls whether or not it is eaten**,
+        // and how fast depends on how badly the month went. Real
+        // grassland loses 60-80% of its peak by the end of a dry or cold
+        // season; a flat 6% a month lost 22% over four dry months, which
+        // made deep soil and thin soil look alike because neither had
+        // anything to lose.
+        plant -= plant * (0.03 + 0.22 * (1.0 - growing));
         plant = plant.max(capacity * 0.02);
 
         if month >= 1188 {
@@ -189,8 +289,14 @@ fn settle(
             trough = trough.min(plant);
         }
 
-        // What the year's forage will actually carry, approached slowly.
-        let carries = forage_per_year_kg * UTILISATION / HERBIVORE_INTAKE_PER_YEAR;
+        // **What the grass that actually grew will carry**, not what the
+        // climate could have produced. Reading the potential meant a herd
+        // was the same size on a hand's depth of soil as on a metre of
+        // it, which is the one thing soil depth is supposed to change.
+        // A twelve-month running mean, so the herd is sized on the year
+        // and not on this month's grass.
+        standing_mean += (plant - standing_mean) / 12.0;
+        let carries = standing_mean * HERD_SHARE_OF_STANDING_CROP;
         herbivore += (carries - herbivore) * HERBIVORE_APPROACH_PER_YEAR / 12.0;
         herbivore = herbivore.max(0.0);
 
@@ -211,16 +317,17 @@ fn settle(
     }
 }
 
-/// **Share of a cell's yearly production that large herbivores take.**
+/// **Herbivore biomass as a share of the standing crop it lives on.**
 ///
-/// Anchored on the Serengeti: ~900 g/m²/yr of production carrying ~5,000
-/// kg/km² of large herbivores, each eating 2.5% of its mass a day, works
-/// out at about 5%. Grazing studies quote 15-50% and that is not a
-/// contradiction — they mean *aboveground* production, and roughly half
-/// of NPP is roots while much of the rest is stem nobody can eat. Taking
-/// the quoted figure against total productivity gave grassland 19,800
-/// kg/km², four times what the Serengeti carries.
-const UTILISATION: f32 = 0.055;
+/// Anchored on the Serengeti: ~2,000 kg/ha of standing grass carrying
+/// ~5,000 kg/km² of large herbivores, which is about 2.5%.
+///
+/// Measured against *standing crop* rather than annual regrowth, because
+/// regrowth in this model is gap-closing: a cell that loses less to the
+/// dry season also regrows less, so reading the herd off production made
+/// deep soil carry **fewer** animals than thin. What a herd eats is the
+/// grass that is standing there.
+const HERD_SHARE_OF_STANDING_CROP: f32 = 0.025;
 
 /// What a herd yields in a year as a share of its standing mass — calves
 /// and casualties. Real large-ungulate recruitment is 20-30%.
@@ -231,7 +338,9 @@ pub fn generate(
     temperature_c: &Field,
     rainfall_mm: &Field,
     seasonality: &Field,
-    soil_moisture: &Field,
+    climatic_moisture: &Field,
+    soil_depth: &Field,
+    rain_season: &Field,
     elev: &Field,
     sea_level: f32,
 ) -> Biota {
@@ -257,7 +366,10 @@ pub fn generate(
             forage_kg,
             temperature_c.data[i],
             seasonality.data[i],
-            soil_moisture.data[i],
+            climatic_moisture.data[i],
+            soil_depth.data[i],
+            rainfall_mm.data[i],
+            rain_season.data[i],
         );
         game.data[i] = s.herbivore;
         predators.data[i] = s.predator;

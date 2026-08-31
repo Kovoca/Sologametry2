@@ -207,6 +207,51 @@ Two calibration errors on the way:
   full growth left taiga and tundra at the bare floor, which is to say it
   left Canada and Siberia with no vegetation at all.
 
+### Soil depth, and the water it holds
+
+**Soil is measured in metres, not Z levels.** A level is 3 m and almost
+every difference that matters to farming, roots, erosion or digging
+happens inside the first one. Movement and structures keep the levels.
+
+Depth is a regional baseline redistributed by the shape of the ground:
+near nil on cliffs and sharp ridges, thin on convex upper slopes, the
+regional average on planar ones, deep in hollows and footslopes, deepest
+as alluvium on a floodplain. Slope and curvature are the first-order
+predictors — soil is shed off convex ground and collects in concave. The
+regional baseline is deliberately neutral until substrate exists; lithology
+drops into that constant without disturbing anything.
+
+Depth then turns the climate index into water a plant can drink: a monthly
+balance with **storage that carries over** and a **snow store**, since
+precipitation below freezing feeds nothing until it thaws. Capacity is
+`depth x 150 mm/m x rootable`, real available water capacity being
+100-200 mm per metre.
+
+Three things this exposed, all of which had to be fixed before soil depth
+did anything at all:
+
+- **Rain has to arrive in a season.** Spread evenly over the year there is
+  never a surplus big enough to fill a deep profile, so depth bought
+  nothing and saturated at half a metre. Rainfall concentration is now a
+  field: summer-wet for monsoon and continental interiors, **winter-wet in
+  the Mediterranean band at 30-40°** where the subtropical high sits all
+  summer.
+- **A herd is sized on standing crop, not on regrowth.** Regrowth here is
+  gap-closing, so a cell that loses less to the dry season also regrows
+  less — which made deep soil carry *fewer* animals than thin. Anchored
+  instead on the Serengeti's ~2,000 kg/ha of standing grass carrying
+  ~5,000 kg/km² of herbivore, about 2.5%.
+- **The share of peak is the wrong measure of surviving a dry season.**
+  Deep soil grows a bigger peak, so its trough is a smaller *fraction* of
+  it while being more grass. What survives a dry season is grass, not a
+  ratio — and in the world at large deep soil correlates with floodplains,
+  so the comparison has to hold the climate still.
+
+Result, same climate and only the depth varying: 0.15 m of soil ends the
+year on 81,000 kg/km² of standing crop and carries 4,015 kg/km² of stock;
+1.2 m ends on 106,700 and carries 4,730. **It saturates at the rootable
+depth**, because water below the root zone is present and inaccessible.
+
 Known wart: biomes are classified by **rank over land**, so the labels are
 relative bands — this world's "Taiga" lands on cells averaging -40 °C,
 which is polar desert and correctly bare. The physics is right; the label
