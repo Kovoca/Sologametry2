@@ -93,6 +93,9 @@ fn public_work_is_steady_and_shop_work_is_not() {
     for (i, p) in folk.people.iter_mut().enumerate() {
         if i % 6 == 0 {
             p.trade = Trade::Public;
+            // Qualified for it: a trade you cannot enter is not a trade
+            // you are in, and the gate is the point of the qualification.
+            p.qualification = scale_sim::person::qualification_for(Trade::Public);
         }
     }
     for day in 0..DAYS_PER_YEAR {

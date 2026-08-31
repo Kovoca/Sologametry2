@@ -24,7 +24,9 @@
 //! reveal.
 
 use crate::econ::Economy;
-use crate::person::{household_share_for, live_a_day_with, Housing, Person, Trade};
+use crate::person::{
+    household_share_for, live_a_day_with, qualification_for, Housing, Person, Qualification, Trade,
+};
 use crate::rng::Rng;
 
 /// **How people actually live**, which is not one to a house.
@@ -153,6 +155,24 @@ impl Populace {
                 // 64% of a population is 16-64, and a cohort of workers is
                 // drawn from that span.
                 p.age_years = 18.0 + rng.next_f32() as f64 * 45.0;
+                // **About 35% of working-age adults hold a degree** and
+                // initial participation in higher education is around 38%
+                // of young people; apprenticeships add another slice. So
+                // most people have school and no more, which is what most
+                // work requires.
+                let q = rng.next_f32();
+                p.qualification = if q < 0.32 {
+                    Qualification::Degree
+                } else if q < 0.52 {
+                    Qualification::Vocational
+                } else {
+                    Qualification::School
+                };
+                // Nobody works at a trade they are not qualified for, so
+                // the sample has to be drawn consistently.
+                if p.qualification < qualification_for(p.trade) {
+                    p.trade = Trade::Shopworker;
+                }
                 households.push(h);
                 people.push(p);
                 represents.push(pop / n as f64);

@@ -1003,6 +1003,35 @@ Three things it found immediately, which one man in one town never could:
   1` is not hunger but *buying daily*, which nearly everybody does — it
   put a prosperous town at 100% starving.
 
+### A qualification is a gate, and that is what makes it worth getting
+
+**Anybody could be anything.** A man off the street could be an engineer,
+and three years at a university bought nothing because nothing required
+it. Real work is gated sharply: you cannot be a doctor without medical
+school and you can be a shop worker without anything at all.
+
+| trade | needs |
+|---|---|
+| shop work, hospitality, labouring | **nothing** — no licence, no ticket, no training, which is why anybody can do it and the wage knows it |
+| builder, haulier | **an apprenticeship or a licence** — years, and why the work pays more than shop work |
+| public service, office | **a degree** — teaching and nursing are degree-entry, and so is everything in an office worth having |
+| supervisor | **nothing** — promotion from the floor, the only ladder somebody without a qualification can climb |
+
+Real: about **35% of British working-age adults hold a degree**, initial
+participation in higher education is ~38% of young people, and
+apprenticeship starts run ~340,000 a year, down from 750,000.
+
+**A degree is three years not earning; an apprenticeship is three years
+earning badly.** That difference in what it *costs* is why one tracks
+family background far more than the other — and the payoff is real: office
+work pays half as much again as shop work, which is exactly what makes the
+three years worth spending.
+
+Which is also what schools and universities are *for* in the model. They
+were already the second-largest block of public employment; now they
+produce something, and it opens doors that were previously open to
+everybody.
+
 ### Growth and replenishment — children, and what they cost
 
 The model had **no ages at all**, so there were no children, nobody

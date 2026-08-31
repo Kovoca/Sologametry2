@@ -528,6 +528,10 @@ pub struct Person {
     /// **What hold they have on their work.** Most people have a contract
     /// with guaranteed hours; this model gave everybody casual work.
     pub employment: Employment,
+    /// **What they are qualified to do.** Anybody could be anything: a man
+    /// off the street could be an engineer, and three years at a
+    /// university bought nothing because nothing required it.
+    pub qualification: Qualification,
     /// **How old they are.** The model had no ages at all, so there were
     /// no children, nobody retired, and nobody was replaced.
     ///
@@ -643,6 +647,11 @@ impl Person {
             employment: Employment::None,
             // Alone until somebody says otherwise.
             household_share: 1.0,
+            // **Qualified for the trade they are.** Nobody creates an
+            // unlicensed lorry driver — the licence is what makes them one.
+            // A caller modelling somebody's *route* into a trade sets this
+            // themselves and starts them lower.
+            qualification: qualification_for(trade),
             // Grown, and nobody's parent, until somebody says otherwise.
             age_years: 30.0,
             children: Vec::new(),
@@ -693,6 +702,86 @@ impl Person {
 pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     const SHARE_OF_A_WAGE: f64 = 0.30;
     day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE
+}
+
+/// **What somebody is qualified to do**, which the model did not ask.
+///
+/// Anybody could be anything: a man off the street could be an engineer,
+/// and three years at a university bought nothing because nothing required
+/// it. Real work is gated, and sharply — you cannot be a doctor without
+/// medical school and you can be a shop worker without anything at all.
+///
+/// Real UK: about **35% of working-age adults hold a degree** and initial
+/// participation in higher education is around 38% of young people;
+/// apprenticeship starts run about 340,000 a year, down from 750,000.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Qualification {
+    /// School and no more. Which is enough for most work, and always has
+    /// been.
+    School,
+    /// **An apprenticeship or a college course** — two to four years,
+    /// paid but poorly, and it is what a skilled trade actually requires.
+    Vocational,
+    /// **A degree** — three years not earning, and the gate on teaching,
+    /// nursing, engineering, law and everything in an office.
+    Degree,
+}
+
+impl Qualification {
+    pub fn name(self) -> &'static str {
+        match self {
+            Qualification::School => "school",
+            Qualification::Vocational => "apprenticed",
+            Qualification::Degree => "a degree",
+        }
+    }
+
+    /// **Years not earning to get it.**
+    ///
+    /// An apprenticeship is paid, badly, so it costs less than it looks; a
+    /// degree is three years of foregone earnings and fees on top. That
+    /// cost is the barrier, and it is why participation tracks whether
+    /// somebody's family can carry them rather than whether they are able.
+    pub fn years_to_earn(self) -> f64 {
+        match self {
+            Qualification::School => 0.0,
+            Qualification::Vocational => 3.0,
+            Qualification::Degree => 3.0,
+        }
+    }
+
+    /// What share of a normal wage somebody earns while training. An
+    /// apprentice is paid; a student is not.
+    pub fn pay_while_training(self) -> f64 {
+        match self {
+            Qualification::School => 1.0,
+            Qualification::Vocational => 0.45,
+            Qualification::Degree => 0.0,
+        }
+    }
+}
+
+/// **What a trade requires before anybody will have you.**
+///
+/// This is what makes education worth anything: without it a degree is
+/// three years of not earning in exchange for nothing.
+pub fn qualification_for(trade: Trade) -> Qualification {
+    match trade {
+        // No licence, no ticket, no training. Which is why anybody can do
+        // it and why the wage knows it.
+        Trade::Shopworker | Trade::Hospitality | Trade::Labourer => Qualification::School,
+        // **A skilled trade is an apprenticeship**, and a lorry is a
+        // licence. Both are years, and both are why the work pays more
+        // than shop work does.
+        Trade::Builder | Trade::Haulier => Qualification::Vocational,
+        // Teaching and nursing are degree-entry, and so is everything in
+        // an office worth having.
+        Trade::Public | Trade::Office => Qualification::Degree,
+        // **Nothing gates a chargehand.** It is promotion from the floor,
+        // which is the whole point of it and the only ladder somebody
+        // without a qualification can climb.
+        Trade::Supervisor => Qualification::School,
+    }
 }
 
 /// **When a child stops being ruinously expensive**, in years.
@@ -1859,8 +1948,14 @@ pub fn live_a_day_with(
                 && person.standing >= WELL_ENOUGH_REGARDED;
             let taken = offers.into_iter().find(|c| {
                 let hired = c.stake() > 0.0 || drawn < hiring;
-                let qualified = c.trade == person.trade
-                    || (c.trade == Trade::Supervisor && promotable);
+                // **You cannot take work you are not qualified for.**
+                // Without this a man off the street could be an engineer,
+                // and three years at a university bought nothing because
+                // nothing required it.
+                let allowed = person.qualification >= qualification_for(c.trade);
+                let qualified = allowed
+                    && (c.trade == person.trade
+                        || (c.trade == Trade::Supervisor && promotable));
                 qualified
                     && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
