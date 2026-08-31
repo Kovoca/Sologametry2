@@ -883,6 +883,52 @@ a stock gap starved him, because a city of 16M always holds more tonnes
 than a town of 2M so freight flowed one way and never back. **Compare days
 of cover, never tonnes** — but the real answer was to stop inventing.
 
+## The rest of what people do (`src/services.rs`)
+
+The economy modelled the *goods* and about a quarter of the *jobs*. Real
+UK employment by sector, against what existed:
+
+| sector | share | here |
+|---|---|---|
+| wholesale & retail | 14.1% | shops |
+| health & social work | 13.3% | state |
+| education | 8.9% | state |
+| **professional, scientific, technical** | **8.9%** | offices |
+| **administrative & support** | **8.7%** | offices |
+| manufacturing | 7.6% | mill, cannery, butcher |
+| **accommodation & food** | **6.8%** | hospitality |
+| **construction** | **6.4%** | builders |
+| transport & storage | 5.0% | hauliers |
+| **information & communication** | **4.5%** | offices |
+| public administration & defence | 4.3% | state |
+| **finance & insurance** | **3.4%** | offices |
+| **arts, entertainment, recreation** | **2.5%** | recreation |
+| agriculture, forestry, fishing | 1.1% | farms, pasture |
+| utilities | 1.2% | power |
+| mining | 0.2% | collieries |
+
+The bold rows came to about **43% of all employment** and none of it
+existed — including the two sectors that decide what a place is like to
+*live* in rather than merely to eat in: **somebody has to fix things**, and
+somewhere has to be open in the evening.
+
+Modelled like the state's services: **posts against population at real
+ratios**, because a service is consumed where the people are and cannot be
+shipped. Nobody imports a haircut. Result: private services 36.8% of the
+workforce, plus the state's 14.3%.
+
+- **Half of construction output is repair and maintenance**, not new
+  build. That is the answer to "who mends it when it breaks": the state's
+  own crews hold the grid, and everything else is somebody's contract.
+- **Hospitality is the worst-paid sector there is** (~£20k against a £33k
+  median) and the least secure: **28.8% on zero-hours**, the highest of
+  any industry and fourteen times public administration's 2.1%.
+- **Offices concentrate and a kitchen does not.** Professional work is
+  roughly twice as concentrated in large cities as small towns;
+  construction and hospitality follow people wherever they are. Which is a
+  real thing about where you have to move to in order to work at
+  something.
+
 ## The state is an employer (`src/state.rs`)
 
 Spec C.1 and C.2, and the hole it fills is the size of the public sector.

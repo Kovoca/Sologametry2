@@ -21,6 +21,7 @@ pub mod polity;
 pub mod populace;
 pub mod region;
 pub mod rng;
+pub mod services;
 pub mod settlement;
 pub mod state;
 pub mod slice;

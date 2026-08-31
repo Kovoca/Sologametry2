@@ -1649,6 +1649,9 @@ pub struct Economy {
     /// largest single block of jobs in a developed country — 14-21% of
     /// the workforce, and none of it existed here.
     pub government: Option<crate::state::Government>,
+    /// **The private services** — construction, hospitality, recreation,
+    /// offices. About 43% of all employment, and none of it existed.
+    pub services: Option<crate::services::Services>,
 }
 
 impl Economy {

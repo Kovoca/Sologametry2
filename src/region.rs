@@ -1142,6 +1142,7 @@ impl Region {
             unmet_demand: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
             government: None,
+            services: None,
         };
         // **Hang the distribution network under the transmission**, so a
         // fault has somewhere to happen that is not national: a feeder to
@@ -1208,6 +1209,14 @@ impl Region {
                 Doctrine::Negligent => crate::state::Capacity::Middling,
             },
         ));
+
+        // **And the private services**: construction, hospitality,
+        // recreation and offices, which together are about 43% of all
+        // employment and none of which existed. A service is consumed
+        // where the people are and cannot be shipped — nobody imports a
+        // haircut — so these are posts against population, like the
+        // state's.
+        economy.services = Some(crate::services::Services::provide(&economy));
 
         // Start mid-harvest rather than in the depths of winter, so a
         // short run is not looking at an unrepresentative slice of the

@@ -195,11 +195,17 @@ fn main() {
 }
 
 fn trade_name(t: Trade) -> &'static str {
+    t.name()
+}
+
+#[allow(dead_code)]
+fn unused(t: Trade) -> &'static str {
     match t {
         Trade::Haulier => "haulier",
         Trade::Labourer => "labourer",
         Trade::Shopworker => "shop work",
         Trade::Supervisor => "supervisor",
         Trade::Public => "public",
+        _ => "other",
     }
 }

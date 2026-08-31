@@ -65,6 +65,20 @@ pub enum Trade {
     /// a developed economy. Which post it is depends on the service; that
     /// distinction lives on the contract, not on the person.
     Public,
+    /// **Builds things, and fixes them.** About 6.4% of employment, and
+    /// roughly half of construction output is repair and maintenance
+    /// rather than new build — which makes this the answer to "who mends
+    /// it when it breaks".
+    Builder,
+    /// **Pubs, cafés, hotels and everything that is open in the evening.**
+    /// 6.8% of employment, plus 2.5% in arts and recreation. The
+    /// worst-paid sector there is, and the one where insecurity lives:
+    /// 28.8% on zero-hours contracts.
+    Hospitality,
+    /// Professional, technical, financial, administrative — offices, in a
+    /// word. The largest single block at about 21% once its parts are
+    /// added up, and the best paid.
+    Office,
 }
 
 impl Trade {
@@ -75,6 +89,9 @@ impl Trade {
             Trade::Shopworker => "shop worker",
             Trade::Supervisor => "supervisor",
             Trade::Public => "public service",
+            Trade::Builder => "builder",
+            Trade::Hospitality => "hospitality",
+            Trade::Office => "office work",
         }
     }
 }
@@ -190,6 +207,14 @@ pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
         // Driving is full-time employment or your own lorry.
         Trade::Haulier => (0.60, 0.10, 0.30),
         Trade::Supervisor => (0.90, 0.08, 0.02),
+        // Construction is full-time work interrupted by the job ending:
+        // real self-employment in the trade runs very high.
+        Trade::Builder => (0.60, 0.08, 0.32),
+        // **28.8% of this workforce is on zero-hours**, the highest of any
+        // industry and fourteen times public administration's 2.1%.
+        Trade::Hospitality => (0.35, 0.36, 0.29),
+        // Offices are salaried and permanent almost to a fault.
+        Trade::Office => (0.88, 0.10, 0.02),
     }
 }
 
@@ -247,6 +272,11 @@ pub enum Job {
     Public {
         market: usize,
         service: crate::state::Service,
+    },
+    /// A day in a private service — a building site, a kitchen, an office.
+    Service {
+        market: usize,
+        sector: crate::services::Sector,
     },
     /// A shift in a shop, at one of the jobs a shop actually contains.
     Counter {
@@ -307,6 +337,12 @@ impl Contract {
             Job::Shift { site, .. } => format!(
                 "a shift at {} — {:.0} for {:.1} days",
                 econ.ledger.sites[*site].name, self.pay, self.days,
+            ),
+            Job::Service { market, sector } => format!(
+                "a day in {} in {} — {:.0}",
+                sector.name(),
+                econ.markets[*market].name,
+                self.pay,
             ),
             Job::Public { market, service } => format!(
                 "a week in {} in {} — {:.0}",
@@ -607,6 +643,15 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // the private jobs here do not have, which is that the work is
         // steady.
         Trade::Public => 6.5,
+        // Construction pays a shade above the average — UK median £35k
+        // against £33k for all employees — and more for a skilled trade.
+        Trade::Builder => 7.0,
+        // **The worst-paid sector there is.** Around £20k against a £33k
+        // median, and the hours are not guaranteed either.
+        Trade::Hospitality => 4.0,
+        // Professional, technical and financial work is the best paid,
+        // and it is why people move to cities for it.
+        Trade::Office => 9.5,
     };
     food * multiple
 }
@@ -919,6 +964,29 @@ pub fn work_available(
                     trade: Trade::Public,
                 });
             }
+        }
+    }
+
+    // **The private services.** Construction, hospitality, recreation and
+    // offices — about 43% of all employment, and the sectors that decide
+    // what a place is like to live in rather than merely to eat in:
+    // somebody has to fix things, and somewhere has to be open in the
+    // evening.
+    if let Some(svc) = econ.services.as_ref() {
+        for sector in crate::services::Sector::ALL {
+            if svc.posts_in(market, sector) < 1.0 {
+                continue;
+            }
+            let trade = sector.trade();
+            let rate = day_rate(econ, market, trade);
+            out.push(Contract {
+                kind: Job::Service { market, sector },
+                posted: day,
+                expires: day + 1,
+                pay: rate,
+                days: 1.0,
+                trade,
+            });
         }
     }
 
@@ -1282,6 +1350,21 @@ pub fn live_a_day_with(
                     // stockpile.** A week teaching moves no tonnage, which
                     // is exactly what a service is — and it is why a
                     // school keeps going when the mill has shut.
+                    // A day's service work: it produces nothing that
+                    // moves, which is what a service is.
+                    Job::Service { sector, .. } => {
+                        person.money += job.pay;
+                        person.earned += job.pay;
+                        person.note(
+                            day,
+                            format!(
+                                "a day in {}, paid {:.0} — {:.0} in hand",
+                                sector.name(),
+                                job.pay,
+                                person.money
+                            ),
+                        );
+                    }
                     Job::Public { service, .. } => {
                         person.money += job.pay;
                         person.earned += job.pay;

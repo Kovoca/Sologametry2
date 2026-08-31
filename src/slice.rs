@@ -188,5 +188,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
         unmet_demand: basket(),
         workforce: vec![crate::labour::Workforce::default(); markets_len],
         government: None,
+        services: None,
     }
 }
