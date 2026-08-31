@@ -7,7 +7,7 @@
 - Player drops into a procedurally generated universe as a single individual and shapes it to the degree they're able — Mount & Blade-style progression (learn a trade/skill, earn money, learn trade routes and watch goods prices, join the military, travel) layered on Dwarf Fortress/CDDA-level simulation depth.
 - Scale target: individual → intergalactic, but **build order starts at the planetary level and expands outward later.** Space travel, other planets, asteroids, and alien races are explicitly deferred to future discussion.
 - Single-player only — no multiplayer. This relaxes determinism requirements (see Simulation Fidelity below): consistency only needs to hold for one player's save/load, not for verifiable replay across multiple clients.
-- Built solo in GameMaker Studio 2 / GML.
+- Built solo in Rust. (Read "GameMaker Studio 2 / GML" until 2026-08-31; the project has been Rust throughout.)
 
 ## Guiding Design Principles
 
@@ -95,18 +95,161 @@ Tiered by individuation status, to keep cost bounded:
 - **Open question:** full ballistic trajectory simulation vs. an abstracted to-hit roll modified by range/cover/elevation (CDDA/DF precedent favors the abstracted approach for cost reasons) — not yet decided.
 - Use cases discussed: convoy ambushes, one thug group ambushing another unaware, and defending fortifications.
 
-## Buildings, Infrastructure & Multi-Z Density
+## Buildings, Urban Density & Multi-Z Simulation
 
-- **Tile-layered data model**, generalizing CDDA's vehicle-part system to buildings: each tile carries a structural type (wall/floor/furniture) plus separate infrastructure layers (electrical connection, water/sewer connection) as discoverable, individually attackable nodes.
-- **Multi-z buildings serve density/urban-planning purposes, not just combat:**
-  - *High-density housing* — many small stacked units, distributed infrastructure per unit, elevator-dependent above a few floors.
-  - *Office buildings* — larger open floor plates, fewer but higher-capacity infrastructure runs, comms-heavy, transient population.
-  - *Factories* — wide/low floor plates favored for production; z-levels used more for storage/utility mezzanines. High, steady power demand tied directly to economic output.
-  - *Warehouses* — minimal infrastructure need, high structural/storage capacity, vehicle access via ramps rather than stairs (interfaces directly with the vehicle system).
-- **Vertical circulation:**
-  - *Stairs* — power-independent, always usable, slower, offer cover at every landing.
-  - *Elevators* — power-dependent (enable true high-density towers, but are a single point of failure), a distinct and more exposed/linear tactical chokepoint than a stairwell.
-- **Settlement density** (compact vertical vs. sprawling low) affects travel time, sightlines/chokepoints, and should be a world-gen parameter (terrain constraints, population, faction wealth/tech) rather than hand-authored per settlement.
+### Buildings are persistent instances, not giant tiles
+
+- A **BuildingDefinition** is a reusable blueprint: footprint rules, floor
+  types, structural system, rooms, circulation cores, utility routes,
+  fixtures, furniture, likely occupants.
+- A **BuildingInstance** is the persistent building at a location:
+  ownership, tenants, condition, alterations, damage, utility connections,
+  vacancies, event history.
+- The blueprint writes an *initial* state into the local 3D map. After
+  generation **the current tiles and objects win**; a damaged wall or
+  rerouted pipe is never restored merely because the template placed one
+  there.
+- Structure, construction, utilities, furniture, items, actors and
+  room/ownership volumes stay separate layers. A wall can be breached
+  without deleting the room, the building identity, the circuit or the
+  ownership record attached to that location.
+- Cables, pipes, ducts, shafts, panels, valves, pumps and meters occupy
+  tiles, tile boundaries or dedicated service spaces. They are physical,
+  inspectable, damageable, isolatable and repairable. **The simulation
+  stores the component; the renderer chooses its glyph.**
+
+### Z-levels are not capped at three
+
+- A building owns an absolute Z range, e.g. -4 to +34. The data model must
+  not assume basement/ground/roof are the only levels.
+- **A storey and a Z-level are not necessarily the same thing.** An
+  ordinary storey takes one level; a warehouse bay, theatre, atrium,
+  concourse or double-height lobby spans two or more. Floors and ceilings
+  are *boundaries between volumes*, not implied by the next Z existing.
+- Repeated tower floors may be generated from one floor-family template,
+  but each becomes persistent once changed or inspected. Repetition saves
+  authoring cost; it does not make floors share damage or contents.
+- Vertically aligned spaces are explicit stacks: hoistways, stairs, service
+  risers, plumbing stacks, ventilation shafts, light wells, atria,
+  structural cores. A shaft opening on one level must connect to the
+  matching volume above or below.
+- Tall-building pathfinding is hierarchical — entrance, vertical core,
+  destination floor, then local room path. Never one flat search across
+  forty expanded floors.
+
+### Density is more than building height
+
+Enough values to tell a tall isolated tower from a genuinely dense
+district: parcel area and site coverage; total floor area and floor-area
+ratio; residential units, beds, jobs, visitor capacity; **day, night and
+event occupancy** (an office district is dense at noon and empty at
+night); vacancy and usable-floor percentage (a forty-storey shell is not a
+functioning forty-storey tower); street, transit, parking, lift and
+utility capacity; public/private/service space.
+
+Illustrative urban-form bands — *operating problems, not height caps*:
+
+| Urban form | Above grade | Below grade | Simulation character |
+|---|---|---|---|
+| Rural/edge | 1-2 | cellar or none | long service runs, wells/septic, vehicle dependence |
+| Suburban | 1-3 | basement/garage | low FAR, horizontal travel, many separate connections |
+| Low urban | 2-6 | utilities/storage | walkable blocks, mixed frontage |
+| Mid-rise | 5-12 | parking/loading/plant | shared cores; lifts matter but stairs remain practical |
+| High-rise | 13-40 | multi-level parking/plant | pressure zones, lift banks, refuge floors, concentrated failure |
+| Very tall | 40+ | deep foundations/transit | internally zoned like several linked districts |
+
+### Physical utility-network model
+
+Power, water, sanitary sewer, storm drainage and communications share one
+spatial graph:
+
+source -> trunk -> district distribution -> parcel service -> building
+distribution -> end use
+
+- **Nodes**: sources, junctions, transformers, valves, hydrants, manholes,
+  pumps, tanks, meters, panels, cleanouts, fixtures.
+- **Edges**: feeders, mains, laterals, risers, stacks, ducts, conduits —
+  each with a real route through tiles or boundaries.
+- **Common state**: capacity, load/flow, condition, ownership,
+  accessibility, isolation state, upstream/downstream connections.
+- **Network-specific state stays separate**: voltage/load; pressure/head,
+  volume, contamination; slope, fill, blockage, backflow.
+- **Service is derived, never a stored yes/no.** A sink works only if an
+  intact route reaches a live source at adequate pressure; a lift works
+  only if its circuit and controls are live and the car and shaft usable.
+- Breakers, switches, valves and gates isolate only the damaged branch.
+  Redundancy is an alternate *physical route*, not a reliability bonus.
+- Recalculate on change (connection, source, load band, valve, component
+  state) or by zone — never solve every pipe and circuit every frame.
+
+Per-network paths, each with its own failure character:
+
+- **Power** — generation, substation, feeder, transformer, service and
+  meter, switchgear, riser and panel, circuit, load. Buildings draw
+  average *and* peak; overload trips protection rather than silently
+  supplying infinite power. Critical and non-critical circuits are
+  explicit, so backup can hold alarms, emergency lighting, pumps, comms
+  and selected lifts while shedding retail and comfort load.
+- **Water** — source, treatment and storage, transmission, district main,
+  service/meter/backflow, tank or pump or pressure zone, riser, fixture or
+  sprinkler. **A connected pipe at insufficient pressure does not supply an
+  upper floor.** Tall buildings divide into pressure zones on booster
+  pumps or elevated tanks, which makes water depend on power. Firefighting
+  can drain storage or starve domestic supply.
+- **Sanitary sewer** — fixture, branch, stack, building drain and lateral,
+  street gravity main, interceptor, lift station, treatment. Gravity needs
+  a valid downhill route; fixtures below the main's invert need an
+  ejector, and losing its power floods the lowest level.
+- **Storm** — inlet, drain, storm main, detention, outfall or pump.
+  Separate from sanitary in newer districts, combined in older ones, so
+  heavy rain can produce sewage overflow.
+
+### Streets are infrastructure corridors
+
+District generation reserves rights-of-way beneath streets, pavements,
+alleys and rear-lot easements *before* placing buildings. Visible
+serviceable assets — poles, cabinets, pad transformers, hydrants, valve
+boxes, manholes, drains — anchor the abstract graph to the physical map.
+An excavation or explosion can hit several colocated services at once;
+congested old rights-of-way are cheaper to generate and slower to repair.
+
+### Urban generation, growth and decline
+
+1. Terrain, hydrology, flood risk, existing routes.
+2. Streets and transit; **reserve utility corridors**.
+3. Size district power/water/sewer/storm/comms/transport from era, wealth,
+   doctrine and expected demand.
+4. Divide blocks into parcels; assign land use from access, land value,
+   zoning, industry, population pressure.
+5. Select massing — footprint, setbacks, floor count, basement depth —
+   constrained by terrain, access, construction capability and **available
+   service capacity**.
+6. Place cores, shafts, mechanical and refuge floors, service entrances,
+   loading and public circulation *before* room layouts and furniture.
+7. Connect every building to real upstream networks; reject, downgrade or
+   mark illegal/overloaded development where capacity is insufficient.
+8. Run occupancy and maintenance history, so districts acquire vacancies,
+   renovations, obsolete systems, informal connections, abandoned pipes
+   and unequal reliability instead of spawning pristine.
+
+Growth is therefore physical: denser development raises utility, transit,
+delivery, waste and emergency demand, so a settlement must extend its
+networks, accept degraded service, or stop densifying. War, disaster,
+depopulation and neglect reverse it through vacancy, scavenging, leaks,
+illegal taps and selective abandonment.
+
+### Player-visible effects of density
+
+Movement (horizontal in sprawl, vertical and queued in towers);
+population (occupancy profiles say who is plausibly present without
+instantiating everyone); economy (floor area creates capacity, but output
+is capped by labour, goods movement, utilities and comms); emergency
+response; combat geometry (alleys, atria, rooftops, cores, tunnels,
+parking decks, service routes); evacuation (a tower does not instantly
+become a street crowd — discharge is limited by stairs, lifts and exits,
+then by pavement and road capacity); atmosphere (scheduled crowds,
+traffic, deliveries, refuse, lighting, noise, water pressure and visible
+service failures make a city feel occupied before any dialogue exists).
 
 ## Infrastructure Failure & Cascading Consequences
 
