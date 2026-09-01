@@ -187,7 +187,14 @@ fn main() {
     // A corner is worth looking at further, because what is interesting
     // about one is the buildings on it, and those are a plot away.
     let mut g = if want_corner {
-        Ground::window_on(seed, &plan, centre, 92, 44, z)
+        // **A junction needs two plots of height to be visible at all.**
+        //
+        // The plot grid is 32 m, so the crossing street's plot centre is a
+        // full 32 m away — and a 44-row window centred on the corner
+        // reaches 22 m, which clips the cross street off the picture
+        // entirely. Somebody asking to stand on a corner got a straight
+        // road with pavements and no corner in sight.
+        Ground::window_on(seed, &plan, centre, 92, 72, z)
     } else {
         Ground::window_on(seed, &plan, centre, 80, 34, z)
     };

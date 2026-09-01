@@ -188,7 +188,13 @@ impl Tile {
             Tile::Snow => ('\u{2591}', Colour::White),
             Tile::Water => ('\u{2248}', Colour::Blue),
             Tile::Tree => ('\u{2663}', Colour::LightGreen),
-            Tile::Earth => ('\u{2591}', Colour::Brown),
+            // **Not the same shade as snow.** Both were the light block
+            // and only the colour told them apart, so the moment a
+            // terminal had no colour — or somebody looked at a screenshot
+            // — a mountain town's snow-covered gardens and the undug
+            // ground of a cellar were the same character. The plain table
+            // had always distinguished them; the colour one had not.
+            Tile::Earth => ('\u{2592}', Colour::Brown),
             Tile::Ramp => ('\u{25B2}', Colour::Grey),
             Tile::Sky => (' ', Colour::Black),
             Tile::Stairs => ('>', Colour::White),
@@ -325,7 +331,7 @@ pub enum Room {
 pub fn ground_legend(with_vehicle: bool) -> String {
     let mut out = String::new();
     out.push_str("  you       @\n");
-    out.push_str("  country   \" grass/scrub   . sand   \u{2663} tree   \u{2588} rock   \u{2591} earth, snow   \u{2248} water\n");
+    out.push_str("  country   \" grass/scrub   . sand   \u{2663} tree   \u{2588} rock   \u{2591} snow   \u{2592} earth   \u{2248} water\n");
     out.push_str("  made      = carriageway   : marking   ; hard shoulder   - footway   _ parking\n");
     out.push_str("  building  \u{2588}\u{2500}\u{2502} wall   + door   o window   . floor\n");
     out.push_str("  vertical  > stair   V lift   \u{25B2} ramp   ' ' open air\n");
@@ -929,12 +935,33 @@ fn building_tile(
         && ix % 6 == 0
         && ix != lo_x
         && ix != hi_x;
+    // **A terrace's high flank is closed by next door's party wall — if
+    // there is a next door.**
+    //
+    // At the end of a terrace, or anywhere the next plot along is a
+    // street, there is no neighbour to supply it, and the building ran
+    // open to the air: you could stand at a till and look straight out of
+    // the side of the shop with no wall, no corner and no window. The
+    // roof was held up by nothing.
+    //
+    // So the flank is only left open where something is actually going to
+    // close it.
+    let closed_by_next_door = f.terraced && {
+        let (nx, ny) = (px + 1, py);
+        nx >= 0
+            && ny >= 0
+            && nx < plan.width as i64
+            && ny < plan.height as i64
+            && matches!(
+                plan.at(nx as usize, ny as usize),
+                Lot::House | Lot::Flats | Lot::Shop | Lot::Works
+            )
+    };
     let on_wall = party
         || ix == lo_x
         || iy == lo_y
         || iy == hi_y
-        // A terrace's high flank is closed by next door's party wall.
-        || (ix == hi_x && !f.terraced);
+        || (ix == hi_x && !closed_by_next_door);
     if on_wall {
         // Every house in the terrace gets its own front door.
         let mid = (lo_x + hi_x) / 2;
@@ -947,6 +974,16 @@ fn building_tile(
         // it, the same wall carries a window — you get in by the stair.
         if own_door && gz == 0 {
             return Tile::Door;
+        }
+        // **A dock is an opening in the back wall.** A bay the lorry
+        // reverses onto is no use if the wall behind it is solid: the
+        // goods have to come through. Real docks are roller shutters,
+        // which is a door that happens to be three metres wide.
+        if lot == Lot::Shop && gz == 0 && iy == hi_y {
+            let across = ix - lo_x;
+            if across % 8 < 2 {
+                return Tile::Door;
+            }
         }
         if party {
             return Tile::Wall;
@@ -1106,33 +1143,52 @@ fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) ->
     let centre_line = dashed(2, 9);
     let lane_line = dashed(4, 6);
     let edge_line = if junction { Tile::Road } else { Tile::Marking };
+    // **A footway does not run across a carriageway.**
+    //
+    // The junction flag stopped the *paint* and not the pavement, so
+    // every crossroads had a footway laid straight through it: the
+    // east-west carriageway ran in, hit three metres of kerbed footway,
+    // and resumed on the far side. Nothing could drive across it. At a
+    // real crossroads the whole box is carriageway and the footway stops
+    // at the kerb, which is exactly why there is a crossing painted on
+    // the approach rather than a path through the middle.
+    let foot = if junction { Tile::Road } else { Tile::Pavement };
+    // **And neither does a central reservation.** A dual carriageway
+    // whose reserve runs unbroken through a crossroads is a road you can
+    // drive into and not across: three metres of grass in the middle of
+    // the box. Real dual carriageways have a gap in the reservation at
+    // every junction, which is the whole reason a right turn is possible
+    // at some of them and not others.
+    let reserve = if junction { Tile::Road } else { Tile::Grass };
     match class {
         // ~10 m corridor: 5.5 m shared, 2 m footway each side.
         StreetClass::Lane => match across {
             0..=2 => Some(Tile::Road),
-            3..=4 => Some(Tile::Pavement),
+            3..=4 => Some(foot),
             _ => None,
         },
         // ~13 m: 7.3 m of two marked lanes, 2.5 m footways.
         StreetClass::Road => match across {
             0 => Some(centre_line),
             1..=3 => Some(Tile::Road),
-            4..=6 => Some(Tile::Pavement),
+            4..=6 => Some(foot),
             _ => None,
         },
         // ~25 m: a reserve, then 7.3 m of two lanes each way, then footways.
         StreetClass::Dual => match across {
-            0..=1 => Some(Tile::Grass), // central reserve
+            0..=1 => Some(reserve), // central reserve
             2 | 9 => Some(edge_line),   // solid: the edge of the carriageway
             5 => Some(lane_line),       // dashed: between the two lanes
             3..=8 => Some(Tile::Road),
-            10..=12 => Some(Tile::Pavement),
+            10..=12 => Some(foot),
             _ => None,
         },
         // ~33 m, which is the whole plot: reserve, 11 m of three lanes
         // each way, and a 3.3 m hard shoulder. **No footway** — you cannot
         // walk on a motorway, and a town it runs through is cut in two.
         StreetClass::Motorway => match across {
+            // A motorway's reserve is never broken — its junctions are
+            // grade-separated, which is what makes it a motorway.
             0..=1 => Some(Tile::Grass),
             2 | 12 => Some(edge_line),
             5 | 9 => Some(lane_line),
@@ -1164,10 +1220,35 @@ fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) 
             Tile::Floor
         };
     }
-    if from_front >= depth - 3 {
-        // Goods in, and the racking behind it.
-        return if from_front == depth - 1 && across % 5 == 2 {
-            Tile::Fitting(Fixture::LoadingBay)
+    // **The back of house is a separate room, and customers never see
+    // it.** The racking and the loading bays used to stand in the sales
+    // floor with the shelving, in one undivided space — so a shopper
+    // walked past the pallets and a lorry unloaded into the aisle.
+    //
+    // Real supermarkets put **20-30% of the floor area behind a wall**:
+    // stockroom, chill room, staff area and the dock. The wall has staff
+    // doors through it and nothing else.
+    let back_of_house = (depth / 4).max(4);
+    let partition = depth - back_of_house;
+    if from_front == partition {
+        // Staff doors through to the shop floor, at the ends of the
+        // aisles rather than in the middle of the run.
+        return if across % 9 == 4 {
+            Tile::Door
+        } else {
+            Tile::Wall
+        };
+    }
+    if from_front > partition {
+        // **The dock is where the lorry backs up to**, so it sits against
+        // the rear wall with the racking in front of it — you unload
+        // across the bay and put it straight on a rack.
+        return if from_front == depth - 1 {
+            if across % 8 < 2 {
+                Tile::Fitting(Fixture::LoadingBay)
+            } else {
+                Tile::Floor
+            }
         } else if across % 2 == 0 {
             Tile::Fitting(Fixture::StockRack)
         } else {
