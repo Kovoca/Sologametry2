@@ -269,6 +269,33 @@ impl Tile {
     /// shelving; you do not stand in a shelf bay, and letting people walk
     /// through the fittings would make a shop one open room with pictures
     /// of shelves on the floor.
+    /// **Does this stop a line of sight?**
+    ///
+    /// The first stage of a visibility contract the renderer did not
+    /// have. Every tile was drawn whether or not anything could see it,
+    /// so a shop's shelving was legible from the middle of the street and
+    /// a closed box van showed its seats, its tanks and its cargo to
+    /// anybody standing beside it. The assembly was leaking into the view.
+    ///
+    /// **A wall that stops a ray is itself visible** — you see the wall,
+    /// not through it — which is why opacity belongs to the boundary and
+    /// not to the space behind it.
+    pub fn opaque(self) -> bool {
+        match self {
+            // Boundaries.
+            Tile::Wall | Tile::Rock | Tile::Earth => true,
+            // **A door is shut until somebody opens it.** There is no open
+            // state yet, and guessing the permissive one would show the
+            // inside of every building in the town.
+            Tile::Door => true,
+            // Glazing: you see it, and you see through it.
+            Tile::Window => false,
+            // A canopy blocks the view along the ground.
+            Tile::Tree => true,
+            _ => false,
+        }
+    }
+
     pub fn walkable(self) -> bool {
         match self {
             Tile::Wall | Tile::Water | Tile::Tree | Tile::Window | Tile::Sky => false,
@@ -559,15 +586,26 @@ impl Ground {
     /// which is presentation and not terrain: the tile is a `Wall` either
     /// way, and one terrain type yields corners, tees and crossings.
     pub fn render(&self, person: Option<(i64, i64)>) -> String {
-        self.draw(person, false)
+        self.draw(person, false, true)
     }
 
     /// The same, in DF's sixteen colours.
     pub fn render_in_colour(&self, person: Option<(i64, i64)>) -> String {
-        self.draw(person, true)
+        self.draw(person, true, true)
     }
 
-    fn draw(&self, person: Option<(i64, i64)>, colour: bool) -> String {
+    /// **Everything, whether or not anybody can see it.** Clearly what it
+    /// is: an inspection view, not a player's view.
+    pub fn render_omniscient(&self, person: Option<(i64, i64)>, colour: bool) -> String {
+        self.draw(person, colour, false)
+    }
+
+    fn draw(&self, person: Option<(i64, i64)>, colour: bool, eyes: bool) -> String {
+        // Where the viewer is standing decides what there is to draw.
+        let seen = match (eyes, person) {
+            (true, Some(at)) => self.visible_from(at),
+            _ => vec![true; self.w * self.h],
+        };
         let mut out = String::with_capacity((self.w + 1) * self.h);
         let mut last: Option<Colour> = None;
         for y in 0..self.h {
@@ -577,8 +615,22 @@ impl Ground {
                 // ground, then the ground itself.
                 let d = if person == Some(here) {
                     Display { glyph: '@', fg: Colour::White }
+                } else if !seen[y * self.w + x] {
+                    // Out of sight. Not a void — simply not known, which
+                    // is a different thing from empty and will become
+                    // remembered ground once there is a memory to keep it
+                    // in.
+                    Display { glyph: ' ', fg: Colour::Black }
                 } else if let Some(part) = self.over[y * self.w + x] {
-                    Display { glyph: part.glyph(), fg: Colour::LightRed }
+                    // **What an enclosure shows is its outside.** A part
+                    // inside a closed hull is not on view to somebody
+                    // standing next to it, any more than a bed is visible
+                    // through a house wall.
+                    //
+                    // The inspection view is the exception, and it is the
+                    // whole reason to have one: it shows the assembly.
+                    let shown = if eyes { part.seen_from_outside() } else { part };
+                    Display { glyph: shown.glyph(), fg: Colour::LightRed }
                 } else {
                     let mut d = self.at(x, y).display();
                     // Topology decides a wall's line; the tile stays a wall.
@@ -603,6 +655,81 @@ impl Ground {
 
     /// A wall run includes its doors and windows, because those are holes
     /// in a wall and not gaps between two.
+    /// **What can actually be seen from a point**, by casting a ray to
+    /// every cell in the window.
+    ///
+    /// The contract, in order: boundary opacity, then line of sight, then
+    /// the visible set, then the renderer. Nothing is drawn that nothing
+    /// can see.
+    ///
+    /// The first opaque cell along a ray is visible and everything beyond
+    /// it is not — so a wall shows and the room behind it does not, and a
+    /// window shows *and* lets the ray through, which is what a window is.
+    pub fn visible_from(&self, eye: (i64, i64)) -> Vec<bool> {
+        let mut seen = vec![false; self.w * self.h];
+        let (ex, ey) = (eye.0 - self.origin.0, eye.1 - self.origin.1);
+        if ex < 0 || ey < 0 || ex as usize >= self.w || ey as usize >= self.h {
+            // Nobody is looking, so everything is drawn: this is the
+            // omniscient case and it is used deliberately.
+            return vec![true; self.w * self.h];
+        }
+        for ty in 0..self.h as i64 {
+            for tx in 0..self.w as i64 {
+                if self.ray_reaches((ex, ey), (tx, ty)) {
+                    seen[ty as usize * self.w + tx as usize] = true;
+                }
+            }
+        }
+        seen
+    }
+
+    /// **What stops a ray at this cell**: the ground, or whatever is
+    /// standing on it.
+    ///
+    /// A vehicle's hull is a boundary in exactly the way a wall is, which
+    /// is the whole point of having one contract rather than two — a box
+    /// van parked across a window blocks the view through it, and fixing
+    /// that once fixes containers, railcars and enclosed machinery with
+    /// it.
+    pub fn blocks_sight(&self, x: usize, y: usize) -> bool {
+        if let Some(part) = self.over[y * self.w + x] {
+            if part.opaque() {
+                return true;
+            }
+        }
+        self.at(x, y).opaque()
+    }
+
+    /// Bresenham from the eye to the target. Stops at the first opaque
+    /// cell — which is itself reached, because you can see a wall.
+    fn ray_reaches(&self, from: (i64, i64), to: (i64, i64)) -> bool {
+        let (mut x, mut y) = from;
+        let (dx, dy) = ((to.0 - x).abs(), -(to.1 - y).abs());
+        let (sx, sy) = (if x < to.0 { 1 } else { -1 }, if y < to.1 { 1 } else { -1 });
+        let mut err = dx + dy;
+        loop {
+            if (x, y) == to {
+                return true;
+            }
+            // The eye's own cell never blocks it.
+            if (x, y) != from && self.blocks_sight(x as usize, y as usize) {
+                return false;
+            }
+            let e2 = 2 * err;
+            if e2 >= dy {
+                err += dy;
+                x += sx;
+            }
+            if e2 <= dx {
+                err += dx;
+                y += sy;
+            }
+            if x < 0 || y < 0 || x as usize >= self.w || y as usize >= self.h {
+                return false;
+            }
+        }
+    }
+
     fn wall_glyph(&self, x: usize, y: usize) -> char {
         let joins = |dx: isize, dy: isize| -> bool {
             let (nx, ny) = (x as isize + dx, y as isize + dy);
@@ -919,10 +1046,31 @@ fn building_tile(
         (f.side, t - 1 - f.side)
     };
     if ix < lo_x || iy < lo_y || ix > hi_x || iy > hi_y {
-        return if gz == 0 {
-            open_ground(seed, plan.ground, gx, gy)
-        } else {
-            Tile::Sky
+        if gz != 0 {
+            return Tile::Sky;
+        }
+        // **What is behind a shop is a yard, not a forest.**
+        //
+        // The remainder of a plot was always the raw biome, so the back of
+        // every block in a city centre came out as woodland — and standing
+        // at a central junction in a city of three and a half million you
+        // looked past the buildings straight into taiga. The land use was
+        // reaching the plot; it stopped at the building's own footprint.
+        //
+        // A commercial plot's spare ground is made ground: hardstanding,
+        // bins, a service alley and somewhere to turn a van round. A
+        // house's is a garden, which *is* grass and trees, and that
+        // difference is the whole of it.
+        return match lot {
+            Lot::Shop | Lot::Works | Lot::Flats => {
+                // A little planting survives even on a service yard.
+                if hash(seed, gx, gy, 11) < 0.06 {
+                    Tile::Grass
+                } else {
+                    Tile::Parking
+                }
+            }
+            _ => open_ground(seed, plan.ground, gx, gy),
         };
     }
 

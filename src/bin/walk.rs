@@ -38,6 +38,9 @@ fn main() {
     let mut place = String::from("street");
     let mut z = 0i64;
     let mut plain = false;
+    // **The inspection view**: everything, whether or not anybody
+    // could see it. Named so it cannot be mistaken for a player's view.
+    let mut omniscient = false;
 
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -48,8 +51,9 @@ fn main() {
             "--where" => place = it.next().unwrap_or_else(|| "street".into()),
             "--z" => z = it.next().and_then(|v| v.parse().ok()).unwrap_or(0),
             "--plain" => plain = true,
+            "--omniscient" => omniscient = true,
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--plain] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--plain] [--omniscient] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -209,7 +213,21 @@ fn main() {
 
     println!();
     println!(
-        "{name} — standing on {:?} at tile {},{}, level {} — {:.0} m above the sea",
+        "{name} ({}) — standing on {:?} at tile {},{}, level {} — {:.0} m above the sea",
+        // **Say how big the place is.** Somebody asking to stand in a
+        // city centre and finding open country a plot away is owed the
+        // information that they are in a market town of forty thousand
+        // people in the mountains, not a city — the density field was
+        // reaching every plot it should, and the town simply was not one.
+        if pop >= 500_000.0 {
+            format!("a city of {:.1}M", pop / 1.0e6)
+        } else if pop >= 20_000.0 {
+            format!("a town of {:.0}k", pop / 1.0e3)
+        } else if pop >= 2_500.0 {
+            format!("a small town of {pop:.0}")
+        } else {
+            format!("a village of {pop:.0}")
+        },
         want,
         centre.0,
         centre.1,
@@ -269,9 +287,9 @@ fn main() {
     print!(
         "{}",
         if plain {
-            g.render(Some(centre))
+            if omniscient { g.render_omniscient(Some(centre), false) } else { g.render(Some(centre)) }
         } else {
-            g.render_in_colour(Some(centre))
+            if omniscient { g.render_omniscient(Some(centre), true) } else { g.render_in_colour(Some(centre)) }
         }
     );
     println!();

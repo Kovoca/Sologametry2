@@ -688,6 +688,35 @@ impl Vehicle {
 // ---------------------------------------------------------------------------
 
 impl Part {
+    /// **What somebody standing outside the vehicle actually sees.**
+    ///
+    /// Not a special case for lorries: it is the same rule a building
+    /// obeys. An enclosure shows its boundary and hides its contents, so
+    /// a closed box van presents hull, glazing, doors and wheels — and
+    /// the seats, tanks, cargo, batteries and controls behind that
+    /// bodywork are no more on view than a bed is through a house wall.
+    ///
+    /// **Interior parts are candidates only when a sightline reaches
+    /// them**: through a window, an open door, a missing roof or a
+    /// breach, or because the viewer is inside the compartment. None of
+    /// those states exist yet, so from outside the answer is always the
+    /// hull — which is the conservative half of the contract and the one
+    /// that was being broken.
+    pub fn seen_from_outside(self) -> Part {
+        match self {
+            // The boundary itself, and the things mounted through it.
+            Part::Frame { .. } | Part::Wheel { .. } => self,
+            // Bodywork stands in front of everything else.
+            _ => Part::Frame { heavy: true },
+        }
+    }
+
+    /// **Does this part stop a line of sight?** A hull does; a wheel
+    /// standing proud of it does not hide what is beyond the vehicle.
+    pub fn opaque(self) -> bool {
+        matches!(self, Part::Frame { .. })
+    }
+
     /// **Does this have to be bolted to something?**
     ///
     /// CDDA's rule, and it is the one that makes a part list a structure

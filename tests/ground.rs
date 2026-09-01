@@ -380,10 +380,22 @@ fn site_coverage(plan: &Plan, px: usize, py: usize) -> f64 {
                 continue;
             }
             total += 1;
+            // **Site coverage is footprint over plot**, so what counts is
+            // the building and not the ground around it. A commercial
+            // plot's spare land is a service yard — hardstanding, bins,
+            // somewhere to turn a van — which is made ground and is still
+            // not a building. Counting it put a block of flats at 98% of
+            // its plot, which is not a city centre, it is a monolith.
             if !matches!(
                 g.at(vx as usize, vy as usize),
-                Tile::Grass | Tile::Scrub | Tile::Sand | Tile::Rock
-                    | Tile::Snow | Tile::Water | Tile::Tree
+                Tile::Grass
+                    | Tile::Scrub
+                    | Tile::Sand
+                    | Tile::Rock
+                    | Tile::Snow
+                    | Tile::Water
+                    | Tile::Tree
+                    | Tile::Parking
             ) {
                 built += 1;
             }
