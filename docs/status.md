@@ -8,7 +8,7 @@ the specification describes the target.
 |---|---|
 | Commit | `ffed8f2` + Phase 0 work |
 | Source | 29 modules, ~22,100 lines |
-| Tests | 18 binaries, **161 tests, all passing** |
+| Tests | 18 binaries, **163 tests, all passing** |
 | Build | clean, no warnings that matter |
 
 This file replaces scattered "known gap" notes as the single place to look
@@ -141,13 +141,12 @@ somebody to detail creates their savings and demoting them destroys them.
 *This is what remains of the money hole, and it is the reification problem
 the specification's §15.3 describes rather than an accounting one.*
 
-**2. The wage share of household income is far too low.** Works, shops,
-the state and the building trade pay wages through the treasury; private
-services are **37% of employment** and are nobody's payroll, so profit
-does most of the work of getting money to households. Real: wages ~60% of
-household income, profit and rent ~20%. Profit is also distributed evenly
-to households in the firm's own town, which understates concentration of
-ownership considerably.
+**2. Profit is still half of household income.** The service sector now
+has a payroll, which took the wage share from 2% to **50%** against a real
+~60%. What is left over is profit because **firms pay no rent, no interest
+and no depreciation**, so all three fall into the residual. Profit is also
+distributed evenly to households in the firm's own town, which understates
+concentration of ownership considerably.
 
 **3. Shops are under-fitted.** Works employment lands at 8.8% of the
 workforce against a real ~10% for agriculture + manufacturing + mining +

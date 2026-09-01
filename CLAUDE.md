@@ -873,6 +873,90 @@ and shut the food chain down. Real grids shed this way too, and the
 heaviest users are *paid* to go first — an **interruptible tariff** buys a
 smelter cheaper power in exchange for being cut on demand.
 
+## Money, and who has it (`src/money.rs`)
+
+The economy priced everything and paid for nothing. Households took goods
+off a shelf without the shop being better off, a worker was paid out of
+nowhere, and a firm bought a thousand tonnes of ore without its balance
+moving, because it had no balance. `Person` balanced its own books, which
+proved a *pocket* was consistent, not that the money in it had come from
+anywhere.
+
+**One write path and a conservation assertion**, the same discipline
+`econ::Ledger` gives tonnage. Four kinds of account: firms, households
+pooled per town, the state, and **abroad** — a country is not a closed
+system and a trade deficit has to go somewhere.
+
+The point of it, which this file has been asking for:
+
+> Real disinflation with sticky wages causes *unemployment* for exactly
+> this reason — firms cannot afford the real wage.
+
+**A firm that cannot make payroll now employs fewer people**, smoothed
+over three weeks like every other labour decision here. Until a wage was
+somebody's cost the only thing that could idle a works was running out of
+inputs or power; a firm could sell nothing for a year and keep its whole
+staff on.
+
+### What turning it on found
+
+Employment collapsed to 68% unemployment, which was three structural gaps
+rather than one bug:
+
+- **Firms did not pay each other.** Only shops took money from households,
+  so every works upstream of a counter — farm, mill, mine, steelworks —
+  had no income whatever. A supply chain with no revenue in it.
+- **A shop bought and sold at the same price**, which gives every business
+  in the country a gross margin of exactly nothing: money in, all of it
+  straight back out, so no shop could pay a cashier and no mill a miller.
+  Real margins are **25-30% retail, 10-15% wholesale, 20-35%
+  manufacturing**, so a firm buys at three quarters of what the next stage
+  sells at. The market site went from 4 staff paid to 38,389.
+- **A service has no customer.** The hospital and the building trade
+  produce nothing shippable and sell to nobody — which is exactly what
+  makes them services — and had staff, costs and no revenue. The state
+  pays the hospital; households pay the builders. Builders went from 7
+  staff to 43,226.
+
+**Two ordering rules, both the same shape.** Services must be paid
+*before* wages fall due, because a hospital cannot meet today's payroll
+out of money it will be given this evening — and the state's
+affordability has to be carried from yesterday for the same reason, which
+is also how an under-funded state comes to under-staff its hospitals.
+
+### Taxing turnover at a GDP rate over-collects
+
+A tax rate is quoted against **value added**, and turnover counts the same
+value at every step of a supply chain. Levying `Capacity::tax_take` on
+every firm's takings took ten billion against six billion of spending and
+the treasury hoarded the difference — which is precisely why real turnover
+taxes are levied on the value added. The state now sizes its take to its
+wage bill and collects that, capped by what its capacity can reach.
+
+### Nobody imports a haircut
+
+Construction, hospitality, recreation and offices are **37% of
+employment** and not one of those people was paid by anybody: `services.rs`
+counted the posts and the money came from nowhere. That is why profit was
+doing four fifths of the work of getting money to households.
+
+A service is consumed where the people are, so the sector has no premises
+— it is posts against population. It has an **account per town** all the
+same, because it still needs somewhere to take money in and pay wages out
+of. Wage share of household income went **2% → 50%**, against a real 60%.
+
+**The rest is still profit, and the honest reason is that firms pay no
+rent, no interest and no depreciation here**, so every one of those falls
+into the residual. Profit is also paid evenly to households in the firm's
+own town, which understates concentration of ownership considerably —
+`building.rs` already knows almost every *business* is one person while
+almost every *job* is at a company.
+
+**Known gap: a sampled person's pocket is not drawn from the household
+pool.** The aggregate conserves and `Person` conserves, but they are not
+yet the same money — promoting somebody to detail creates their savings.
+That is the reification problem, not an accounting one.
+
 ## Who actually moves the goods (`src/logistics.rs`)
 
 There were two ways for a tonne to travel and neither was a haulier.
