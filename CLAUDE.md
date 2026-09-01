@@ -2452,6 +2452,40 @@ these and there is none here, so the characters have to do it.
 One legend function per view (`townplan::plan_legend`, `ground::
 ground_legend`), so every binary says the same thing.
 
+### Hue is the class, brightness is the rank
+
+Colour was there and doing almost nothing. **Sixteen colours are really
+eight hues at two brightnesses**, and two brightnesses of one hue do not
+tell two *kinds of thing* apart at a glance: a wall in grey and a rock
+face in dark grey are the same full block a shade apart, so a building in
+mountain country read as a crag. Six separate things were dark grey. A
+till and a beach were both yellow.
+
+So hue carries the class and brightness is left free to carry rank within
+it. **Housing brown, retail magenta, industry red** — the same three at
+32 m to the character and at 1 m, so a `S` on the town plan and a `$` on
+the shop floor are the same colour. On the plan, road brightness is the
+traffic: a lane dim, a motorway white.
+
+- **The rule is the pair, and the hue not the shade.** `no_two_kinds_of_
+  thing_are_drawn_the_same` tests glyph against colour *family*, because
+  exact equality passes on the palette this replaced — nothing was ever
+  literally identical, it was merely illegible.
+- **Dimming must keep the hue.** Ground on another level was flattened to
+  one grey, which threw away what it was: a whole town downhill came out
+  as featureless smudge. There is no second shade of every colour to
+  spend, so the level is carried by the ANSI **faint** attribute instead
+  and grass a level down is still green. Faint has to be cleared
+  explicitly or everything after the first dim tile stays dim.
+- **A legend in plain text against a coloured map is half a key.** It
+  gives you the glyph and leaves you guessing which of the six grey things
+  on the screen it meant. Every entry is drawn in its own colour.
+- Every view takes `--plain`, and the plain glyph tables still
+  distinguish everything on their own. **Colour is a second axis over the
+  rule, not a replacement for it** — which is why the plan's country
+  glyphs were changed once already, when desert was `.` and tundra `-`
+  and a town in the desert had streets you could not see.
+
 **Town plan** (`town`, `zoom` step 3) — 32 m to the character:
 
 | | |

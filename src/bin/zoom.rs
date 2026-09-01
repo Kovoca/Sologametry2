@@ -33,14 +33,16 @@ fn main() {
     let mut rank = 3usize;
     let mut which = 4usize;
 
+    let mut plain = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
             "--seed" => seed = it.next().and_then(|v| v.parse().ok()).unwrap_or(seed),
             "--rank" => rank = it.next().and_then(|v| v.parse().ok()).unwrap_or(3).max(1),
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
+            "--plain" => plain = true,
             "--help" | "-h" => {
-                println!("usage: zoom [--seed N] [--rank K] [--which 0-4]");
+                println!("usage: zoom [--seed N] [--rank K] [--which 0-4] [--plain]");
                 std::process::exit(0);
             }
             other => {
@@ -116,7 +118,7 @@ fn main() {
         loc.size as f64 * METRES_PER_LOCALITY / 1000.0
     );
     println!();
-    for line in loc.render().lines() {
+    for line in if plain { loc.render() } else { loc.render_in_colour() }.lines() {
         println!("  {line}");
     }
 
@@ -136,11 +138,11 @@ fn main() {
     );
     println!("{name}, {} people", fmt_pop(pop));
     println!();
-    for line in plan.render().lines() {
+    for line in if plain { plan.render() } else { plan.render_in_colour() }.lines() {
         println!("  {line}");
     }
     println!();
-    println!("{}", scale_sim::townplan::plan_legend(plan.ground));
+    println!("{}", scale_sim::townplan::plan_legend_in(plan.ground, !plain));
     println!();
     println!(
         "  {} houses and {} blocks of flats; {} shops.",

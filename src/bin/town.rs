@@ -41,6 +41,7 @@ fn main() {
     // the two-thousandth settlement still holds a quarter of a million
     // people, which is a hole in `settlement.rs` and not in the layout.
     let mut pop_override: Option<f64> = None;
+    let mut plain = false;
 
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -50,8 +51,9 @@ fn main() {
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
             "--size" => size = it.next().and_then(|v| v.parse().ok()).unwrap_or(72).clamp(16, 200),
             "--pop" => pop_override = it.next().and_then(|v| v.parse().ok()),
+            "--plain" => plain = true,
             "--help" | "-h" => {
-                println!("usage: town [--seed N] [--rank K] [--which 0-4] [--size N] [--pop N]");
+                println!("usage: town [--seed N] [--rank K] [--which 0-4] [--size N] [--pop N] [--plain]");
                 std::process::exit(0);
             }
             other => {
@@ -98,9 +100,9 @@ fn main() {
         size as f64 * METRES_PER_PLOT / 1000.0
     );
     println!();
-    print!("{}", plan.render());
+    print!("{}", if plain { plan.render() } else { plan.render_in_colour() });
     println!();
-    println!("{}", scale_sim::townplan::plan_legend(plan.ground));
+    println!("{}", scale_sim::townplan::plan_legend_in(plan.ground, !plain));
     println!();
 
     let houses = plan.count(Lot::House) + plan.count(Lot::Flats);

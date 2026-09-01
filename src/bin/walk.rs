@@ -293,7 +293,7 @@ fn main() {
         }
     );
     println!();
-    println!("{}", scale_sim::ground::ground_legend(true));
+    println!("{}", scale_sim::ground::ground_legend_in(true, !plain));
     println!();
     let here = g.at(
         (centre.0 - g.origin.0) as usize,

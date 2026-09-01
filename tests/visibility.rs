@@ -280,3 +280,171 @@ fn asking_for_a_level_by_name_gives_that_level() {
         "the ground under a street is not solid"
     );
 }
+
+/// **A glyph must not mean two things in the same picture.**
+///
+/// This project already learned that once, when a town in desert drew open
+/// ground as `.` — a lane — and a parked lorry came out as a run of `#`
+/// because a frame was drawn like a wall. Colour is how a roguelike
+/// normally separates these, so the rule is really about the *pair*: no
+/// two kinds of thing may share both glyph and colour.
+///
+/// It was quietly broken in several places. Six things were dark grey — a
+/// rock face, a carriageway, a hard shoulder and a car park among them.
+/// A wall and a rock face were the same full block one shade apart, so a
+/// building in mountain country read as a crag. A till and a beach were
+/// both yellow. And the level-dimming flattened everything off your own
+/// level to one grey, which threw away what it was: a whole town downhill
+/// came out as featureless smudge.
+#[test]
+fn no_two_kinds_of_thing_are_drawn_the_same() {
+    use scale_sim::building::Fixture;
+    use scale_sim::ground::Furnishing;
+
+    let every: Vec<(Tile, &str)> = vec![
+        (Tile::Grass, "grass"),
+        (Tile::Scrub, "scrub"),
+        (Tile::Sand, "sand"),
+        (Tile::Rock, "rock"),
+        (Tile::Snow, "snow"),
+        (Tile::Water, "water"),
+        (Tile::Tree, "tree"),
+        (Tile::Road, "carriageway"),
+        (Tile::Pavement, "footway"),
+        (Tile::Marking, "marking"),
+        (Tile::Shoulder, "hard shoulder"),
+        (Tile::Parking, "yard"),
+        (Tile::Wall, "wall"),
+        (Tile::Floor, "floor"),
+        (Tile::Door, "door"),
+        (Tile::Window, "window"),
+        (Tile::Earth, "earth"),
+        (Tile::Ramp, "ramp"),
+        (Tile::Stairs, "stair"),
+        (Tile::Lift, "lift"),
+        (Tile::Fitting(Fixture::Till), "till"),
+        (Tile::Fitting(Fixture::Shelving), "shelving"),
+        (Tile::Fitting(Fixture::StockRack), "racking"),
+        (Tile::Fitting(Fixture::LoadingBay), "loading bay"),
+        (Tile::Fitting(Fixture::Counter), "counter"),
+        (Tile::Furnishing(Furnishing::Bed), "bed"),
+        (Tile::Furnishing(Furnishing::Table), "table"),
+        // A vehicle frame is '+' and so is a door, and a lorry backed up
+        // to a loading bay puts both in one picture.
+        (Tile::Vehicle(Part::Frame { heavy: true }), "vehicle frame"),
+        (Tile::Vehicle(Part::Wheel { heavy: true }), "wheel"),
+    ];
+
+    // **Same glyph and same hue is a collision**, even at different
+    // brightnesses — sixteen colours are eight hues twice over, and two
+    // shades of grey on the same full block do not tell a wall from a
+    // rock face. That is the check; exact equality would have passed on
+    // the palette this replaced.
+    let mut seen: Vec<(char, &str, &str)> = Vec::new();
+    for (t, name) in &every {
+        let d = t.display();
+        if let Some((_, _, other)) = seen
+            .iter()
+            .find(|(g, fam, _)| *g == d.glyph && *fam == d.fg.family())
+        {
+            panic!(
+                "a {name} and a {other} are both '{}' in {}, so nothing in \
+                 the picture tells them apart",
+                d.glyph,
+                d.fg.family()
+            );
+        }
+        seen.push((d.glyph, d.fg.family(), name));
+    }
+
+    // **Dimming keeps the hue.** Sixteen colours cannot carry a second
+    // shade of every one, so the level is carried by the faint attribute
+    // and grass a level down is still green.
+    let (seed, plan, spot) = a_town();
+    let g = Ground::window(seed, &plan, spot, 92, 72);
+    let lower: Vec<usize> = (0..g.tiles.len()).filter(|i| g.rel[*i] != 0).collect();
+    assert!(!lower.is_empty(), "nothing off the eye's level to check");
+    let mut hues = std::collections::BTreeSet::new();
+    for i in lower {
+        hues.insert(format!("{:?}", g.tiles[i].display().fg));
+    }
+    assert!(
+        hues.len() > 1,
+        "everything off your own level is drawn in one colour ({hues:?}), so \
+         the ground below a step is unreadable"
+    );
+}
+
+/// **The same rule one rung up.** A town plan is drawn at 32 m to the
+/// character, and it has the identical problem: seventeen kinds of thing
+/// in one picture, most of them letters. Whatever country the town stands
+/// in, no two classes may share a glyph and a hue.
+///
+/// This is why the plan's country glyphs were changed once already —
+/// desert was `.` and tundra `-`, which are a lane and a road, so a town
+/// in the desert had streets you could not see. Colour is a second axis
+/// over the same rule, not a replacement for it.
+#[test]
+fn a_town_plan_never_draws_two_classes_alike() {
+    use scale_sim::townplan::{ground_colour, ground_glyph, lot_colour, road_colour};
+    use scale_sim::townplan::{Lot, StreetClass};
+    use scale_sim::world::Biome;
+
+    let town: Vec<(char, &str, &str)> = [
+        (Lot::House, "houses"),
+        (Lot::Flats, "flats"),
+        (Lot::Shop, "a shop"),
+        (Lot::Works, "works"),
+        (Lot::Park, "a park"),
+    ]
+    .iter()
+    .map(|(l, n)| (l.glyph(), lot_colour(*l).family(), *n))
+    .chain(
+        [
+            (StreetClass::Lane, "a lane"),
+            (StreetClass::Road, "a road"),
+            (StreetClass::Dual, "a dual carriageway"),
+            (StreetClass::Motorway, "a motorway"),
+        ]
+        .iter()
+        .map(|(c, n)| (c.glyph(), road_colour(*c).family(), *n)),
+    )
+    .collect();
+
+    for (i, (g, fam, name)) in town.iter().enumerate() {
+        for (og, ofam, other) in town.iter().skip(i + 1) {
+            assert!(
+                !(g == og && fam == ofam),
+                "{name} and {other} are both '{g}' in {fam}"
+            );
+        }
+    }
+
+    // A plan holds one country at a time, so the country is checked
+    // against the town rather than against every other country.
+    for b in [
+        Biome::Ocean,
+        Biome::Shallows,
+        Biome::Beach,
+        Biome::Desert,
+        Biome::Savanna,
+        Biome::Grassland,
+        Biome::Shrubland,
+        Biome::Forest,
+        Biome::Rainforest,
+        Biome::Swamp,
+        Biome::Taiga,
+        Biome::Tundra,
+        Biome::Mountain,
+        Biome::Snowcap,
+    ] {
+        let (g, fam) = (ground_glyph(b), ground_colour(b).family());
+        for (og, ofam, other) in &town {
+            assert!(
+                !(g == *og && fam == *ofam),
+                "in a town standing in {b:?}, the country and {other} are \
+                 both '{g}' in {fam}"
+            );
+        }
+    }
+}

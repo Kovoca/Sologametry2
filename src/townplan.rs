@@ -24,6 +24,7 @@
 //! - Density falls off from the centre roughly exponentially — Clark's
 //!   law, and it holds remarkably well across cities and centuries.
 
+use crate::ground::Colour;
 use crate::rng::Rng;
 use crate::world::Biome;
 
@@ -796,24 +797,93 @@ impl Plan {
 
     /// The plan as text, the way both games draw it.
     pub fn render(&self) -> String {
+        self.draw(false)
+    }
+
+    /// **The same plan in DF's sixteen colours.**
+    ///
+    /// A town plan is a wall of letters — `h H S W , ~ b d ; " * f s t u ^
+    /// A` — and at four hundred plots across, the shape of a place is not
+    /// legible from the letters alone. Hue carries the class (housing,
+    /// retail, industry, open country, water, made ground) and brightness
+    /// carries the rank within it, which is the same division the ground
+    /// view uses one metre at a time.
+    pub fn render_in_colour(&self) -> String {
+        self.draw(true)
+    }
+
+    fn draw(&self, colour: bool) -> String {
         let mut out = String::with_capacity((self.width + 1) * self.height);
+        let mut last: Option<Colour> = None;
         for y in 0..self.height {
             for x in 0..self.width {
                 let l = self.at(x, y);
-                out.push(if l == Lot::Open {
-                    ground_glyph(self.ground)
+                let (glyph, fg) = if l == Lot::Open {
+                    (ground_glyph(self.ground), ground_colour(self.ground))
                 } else if let Some(c) = self.street_class(x, y) {
                     // The hierarchy has to be visible from up here too, or
                     // the town reads as a uniform grid right up until you
-                    // walk down onto it.
-                    c.glyph()
+                    // walk down onto it. **Brightness is the traffic**: a
+                    // lane is dim and a motorway is white.
+                    (c.glyph(), road_colour(c))
                 } else {
-                    l.glyph()
-                });
+                    (l.glyph(), lot_colour(l))
+                };
+                if colour && last != Some(fg) {
+                    out.push_str(fg.ansi());
+                    last = Some(fg);
+                }
+                out.push(glyph);
             }
             out.push('\n');
         }
+        if colour {
+            out.push_str("\x1b[0m");
+        }
         out
+    }
+}
+
+/// **Hue is the class, brightness the rank.** Housing is brown, retail
+/// magenta and industry red — the same three the ground view uses for a
+/// dwelling, a shop fitting and a works.
+pub fn lot_colour(l: Lot) -> Colour {
+    match l {
+        Lot::House => Colour::Brown,
+        Lot::Flats => Colour::Yellow,
+        Lot::Shop => Colour::LightMagenta,
+        Lot::Works => Colour::LightRed,
+        Lot::Park => Colour::Green,
+        Lot::Street => Colour::Grey,
+        Lot::Open => Colour::DarkGrey,
+    }
+}
+
+pub fn road_colour(c: StreetClass) -> Colour {
+    match c {
+        StreetClass::Lane => Colour::DarkGrey,
+        StreetClass::Road => Colour::Grey,
+        StreetClass::Dual => Colour::White,
+        StreetClass::Motorway => Colour::White,
+    }
+}
+
+/// What the unbuilt country is coloured, which is what it is made of.
+pub fn ground_colour(b: Biome) -> Colour {
+    use Biome::*;
+    match b {
+        Ocean | Shallows => Colour::LightBlue,
+        Beach => Colour::Yellow,
+        Desert => Colour::Yellow,
+        Savanna => Colour::Brown,
+        Grassland => Colour::Green,
+        Shrubland => Colour::Brown,
+        Forest | Rainforest => Colour::LightGreen,
+        Swamp => Colour::Cyan,
+        Taiga => Colour::Green,
+        Tundra => Colour::Grey,
+        Mountain => Colour::DarkGrey,
+        Snowcap => Colour::White,
     }
 }
 
@@ -865,16 +935,51 @@ pub fn ground_glyph(b: Biome) -> char {
 /// **One legend for the plot view**, so every binary that draws a town
 /// says the same thing about it.
 pub fn plan_legend(ground: Biome) -> String {
+    plan_legend_in(ground, false)
+}
+
+/// The same key, painted the way the plan is, so the two can be matched.
+pub fn plan_legend_in(ground: Biome, colour: bool) -> String {
     let mut out = String::new();
-    out.push_str("  streets   . lane   - road   = dual carriageway   # motorway
-");
-    out.push_str("  built     h houses   H flats   S shop   W works   , park
-");
+    let item = |g: char, c: Colour, name: &str| -> String {
+        if colour {
+            format!("{}{g}{} {name}", c.ansi(), Colour::Grey.ansi())
+        } else {
+            format!("{g} {name}")
+        }
+    };
+    if colour {
+        out.push_str(Colour::Grey.ansi());
+    }
+    out.push_str("  streets   ");
+    for (r, name) in [
+        (StreetClass::Lane, "lane"),
+        (StreetClass::Road, "road"),
+        (StreetClass::Dual, "dual carriageway"),
+        (StreetClass::Motorway, "motorway"),
+    ] {
+        out.push_str(&item(r.glyph(), road_colour(r), name));
+        out.push_str("   ");
+    }
+    out.push_str("\n  built     ");
+    for (l, name) in [
+        (Lot::House, "houses"),
+        (Lot::Flats, "flats"),
+        (Lot::Shop, "shop"),
+        (Lot::Works, "works"),
+        (Lot::Park, "park"),
+    ] {
+        out.push_str(&item(l.glyph(), lot_colour(l), name));
+        out.push_str("   ");
+    }
     out.push_str(&format!(
-        "  country   {}  the {:?} the town stands in",
-        ground_glyph(ground),
+        "\n  country   {}the {:?} the town stands in",
+        item(ground_glyph(ground), ground_colour(ground), ""),
         ground,
     ));
+    if colour {
+        out.push_str("\x1b[0m");
+    }
     out
 }
 

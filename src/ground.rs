@@ -138,6 +138,28 @@ pub enum Colour {
 }
 
 impl Colour {
+    /// **The hue, with the two brightnesses folded together.**
+    ///
+    /// Sixteen colours are really eight hues at two brightnesses, and two
+    /// brightnesses of one hue are not enough to tell two *kinds of thing*
+    /// apart at a glance — grey and dark grey on the same full block made
+    /// a building in mountain country read as a crag. Brightness is
+    /// therefore free to carry something else (how close, how lit, whether
+    /// it matters); it is the hue that has to carry the class.
+    ///
+    /// Brown is dark yellow, which is why the two share a family.
+    pub fn family(self) -> &'static str {
+        match self {
+            Colour::Black | Colour::DarkGrey | Colour::Grey | Colour::White => "grey",
+            Colour::Green | Colour::LightGreen => "green",
+            Colour::Blue | Colour::LightBlue => "blue",
+            Colour::Cyan | Colour::LightCyan => "cyan",
+            Colour::Red | Colour::LightRed => "red",
+            Colour::Magenta | Colour::LightMagenta => "magenta",
+            Colour::Brown | Colour::Yellow => "yellow",
+        }
+    }
+
     /// The ANSI escape for a foreground colour.
     pub fn ansi(self) -> &'static str {
         match self {
@@ -168,6 +190,12 @@ impl Colour {
 pub struct Display {
     pub glyph: char,
     pub fg: Colour,
+    /// **Drawn faint, because it is not on your level.** Sixteen colours
+    /// cannot carry a second shade of every hue, so the level is carried
+    /// by the ANSI faint attribute instead and the hue is left alone.
+    /// Flattening everything below the eye to one grey threw away what it
+    /// was: a whole town downhill came out as featureless smudge.
+    pub dim: bool,
 }
 
 impl Tile {
@@ -186,7 +214,7 @@ impl Tile {
             Tile::Sand => ('.', Colour::Yellow),
             Tile::Rock => ('\u{2588}', Colour::DarkGrey),
             Tile::Snow => ('\u{2591}', Colour::White),
-            Tile::Water => ('\u{2248}', Colour::Blue),
+            Tile::Water => ('\u{2248}', Colour::LightBlue),
             Tile::Tree => ('\u{2663}', Colour::LightGreen),
             // **Not the same shade as snow.** Both were the light block
             // and only the colour told them apart, so the moment a
@@ -200,14 +228,22 @@ impl Tile {
             Tile::Stairs => ('>', Colour::White),
             Tile::Lift => ('V', Colour::LightCyan),
             Tile::Road => ('=', Colour::DarkGrey),
-            Tile::Marking => (':', Colour::White),
+            Tile::Marking => (':', Colour::Yellow),
             Tile::Shoulder => (';', Colour::DarkGrey),
             Tile::Pavement => ('-', Colour::Grey),
             Tile::Parking => ('_', Colour::DarkGrey),
-            Tile::Wall => ('\u{2588}', Colour::Grey),
+            // **Masonry is not rock.** Both are the full block, so with a
+            // wall in grey and a rock face in dark grey the two were a
+            // shade apart and a building in mountain country read as a
+            // crag. Colour carries the class, the glyph carries which one.
+            Tile::Wall => ('\u{2588}', Colour::Brown),
             Tile::Floor => ('.', Colour::Grey),
-            Tile::Door => ('+', Colour::Brown),
+            // A way through is worth finding, so it is bright.
+            Tile::Door => ('+', Colour::Yellow),
             Tile::Window => ('o', Colour::LightCyan),
+            // **Nothing else is magenta**, which is the point: shop
+            // fittings shared yellow with sand, so a till on a shop floor
+            // and a beach were the same colour on the same map.
             Tile::Fitting(f) => (
                 match f {
                     Fixture::Till => '$',
@@ -216,12 +252,12 @@ impl Tile {
                     Fixture::LoadingBay => 'L',
                     Fixture::Counter => 'C',
                 },
-                Colour::Yellow,
+                Colour::LightMagenta,
             ),
             Tile::Furnishing(f) => (f.glyph(), Colour::Brown),
             Tile::Vehicle(p) => (p.glyph(), Colour::LightRed),
         };
-        Display { glyph, fg }
+        Display { glyph, fg, dim: false }
     }
 
     pub fn glyph(self) -> char {
@@ -356,18 +392,114 @@ pub enum Room {
 }
 
 pub fn ground_legend(with_vehicle: bool) -> String {
+    ground_legend_in(with_vehicle, false)
+}
+
+/// **The same key, painted the same way the map is.**
+///
+/// A legend in plain text against a coloured map is only half a key: it
+/// tells you the glyph and leaves you to guess which of the six grey
+/// things on the screen it meant. Each entry is drawn in its own colour,
+/// so the eye can match it.
+pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
     let mut out = String::new();
-    out.push_str("  you       @\n");
-    out.push_str("  country   \" grass/scrub   . sand   \u{2663} tree   \u{2588} rock   \u{2591} snow   \u{2592} earth   \u{2248} water\n");
-    out.push_str("  made      = carriageway   : marking   ; hard shoulder   - footway   _ parking\n");
-    out.push_str("  building  \u{2588}\u{2500}\u{2502} wall   + door   o window   . floor\n");
-    out.push_str("  vertical  > stair   V lift   \u{25B2} ramp   ' ' open air\n");
-    out.push_str("  fittings  $ till   S shelving   R racking   L loading bay   C counter\n");
-    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe");
+    let line = |head: &str, items: &[(Tile, &str)]| -> String {
+        let mut row = format!("  {head:<9} ");
+        for (i, (t, name)) in items.iter().enumerate() {
+            if i > 0 {
+                row.push_str("   ");
+            }
+            let d = t.display();
+            if colour {
+                row.push_str(d.fg.ansi());
+            }
+            row.push(d.glyph);
+            if colour {
+                row.push_str(Colour::Grey.ansi());
+            }
+            row.push(' ');
+            row.push_str(name);
+        }
+        row.push('\n');
+        row
+    };
+    if colour {
+        out.push_str(Colour::Grey.ansi());
+    }
+    out.push_str(&format!(
+        "  {:<9} {}@{} you\n",
+        "you",
+        if colour { Colour::White.ansi() } else { "" },
+        if colour { Colour::Grey.ansi() } else { "" }
+    ));
+    out.push_str(&line(
+        "country",
+        &[
+            (Tile::Grass, "grass"),
+            (Tile::Scrub, "scrub"),
+            (Tile::Tree, "tree"),
+            (Tile::Sand, "sand"),
+            (Tile::Rock, "rock"),
+            (Tile::Snow, "snow"),
+            (Tile::Earth, "earth"),
+            (Tile::Water, "water"),
+        ],
+    ));
+    out.push_str(&line(
+        "made",
+        &[
+            (Tile::Road, "carriageway"),
+            (Tile::Marking, "marking"),
+            (Tile::Shoulder, "hard shoulder"),
+            (Tile::Pavement, "footway"),
+            (Tile::Parking, "yard"),
+        ],
+    ));
+    out.push_str(&line(
+        "building",
+        &[
+            (Tile::Wall, "wall"),
+            (Tile::Door, "door"),
+            (Tile::Window, "window"),
+            (Tile::Floor, "floor"),
+        ],
+    ));
+    out.push_str(&line(
+        "vertical",
+        &[
+            (Tile::Stairs, "stair"),
+            (Tile::Lift, "lift"),
+            (Tile::Ramp, "ramp"),
+            (Tile::Sky, "open air"),
+        ],
+    ));
+    out.push_str(&line(
+        "fittings",
+        &[
+            (Tile::Fitting(Fixture::Till), "till"),
+            (Tile::Fitting(Fixture::Shelving), "shelving"),
+            (Tile::Fitting(Fixture::StockRack), "racking"),
+            (Tile::Fitting(Fixture::LoadingBay), "loading bay"),
+            (Tile::Fitting(Fixture::Counter), "counter"),
+        ],
+    ));
+    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe\n");
     if with_vehicle {
-        out.push_str("\n  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank");
-        out.push_str("\n            % seat   ! controls   b battery   a alternator");
-        out.push_str("\n            p solar   x refrigeration   w workshop rig   Y land gear");
+        out.push_str("  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank\n");
+        out.push_str("            % seat   ! controls   b battery   a alternator\n");
+        out.push_str("            p solar   x refrigeration   w workshop rig   Y land gear\n");
+    }
+    // **Faint means another level**, which is the one thing on the map
+    // that is not a glyph at all.
+    if colour {
+        out.push_str("  level     ");
+        out.push_str("\x1b[2m");
+        out.push_str(Colour::Grey.ansi());
+        out.push_str("faint");
+        out.push_str("\x1b[22m");
+        out.push_str(Colour::Grey.ansi());
+        out.push_str(" ground above or below the one you stand on\n");
+        out.push_str("\x1b[0m");
     }
     out
 }
@@ -693,20 +825,20 @@ impl Ground {
             _ => vec![true; self.w * self.h],
         };
         let mut out = String::with_capacity((self.w + 1) * self.h);
-        let mut last: Option<Colour> = None;
+        let mut last: Option<(Colour, bool)> = None;
         for y in 0..self.h {
             for x in 0..self.w {
                 let here = (self.origin.0 + x as i64, self.origin.1 + y as i64);
                 // Priority: the player, then whatever stands on the
                 // ground, then the ground itself.
                 let d = if person == Some(here) {
-                    Display { glyph: '@', fg: Colour::White }
+                    Display { glyph: '@', fg: Colour::White, dim: false }
                 } else if !seen[y * self.w + x] {
                     // Out of sight. Not a void — simply not known, which
                     // is a different thing from empty and will become
                     // remembered ground once there is a memory to keep it
                     // in.
-                    Display { glyph: ' ', fg: Colour::Black }
+                    Display { glyph: ' ', fg: Colour::Black, dim: false }
                 } else if let Some(part) = self.over[y * self.w + x] {
                     // **What an enclosure shows is its outside.** A part
                     // inside a closed hull is not on view to somebody
@@ -716,7 +848,7 @@ impl Ground {
                     // The inspection view is the exception, and it is the
                     // whole reason to have one: it shows the assembly.
                     let shown = if eyes { part.seen_from_outside() } else { part };
-                    Display { glyph: shown.glyph(), fg: Colour::LightRed }
+                    Display { glyph: shown.glyph(), fg: Colour::LightRed, dim: false }
                 } else {
                     let mut d = self.at(x, y).display();
                     // Topology decides a wall's line; the tile stays a wall.
@@ -728,13 +860,16 @@ impl Ground {
                     // unchanged — it is the same ground, seen from above
                     // or below.
                     if self.rel[y * self.w + x] != 0 {
-                        d.fg = Colour::DarkGrey;
+                        d.dim = true;
                     }
                     d
                 };
-                if colour && last != Some(d.fg) {
+                if colour && last != Some((d.fg, d.dim)) {
+                    // Faint has to be cleared explicitly, or every colour
+                    // after the first dim tile stays dim.
+                    out.push_str(if d.dim { "\x1b[2m" } else { "\x1b[22m" });
                     out.push_str(d.fg.ansi());
-                    last = Some(d.fg);
+                    last = Some((d.fg, d.dim));
                 }
                 out.push(d.glyph);
             }

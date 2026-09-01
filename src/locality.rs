@@ -246,13 +246,37 @@ impl Locality {
 
     /// Drawn out, one character to the patch.
     pub fn render(&self) -> String {
+        self.draw(false)
+    }
+
+    /// The same, in colour: the country by what it is made of, and a river
+    /// blue, so a watercourse can be picked out of a wooded valley.
+    pub fn render_in_colour(&self) -> String {
+        self.draw(true)
+    }
+
+    fn draw(&self, colour: bool) -> String {
+        use crate::ground::Colour;
         let mut out = String::new();
+        let mut last: Option<Colour> = None;
         for y in 0..self.size {
             for x in 0..self.size {
                 let p = self.at(x, y);
-                out.push(if p.river { '+' } else { glyph(p.biome) });
+                let (g, c) = if p.river {
+                    ('+', Colour::LightBlue)
+                } else {
+                    (glyph(p.biome), crate::townplan::ground_colour(p.biome))
+                };
+                if colour && last != Some(c) {
+                    out.push_str(c.ansi());
+                    last = Some(c);
+                }
+                out.push(g);
             }
             out.push('\n');
+        }
+        if colour {
+            out.push_str("\x1b[0m");
         }
         out
     }
