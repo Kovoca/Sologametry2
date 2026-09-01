@@ -436,6 +436,16 @@ const DOMESTIC_STEEL_SHARE: f64 = 0.70;
 /// about 40 is scrub that nobody logs.
 const WORKABLE_TIMBER_M3_HA: f32 = 40.0;
 
+/// **Slack in the building trade.**
+///
+/// Every other works in the country is built at 1.1-1.35 times its rated
+/// demand. The building trade was sized at exactly the fabric a country
+/// puts up — which is also, to within two percent, exactly what its
+/// existing stock needs to stand still. A trade with no slack cannot both
+/// maintain what exists and recover from a year when it was short of
+/// cement, so the fabric ratchets downward and never comes back.
+const BUILDER_HEADROOM: f64 = 1.35;
+
 fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endowment {
     let g = &world.geology;
     let mut e = Endowment {
@@ -914,7 +924,14 @@ impl Region {
         // of cement a year, and at 0.62 t of cement per tonne of fabric
         // that is 0.81 t of building put up per person per year.
         let fabric_day = nation_pop * 0.81 / 365.0;
-        let cement_day = fabric_day * 0.62;
+        // **What the trade can actually lay, not what it must.** The
+        // builders are built with the same headroom every other works
+        // gets, so the kilns and the yards have to be sized against that
+        // and not against the bare requirement — otherwise giving the
+        // trade slack simply makes it short of cement instead, which is
+        // what happened the first time.
+        let fabric_built = fabric_day * BUILDER_HEADROOM;
+        let cement_day = fabric_built * 0.62;
         // **A hospital's supplies.** ~20 kg a head a year of drugs,
         // dressings, fluids and disposables.
         let medicine_day = nation_pop * 0.02 / 365.0;
@@ -922,7 +939,7 @@ impl Region {
             + machinery_day * 0.08
             + medicine_day * 0.25
             + nation_pop * 0.008 / 365.0 * 0.15;
-        let timber_day = goods_made * 0.20 + fabric_day * 0.06;
+        let timber_day = goods_made * 0.20 + fabric_built * 0.06;
         // **Medicines are synthesised from chemicals**, and the yields are
         // poor: 2.2 t of reagent per tonne of product.
         // What a shop sells, which is a separate industry from what a
@@ -931,7 +948,7 @@ impl Region {
         let chemicals_day = medicine_day * 2.2 + remedies_day * 1.3;
         let oil_day = plastics_day * 1.4 + chemicals_day * 1.1;
         let steel_day =
-            machinery_day * 0.72 + cannery_rate * 0.035 + fabric_day * 0.06;
+            machinery_day * 0.72 + cannery_rate * 0.035 + fabric_built * 0.06;
         let ore_day = steel_day * DOMESTIC_STEEL_SHARE * 1.4 * 1.35;
         let coking_coal = steel_day * DOMESTIC_STEEL_SHARE * 0.8 * 1.35;
 
@@ -978,6 +995,15 @@ impl Region {
         // The station burns 0.38 t per MWh; the furnaces burn their own,
         // and it has to come out of the same ground or the same ship.
         let station_coal = peak_power * 0.38;
+        // **A kiln burns coal, and nobody was digging it.**
+        //
+        // Cement is 0.12 t of coal a tonne — the heat *is* the process,
+        // calcining limestone at 1,450 C — and the collieries were sized
+        // for the power stations and the blast furnaces only. So the
+        // kilns ran short, cement stayed at nearly twice its cost, the
+        // building trade was idle half the time, and the fabric of every
+        // town decayed for want of coal nobody had thought to mine.
+        let kiln_coal = cement_day * 0.12;
         // **A colliery is not built to exactly meet the burn.** Sized at
         // the sum of the station's and the furnaces' demand it came out
         // perfectly balanced against generation alone, and the steelworks
@@ -986,7 +1012,7 @@ impl Region {
         // the steelworks needed to make it. Real pits carry spare
         // capacity, and a country that cannot both keep the lights on and
         // smelt is a country that has not finished building its industry.
-        let coal_day = (station_coal + coking_coal) * 1.25;
+        let coal_day = (station_coal + coking_coal + kiln_coal) * 1.25;
 
         // **A power station's yard holds its own burn, not the whole
         // pit's output.** Sized off the colliery instead, the station's
@@ -1443,29 +1469,50 @@ impl Region {
 
         // --- Cement, the building trade, and a hospital's supplies ---
         //
-        // **A kiln sits on its fuel.** Calcining limestone at 1,450 C is
-        // most of the cost of cement and limestone is near enough
-        // everywhere, so what decides where a cement works goes is the
-        // coal — which is why they cluster on coalfields and not on
-        // quarries.
-        if cement_day > 0.01 {
-            let m = coal_town.map(|(m, _)| m).unwrap_or(port);
+        // **A kiln in every town, because cement does not travel.**
+        //
+        // Sited nationally on the coalfield, one works had to supply the
+        // whole country — and `logistics.rs` refuses a haul when the
+        // freight exceeds half what the goods are worth, which for cement
+        // at a hundred a tonne is most of the map. Cement reached 4.2x its
+        // cost, the builders ran at 36% of their rate, and the fabric of
+        // every town but one decayed for want of it.
+        //
+        // That is the rule working rather than failing, and this file
+        // already said so: **there is a cement works in every region on
+        // earth** precisely because you cannot ship it. The kiln still
+        // wants to sit on its fuel — calcining limestone at 1,450 C is
+        // most of the cost, and limestone is near enough everywhere — so
+        // each town's works burns coal brought to it, which is the trade
+        // that is actually worth making.
+        for m in 0..towns.len() {
+            let share = if nation_pop > 0.0 {
+                markets[m].population / nation_pop
+            } else {
+                0.0
+            };
+            let rate = cement_day * share;
+            if rate < 0.01 {
+                continue;
+            }
             let name = markets[m].name.clone();
             sites.push(Site {
                 name: format!("{name} cement works"),
                 kind: SiteKind::CementWorks,
                 market: m,
-                stock: cap(&[(Commodity::Cement, cement_day * 8.0)]),
-                capacity: cap(&[(Commodity::Cement, cement_day * 20.0)]),
+                stock: cap(&[(Commodity::Cement, rate * 8.0)]),
+                capacity: cap(&[(Commodity::Cement, rate * 20.0)]),
                 recipe: Some(recipe::CEMENT_WORKS),
-                throughput: cement_day * 1.35,
+                throughput: rate * 1.35,
                 powered: true,
                 ran: 0.0,
                 fitted: None,
             });
+        }
+        if cement_day > 0.01 {
             notes.push(format!(
-                "cement works at {name}: {:.0} t/day, on the coalfield because the kiln \
-                 burns more than the quarry yields",
+                "{:.0} t/day of cement, made in every town because it cannot be \
+                 carried to them",
                 cement_day
             ));
         }
@@ -1500,7 +1547,16 @@ impl Region {
                     (Commodity::Timber, rate * 0.06 * 60.0),
                 ]),
                 recipe: Some(recipe::BUILDING_TRADE),
-                throughput: rate,
+                // **The one works in the country with no headroom.**
+                //
+                // Every other site is built at 1.1-1.35 times its rated
+                // demand, and the building trade was sized at exactly the
+                // fabric a country puts up — which is also, to within two
+                // percent, exactly what its stock needs to stand still. A
+                // trade with no slack cannot both maintain what exists and
+                // recover from a year when it was short of cement, so the
+                // fabric ratcheted downward and never came back.
+                throughput: rate * 1.35,
                 powered: true,
                 ran: 0.0,
                 fitted: None,
@@ -1883,6 +1939,8 @@ impl Region {
             staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,
+        building_stock: Vec::new(),
+        building_condition: Vec::new(),
             services: None,
         };
         // **Hang the distribution network under the transmission**, so a

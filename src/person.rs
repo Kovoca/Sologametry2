@@ -745,7 +745,12 @@ impl Person {
 /// a land market would tell us anyway.
 pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     const SHARE_OF_A_WAGE: f64 = 0.30;
-    day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE
+    // **Degraded stock is cheap stock.** A town whose fabric has been let
+    // go is a town where the rent is lower, which is how under-maintained
+    // housing becomes the only housing some people can afford — and why
+    // letting it go is a decision somebody makes rather than an accident.
+    let kept = 0.55 + 0.45 * econ.fabric_condition(market);
+    day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE * kept
 }
 
 /// **What somebody is qualified to do**, which the model did not ask.

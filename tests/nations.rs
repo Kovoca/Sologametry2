@@ -264,15 +264,25 @@ fn what_crosses_a_border_is_what_is_worth_carrying() {
     // where the lanes are shorter, steel equalises too (5.02x to 1.43x);
     // here it cannot, because these countries are further apart than steel
     // is worth carrying.
-    for c in [GRAIN, scale_sim::econ::Commodity::Cement] {
-        let bulk = spread(&with, c);
-        assert!(
-            bulk > 1.5,
-            "{} equalised to {bulk:.2}x, which would mean bulk freight had \
-             become free — check the value-density rule in logistics.rs",
-            c.name()
-        );
-    }
+    let bulk = spread(&with, GRAIN);
+    assert!(
+        bulk > 1.5,
+        "grain equalised to {bulk:.2}x, which would mean bulk freight had \
+         become free — check the value-density rule in logistics.rs"
+    );
+
+    // **And cement is the same rule seen from the other side.** It is too
+    // cheap to carry anywhere, so every town makes its own — and once
+    // every town has a kiln, nobody ships it and the price is at cost
+    // everywhere. A commodity that does not travel does not need to: that
+    // is *why* there is a cement works in every region on earth, and the
+    // model arrives at it by refusing the haul rather than by being told.
+    let cement = spread(&with, scale_sim::econ::Commodity::Cement);
+    assert!(
+        cement < 1.3,
+        "cement runs {cement:.2}x across the world, which means somewhere is \
+         importing what it should be making"
+    );
 }
 
 #[test]

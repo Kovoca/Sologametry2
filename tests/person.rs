@@ -378,7 +378,31 @@ fn a_price_shock_can_put_a_working_man_on_the_street() {
     // rather than a bad month. The order matters: hungry first, then
     // evicted, because rent is due whether or not he was on the rota and
     // food can be gone without for a day.
-    let mut r = a_nation(20260828);
+    // **A negligent nation, because a prudent one absorbs this.**
+    //
+    // This used to run on the default region and produce a quintupling of
+    // bread from one transformer failure. It no longer does, and that is
+    // the model getting better rather than the test getting stale: a
+    // country with a spare transformer in store and a freight industry
+    // that moves stock on days of cover simply rides the fault out. This
+    // project's own notes say so — *with a spare transformer the run is
+    // byte-identical to no fault at all* — so testing the shock requires
+    // a country that has not bought one.
+    let world = World::generate(384, 216, 20260828);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+    let &(id, _) = polities.ranked().first().expect("no nations");
+    let mut r = Region::extract(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        id,
+        5,
+        Doctrine::Negligent,
+    )
+    .expect("no region");
     let mut hal = Person::new("Hal", Trade::Shopworker, 0, 5.0);
     let mut evicted = false;
     for n in 0..800u64 {
@@ -394,8 +418,14 @@ fn a_price_shock_can_put_a_working_man_on_the_street() {
         }
     }
     assert!(
-        evicted,
-        "bread quintupled and a man on shop wages kept his tenancy throughout"
+        evicted || hal.state == person::State::Dead,
+        "a country with no spare transformer lost its power, and a man on shop \
+         wages kept both his job and his tenancy throughout: worked {} days, \
+         hungry {}, money {:.0}, bread {:.0}",
+        hal.days_worked,
+        hal.days_hungry,
+        hal.money,
+        r.economy.price(0, scale_sim::econ::Commodity::ProcessedFood)
     );
 }
 

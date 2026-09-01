@@ -2353,6 +2353,21 @@ pub struct Economy {
     /// says under-funding shows up: as fewer people, not a worse
     /// multiplier.
     pub state_afford: f64,
+    /// **The fabric of each town**, in tonnes of building.
+    ///
+    /// Real building stock comes to something like 50-60 tonnes a head
+    /// once dwellings, shops, works and civic buildings are counted — a
+    /// 76 m² house is about 150 tonnes and holds 2.4 people.
+    pub building_stock: Vec<f64>,
+    /// **And what condition it is in**, 0 to 1.
+    ///
+    /// This is what a service sector is *for*. Construction is 6.4% of
+    /// employment and **half of its output is repair and maintenance**
+    /// rather than new build — a fact this project has recorded since
+    /// `services.rs` was written without anything having a condition to
+    /// maintain. A building that is not kept up does not vanish; it
+    /// degrades, and degraded stock is cheap stock.
+    pub building_condition: Vec<f64>,
 }
 
 impl Economy {
@@ -2419,6 +2434,8 @@ impl Economy {
         // that was sold this morning is not in the cold store tonight,
         // and a cargo that arrived is.
         self.spoil_stock();
+        // The fabric wears whether or not anybody keeps it up.
+        self.maintain_buildings();
         self.discard_unused_power();
         // The same guarantee the commodity ledger gives for tonnage.
         #[cfg(debug_assertions)]
@@ -3885,6 +3902,75 @@ impl Economy {
         }
     }
 
+    /// **Buildings wear out, and somebody has to keep them up.**
+    ///
+    /// Real maintenance runs **1-2% of a building's capital value a
+    /// year** — a roof lasts 25-50 years, wiring 30-40, a boiler 15,
+    /// paint 5-10 — and a stock that is not maintained loses condition
+    /// rather than disappearing.
+    ///
+    /// The arithmetic closes on figures that were already here and were
+    /// never put side by side: `region.rs` sizes the building trade at
+    /// **0.81 tonnes of fabric a head a year**, and a stock of 50-60
+    /// tonnes a head needing 1.5% a year wants **0.75-0.9 tonnes a head a
+    /// year** to stand still. In other words the entire construction
+    /// industry of this model is, to within a rounding error, doing
+    /// nothing but maintenance — which is exactly what the real figure
+    /// says and what nothing here could previously express.
+    ///
+    /// The same shape as the road network's maintenance deficit, and for
+    /// the same reason: the shortfall compounds slowly enough that
+    /// whoever let it happen is long gone before it shows.
+    fn maintain_buildings(&mut self) {
+        /// Tonnes of fabric per head of population.
+        const STOCK_PER_HEAD: f64 = 55.0;
+        /// Share of the stock that must be renewed each year to stand
+        /// still.
+        const UPKEEP_A_YEAR: f64 = 0.015;
+        /// How fast condition falls when the work is not done. Slow, like
+        /// the roads: a decade of neglect is visible and a year is not.
+        const DECAY: f64 = 0.06;
+
+        let n = self.markets.len();
+        if self.building_stock.len() != n {
+            self.building_stock = (0..n)
+                .map(|m| self.markets[m].population * STOCK_PER_HEAD)
+                .collect();
+            self.building_condition = vec![1.0; n];
+        }
+
+        // What the builders actually got done today, town by town.
+        let mut done = vec![0.0f64; n];
+        for site in self.ledger.sites.iter() {
+            if site.kind == SiteKind::Builders {
+                done[site.market] += site.ran;
+            }
+        }
+
+        for m in 0..n {
+            let wanted = self.building_stock[m] * UPKEEP_A_YEAR / DAYS_PER_YEAR as f64;
+            if wanted <= 0.0 {
+                continue;
+            }
+            let met = (done[m] / wanted).min(1.0);
+            let gap = 1.0 - met;
+            let a = DECAY / DAYS_PER_YEAR as f64;
+            // Falls toward what the upkeep supports, rather than to zero:
+            // a half-maintained town settles at a half-maintained state.
+            let floor = 1.0 - gap;
+            self.building_condition[m] += (floor - self.building_condition[m]) * a;
+            self.building_condition[m] = self.building_condition[m].clamp(0.05, 1.0);
+        }
+    }
+
+    /// What a house costs to buy, and what a room costs to rent, both fall
+    /// with the state of the fabric. **Degraded stock is cheap stock**,
+    /// which is how under-maintained housing becomes the only housing some
+    /// people can afford.
+    pub fn fabric_condition(&self, m: usize) -> f64 {
+        self.building_condition.get(m).copied().unwrap_or(1.0)
+    }
+
     /// **What a house costs to buy**, in this market.
     ///
     /// Not a number typed in: it is the bill of materials `building.rs`
@@ -3917,7 +4003,8 @@ impl Economy {
         // town in a country whose smallest settlement holds two million
         // people saturates the curve and they all cost the same.
         let land = built * (0.1 + 0.85 * (people / 8.0e6).min(1.0).sqrt());
-        built + land
+        // A worn-out house is a cheap house. The land under it is not.
+        built * (0.4 + 0.6 * self.fabric_condition(m)) + land
     }
 
     /// Price of `c` in market `m`.

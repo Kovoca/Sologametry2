@@ -219,6 +219,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,
+        building_stock: Vec::new(),
+        building_condition: Vec::new(),
         services: None,
     };
     // A hand-built slice needs money in it like anywhere else.
