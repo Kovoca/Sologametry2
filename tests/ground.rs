@@ -591,6 +591,10 @@ fn a_building_is_a_stack_of_floors() {
 
     // ...and there is more open air up there, because the two-storey
     // shops either side of it have run out.
+    //
+    // A level asked for by name is that level, so the third floor is still
+    // a horizontal slice and open air still reads as open air. It is the
+    // level somebody is *standing* on that goes looking for the ground.
     let sky = |g: &Ground| g.tiles.iter().filter(|t| **t == Tile::Sky).count();
     assert_eq!(sky(&g0), 0, "open air at ground level");
     assert!(sky(&g3) > sky(&g0), "nothing thins out with height");

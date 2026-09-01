@@ -442,7 +442,37 @@ pub struct Ground {
     /// Tile coordinates of the top-left corner, within the town.
     pub origin: (i64, i64),
     pub tiles: Vec<Tile>,
+    /// **Which level each shown tile is on, relative to the eye's.** 0 is
+    /// the level you are standing on, negative is below you, positive
+    /// above.
+    ///
+    /// A window used to be one horizontal slice of the world, which is
+    /// only ever right indoors. Outside, the ground goes up and down: on
+    /// the low side the slice was above the ground and came back `Sky`, on
+    /// the high side it was buried and came back solid earth. Standing on
+    /// a levelled street in hill country that left most of the view either
+    /// blank or walled off — not hidden, *absent* — which is not what
+    /// happens when you stand on a kerb.
+    pub rel: Vec<i16>,
+    /// **The height of the ground at each cell in metres**, relative to the
+    /// ground under the eye. This is what line of sight is measured
+    /// against; `rel` is only how it is drawn.
+    pub surf: Vec<f32>,
 }
+
+/// **How far a view reaches past a step in the ground**, in Z levels: 16
+/// is 48 m.
+///
+/// Local relief runs 2-10 m/km on a floodplain and 300-600 in mountain
+/// country, so across a 92 m window the ground can move about 55 m at the
+/// very worst. This covers it, and it costs a lookup only where the eye's
+/// own level did not land on the ground.
+const SIGHT_LEVELS: i64 = 16;
+
+/// **Eye height in metres.** What you can see over a rise is decided by how
+/// high off the ground you are looking, so it cannot be left out — at zero
+/// the ground you stand on blocks you.
+const EYE_M: f64 = 1.6;
 
 impl Ground {
     pub fn at(&self, x: usize, y: usize) -> Tile {
@@ -530,19 +560,73 @@ impl Ground {
         z: i64,
         changes: &Changes,
     ) -> Self {
+        // **Only the eye's own level goes looking for the ground.** Asking
+        // for a level explicitly — the sewer under a street, the third
+        // floor of a block — means that level and not a search for the
+        // nearest surface to it, or there would be no way to look at a
+        // cellar at all.
+        let standing = z == 0;
         let z = surface_z(seed, plan, centre.0, centre.1) + z;
         let origin = (centre.0 - w as i64 / 2, centre.1 - h as i64 / 2);
         let mut tiles = Vec::with_capacity(w * h);
+
+        let mut rel = Vec::with_capacity(w * h);
+        let mut surf = Vec::with_capacity(w * h);
+        let eye_m = surface_m(seed, plan, centre.0, centre.1);
 
         for ty in 0..h {
             for tx in 0..w {
                 let gx = origin.0 + tx as i64;
                 let gy = origin.1 + ty as i64;
-                tiles.push(
+                let look = |lz: i64| {
                     changes
-                        .get((gx, gy, z))
-                        .unwrap_or_else(|| tile_at(seed, plan, gx, gy, z)),
-                );
+                        .get((gx, gy, lz))
+                        .unwrap_or_else(|| tile_at(seed, plan, gx, gy, lz))
+                };
+                // **Take the surface, not the slice.**
+                //
+                // Where the eye's level is above the ground it is sky, so
+                // look down until it is not; where it is below the ground
+                // it is solid, so look up. Either way what is drawn is the
+                // surface of the ground at that spot, which is the thing
+                // somebody standing here can actually see.
+                //
+                // Indoors nothing moves — floors are level — so this costs
+                // nothing and changes nothing inside a building.
+                let mut t = look(z);
+                let mut d = 0i64;
+                if !standing {
+                    // The caller asked for this level; give them it.
+                } else if t == Tile::Sky {
+                    while t == Tile::Sky && -d < SIGHT_LEVELS {
+                        d -= 1;
+                        t = look(z + d);
+                    }
+                } else if matches!(t, Tile::Earth | Tile::Rock) {
+                    // Climbing out of the ground reaches the surface tile
+                    // itself — grass, road, floor — because that is what
+                    // the generator puts at a surface level. There is no
+                    // stepping back down onto the soil under it.
+                    while matches!(t, Tile::Earth | Tile::Rock) && d < SIGHT_LEVELS {
+                        d += 1;
+                        t = look(z + d);
+                    }
+                }
+                if matches!(t, Tile::Sky | Tile::Earth | Tile::Rock) && d != 0 {
+                    // Nothing found within sight: leave it as the slice
+                    // said, and let it read as unknown ground.
+                    t = look(z);
+                    d = 0;
+                }
+                tiles.push(t);
+                rel.push(d as i16);
+                // **Sight is a question of metres, not of levels.** The 3 m
+                // level is how the world is *drawn*; quantising the
+                // viewshed to it turned a road climbing at five per cent
+                // into a flight of three-metre walls, each of which hid
+                // everything past it. The ground itself is continuous and
+                // the line of sight has to be measured against that.
+                surf.push((surface_m(seed, plan, gx, gy) - eye_m) as f32);
             }
         }
         Ground {
@@ -552,6 +636,8 @@ impl Ground {
             h,
             origin,
             tiles,
+            rel,
+            surf,
         }
     }
 
@@ -637,6 +723,13 @@ impl Ground {
                     if self.at(x, y) == Tile::Wall {
                         d.glyph = self.wall_glyph(x, y);
                     }
+                    // **Ground on another level is drawn dimmer**, because
+                    // it is not where you are standing. The glyph is
+                    // unchanged — it is the same ground, seen from above
+                    // or below.
+                    if self.rel[y * self.w + x] != 0 {
+                        d.fg = Colour::DarkGrey;
+                    }
                     d
                 };
                 if colour && last != Some(d.fg) {
@@ -653,8 +746,6 @@ impl Ground {
         out
     }
 
-    /// A wall run includes its doors and windows, because those are holes
-    /// in a wall and not gaps between two.
     /// **What can actually be seen from a point**, by casting a ray to
     /// every cell in the window.
     ///
@@ -675,7 +766,22 @@ impl Ground {
         }
         for ty in 0..self.h as i64 {
             for tx in 0..self.w as i64 {
-                if self.ray_reaches((ex, ey), (tx, ty)) {
+                // **Cast it both ways.**
+                //
+                // One Bresenham line is not symmetric: stepping from the eye
+                // and stepping from the target visit different cells, so a
+                // great many places plainly in view are called hidden
+                // because the single line the algorithm happened to pick
+                // clipped the corner of something. Standing on an open
+                // crossroads gave a narrow wedge of visible road with a
+                // staircase edge to it, when what you see from a crossroads
+                // is most of the way down all four streets.
+                //
+                // Accepting either direction is the cheap half of what a
+                // shadowcaster does properly, and it removes the artefact.
+                if self.ray_reaches((ex, ey), (tx, ty), (ex, ey))
+                    || self.ray_reaches((tx, ty), (ex, ey), (ex, ey))
+                {
                     seen[ty as usize * self.w + tx as usize] = true;
                 }
             }
@@ -697,23 +803,54 @@ impl Ground {
                 return true;
             }
         }
+        // **A boundary only blocks you at your own level.** A wall down in
+        // the cutting does not hide the far side from somebody standing on
+        // the lip, and a wall up on the bank is not between you and the
+        // road. What ground at another level does to a view is a question
+        // of height, and it is answered by the profile check below.
+        if self.rel[y * self.w + x] != 0 {
+            return false;
+        }
         self.at(x, y).opaque()
     }
 
     /// Bresenham from the eye to the target. Stops at the first opaque
     /// cell — which is itself reached, because you can see a wall.
-    fn ray_reaches(&self, from: (i64, i64), to: (i64, i64)) -> bool {
+    ///
+    /// **And at the first ground that stands above the line of sight.**
+    /// Tile opacity alone is a flat-world rule: it can say a wall is in the
+    /// way and cannot say a hill is. So the ray carries a height as well as
+    /// a position — starting at the eye, ending at whatever it is looking
+    /// at — and any ground rising above that line stops it. Which is what
+    /// a crest is, and it is also why a gentle slope hides nothing: the
+    /// line climbs with the ground.
+    fn ray_reaches(&self, from: (i64, i64), to: (i64, i64), eye: (i64, i64)) -> bool {
         let (mut x, mut y) = from;
         let (dx, dy) = ((to.0 - x).abs(), -(to.1 - y).abs());
         let (sx, sy) = (if x < to.0 { 1 } else { -1 }, if y < to.1 { 1 } else { -1 });
         let mut err = dx + dy;
+        // The line of sight runs from the eye outward whichever way round
+        // the cells happen to be walked, or a hill would be transparent
+        // from one side and solid from the other.
+        let aim = if eye == from { to } else { from };
+        let height = |p: (i64, i64)| self.surf[p.1 as usize * self.w + p.0 as usize] as f64;
+        let eye_h = height(eye) + EYE_M;
+        let aim_h = height(aim);
+        let span = (aim.0 - eye.0).abs().max((aim.1 - eye.1).abs()) as f64;
         loop {
             if (x, y) == to {
                 return true;
             }
             // The eye's own cell never blocks it.
-            if (x, y) != from && self.blocks_sight(x as usize, y as usize) {
+            if (x, y) != eye && self.blocks_sight(x as usize, y as usize) {
                 return false;
+            }
+            if (x, y) != eye && span > 0.0 {
+                let gone = (x - eye.0).abs().max((y - eye.1).abs()) as f64 / span;
+                let line = eye_h + (aim_h - eye_h) * gone;
+                if height((x, y)) > line {
+                    return false;
+                }
             }
             let e2 = 2 * err;
             if e2 >= dy {
@@ -1469,8 +1606,44 @@ pub fn surface_m(seed: u64, plan: &Plan, gx: i64, gy: i64) -> f64 {
     if lot == Lot::Open || lot == Lot::Park {
         return terrain_m(seed, plan, gx, gy);
     }
-    // Levelled to the middle of its own plot.
-    terrain_m(seed, plan, px * t + t / 2, py * t + t / 2)
+    let own = |ax: i64, ay: i64| terrain_m(seed, plan, ax * t + t / 2, ay * t + t / 2);
+    // **A street is graded, not benched.** A road is cut and filled to a
+    // steady gradient and then it *slopes*: it does not sit flat for
+    // thirty-two metres and step down three at the kerb. Levelling every
+    // street plot to its own centre built exactly that — a staircase of
+    // retaining walls the length of every road, which at the bottom of one
+    // put a wall across the view down the street.
+    //
+    // Real urban grades are 4-8% and hurt above about 10%; San Francisco's
+    // worst is 31.5%. Five per cent over a plot is 1.6 m, which is a slope
+    // you walk up without noticing and not a step you climb.
+    if lot == Lot::Street {
+        return terrain_m(seed, plan, gx, gy);
+    }
+    // **A building is levelled to the street it fronts, not to itself.**
+    //
+    // Levelling every plot to its own centre put a step between the
+    // carriageway and the frontage beside it, and since plot edges are
+    // straight the step ran dead straight the whole length of the road: a
+    // forty-six tile wall of ramps between the pavement and the shop
+    // doors. Nobody builds that. A street is graded as a corridor and the
+    // frontages are cut and filled to *meet* it — that is what a building
+    // line is, and it is why you step off a kerb and not off a cliff.
+    //
+    // Terraces still step down a hillside in runs, because neighbouring
+    // stretches of street are at different heights. Bath and every hill
+    // town in the world does exactly that; what they do not do is stand
+    // three metres above their own pavement.
+    for (dx, dy) in [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)] {
+        let (nx, ny) = (px + dx, py + dy);
+        if nx < 0 || ny < 0 || nx >= plan.width as i64 || ny >= plan.height as i64 {
+            continue;
+        }
+        if plan.at(nx as usize, ny as usize) == Lot::Street {
+            return own(nx, ny);
+        }
+    }
+    own(px, py)
 }
 
 /// **Tile Z is a local window, not a planetary range.**

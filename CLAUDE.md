@@ -2029,6 +2029,61 @@ Knock-ons worth recording, because a correct change broke two green tests:
   open-country prices (~$0.55/t-km against $0.05-0.10 paved). Such a place
   is not unreachable, it is expensive, which is why it stays poor.
 
+### What you can see, and why half of it was missing
+
+A window into the world was **one horizontal slice** of it, which is only
+ever right indoors. Outdoors the ground moves: on the low side of a step
+the slice sat above the ground and came back as sky, on the high side it
+was buried and came back as solid earth. Standing at a city junction in
+hill country, most of what could be seen was therefore either blank or
+walled off — not hidden, **absent** — which is not what happens when you
+stand on a kerb and look at the road below it.
+
+Three things had to hold together and all three were wrong:
+
+- **The eye's own level goes looking for the surface**, up or down. What
+  is drawn at a cell is the ground there, not whatever happened to occupy
+  a fixed height above sea level. A level asked for *by name* — the sewer
+  under a street, the third floor of a block — is still that level, or
+  there would be no way to look at a cellar at all.
+- **A boundary only stops a ray at your own level.** A wall down in a
+  cutting is not between you and the far side of it.
+- **Line of sight is metres; the Z level is only how it is drawn.** This
+  is the one that mattered. Quantising the viewshed to the 3 m level made
+  a road climbing at 5% into a flight of three-metre walls, each hiding
+  everything past it, and a third of a city block went dark behind a step
+  the eye would not even notice. The ground is continuous and the ray has
+  to be measured against that.
+
+**And the ray carries a height.** Tile opacity alone is a flat-world rule:
+it can say a wall is in the way and it cannot say a hill is. The line runs
+from the eye — at **1.6 m**, which cannot be left out, because at zero the
+ground you stand on blocks you — to whatever it is aimed at, and ground
+rising above that line stops it. Which is what a crest is, and also why a
+gentle slope hides nothing: the line climbs with the ground.
+
+**A street is graded, not benched.** Levelling every plot to its own
+centre is right for a building pad and wrong for a road: it built a
+staircase of three-metre retaining walls the length of every street, and
+standing at the foot of one you correctly could not see over it. Real
+urban grades are 4-8%, hurt above 10%, and San Francisco's worst is 31.5%;
+five per cent across a 32 m plot is 1.6 m, which is a slope you walk up
+without noticing. Roads follow the ground. **Buildings level to the street
+they front**, not to themselves — that is what a building line is, and it
+is why you step off a kerb and not off a cliff. Terraces still step down a
+hillside in runs, the way Bath does; what they do not do is stand three
+metres above their own pavement.
+
+**One Bresenham line is not symmetric.** Stepping from the eye and
+stepping from the target visit different cells, so places plainly in view
+were called hidden because the single line the algorithm picked clipped a
+corner. Casting both ways and accepting either is the cheap half of what a
+shadowcaster does properly.
+
+Worth recording because it was nearly mistaken for a bug: a parked artic
+**is** supposed to black out the street behind it. Seventeen metres of
+box at four metres tall, and you are standing next to it.
+
 ### A room has a door and something in it
 
 A bare floor inside four walls is an area, not a place. Interiors

@@ -183,3 +183,100 @@ fn omniscience_is_available_and_clearly_separate() {
         "the visible view should have more unseen ground than the omniscient one"
     );
 }
+
+/// **A step in the ground is not a hole in the world.**
+///
+/// A window was one horizontal slice of the world, which is only ever
+/// right indoors. Outdoors the ground moves: on the low side of a step the
+/// slice sat above it and came back `Sky`, on the high side it was buried
+/// and came back solid earth. Standing on a street in hill country, most
+/// of what you could see was therefore either blank or walled off — not
+/// hidden, *absent* — which is not what happens when you stand on a kerb.
+///
+/// Three things have to hold together, and each of them was broken:
+///
+/// - the eye's own level finds the **surface**, up or down;
+/// - a boundary only stops a ray **at your own level**, because a wall
+///   down in the cutting is not between you and anything;
+/// - line of sight is measured in **metres, not levels**. The 3 m level is
+///   how the world is drawn; quantising the viewshed to it turned a road
+///   climbing at 5% into a flight of three-metre walls, each of which hid
+///   everything past it.
+#[test]
+fn a_step_in_the_ground_is_not_a_hole_in_the_world() {
+    let (seed, plan, spot) = a_town();
+    let g = Ground::window(seed, &plan, spot, 92, 72);
+
+    // Nothing generated at the level somebody is standing on is open air:
+    // where the ground falls away you see the ground, lower down.
+    let sky = g.tiles.iter().filter(|t| **t == Tile::Sky).count();
+    assert_eq!(
+        sky, 0,
+        "{sky} tiles of open air at ground level: the view has holes in it"
+    );
+
+    // And the ground genuinely moves here, or the test proves nothing —
+    // the whole point is a window that spans a step.
+    let (lo, hi) = g
+        .surf
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(l, h), s| (l.min(*s), h.max(*s)));
+    assert!(
+        hi - lo > 1.0,
+        "the ground moves only {:.2} m across 92 m, so this proves nothing \
+         about steps in it",
+        hi - lo
+    );
+
+    // **You can see down the street you are standing in.** Made ground is
+    // open ground: a road, its markings and its footways are the one place
+    // in a town with nothing in the way, so nearly all of what the window
+    // holds of them should be in view. Before the viewshed ran on metres a
+    // single levelled plot boundary blacked out the whole road beyond it.
+    let seen = g.visible_from(spot);
+    let road = |t: Tile| {
+        matches!(
+            t,
+            Tile::Road | Tile::Marking | Tile::Pavement | Tile::Shoulder
+        )
+    };
+    let (mut open, mut in_view) = (0, 0);
+    for i in 0..seen.len() {
+        if road(g.tiles[i]) && g.rel[i] == 0 {
+            open += 1;
+            if seen[i] {
+                in_view += 1;
+            }
+        }
+    }
+    assert!(open > 200, "only {open} tiles of street to look along");
+    let share = in_view as f64 / open as f64;
+    assert!(
+        share > 0.8,
+        "only {:.0}% of the street around an open corner is visible \
+         ({in_view} tiles of {open})",
+        share * 100.0
+    );
+
+    // **But something still blocks**, or the viewshed is doing nothing at
+    // all — the buildings along it are opaque and stay so.
+    let all = seen.iter().filter(|v| **v).count() as f64 / seen.len() as f64;
+    assert!(all < 0.95, "everything is visible, so nothing is occluded");
+}
+
+/// **A level asked for by name is that level.** Surface-seeking is for the
+/// level somebody is standing on; a caller who asks for the sewer under a
+/// street wants the sewer, not the street found again one level up.
+#[test]
+fn asking_for_a_level_by_name_gives_that_level() {
+    let (seed, plan, spot) = a_town();
+    let cellar = Ground::window_on(seed, &plan, spot, 32, 32, -1);
+    assert!(
+        cellar.rel.iter().all(|d| *d == 0),
+        "an explicitly requested level went looking for the surface"
+    );
+    assert!(
+        cellar.tiles.iter().filter(|t| **t == Tile::Earth).count() > 100,
+        "the ground under a street is not solid"
+    );
+}
