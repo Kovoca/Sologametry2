@@ -1894,6 +1894,33 @@ tiles on foot, 288 in a vehicle.
   stand: tills across the front by the door because that is where you pay
   on the way out, aisles through the middle, racking at the back where the
   lorries come.
+- **A shop floor is mostly the space between the shelves.** The fittings
+  were right and the circulation was not: aisles one tile wide, shelving
+  hard against the walls, and the checkouts immediately inside the door
+  with nowhere to queue. You cannot pass a trolley in a metre and a line
+  of six people had nowhere to stand. Real dimensions, and they are what
+  the layout is now built from: **an aisle two trolleys can pass in is
+  1.8-2.4 m**; the **decompression zone** inside a door is 1.5-4.5 m
+  *(5-15 ft — a real retail term, and why nobody puts stock there)*;
+  queuing space at a checkout is 2-3 m; and the **racetrack** is the
+  perimeter aisle a shop is circulated on, which there was none of at all.
+  There is also a way in that is not between two tills, which is where the
+  trolleys stand.
+- **A corner shop is not a small supermarket.** Under about 400 m² there
+  is a served counter and no checkout line — the difference between two
+  trades rather than a matter of scale.
+- **A step in the ground is not a ramp where somebody has built.** The
+  ramp was returned before the building was considered, so the step at a
+  plot boundary ate the flank wall and a shop came out with a line of
+  ramps down its east side, open to the air. A built plot is levelled all
+  the way across; what holds back the ground beside a building is the
+  building.
+- **A party wall needs a neighbour that will actually supply one.** Being
+  built next door is not enough: it has to be *terraced* — a works stands
+  two metres off the boundary and a detached house ten — and it has to be
+  on the **same level**, since a building levels to the street it fronts
+  and next door can sit a level up. Three separate reasons the same flank
+  kept coming out missing.
 - **Urban density is a shape, not a number.** Clark's law was already in
   the plan — flats in the middle, houses outward — and nothing at the tile
   layer read it, so a city of 46M had grass and trees between every

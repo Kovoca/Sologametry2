@@ -1211,7 +1211,16 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
     // neighbours are lower and the drop is one level, the ground slopes
     // and you can walk it; a bigger drop, or hard rock that keeps its
     // edge, and you cannot. Granite makes tors and chalk makes downland.
-    if gz == 0 {
+    //
+    // **Not where somebody has built.** A built plot is levelled all the
+    // way across, so the only step is at its boundary — which is exactly
+    // where the building's flank wall stands, and the ramp was being
+    // returned first and eating it. A shop came out with a line of ramps
+    // down its east side and no wall at all, open to the air. What holds
+    // back the ground beside a building is the building, or a retaining
+    // wall; it is never a slope through the shop floor.
+    let built = matches!(lot, Lot::House | Lot::Flats | Lot::Shop | Lot::Works);
+    if gz == 0 && !built {
         let lower = [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)]
             .iter()
             .map(|&(dx, dy)| sz - surface_z(seed, plan, gx + dx, gy + dy))
@@ -1505,8 +1514,17 @@ fn building_tile(
     //
     // So the flank is only left open where something is actually going to
     // close it.
+    //
+    // **And a neighbour on another level supplies nothing.** A building is
+    // levelled to the street it fronts, so the plot next door can sit a
+    // whole level up or down — and its party wall is then on a different Z
+    // and never appears at this one. The shop came out open to the air
+    // again, with a line of ramps where its east wall should have been. A
+    // party wall is only shared by two buildings standing on the same
+    // ground.
     let closed_by_next_door = f.terraced && {
         let (nx, ny) = (px + 1, py);
+        let t = TILES_PER_PLOT as i64;
         nx >= 0
             && ny >= 0
             && nx < plan.width as i64
@@ -1515,6 +1533,15 @@ fn building_tile(
                 plan.at(nx as usize, ny as usize),
                 Lot::House | Lot::Flats | Lot::Shop | Lot::Works
             )
+            && surface_z(seed, plan, nx * t + t / 2, ny * t + t / 2)
+                == surface_z(seed, plan, px * t + t / 2, py * t + t / 2)
+            // **And it has to be built up to the boundary.** Only a
+            // terraced neighbour puts its wall on the shared line; a
+            // works stands two metres back off it and a detached house
+            // ten, so relying on either leaves the flank open with a
+            // strip of yard where the wall should be. That is what was
+            // still happening after the level check went in.
+            && footprint_of(plan, plan.at(nx as usize, ny as usize), nx, ny).terraced
     };
     let on_wall = party
         || ix == lo_x
@@ -1762,23 +1789,17 @@ fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) ->
 /// the way out. Aisles of shelving through the middle. Stockroom racking
 /// along the back wall, where the lorries come to. This is `building.rs`'s
 /// fixture list given somewhere to stand.
-fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -> Tile {
+fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -> Tile {
     // **Front and depth are different axes.** They were the same while
     // every building was a square inset in the middle of its plot; once a
     // shop ran the full width of a terrace they came apart, and passing
     // the width where the depth was wanted put the back wall halfway up
     // the shop.
     let depth = hi_y - lo_y;
+    let width = hi_x - lo_x;
     let from_front = iy - lo_y;
     let across = ix - lo_x;
-    if from_front <= 1 {
-        // The checkouts, with gaps to walk through.
-        return if across % 3 == 0 {
-            Tile::Fitting(Fixture::Till)
-        } else {
-            Tile::Floor
-        };
-    }
+
     // **The back of house is a separate room, and customers never see
     // it.** The racking and the loading bays used to stand in the sales
     // floor with the shelving, in one undivided space — so a shopper
@@ -1814,8 +1835,87 @@ fn shop_interior(lo_x: i64, _hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) 
             Tile::Floor
         };
     }
-    // Aisles: a run of shelving, then a gangway wide enough for a trolley.
-    if from_front % 3 != 0 && across % 8 != 0 {
+
+    // **A corner shop is not a small supermarket.** Under about 400 m²
+    // there is a served counter and no checkout line at all, which is the
+    // difference between the two trades rather than a matter of scale —
+    // real corner shops run 250-1,000 m² against a superstore's
+    // 2,800-4,650.
+    if width * depth < 400 || depth < 14 {
+        if from_front == 1 {
+            return if across % 4 == 0 && across > 1 {
+                Tile::Fitting(Fixture::Counter)
+            } else {
+                Tile::Floor
+            };
+        }
+        if from_front < 3 {
+            return Tile::Floor;
+        }
+        return if from_front % 3 != 0 && across % 5 != 0 {
+            Tile::Fitting(Fixture::Shelving)
+        } else {
+            Tile::Floor
+        };
+    }
+
+    // **A shop floor is mostly the space between the shelves.**
+    //
+    // The fittings were right and the circulation was not: aisles one tile
+    // wide, shelving hard against the walls, and the checkouts standing
+    // immediately inside the door with nowhere to queue. You cannot pass a
+    // trolley in a metre and a line of six people had nowhere to stand.
+    //
+    // | | real |
+    // |---|---|
+    // | aisle, two trolleys passing | **1.8-2.4 m** |
+    // | decompression zone inside the door | 1.5-4.5 m *(5-15 ft)* |
+    // | queuing space at a checkout | 2-3 m |
+    // | gondola run, double-sided | 1.0-1.25 m deep |
+    // | perimeter racetrack | the main circulation, wider than an aisle |
+    //
+    // The decompression zone is a real retail term and a real measurement:
+    // the first few metres inside a door are where people adjust and do
+    // not buy, which is why nobody puts stock there.
+    const LOBBY: i64 = 2;
+    const QUEUE: i64 = 3;
+    let tills_at = LOBBY + 1;
+    let floor_start = tills_at + 1 + QUEUE;
+
+    if from_front < tills_at {
+        // Between the door and the checkouts: trolleys, and room to pack.
+        return Tile::Floor;
+    }
+    if from_front == tills_at {
+        // **A way in that is not through a checkout.** The entrance lane
+        // runs past the end of the line — which is where the trolleys
+        // stand, and is why you can walk into a supermarket without
+        // squeezing between two tills.
+        if across < 6 {
+            return Tile::Floor;
+        }
+        return if (across - 6) % 3 == 0 {
+            Tile::Fitting(Fixture::Till)
+        } else {
+            Tile::Floor
+        };
+    }
+    if from_front < floor_start {
+        // Where the queue stands.
+        return Tile::Floor;
+    }
+    // **The racetrack**: the perimeter aisle a shop is circulated on, all
+    // the way round the sales floor. Shelving used to run hard up against
+    // the walls, so there was no way round the outside at all.
+    if across < 3 || across > width - 3 || from_front >= partition - 2 {
+        return Tile::Floor;
+    }
+    // A cross aisle every dozen metres, so a run is not forty metres long.
+    if (across - 2) % 13 >= 11 {
+        return Tile::Floor;
+    }
+    // Gondolas back to back, then an aisle two trolleys wide.
+    if (from_front - floor_start) % 4 < 2 {
         Tile::Fitting(Fixture::Shelving)
     } else {
         Tile::Floor

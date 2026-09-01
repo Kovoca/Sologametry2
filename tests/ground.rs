@@ -897,3 +897,131 @@ fn a_floor_is_a_boundary_not_a_property_of_a_level() {
         "a shed with a floor above its roof"
     );
 }
+
+/// **A shop floor is mostly the space between the shelves.**
+///
+/// The fittings were right and the circulation was not: aisles one tile
+/// wide, shelving hard against the walls, and the checkouts standing
+/// immediately inside the door with nowhere to queue. You cannot pass a
+/// trolley in a metre, a line of six people had nowhere to stand, and
+/// getting to the far side of the shop meant walking through the shelving.
+///
+/// Real dimensions, which is what the layout is built from:
+///
+/// | | real |
+/// |---|---|
+/// | aisle, two trolleys passing | **1.8-2.4 m** |
+/// | decompression zone inside the door | 1.5-4.5 m *(5-15 ft)* |
+/// | queuing space at a checkout | 2-3 m |
+/// | perimeter racetrack | the main circulation, wider than an aisle |
+#[test]
+fn a_shop_floor_can_be_walked_round() {
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Shop);
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+
+    let idx = |x: usize, y: usize| y * g.w + x;
+    let walkable: Vec<bool> = g.tiles.iter().map(|t| t.walkable()).collect();
+
+    // --- everything you can stand on is one connected space ---
+    //
+    // Not an aesthetic point: an unreachable pocket of floor is somewhere
+    // the shop has built shelving around, and nobody would.
+    let start = (0..g.w * g.h)
+        .find(|i| walkable[*i] && matches!(g.tiles[*i], Tile::Floor))
+        .expect("a shop with no floor in it");
+    let mut seen = vec![false; g.w * g.h];
+    let mut stack = vec![start];
+    seen[start] = true;
+    while let Some(i) = stack.pop() {
+        let (x, y) = (i % g.w, i / g.w);
+        for (dx, dy) in [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)] {
+            let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+            if nx < 0 || ny < 0 || nx >= g.w as i64 || ny >= g.h as i64 {
+                continue;
+            }
+            let n = idx(nx as usize, ny as usize);
+            if walkable[n] && !seen[n] {
+                seen[n] = true;
+                stack.push(n);
+            }
+        }
+    }
+
+    // --- no gangway is one tile wide ---
+    //
+    // A floor tile with shelving on both sides of it is a corridor a
+    // metre across: one trolley, and nobody coming the other way. Both
+    // axes, because the gondolas run one way and the cross aisles the
+    // other.
+    let shelf = |x: i64, y: i64| {
+        x >= 0
+            && y >= 0
+            && x < g.w as i64
+            && y < g.h as i64
+            && matches!(
+                g.tiles[idx(x as usize, y as usize)],
+                Tile::Fitting(Fixture::Shelving)
+            )
+    };
+    let mut pinched = 0;
+    for y in 0..g.h as i64 {
+        for x in 0..g.w as i64 {
+            if g.tiles[idx(x as usize, y as usize)] != Tile::Floor {
+                continue;
+            }
+            if (shelf(x, y - 1) && shelf(x, y + 1)) || (shelf(x - 1, y) && shelf(x + 1, y)) {
+                pinched += 1;
+            }
+        }
+    }
+    assert_eq!(
+        pinched, 0,
+        "{pinched} gangways in the shop are one tile wide, so two trolleys \
+         cannot pass"
+    );
+
+    // --- you can reach every shelf, and get out past the tills ---
+    let mut shelves = 0;
+    let mut reachable_shelves = 0;
+    for y in 0..g.h as i64 {
+        for x in 0..g.w as i64 {
+            if !shelf(x, y) {
+                continue;
+            }
+            shelves += 1;
+            if [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)].iter().any(|(dx, dy)| {
+                let (nx, ny) = (x + dx, y + dy);
+                nx >= 0
+                    && ny >= 0
+                    && nx < g.w as i64
+                    && ny < g.h as i64
+                    && seen[idx(nx as usize, ny as usize)]
+            }) {
+                reachable_shelves += 1;
+            }
+        }
+    }
+    assert!(shelves > 40, "only {shelves} shelf tiles in a supermarket");
+    assert_eq!(
+        shelves, reachable_shelves,
+        "{} shelf tiles cannot be reached from the shop floor",
+        shelves - reachable_shelves
+    );
+
+    // **A way in that is not through a checkout.** The entrance lane runs
+    // past the end of the line, which is where the trolleys stand.
+    let tills: Vec<usize> = (0..g.w * g.h)
+        .filter(|i| g.tiles[*i] == Tile::Fitting(Fixture::Till))
+        .collect();
+    assert!(tills.len() > 4, "a supermarket with {} checkouts", tills.len());
+    let till_row = tills[0] / g.w;
+    let gap = (0..g.w)
+        .filter(|x| g.tiles[idx(*x, till_row)] == Tile::Floor)
+        .count();
+    assert!(
+        gap >= 5,
+        "only {gap} tiles of the checkout row are walkable, so there is no \
+         way in that is not between two tills"
+    );
+}

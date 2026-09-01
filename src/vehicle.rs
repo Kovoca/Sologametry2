@@ -286,7 +286,12 @@ impl Part {
     /// the work themselves.
     pub fn glyph(self) -> char {
         match self {
-            Part::Frame { .. } => '+',
+            // **Not '+', which is a door.** A lorry backed up to a loading
+            // bay puts both in one picture, and that is exactly the scene
+            // where it matters: the hull read as a row of doorways. It was
+            // '#' once and moved off it because a wall was '#' too; walls
+            // are box-drawing now, so it is free again.
+            Part::Frame { .. } => '#',
             Part::Engine(_) => 'E',
             Part::Wheel { .. } => 'O',
             Part::CargoBay(_) => 'B',
