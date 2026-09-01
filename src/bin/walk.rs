@@ -152,6 +152,32 @@ fn main() {
         }
     }
 
+    // **Show the superstore if the town has one.** A run of shop plots is
+    // one building — a high street terrace, or a supermarket across three
+    // — and it is the more interesting thing to stand in than whichever
+    // lone corner shop happens to sit nearest the middle.
+    if want == Lot::Shop {
+        let mut best: Option<((usize, usize), i64)> = None;
+        for y in 1..plan.height - 1 {
+            for x in 1..plan.width - 1 {
+                if plan.at(x, y) != Lot::Shop
+                    || plan.at(x - 1, y) != Lot::Shop
+                    || plan.at(x + 1, y) != Lot::Shop
+                {
+                    continue;
+                }
+                let d = (x as i64 - plan.width as i64 / 2).abs()
+                    + (y as i64 - plan.height as i64 / 2).abs();
+                if best.is_none_or(|(_, bd)| d < bd) {
+                    best = Some(((x, y), d));
+                }
+            }
+        }
+        if let Some((p, _)) = best {
+            found = p;
+        }
+    }
+
     let t = TILES_PER_PLOT as i64;
     let mut centre = (found.0 as i64 * t + t / 2, found.1 as i64 * t + t / 2);
     if want_corner {
@@ -199,15 +225,27 @@ fn main() {
         // entirely. Somebody asking to stand on a corner got a straight
         // road with pavements and no corner in sight.
         Ground::window_on(seed, &plan, centre, 92, 72, z)
+    } else if want == Lot::Shop {
+        // **Wide enough to hold a superstore.** One runs across three
+        // plots — 96 m, because 2,800-4,650 m² does not fit on one — and
+        // an 80-column window cut it off at both ends.
+        Ground::window_on(seed, &plan, centre, 104, 40, z)
     } else {
         Ground::window_on(seed, &plan, centre, 80, 34, z)
     };
 
-    // Park an artic on the nearest road, because a lorry is seventeen
-    // metres of the street and you cannot see that any other way.
+    // **Park the lorry where a lorry goes.**
+    //
+    // It used to be dropped on the nearest road tile with only that one
+    // tile checked, and an artic is seventeen metres — so standing in a
+    // supermarket you got a lorry through the wall and halfway up an
+    // aisle. A lorry stands on made ground with the whole of it out of
+    // doors, and if there is a loading dock in sight it backs up to that,
+    // because that is the entire point of a dock.
     if z == 0 {
-        if let Some(spot) = nearest(&g, Tile::Road) {
-            g.park(&Vehicle::artic(), spot);
+        let artic = Vehicle::artic();
+        if let Some(spot) = somewhere_to_park(&g, &artic) {
+            g.park(&artic, spot);
         }
     }
 
@@ -310,6 +348,39 @@ fn main() {
     );
 }
 
+/// Where a lorry would actually stand: the whole of it on made ground,
+/// as close to a loading dock as there is one.
+fn somewhere_to_park(g: &Ground, v: &Vehicle) -> Option<(i64, i64)> {
+    let docks: Vec<(i64, i64)> = (0..g.w * g.h)
+        .filter(|i| {
+            g.tiles[*i] == Tile::Fitting(scale_sim::building::Fixture::LoadingBay)
+        })
+        .map(|i| ((i % g.w) as i64, (i / g.w) as i64))
+        .collect();
+    let (cx, cy) = (g.w as i64 / 2, g.h as i64 / 2);
+    let mut best: Option<((i64, i64), i64)> = None;
+    for y in 0..g.h as i64 {
+        for x in 0..g.w as i64 {
+            let at = (g.origin.0 + x, g.origin.1 + y);
+            if !g.room_to_park(v, at) {
+                continue;
+            }
+            // Nearest dock if there is one, otherwise nearest to the
+            // viewer — a lorry on the far side of the window shows nothing.
+            let d = docks
+                .iter()
+                .map(|(dx, dy)| (x - dx).abs() + (y - dy).abs())
+                .min()
+                .unwrap_or_else(|| (x - cx).abs() + (y - cy).abs());
+            if best.is_none_or(|(_, bd)| d < bd) {
+                best = Some((at, d));
+            }
+        }
+    }
+    best.map(|(p, _)| p)
+}
+
+#[allow(dead_code)]
 fn nearest(g: &Ground, want: Tile) -> Option<(i64, i64)> {
     let (cx, cy) = (g.w as i64 / 2, g.h as i64 / 2);
     let mut best: Option<((i64, i64), i64)> = None;

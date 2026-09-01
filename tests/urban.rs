@@ -159,20 +159,53 @@ fn every_quadrant_of_a_central_junction_is_developed() {
 /// is a gradient rather than a wall.
 #[test]
 fn density_falls_off_with_distance_from_the_middle() {
-    let (plan, pop) = biggest_town(4242);
-    assert!(pop > 10_000.0, "not a big enough town to say anything");
+    // **Clark's law is a trend, not a staircase.**
+    //
+    // This used to take three bands of the largest town on the seed and
+    // insist each was denser than the next. Two things were wrong with
+    // that. It counted a **street plot as built**, and the street grid is
+    // laid across the whole plan whether or not anything stands on it, so
+    // open country outside the town read as two-thirds developed. And the
+    // largest settlement is millions of people on a plan forty plots
+    // across — 1.3 km — so the town filled it corner to corner and all
+    // three bands were solidly urban. It came out 1.00 / 1.00 / 0.99 and
+    // passed on the last two hundredths.
+    //
+    // What the law actually claims is exponential decay outward. Parks,
+    // works and the edge of a block break it locally, so the test is the
+    // trend across many bands and the ends against each other.
+    // **And the plan has to contain the town.** `size` is how much ground
+    // is generated, not how big the place is — so the largest settlement
+    // on a seed is millions of people on forty plots, 1.3 km, and every
+    // band of it is correctly and uniformly urban. There is no edge in the
+    // window to find. A town of three thousand on sixty-four plots sits
+    // well inside its plan with country round it, which is where a
+    // gradient can be seen at all.
+    let plan = scale_sim::townplan::Plan::lay_out_on(
+        4242,
+        4242,
+        3_000.0,
+        64,
+        scale_sim::world::Biome::Grassland,
+    );
     let (cx, cy) = (plan.width as i64 / 2, plan.height as i64 / 2);
 
     let built_within = |lo: i64, hi: i64| -> f64 {
         let (mut built, mut all) = (0.0, 0.0);
         for y in 0..plan.height as i64 {
             for x in 0..plan.width as i64 {
-                let d = (x - cx).abs().max((y - cy).abs());
+                let d = (((x - cx) * (x - cx) + (y - cy) * (y - cy)) as f64).sqrt() as i64;
                 if d < lo || d >= hi {
                     continue;
                 }
+                // **Streets are not density.** The grid is laid across the
+                // whole plan regardless of what is built on it.
+                let lot = plan.at(x as usize, y as usize);
+                if lot == Lot::Street {
+                    continue;
+                }
                 all += 1.0;
-                if !matches!(plan.at(x as usize, y as usize), Lot::Open) {
+                if matches!(lot, Lot::House | Lot::Flats | Lot::Shop | Lot::Works) {
                     built += 1.0;
                 }
             }
@@ -184,13 +217,38 @@ fn density_falls_off_with_distance_from_the_middle() {
         }
     };
 
-    let core = built_within(0, 4);
-    let middle = built_within(4, 9);
-    let edge = built_within(9, 16);
+    let half = plan.width as i64 / 2;
+    let step = (half / 8).max(2);
+    let bands: Vec<(f64, f64)> = (0..8)
+        .map(|k| {
+            let lo = k * step;
+            (lo as f64 + step as f64 / 2.0, built_within(lo, lo + step))
+        })
+        .collect();
+
+    let core = bands[0].1;
+    let edge = bands[bands.len() - 1].1;
+    // A village centre is not solid frontage; half its plots are gardens,
+    // yards and the odd park.
+    assert!(core > 0.35, "a town centre only {:.0}% built up", core * 100.0);
     assert!(
-        core > middle && middle > edge,
-        "density should fall outward: core {core:.2}, middle {middle:.2}, \
-         edge {edge:.2}"
+        core > edge,
+        "the edge of the town ({edge:.2}) is as built up as the middle \
+         ({core:.2}), so there is no gradient at all"
     );
-    assert!(core > 0.7, "a city core only {core:.0}% built up");
+
+    // A negative trend across all eight bands, not merely at the ends.
+    let n = bands.len() as f64;
+    let mx = bands.iter().map(|(d, _)| d).sum::<f64>() / n;
+    let my = bands.iter().map(|(_, v)| v).sum::<f64>() / n;
+    let cov: f64 = bands.iter().map(|(d, v)| (d - mx) * (v - my)).sum();
+    let vx: f64 = bands.iter().map(|(d, _)| (d - mx) * (d - mx)).sum();
+    let vy: f64 = bands.iter().map(|(_, v)| (v - my) * (v - my)).sum();
+    let r = cov / (vx * vy).sqrt();
+    assert!(
+        r < -0.7,
+        "density against distance correlates at {r:+.2}, which is not a \
+         decay: {:?}",
+        bands.iter().map(|(_, v)| (v * 100.0) as i32).collect::<Vec<_>>()
+    );
 }

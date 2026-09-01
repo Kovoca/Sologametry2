@@ -28,6 +28,12 @@ use crate::ground::Colour;
 use crate::rng::Rng;
 use crate::world::Biome;
 
+/// **Plots a big shop runs across.** 96 m of frontage, which after the
+/// service yard is about 2,600 m² — a real superstore is 2,800-4,650, a
+/// corner shop 250-1,000. Beyond three it would be a shopping centre,
+/// which is a different thing.
+pub const SHOP_PLOTS: usize = 3;
+
 /// Metres across one plot — a house and its garden, a shop front, a lane.
 ///
 /// **32, so the ladder multiplies out.** A region cell is 16 localities of
@@ -498,8 +504,17 @@ impl Plan {
             // long side of frontage and a short walk across. Making them
             // square is the giveaway of a grid nobody measured.
             Pattern::Grid => {
-                // 3 plots is 96 m, 8 plots is 256 m.
-                let (close, far) = (3usize, 8usize);
+                // **Measured between streets, the block is what is left.**
+                // A street every 3 plots leaves *2* built plots — 64 m,
+                // under the real 80 m minimum — and puts a third of the
+                // town under carriageway against a real 20-25%. It also
+                // meant no building in any town could span three plots, so
+                // there was nowhere a superstore could physically go.
+                //
+                // Every 4 gives a 96 m block, which is Chicago's 100 m
+                // short side; the long way, every 8 gives 224 m against
+                // Manhattan's 274.
+                let (close, far) = (4usize, 8usize);
                 let (dx, dy) = if rng.next_f32() < 0.5 {
                     (far, close)
                 } else {
@@ -595,6 +610,55 @@ impl Plan {
                 } else {
                     Lot::House
                 };
+            }
+        }
+
+        // --- A high street is a run of shopfronts ---
+        //
+        // Each plot drew independently, so a town of four hundred thousand
+        // came out with **148 lone shops, 17 pairs and not one run of
+        // three** — which is a corner shop on every other block and no
+        // building in the town big enough to be a supermarket. One plot is
+        // 32 m, and after the frontage and the service yard that is about
+        // 810 m²; a real superstore is **2,800-4,650 m²** against a corner
+        // shop's 250-1,000.
+        //
+        // Retail is not sprinkled. A high street is a **continuous terrace
+        // of shopfronts** for a few hundred metres, and a superstore is a
+        // single box occupying a whole block. Both are runs. Out past the
+        // centre a lone shop is exactly right, and stays one.
+        //
+        // Grown from the head of a run only, and capped at three plots, so
+        // it cannot cascade along a whole street.
+        for y in 0..size {
+            for x in 0..size {
+                if lots[y * size + x] != Lot::Shop {
+                    continue;
+                }
+                if x > 0 && lots[y * size + x - 1] == Lot::Shop {
+                    continue; // not the head of the run
+                }
+                let dx = x as f64 - size as f64 / 2.0;
+                let dy = y as f64 - size as f64 / 2.0;
+                if (dx * dx + dy * dy).sqrt() * METRES_PER_PLOT > 400.0 {
+                    continue; // out here it is a corner shop, and stays one
+                }
+                let mut len = 1;
+                while len < SHOP_PLOTS && x + len < size && lots[y * size + x + len] == Lot::Shop {
+                    len += 1;
+                }
+                while len < SHOP_PLOTS && x + len < size {
+                    let j = y * size + x + len;
+                    // Only over housing, and only where the frontage
+                    // continues — a shop still has to be walked past.
+                    if !matches!(lots[j], Lot::House | Lot::Flats)
+                        || !touching_street(&lots, size, x + len, y)
+                    {
+                        break;
+                    }
+                    lots[j] = Lot::Shop;
+                    len += 1;
+                }
             }
         }
 

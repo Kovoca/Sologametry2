@@ -912,6 +912,32 @@ impl Ground {
 
     /// Park a vehicle with its top-left corner here, laying its parts out
     /// on the ground the way `vehicle.rs` arranges them.
+    /// **Ground a lorry can actually stand on.**
+    ///
+    /// Made surface, out of doors, with nothing already on it. A vehicle
+    /// is seventeen metres of tiles and the spot it is placed at is only
+    /// its front corner, so checking the one tile under the cab put an
+    /// artic through the wall of a supermarket and halfway up an aisle.
+    /// What a lorry needs is somewhere the whole of it will fit.
+    pub fn room_to_park(&self, v: &Vehicle, at: (i64, i64)) -> bool {
+        v.parts.iter().all(|&(_, px, py)| {
+            let (tx, ty) = (
+                at.0 + px as i64 - self.origin.0,
+                at.1 + py as i64 - self.origin.1,
+            );
+            if tx < 0 || ty < 0 || tx as usize >= self.w || ty as usize >= self.h {
+                return false;
+            }
+            let i = ty as usize * self.w + tx as usize;
+            self.over[i].is_none()
+                && self.rel[i] == 0
+                && matches!(
+                    self.tiles[i],
+                    Tile::Road | Tile::Marking | Tile::Shoulder | Tile::Parking
+                )
+        })
+    }
+
     pub fn park(&mut self, v: &Vehicle, at: (i64, i64)) {
         for &(part, px, py) in v.parts.iter() {
             let gx = at.0 + px as i64;
@@ -1440,6 +1466,43 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
     }
 }
 
+/// **How many plots this shop actually occupies**, and which one it starts
+/// at. One for anything that is not a shop.
+///
+/// The run stops at anything that is not a shop, at a change of level —
+/// a building is levelled to the street it fronts, and one a level up is
+/// a separate building — and at three plots, which is where the real size
+/// range runs out.
+fn shop_run(seed: u64, plan: &Plan, lot: Lot, px: i64, py: i64) -> (i64, i64) {
+    let most_plots = crate::townplan::SHOP_PLOTS as i64;
+    if lot != Lot::Shop {
+        return (px, 1);
+    }
+    let t = TILES_PER_PLOT as i64;
+    let level = |x: i64| surface_z(seed, plan, x * t + t / 2, py * t + t / 2);
+    let here = level(px);
+    let joins = |x: i64| {
+        x >= 0
+            && x < plan.width as i64
+            && plan.at(x as usize, py as usize) == Lot::Shop
+            && level(x) == here
+    };
+    // Walk to the start of the run, then take up to three plots from it,
+    // so every plot in the run agrees about where the building begins.
+    let mut from = px;
+    while joins(from - 1) {
+        from -= 1;
+    }
+    let mut len = 0;
+    while joins(from + len) {
+        len += 1;
+    }
+    // Whole shops of three, so the last one is not left as a scrap of one.
+    let block = (px - from) / most_plots;
+    let start = from + block * most_plots;
+    (start, (len - block * most_plots).min(most_plots))
+}
+
 /// The shell of a building on its plot, and what is inside it.
 #[allow(clippy::too_many_arguments)]
 fn building_tile(
@@ -1456,12 +1519,28 @@ fn building_tile(
     let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
     let f = footprint_of(plan, lot, px, py);
 
+    // **A superstore is bigger than a plot.**
+    //
+    // One plot is 32 m, which after the frontage and the service yard
+    // leaves about 810 m² — and a real superstore is **2,800-4,650 m²**
+    // against a corner shop's 250-1,000. So a shop on one plot could only
+    // be made to circulate properly by taking the space out of its
+    // shelving, which is the wrong trade: what a big shop has is more
+    // room, not fewer goods.
+    //
+    // A run of neighbouring shop plots on the same ground is therefore one
+    // building, with no wall at the joins. Three plots is 96 m of frontage
+    // and lands squarely in the real range; beyond that it would be a
+    // shopping centre, which is a different thing.
+    let (run_from, run_plots) = shop_run(seed, plan, lot, px, py);
+    let ix = ix + (px - run_from) * t;
+
     // The front faces the street, which here means the low side.
     let (lo_y, hi_y) = (f.front, t - 1 - f.back);
     let (lo_x, hi_x) = if f.terraced {
         // Runs the full width and shares the wall on the low side, so
         // between two neighbours there is one wall and not two.
-        (0, t - 1)
+        (0, run_plots * t - 1)
     } else {
         (f.side, t - 1 - f.side)
     };
@@ -1523,7 +1602,7 @@ fn building_tile(
     // party wall is only shared by two buildings standing on the same
     // ground.
     let closed_by_next_door = f.terraced && {
-        let (nx, ny) = (px + 1, py);
+        let (nx, ny) = (run_from + run_plots, py);
         let t = TILES_PER_PLOT as i64;
         nx >= 0
             && ny >= 0

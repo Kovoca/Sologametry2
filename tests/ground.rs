@@ -918,7 +918,10 @@ fn a_floor_is_a_boundary_not_a_property_of_a_level() {
 fn a_shop_floor_can_be_walked_round() {
     let plan = a_city();
     let at = stand_on(&plan, Lot::Shop);
-    let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
+    // **Wide enough to hold the whole shop.** A superstore runs across
+    // three plots — 96 m, because 2,800-4,650 m² does not fit on one — so
+    // a window of a single plot cuts it in half.
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT * 2);
 
     let idx = |x: usize, y: usize| y * g.w + x;
     let walkable: Vec<bool> = g.tiles.iter().map(|t| t.walkable()).collect();
@@ -927,8 +930,16 @@ fn a_shop_floor_can_be_walked_round() {
     //
     // Not an aesthetic point: an unreachable pocket of floor is somewhere
     // the shop has built shelving around, and nobody would.
+    // **Start where the shopper is standing**, not at the first floor
+    // tile in the window — that is inside whatever building the corner of
+    // the view happens to clip, and flooding *its* interior proves
+    // nothing about this one.
+    let (sx, sy) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
     let start = (0..g.w * g.h)
-        .find(|i| walkable[*i] && matches!(g.tiles[*i], Tile::Floor))
+        .filter(|i| walkable[*i] && g.tiles[*i] == Tile::Floor)
+        .min_by_key(|i| {
+            ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs()
+        })
         .expect("a shop with no floor in it");
     let mut seen = vec![false; g.w * g.h];
     let mut stack = vec![start];

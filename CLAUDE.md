@@ -1909,6 +1909,26 @@ tiles on foot, 288 in a vehicle.
 - **A corner shop is not a small supermarket.** Under about 400 m² there
   is a served counter and no checkout line — the difference between two
   trades rather than a matter of scale.
+- **A superstore is bigger than a plot, so it has to span several.** The
+  first attempt bought circulation by taking the space out of the
+  shelving, which is the wrong trade: what a big shop has is *more room*,
+  not fewer goods. One plot is 32 m, and after the frontage and the
+  service yard that is about 810 m² against a real superstore's
+  **2,800-4,650**. A run of neighbouring shop plots on the same ground is
+  now one building with no wall at the joins, capped at three plots — 96 m
+  of frontage. Beyond that it would be a shopping centre.
+- **Retail is not sprinkled.** Each plot drew independently, so a town of
+  four hundred thousand had **148 lone shops, 17 pairs and not one run of
+  three** — a corner shop on every other block and nowhere a supermarket
+  could physically stand. A high street is a *continuous terrace* of
+  shopfronts for a few hundred metres; out past the centre a lone shop is
+  right and stays one.
+- **And the blocks were too small to hold one.** A street every 3 plots
+  leaves *2* built plots — 64 m, under the real 80 m minimum, with a third
+  of the town under carriageway against a real 20-25%. Every 4 gives a
+  96 m block *(Chicago's short side is ~100 m; Manhattan's is 80 by 274)*,
+  and that is what made a three-plot building possible at all. Result: 12
+  superstores in a city that had none.
 - **A step in the ground is not a ramp where somebody has built.** The
   ramp was returned before the building was considered, so the step at a
   plot boundary ate the flank wall and a shop came out with a line of
@@ -2110,6 +2130,28 @@ shadowcaster does properly.
 Worth recording because it was nearly mistaken for a bug: a parked artic
 **is** supposed to black out the street behind it. Seventeen metres of
 box at four metres tall, and you are standing next to it.
+
+### Two tests that were passing on nothing
+
+Both surfaced when the block size changed and the RNG stream shifted under
+them, and neither was measuring what it claimed:
+
+- **`density_falls_off_with_distance_from_the_middle`** counted a *street*
+  plot as built — and the street grid is laid across the whole plan
+  whether or not anything stands on it, so open country outside the town
+  read as two-thirds developed. It also used the largest settlement on the
+  seed, which is millions of people on a plan forty plots across: **1.3 km,
+  so the town filled it corner to corner** and every band measured was
+  correctly and uniformly urban. It came out 1.00 / 1.00 / 0.99 and passed
+  on the last two hundredths. `size` is how much ground is generated, not
+  how big the place is, so a gradient can only be seen on a town small
+  enough to sit inside its own plan. It is now a town of three thousand,
+  measured as a **trend across eight bands** — Clark's law is exponential
+  decay, and parks, works and the edge of a block break it locally.
+- **`a_shop_floor_can_be_walked_round`** flood-filled from the first floor
+  tile in the window, which is inside whatever building the corner of the
+  view happens to clip. Flooding *its* interior proves nothing about the
+  shop you are standing in.
 
 ### A room has a door and something in it
 
