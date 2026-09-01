@@ -217,6 +217,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         logistics: None,
         treasury: crate::money::Treasury::new(),
         staff_today: Vec::new(),
+        payroll_met: Vec::new(),
+        state_afford: 1.0,
         services: None,
     };
     // A hand-built slice needs money in it like anywhere else.

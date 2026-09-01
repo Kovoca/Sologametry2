@@ -2333,6 +2333,26 @@ pub struct Economy {
     /// Hands on today at each site, filled by `labour::update`. Payroll is
     /// paid by a particular employer, so it needs the breakdown.
     pub staff_today: Vec<f64>,
+    /// **What share of its wage bill each firm has been able to meet**,
+    /// smoothed over weeks.
+    ///
+    /// This is the number the whole money layer was built to produce. A
+    /// firm that cannot pay does not pay a negative wage — it employs
+    /// fewer people, which is what real disinflation with sticky wages
+    /// does and what this model could not express while a wage came from
+    /// nowhere.
+    pub payroll_met: Vec<f64>,
+    /// **What share of its wage bill the state could raise**, carried from
+    /// yesterday.
+    ///
+    /// Services are paid before the day's tax is collected — a hospital
+    /// cannot meet today's payroll out of money it will be given this
+    /// evening — so what it can be paid has to be judged on what the
+    /// treasury managed last time. A state that cannot collect enough
+    /// under-staffs its hospitals, which is exactly how `Capacity` already
+    /// says under-funding shows up: as fewer people, not a worse
+    /// multiplier.
+    pub state_afford: f64,
 }
 
 impl Economy {
@@ -2386,6 +2406,8 @@ impl Economy {
         // **Wages, after the day's work is known.** `labour::update` has
         // already said who was on today; this is what it cost the people
         // who employed them.
+        // Services are paid for before their wages fall due.
+        self.pay_for_services();
         self.pay_wages();
         // The state takes its share and pays its own staff out of it.
         self.tax_and_spend();
@@ -3002,6 +3024,17 @@ impl Economy {
     }
 
     fn distribute_to_cover(&mut self, days: f64) {
+        let day = self.ledger.day;
+        /// **What a firm pays for an input, against what the next one
+        /// down the chain sells it for.**
+        ///
+        /// Buying and selling at the same price gives every business in
+        /// the country a gross margin of exactly nothing, so no shop could
+        /// pay a cashier and no mill a miller: they took money in and paid
+        /// all of it straight out again. Real gross margins are 25-30% in
+        /// retail, 10-15% in wholesale and 20-35% in manufacturing, and a
+        /// quarter is the round number in the middle of that.
+        const WHOLESALE: f64 = 0.75;
         // Which markets each market can be supplied from: everywhere the
         // open route network reaches, not merely its direct neighbours.
         // Goods transship — a town at the end of a chain is supplied
@@ -3113,6 +3146,22 @@ impl Economy {
                             commodity: c,
                             qty,
                         },
+                    );
+                    // **And the buyer pays the seller.**
+                    //
+                    // Only shops took money from households, so every works
+                    // upstream of a counter — farm, mill, mine, steelworks
+                    // — had no income whatever. They drained their opening
+                    // capital, could not make payroll and shed their staff,
+                    // which is a supply chain with no revenue in it rather
+                    // than a recession.
+                    let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
+                    self.treasury.pay(
+                        day,
+                        crate::money::Account::Firm(dst),
+                        crate::money::Account::Firm(src),
+                        due,
+                        crate::money::Why::Supply,
                     );
                     short -= qty;
                 }
@@ -3265,6 +3314,9 @@ impl Economy {
         if self.staff_today.len() != self.ledger.sites.len() {
             return;
         }
+        if self.payroll_met.len() != self.ledger.sites.len() {
+            self.payroll_met.resize(self.ledger.sites.len(), 1.0);
+        }
         for site in 0..self.ledger.sites.len() {
             let hands = self.staff_today[site];
             if hands <= 0.0 {
@@ -3272,13 +3324,22 @@ impl Economy {
             }
             let m = self.ledger.sites[site].market;
             let bill = hands * self.day_rate_here(m);
-            self.treasury.pay(
+            let paid = self.treasury.pay(
                 day,
                 Account::Firm(site),
                 Account::Households(m),
                 bill,
                 Why::Payroll,
             );
+            // **Nobody is hired and fired by the day**, so what a firm
+            // could afford this week is a slow average of what it has been
+            // affording. The same three-week stickiness the labour market
+            // already uses everywhere else: firms hoard labour through a
+            // short stoppage and only shed it when the shortfall persists.
+            const STICKY_DAYS: f64 = 21.0;
+            let met = if bill > 0.0 { paid / bill } else { 1.0 };
+            let a = 1.0 / STICKY_DAYS;
+            self.payroll_met[site] = self.payroll_met[site] * (1.0 - a) + met * a;
         }
     }
 
@@ -3311,9 +3372,18 @@ impl Economy {
         let ceiling = gov.capacity.tax_take() * gov.capacity.collection();
         let posts: Vec<f64> = (0..self.markets.len()).map(|m| gov.posts_in(m)).collect();
 
-        let bill: f64 = (0..self.markets.len())
+        let mut bill: f64 = (0..self.markets.len())
             .map(|m| posts[m] * self.day_rate_here(m))
             .sum();
+        // Hospitals are the state's payroll too, and it has to raise the
+        // money for them like everything else it does.
+        for site in 0..self.ledger.sites.len() {
+            if self.ledger.sites[site].kind == SiteKind::Hospital {
+                let m = self.ledger.sites[site].market;
+                bill += self.staff_today.get(site).copied().unwrap_or(0.0)
+                    * self.day_rate_here(m);
+            }
+        }
         if bill <= 0.0 {
             return;
         }
@@ -3356,6 +3426,9 @@ impl Economy {
         } else {
             0.0
         };
+        // Remembered for tomorrow, when the hospitals are paid before any
+        // of this has happened.
+        self.state_afford = afford;
         for m in 0..self.markets.len() {
             let pay = posts[m] * self.day_rate_here(m) * afford;
             self.treasury.pay(
@@ -3364,6 +3437,68 @@ impl Economy {
                 Account::Households(m),
                 pay,
                 Why::PublicSpending,
+            );
+        }
+    }
+
+    /// **Somebody pays the builders.**
+    ///
+    /// The building trade consumes cement, steel and timber and produces
+    /// nothing that can be shipped — the materials go into a building, the
+    /// way food goes into people. That makes it a service, and it had the
+    /// same problem the hospital had: staff, costs, and no customer.
+    ///
+    /// Households pay, because in the end a building is somebody's home or
+    /// somebody's premises and construction is bought out of income.
+    fn pay_for_services(&mut self) {
+        use crate::money::{Account, Why};
+        let day = self.ledger.day;
+        // **A hospital is a firm the state pays.** It produces nothing
+        // that can be shipped and sells to nobody, which is exactly what
+        // makes it a service — and it left the one site in the country
+        // that must never stop with no way of paying its staff.
+        //
+        // Paid here rather than in `tax_and_spend`, because that runs
+        // after wages fall due and a hospital cannot meet today's payroll
+        // out of money it will be given this evening.
+        for site in 0..self.ledger.sites.len() {
+            if self.ledger.sites[site].kind != SiteKind::Hospital {
+                continue;
+            }
+            let m = self.ledger.sites[site].market;
+            let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
+            let due = hands * self.day_rate_here(m) * self.state_afford;
+            self.treasury.pay(
+                day,
+                Account::State,
+                Account::Firm(site),
+                due,
+                Why::PublicSpending,
+            );
+        }
+
+        for site in 0..self.ledger.sites.len() {
+            if self.ledger.sites[site].kind != SiteKind::Builders {
+                continue;
+            }
+            let m = self.ledger.sites[site].market;
+            let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
+            // Wages plus what the materials cost them, which is what a
+            // builder actually charges for.
+            let materials: f64 = self
+                .treasury
+                .today
+                .iter()
+                .filter(|t| t.from == Account::Firm(site) && t.why == Why::Supply)
+                .map(|t| t.amount)
+                .sum();
+            let due = hands * self.day_rate_here(m) + materials;
+            self.treasury.pay(
+                day,
+                Account::Households(m),
+                Account::Firm(site),
+                due,
+                Why::Purchase,
             );
         }
     }
@@ -3395,10 +3530,25 @@ impl Economy {
         if self.staff_today.len() != self.ledger.sites.len() {
             return;
         }
+        // What each firm actually paid out today, whatever the reason.
+        // A reserve sized on payroll alone starves a works that buys far
+        // more in materials than it pays in wages — a steelworks' ore bill
+        // dwarfs its payroll — so the remittance stripped it of the money
+        // it needed to buy next week's ore.
+        let mut outgoings = vec![0.0f64; self.ledger.sites.len()];
+        for t in self.treasury.today.iter() {
+            if let crate::money::Account::Firm(i) = t.from {
+                if i < outgoings.len() {
+                    outgoings[i] += t.amount;
+                }
+            }
+        }
         for site in 0..self.ledger.sites.len() {
             let m = self.ledger.sites[site].market;
             let wage = self.day_rate_here(m);
-            let reserve = (self.staff_today[site] * wage * RESERVE_DAYS).max(wage * 30.0);
+            let reserve = (outgoings[site] * RESERVE_DAYS)
+                .max(self.staff_today[site] * wage * RESERVE_DAYS)
+                .max(wage * 30.0);
             let held = self.treasury.balance(Account::Firm(site));
             let surplus = held - reserve;
             if surplus <= 0.0 {

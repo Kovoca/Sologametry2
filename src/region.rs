@@ -1881,6 +1881,8 @@ impl Region {
             logistics: None,
             treasury: crate::money::Treasury::new(),
             staff_today: Vec::new(),
+        payroll_met: Vec::new(),
+        state_afford: 1.0,
             services: None,
         };
         // **Hang the distribution network under the transmission**, so a
