@@ -473,7 +473,7 @@ impl Populace {
         // town has one supervisory post per twenty hands, so does the
         // sample.
         let n_markets = econ.markets.len();
-        let mut vacancy = vec![false; n_markets];
+        let mut vacancy = vec![0.0f64; n_markets];
         for m in 0..n_markets {
             let mine: Vec<&Person> = self.people.iter().filter(|p| p.market == m).collect();
             if mine.is_empty() {
@@ -486,15 +486,36 @@ impl Populace {
                 0.0
             };
             let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count() as f64;
-            vacancy[m] = bosses < mine.len() as f64 * share;
+            // **How many posts are going, not whether any are.**
+            //
+            // This was a boolean, so on any day a vacancy existed *every*
+            // eligible person in the town was made up at once. It went
+            // unnoticed while the sample was mostly shop workers, who
+            // reach the threshold rarely and at scattered times — and then
+            // the population was given its real trade mix, offices and
+            // public service came in at a third of it, and those work 85%
+            // of weekdays rather than 28%. They cleared the threshold
+            // together and a town came out 27% supervisors against 9% of
+            // its posts.
+            //
+            // A vacancy is a number of posts. Counting them down as they
+            // are filled is the whole of the fix.
+            vacancy[m] = (mine.len() as f64 * share - bosses).max(0.0);
         }
 
-        for p in self.people.iter_mut() {
-            if p.condition <= 0.0 {
+        for i in 0..self.people.len() {
+            if self.people[i].condition <= 0.0 {
                 continue;
             }
-            let free = vacancy.get(p.market).copied().unwrap_or(false);
-            live_a_day_with(p, econ, day, free);
+            let m = self.people[i].market;
+            let free = vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
+            let was = self.people[i].trade;
+            live_a_day_with(&mut self.people[i], econ, day, free);
+            if was != Trade::Supervisor && self.people[i].trade == Trade::Supervisor {
+                if let Some(v) = vacancy.get_mut(m) {
+                    *v -= 1.0;
+                }
+            }
         }
         self.bury_the_dead(day);
         // A year turns.
@@ -651,14 +672,76 @@ fn draw_household(rng: &mut Rng) -> Household {
 }
 
 fn draw_trade(rng: &mut Rng) -> Trade {
+    // **The real shape of employment**, which this drew four trades from
+    // and there are thirteen. `services.rs` and `state.rs` between them
+    // create posts for over half the workforce — offices, teaching,
+    // nursing, construction — and not one sampled person could ever hold
+    // one, because the draw did not contain them.
+    //
+    // Shares are the UK's, by sector *(~33M jobs)*:
+    //
+    // | | share |
+    // |---|---|
+    // | wholesale and retail | 14.1% |
+    // | health and social work | 13.3% |
+    // | professional, technical, admin, finance, information | 25.5% |
+    // | education and public administration | 13.2% |
+    // | manufacturing, agriculture, utilities, mining | 10.1% |
+    // | accommodation and food | 6.8% |
+    // | construction | 6.4% |
+    // | transport and storage | 5.0% |
+    //
+    // Health splits the way a real health service does: about **3 doctors
+    // per 1,000 people against 9 nurses**, with care assistants about as
+    // numerous as nurses again. Construction splits into the general
+    // trade and the two that carry a ticket.
     let r = rng.next_f32();
-    if r < 0.55 {
+    let mut at = 0.0f32;
+    let mut upto = |share: f32| {
+        at += share;
+        r < at
+    };
+    if upto(0.141) {
         Trade::Shopworker
-    } else if r < 0.85 {
+    } else if upto(0.255) {
+        Trade::Office
+    } else if upto(0.132) {
+        Trade::Public
+    } else if upto(0.101) {
         Trade::Labourer
-    } else if r < 0.94 {
+    } else if upto(0.068) {
+        Trade::Hospitality
+    } else if upto(0.050) {
         Trade::Haulier
+    // --- health, 13.3% all told ---
+    } else if upto(0.016) {
+        Trade::Doctor
+    } else if upto(0.045) {
+        Trade::Nurse
+    } else if upto(0.045) {
+        Trade::CareAssistant
+    } else if upto(0.027) {
+        // Health service administration, porters, records.
+        Trade::Public
+    // --- construction, 6.4% ---
+    } else if upto(0.035) {
+        Trade::Builder
+    } else if upto(0.015) {
+        Trade::Electrician
+    } else if upto(0.014) {
+        Trade::Pipefitter
     } else {
-        Trade::Supervisor
+        // **Nobody starts as a supervisor**, which this file's own
+        // definition of the trade says: it is what a floor hand is
+        // promoted to and the only way up the economy contains. Handing
+        // it out at the draw was wrong twice over.
+        //
+        // Once directly, and once far worse through the school-leaver's
+        // rejection loop: a child leaving at sixteen redraws until it
+        // finds work its qualification allows, and only four trades need
+        // none. Supervisor being one of them turned 5.6% of the draw into
+        // 15% of everybody who left school — and a town came out 27%
+        // supervisors against 9% of its posts.
+        Trade::Shopworker
     }
 }

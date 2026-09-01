@@ -70,6 +70,41 @@ pub enum Trade {
     /// rather than new build — which makes this the answer to "who mends
     /// it when it breaks".
     Builder,
+    /// **Wires a building, and comes back when it fails.**
+    ///
+    /// A construction site is not one trade and never was. Real UK
+    /// construction employs about 250,000 electricians against 2.1M in
+    /// the industry, and the work is gated: domestic electrical work
+    /// needs certification, which is what an apprenticeship buys.
+    ///
+    /// **The gate is the point.** A building cannot be finished without
+    /// one, so a shortage of electricians is not a slightly slower site,
+    /// it is a stopped one.
+    Electrician,
+    /// **Pipes: water in, waste out, gas and heating.**
+    ///
+    /// ~120,000 plumbing and heating engineers in the UK, and gas work is
+    /// registered work — you may not legally do it untrained, which is
+    /// exactly the kind of gate that makes a trade a trade.
+    Pipefitter,
+    /// **Diagnoses and treats.** The longest training of any work here:
+    /// five or six years of medical school and foundation training after
+    /// it, which is why there are ~3 doctors per 1,000 people and not
+    /// thirty.
+    Doctor,
+    /// **Registered nursing.** Degree-entry in Britain since 2013, and
+    /// about 9 per 1,000 people — three times as many as doctors, which
+    /// is the real shape of a health service.
+    Nurse,
+    /// **The practical nurse**: healthcare assistant, nursing associate,
+    /// the person who does most of the hands-on care.
+    ///
+    /// About as numerous as registered nurses and trained in a year
+    /// rather than three. **They cannot do a nurse's work and a nurse
+    /// cannot do a doctor's** — which is the same rule this economy
+    /// already applies to medicines, where you do not anaesthetise
+    /// anybody with aspirin.
+    CareAssistant,
     /// **Pubs, cafés, hotels and everything that is open in the evening.**
     /// 6.8% of employment, plus 2.5% in arts and recreation. The
     /// worst-paid sector there is, and the one where insecurity lives:
@@ -88,6 +123,11 @@ impl Trade {
             Trade::Labourer => "labourer",
             Trade::Shopworker => "shop worker",
             Trade::Supervisor => "supervisor",
+            Trade::Electrician => "electrician",
+            Trade::Pipefitter => "pipe fitter",
+            Trade::Doctor => "doctor",
+            Trade::Nurse => "nurse",
+            Trade::CareAssistant => "care assistant",
             Trade::Public => "public service",
             Trade::Builder => "builder",
             Trade::Hospitality => "hospitality",
@@ -224,6 +264,19 @@ pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
                 1.0
             }
         }
+        // **A hospital does not close on Sunday**, which is most of what
+        // makes clinical work different from every other qualified job:
+        // the rota runs through the weekend, the nights and Christmas.
+        Trade::Doctor | Trade::Nurse | Trade::CareAssistant => 1.0,
+        // A site keeps weekday hours; an emergency call-out does not, and
+        // that is where a fair part of the trade's money comes from.
+        Trade::Electrician | Trade::Pipefitter => {
+            if wd.is_weekend() {
+                0.30
+            } else {
+                1.0
+            }
+        }
         // **Open seven days, busiest at the weekend** — and the weekend
         // shifts are covered by the people who are not on a full-time
         // contract, because the full-timers have Monday to Friday and
@@ -286,6 +339,16 @@ pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
         // Construction is full-time work interrupted by the job ending:
         // real self-employment in the trade runs very high.
         Trade::Builder => (0.60, 0.08, 0.32),
+        // **A qualified trade is more its own boss than a labourer is.**
+        // Real self-employment among electricians and plumbers is very
+        // high — the ticket is what lets you work for yourself.
+        Trade::Electrician | Trade::Pipefitter => (0.45, 0.07, 0.48),
+        // **Clinical work is salaried and permanent**, and that security
+        // is a real part of why people take the training. Bank and agency
+        // nursing is the casual share and it is not small.
+        Trade::Doctor => (0.92, 0.06, 0.02),
+        Trade::Nurse => (0.72, 0.18, 0.10),
+        Trade::CareAssistant => (0.55, 0.28, 0.17),
         // **28.8% of this workforce is on zero-hours**, the highest of any
         // industry and fourteen times public administration's 2.1%.
         Trade::Hospitality => (0.35, 0.36, 0.29),
@@ -851,6 +914,17 @@ pub fn qualification_for(trade: Trade) -> Qualification {
         // Teaching and nursing are degree-entry, and so is everything in
         // an office worth having.
         Trade::Public | Trade::Office => Qualification::Degree,
+        // **A ticket, and years to get it.** You may not wire a house or
+        // fit a gas appliance without one, which is exactly why the work
+        // pays what it does.
+        Trade::Electrician | Trade::Pipefitter => Qualification::Vocational,
+        // Nursing has been degree-entry in Britain since 2013, and
+        // medicine has never been anything else.
+        Trade::Doctor | Trade::Nurse => Qualification::Degree,
+        // **The route into healthcare that a degree is not needed for**,
+        // which is most of why it exists: a year of practical training
+        // against three of university.
+        Trade::CareAssistant => Qualification::Vocational,
         // **Nothing gates a chargehand.** It is promotion from the floor,
         // which is the whole point of it and the only ladder somebody
         // without a qualification can climb.
@@ -981,6 +1055,14 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         // Professional, technical and financial work is the best paid,
         // and it is why people move to cities for it.
         Trade::Office => 9.5,
+        // Real UK medians against a ~£33k economy-wide figure: a doctor
+        // ~£80k, a registered nurse ~£37k, an electrician ~£40k, a
+        // healthcare assistant ~£24k. The ladder is the training.
+        Trade::Doctor => 18.0,
+        Trade::Nurse => 8.5,
+        Trade::Electrician => 9.0,
+        Trade::Pipefitter => 8.8,
+        Trade::CareAssistant => 5.5,
     };
     food * multiple
 }
