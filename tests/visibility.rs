@@ -357,6 +357,44 @@ fn no_two_kinds_of_thing_are_drawn_the_same() {
         seen.push((d.glyph, d.fg.family(), name));
     }
 
+    // **A wall's colour is not the tile's.** It comes from what the
+    // building is for, so the check has to be made against each of the
+    // hues a wall can actually take rather than against the one
+    // `Tile::Wall` reports by default. A dwelling in yellow and a rock
+    // face in dark grey are both a full block, and that is the pairing
+    // that has to stay apart.
+    for lot in [Lot::House, Lot::Flats, Lot::Shop, Lot::Works] {
+        for plot in 0..8i64 {
+            let c = scale_sim::ground::fabric_colour(lot, plot, 0, 4242);
+            assert_ne!(
+                c.family(),
+                Tile::Rock.display().fg.family(),
+                "a {lot:?} wall and a rock face are both a full block in \
+                 {}",
+                c.family()
+            );
+            // Bare earth shares the brown family with a dwelling and
+            // that is fine: earth is the *light* block and a wall is the
+            // full one. It is the pair that collides, never the hue on
+            // its own.
+        }
+    }
+
+    // **Uniform within a building, varied between them**, or a terrace of
+    // shops sharing party walls runs together into one long frontage.
+    let shades: std::collections::BTreeSet<String> = (0..16)
+        .map(|p| {
+            format!(
+                "{:?}",
+                scale_sim::ground::fabric_colour(Lot::Shop, p, 0, 4242)
+            )
+        })
+        .collect();
+    assert!(
+        shades.len() > 1,
+        "every shop in the town is painted exactly the same shade"
+    );
+
     // **Dimming keeps the hue.** Sixteen colours cannot carry a second
     // shade of every one, so the level is carried by the faint attribute
     // and grass a level down is still green.

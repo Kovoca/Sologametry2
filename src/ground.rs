@@ -238,12 +238,16 @@ impl Tile {
             // crag. Colour carries the class, the glyph carries which one.
             Tile::Wall => ('\u{2588}', Colour::Brown),
             Tile::Floor => ('.', Colour::Grey),
-            // A way through is worth finding, so it is bright.
-            Tile::Door => ('+', Colour::Yellow),
+            // **A way in is the same everywhere.** The wall carries what
+            // the building is; a door is the one thing you look for
+            // whatever building it belongs to, so it stays neutral and
+            // bright rather than joining in.
+            Tile::Door => ('+', Colour::White),
             Tile::Window => ('o', Colour::LightCyan),
-            // **Nothing else is magenta**, which is the point: shop
-            // fittings shared yellow with sand, so a till on a shop floor
-            // and a beach were the same colour on the same map.
+            // **Not the shop's own colour**, or the fittings vanish into
+            // the walls around them: a shop is magenta now, so its tills
+            // and shelving cannot be. Cyan is equipment, which nothing
+            // indoors competes with.
             Tile::Fitting(f) => (
                 match f {
                     Fixture::Till => '$',
@@ -252,7 +256,7 @@ impl Tile {
                     Fixture::LoadingBay => 'L',
                     Fixture::Counter => 'C',
                 },
-                Colour::LightMagenta,
+                Colour::Cyan,
             ),
             Tile::Furnishing(f) => (f.glyph(), Colour::Brown),
             Tile::Vehicle(p) => (p.glyph(), Colour::LightRed),
@@ -464,6 +468,24 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
             (Tile::Floor, "floor"),
         ],
     ));
+    // **A wall's colour says what the building is for**, which is the one
+    // thing on the map that a glyph cannot carry.
+    if colour {
+        out.push_str("  use       ");
+        for (c, name) in [
+            (fabric_colour(Lot::House, 0, 0, 0), "a dwelling"),
+            (fabric_colour(Lot::Shop, 0, 0, 0), "a shop"),
+            (fabric_colour(Lot::Works, 0, 0, 0), "works"),
+        ] {
+            out.push_str(c.ansi());
+            out.push('\u{2588}');
+            out.push_str(Colour::Grey.ansi());
+            out.push(' ');
+            out.push_str(name);
+            out.push_str("   ");
+        }
+        out.push('\n');
+    }
     out.push_str(&line(
         "vertical",
         &[
@@ -483,11 +505,61 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
             (Tile::Fitting(Fixture::Counter), "counter"),
         ],
     ));
-    out.push_str("  furniture n bed   m table   h chair   e stove   k wardrobe\n");
+    out.push_str(&line(
+        "furniture",
+        &[
+            (Tile::Furnishing(Furnishing::Bed), "bed"),
+            (Tile::Furnishing(Furnishing::Table), "table"),
+            (Tile::Furnishing(Furnishing::Chair), "chair"),
+            (Tile::Furnishing(Furnishing::Stove), "stove"),
+            (Tile::Furnishing(Furnishing::Wardrobe), "wardrobe"),
+        ],
+    ));
     if with_vehicle {
-        out.push_str("  vehicle   + frame   E engine   O wheel   B cargo bay   F fuel tank\n");
-        out.push_str("            % seat   ! controls   b battery   a alternator\n");
-        out.push_str("            p solar   x refrigeration   w workshop rig   Y land gear\n");
+        // Every part of a vehicle is red, because what you need to know
+        // about one is that it is a vehicle. Which part is the glyph's
+        // job, and from outside a closed hull you only ever see two of
+        // them anyway.
+        let parts = |items: &[(Part, &str)]| -> String {
+            let mut row = String::from("            ");
+            for (i, (p, name)) in items.iter().enumerate() {
+                if i > 0 {
+                    row.push_str("   ");
+                }
+                if colour {
+                    row.push_str(Colour::LightRed.ansi());
+                }
+                row.push(p.glyph());
+                if colour {
+                    row.push_str(Colour::Grey.ansi());
+                }
+                row.push(' ');
+                row.push_str(name);
+            }
+            row.push('\n');
+            row
+        };
+        let mut head = parts(&[
+            (Part::Frame { heavy: false }, "frame"),
+            (Part::Engine(300), "engine"),
+            (Part::Wheel { heavy: false }, "wheel"),
+            (Part::CargoBay(1000), "cargo bay"),
+            (Part::Tank(500), "fuel tank"),
+        ]);
+        head.replace_range(2..9, "vehicle");
+        out.push_str(&head);
+        out.push_str(&parts(&[
+            (Part::Seat, "seat"),
+            (Part::Controls, "controls"),
+            (Part::Battery(5), "battery"),
+            (Part::Alternator(2000), "alternator"),
+        ]));
+        out.push_str(&parts(&[
+            (Part::SolarPanel(200), "solar"),
+            (Part::Refrigeration(10_000), "refrigeration"),
+            (Part::WorkshopRig, "workshop rig"),
+            (Part::LandGear { working_width_m: 6 }, "land gear"),
+        ]));
     }
     // **Faint means another level**, which is the one thing on the map
     // that is not a glyph at all.
@@ -590,6 +662,57 @@ pub struct Ground {
     /// ground under the eye. This is what line of sight is measured
     /// against; `rel` is only how it is drawn.
     pub surf: Vec<f32>,
+    /// **What colour this building is**, for the cells that are one.
+    ///
+    /// A tile cannot answer this, because a wall is a wall whatever it
+    /// encloses — so the renderer has to, the same way it already picks a
+    /// wall's box-drawing character from its neighbours rather than having
+    /// a dozen kinds of wall tile.
+    pub fabric: Vec<Colour>,
+}
+
+/// **A building takes the hue of what it is for.**
+///
+/// The plan view can tell a shop from a house from a works, and then you
+/// walked down onto the street and every building was the same brown wall
+/// — the identity vanished exactly where you would use it. A frontage is
+/// how you tell a shop from a dwelling in reality, and at a metre to the
+/// character there is no room for a sign, so colour does that work.
+///
+/// **Uniform within a building, varied between them.** The shade is drawn
+/// off the plot, so neighbouring shops in a terrace differ slightly —
+/// which is what lets you see where one ends and the next begins. Sharing
+/// a party wall, they otherwise run together into one long shopfront.
+///
+/// Dwellings are one class here, not two. A house wall and a tenement wall
+/// look alike and the distinction is not the one you need standing in
+/// front of them; what you need is home, shop, or works.
+pub fn fabric_colour(lot: Lot, px: i64, py: i64, seed: u64) -> Colour {
+    let light = hash(seed, px, py, 37) < 0.5;
+    match lot {
+        Lot::House | Lot::Flats => {
+            if light {
+                Colour::Yellow
+            } else {
+                Colour::Brown
+            }
+        }
+        Lot::Shop => {
+            if light {
+                Colour::LightMagenta
+            } else {
+                Colour::Magenta
+            }
+        }
+        Lot::Works => {
+            if light {
+                Colour::LightRed
+            } else {
+                Colour::Red
+            }
+        }
+        _ => Colour::Grey,
+    }
 }
 
 /// **How far a view reaches past a step in the ground**, in Z levels: 16
@@ -704,6 +827,7 @@ impl Ground {
 
         let mut rel = Vec::with_capacity(w * h);
         let mut surf = Vec::with_capacity(w * h);
+        let mut fabric = Vec::with_capacity(w * h);
         let eye_m = surface_m(seed, plan, centre.0, centre.1);
 
         for ty in 0..h {
@@ -759,6 +883,18 @@ impl Ground {
                 // everything past it. The ground itself is continuous and
                 // the line of sight has to be measured against that.
                 surf.push((surface_m(seed, plan, gx, gy) - eye_m) as f32);
+                let t = TILES_PER_PLOT as i64;
+                let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
+                let lot = if px < 0
+                    || py < 0
+                    || px >= plan.width as i64
+                    || py >= plan.height as i64
+                {
+                    Lot::Open
+                } else {
+                    plan.at(px as usize, py as usize)
+                };
+                fabric.push(fabric_colour(lot, px, py, seed));
             }
         }
         Ground {
@@ -770,6 +906,7 @@ impl Ground {
             tiles,
             rel,
             surf,
+            fabric,
         }
     }
 
@@ -851,9 +988,11 @@ impl Ground {
                     Display { glyph: shown.glyph(), fg: Colour::LightRed, dim: false }
                 } else {
                     let mut d = self.at(x, y).display();
-                    // Topology decides a wall's line; the tile stays a wall.
+                    // Topology decides a wall's line and use decides its
+                    // colour; the tile stays a wall either way.
                     if self.at(x, y) == Tile::Wall {
                         d.glyph = self.wall_glyph(x, y);
+                        d.fg = self.fabric[y * self.w + x];
                     }
                     // **Ground on another level is drawn dimmer**, because
                     // it is not where you are standing. The glyph is

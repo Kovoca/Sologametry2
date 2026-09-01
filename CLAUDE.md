@@ -2467,6 +2467,31 @@ it. **Housing brown, retail magenta, industry red** — the same three at
 the shop floor are the same colour. On the plan, road brightness is the
 traffic: a lane dim, a motorway white.
 
+**A building takes the hue of what it is for.** The plan view could tell a
+shop from a house from a works, and then you walked down onto the street
+and **every building was the same brown wall** — the identity vanished
+exactly where you would use it. A frontage is how you tell a shop from a
+dwelling in reality, and at a metre to the character there is no room for
+a sign, so colour does that work: dwellings brown, shops magenta, works
+red, with white doors and cyan glazing common to all of them because a way
+in is the same thing whatever it leads into.
+
+- **Uniform within a building, varied between them.** The shade is drawn
+  off the plot, so neighbouring shops in a terrace differ slightly —
+  which is what lets you see where one ends and the next begins. Sharing
+  a party wall, they otherwise run together into one long shopfront.
+- **A tile cannot answer what colour it is**, because a wall is a wall
+  whatever it encloses. The renderer decides, the same way it already
+  picks a wall's box-drawing character from its neighbours rather than
+  having a dozen kinds of wall tile. Which is the existing rule — a glyph
+  describes what is seen, it does not define what exists — arriving at
+  colour.
+- **Dwellings are one class, not two.** A house wall and a tenement wall
+  look alike, and the distinction is not the one you need standing in
+  front of them. Home, shop, or works is.
+- Fittings moved off magenta when shops took it, or the tills and shelving
+  vanish into the walls around them.
+
 - **The rule is the pair, and the hue not the shade.** `no_two_kinds_of_
   thing_are_drawn_the_same` tests glyph against colour *family*, because
   exact equality passes on the palette this replaced — nothing was ever
