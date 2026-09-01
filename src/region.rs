@@ -2138,6 +2138,20 @@ impl Nations {
             }
         }
 
+        // **The freight industry has to be founded over the whole trading
+        // world**, not inherited from whichever nation happened to be
+        // built first.
+        //
+        // Each `Region::extract` sets up carriers for its own towns, and
+        // folding several regions into one economy left the merged world
+        // with hauliers for a fraction of its markets and none at all for
+        // the rest. Re-founding it here gives every town a carrier and —
+        // because a carrier plans end to end over every open route,
+        // including the sea lanes — gives a cargo a way to cross a border
+        // that does not require it to win a separate price test at every
+        // hop on the way.
+        economy.logistics = Some(crate::logistics::Logistics::found(&economy));
+
         let north = economy.markets.iter().filter(|m| !m.southern).count();
         notes.push(format!(
             "{} nations, {} markets ({} northern, {} southern), {} routes",

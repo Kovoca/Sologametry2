@@ -439,22 +439,21 @@ fn seasons_do_not_starve_anyone() {
     // The counterpart. A harvest cycle is a rhythm, not a crisis: granaries
     // exist precisely so that eating is steady while growing is not.
     //
-    // **Known gap, on seed 1 and named rather than hidden.** Once the soil
-    // decides what a nation grows, a town's farms no longer match its own
-    // mills, and the smallest town of that nation is drained: on day 1284
-    // Valehaven's fields and grain terminal between them made 10,324
-    // tonnes, both ended the day holding none of it, and its mill got
-    // 3,122 and stopped. The grain is carted to the larger towns the day
-    // it is made.
+    // **Seed 1 is back, and it used to be the exception.** Once the soil
+    // decided what a nation grows, a town's farms no longer matched its
+    // own mills and the smallest town of that nation was drained: on day
+    // 1284 Valehaven's fields and terminal made 10,324 tonnes between
+    // them, both ended the day holding none of it, and its mill got 3,122
+    // and stopped. The grain was carted to the larger towns the day it was
+    // made, because a producer handed over everything without first
+    // covering the works next door.
     //
-    // The cause is in distribution, not in the soil: a producer hands over
-    // everything it makes without first covering the works next door. It
-    // never showed before because every town's farms were sized to its own
-    // mills, so no town was ever a net importer of grain from another.
-    // Fixing it properly means distribution reserving a site's output for
-    // local consumers ahead of the road, which is a change to `econ` and
-    // not to this seam.
-    for seed in [42u64, 20260828] {
+    // Two later changes fixed it without either being aimed at it:
+    // `distribute` now covers every daily draw before anybody builds
+    // inventory, and `logistics.rs` moves on days of cover rather than on
+    // tonnes. The seed is asserted rather than avoided so it cannot
+    // silently regress.
+    for seed in [1u64, 42, 20260828] {
         let p = planet(seed);
         let Some(r) = region_of(&p, 0, Doctrine::Prudent) else {
             continue;

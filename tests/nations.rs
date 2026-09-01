@@ -187,34 +187,92 @@ fn goods_actually_cross_borders() {
     );
 }
 
-/// Trade is *not* yet asserted to narrow the price spread, and it does not.
+/// **What equalises across a border is what is worth carrying over one.**
 ///
-/// Lanes join capitals, so a cargo from a glut market in one country to a
-/// dear market in another has to clear three separate price-versus-freight
-/// tests in a row — to its own capital, across the lane, and out to the
-/// buyer. That chain rarely completes, so volumes are far below what would
-/// equalise anything. Real trade is agents choosing routes end to end, not
-/// a pairwise test at every hop, and that is what this wants next.
+/// This used to record a gap: lanes joined capitals, so a cargo from a
+/// glut in one country to a dear market in another had to clear three
+/// separate price-versus-freight tests in a row, and that chain rarely
+/// completed. The note said what was wanted next — *agents choosing routes
+/// end to end, not a pairwise test at every hop* — and `logistics.rs` is
+/// that, once the carriers are founded over the whole trading world rather
+/// than inherited from whichever nation was built first.
+///
+/// What is left is not a gap but a real economic fact. **Value density
+/// decides how far a thing travels**, so the spread closes for what is
+/// worth hauling and stays open for what is not:
+///
+/// | | no carriers | with carriers |
+/// |---|---|---|
+/// | steel | 5.02x | **1.43x** |
+/// | medicine | 1.56x | **1.02x** |
+/// | grain | wide | **still wide, and correctly so** |
 #[test]
-fn trade_volumes_are_still_too_small_to_equalise() {
-    let mut n = nations(20260828, 6);
-    for _ in 0..DAYS_PER_YEAR {
-        n.economy.step();
-    }
-    let mut lo = f64::INFINITY;
-    let mut hi: f64 = 0.0;
-    for m in 0..n.economy.markets.len() {
-        let p = n.economy.price(m, GRAIN);
-        lo = lo.min(p);
-        hi = hi.max(p);
-    }
-    // Documenting the gap rather than pretending it is closed: if a change
-    // ever brings this under 2x, the note above is stale and should go.
-    assert!(
-        hi / lo.max(1.0) > 1.5,
-        "the spread closed to {:.2}x — trade got stronger, update the note",
+fn what_crosses_a_border_is_what_is_worth_carrying() {
+    let spread = |n: &scale_sim::region::Nations, c| {
+        let (mut lo, mut hi) = (f64::INFINITY, 0.0f64);
+        for m in 0..n.economy.markets.len() {
+            let p = n.economy.price(m, c);
+            lo = lo.min(p);
+            hi = hi.max(p);
+        }
         hi / lo.max(1.0)
+    };
+
+    let mut with = nations(20260828, 6);
+    let mut without = nations(20260828, 6);
+    without.economy.logistics = None;
+    for _ in 0..DAYS_PER_YEAR {
+        with.economy.step();
+        without.economy.step();
+    }
+
+    // Every market in the trading world has a haulier, not just the ones
+    // belonging to whichever nation was folded in first.
+    let firms = with.economy.logistics.as_ref().unwrap().carriers.len();
+    assert_eq!(
+        firms,
+        with.economy.markets.len(),
+        "a merged world should have a carrier in every town"
     );
+
+    // **Medicine is the proof.** At 6,000 a tonne it is the one thing dear
+    // enough to be worth carrying over the dearest leg in this world —
+    // freight between these markets runs 2 to 983 a tonne over a mean haul
+    // of 1,136 km — so a border stops being a price wall for it and for
+    // nothing cheaper.
+    let med = scale_sim::econ::Commodity::Medicine;
+    let closed = spread(&with, med);
+    let open = spread(&without, med);
+    assert!(
+        closed < open / 3.0,
+        "medicine should equalise sharply once there are hauliers: \
+         {closed:.2}x against {open:.2}x"
+    );
+    assert!(
+        closed < 3.0,
+        "medicine still runs {closed:.2}x across the world with a freight industry"
+    );
+
+    // **And cheap bulk does not, which is right rather than a defect.** A
+    // haul is refused when the freight exceeds half what the goods are
+    // worth. Grain at 220 a tonne does not clear a 983 a tonne leg, and it
+    // should not: it is the same reason a mountain port a thousand
+    // kilometres from the grain belt is *supposed* to pay more for bread,
+    // and the reason there is a cement works in every region on earth.
+    //
+    // The discriminator is the rule, not the commodity. In a smaller world
+    // where the lanes are shorter, steel equalises too (5.02x to 1.43x);
+    // here it cannot, because these countries are further apart than steel
+    // is worth carrying.
+    for c in [GRAIN, scale_sim::econ::Commodity::Cement] {
+        let bulk = spread(&with, c);
+        assert!(
+            bulk > 1.5,
+            "{} equalised to {bulk:.2}x, which would mean bulk freight had \
+             become free — check the value-density rule in logistics.rs",
+            c.name()
+        );
+    }
 }
 
 #[test]
