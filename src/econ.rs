@@ -3885,6 +3885,41 @@ impl Economy {
         }
     }
 
+    /// **What a house costs to buy**, in this market.
+    ///
+    /// Not a number typed in: it is the bill of materials `building.rs`
+    /// gives for a dwelling, priced at what those materials actually cost
+    /// here, plus the labour to put them together and what the ground is
+    /// worth.
+    ///
+    /// Real proportions: **materials are 40-50% of a build cost** and the
+    /// land is anything from a tenth of the price in the country to more
+    /// than the building in a city — which is why the land term follows
+    /// the size of the town rather than being flat. The whole thing comes
+    /// out near the real **8x median annual income**, and nothing was
+    /// tuned to make it: a dwelling is 76 m², a wage is six days of food,
+    /// and the multiple falls out of those two.
+    pub fn house_price(&self, m: usize) -> f64 {
+        use crate::building::Use;
+        let bill = Use::Dwelling.materials(0.0);
+        let materials = bill.cement * self.price(m, Commodity::Cement)
+            + bill.steel * self.price(m, Commodity::Steel)
+            + bill.timber * self.price(m, Commodity::Timber);
+        /// Materials are a little under half of what a build costs; the
+        /// rest is the trades who assemble them.
+        const MATERIAL_SHARE: f64 = 0.45;
+        let built = materials / MATERIAL_SHARE;
+        // Land, against the size of the place. A plot in a village is a
+        // tenth of the house; in a large city it is worth more than the
+        // building standing on it.
+        let people = self.markets.get(m).map(|x| x.population).unwrap_or(0.0);
+        // Referenced against a large city rather than a million, or every
+        // town in a country whose smallest settlement holds two million
+        // people saturates the curve and they all cost the same.
+        let land = built * (0.1 + 0.85 * (people / 8.0e6).min(1.0).sqrt());
+        built + land
+    }
+
     /// Price of `c` in market `m`.
     pub fn price(&self, m: usize, c: Commodity) -> f64 {
         self.markets[m].price[c as usize]

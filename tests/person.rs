@@ -1,4 +1,4 @@
-﻿//! One person living in the economy.
+//! One person living in the economy.
 //!
 //! The tests that matter here are not that a life goes well. They are that
 //! it can go badly, that nothing is arranged for anybody, and that a

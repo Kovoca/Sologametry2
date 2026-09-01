@@ -1,4 +1,4 @@
-﻿//! Command-line world generator.
+//! Command-line world generator.
 //!
 //! Generates a planet and writes it out as PNG maps plus a text report, so
 //! the terrain can be looked at and tuned long before there is a game to

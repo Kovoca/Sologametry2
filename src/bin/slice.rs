@@ -1,4 +1,4 @@
-﻿//! Runs the vertical-slice scenario and prints what happens.
+//! Runs the vertical-slice scenario and prints what happens.
 //!
 //!   cargo run --release --bin slice
 //!   cargo run --release --bin slice -- --doctrine prudent

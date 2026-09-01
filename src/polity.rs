@@ -1,4 +1,4 @@
-﻿//! Natural political fragmentation.
+//! Natural political fragmentation.
 //!
 //! Partitions the land into the territories a planet's geography *wants*.
 //! This is not the history simulation and it places nothing by hand — it

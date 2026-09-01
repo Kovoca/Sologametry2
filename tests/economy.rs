@@ -1,4 +1,4 @@
-﻿//! The vertical slice's acceptance test, as executable assertions.
+//! The vertical slice's acceptance test, as executable assertions.
 //!
 //! `docs/state-and-economy-spec.md` Part D ends with an eight-step chain
 //! that must run with no special-case code. These are those steps.

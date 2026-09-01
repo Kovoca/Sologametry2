@@ -1,4 +1,4 @@
-﻿//! One person trying to make a living in a generated nation.
+//! One person trying to make a living in a generated nation.
 //!
 //!   cargo run --release --bin life
 //!   cargo run --release --bin life -- --seed 20260828 --rank 3 --days 400

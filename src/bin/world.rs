@@ -1,4 +1,4 @@
-﻿//! Generate a planet and run several of its nations as one trading world.
+//! Generate a planet and run several of its nations as one trading world.
 //!
 //!   cargo run --release --bin world
 //!   cargo run --release --bin world -- --seed 20260828 --nations 6 --days 1100

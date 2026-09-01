@@ -1,4 +1,4 @@
-﻿//! A person living in the economy.
+//! A person living in the economy.
 //!
 //! The first human being in the simulation. Everything until now has been
 //! a world — terrain, nations, markets, freight — with populations as
@@ -1697,6 +1697,59 @@ pub fn live_a_day_with(
                 }
                 person.housing = Housing::Homeless;
             }
+        }
+    }
+
+    // --- Up the housing ladder ---
+    //
+    // **`Owned` and `Rented` existed and were never once assigned.** The
+    // rule that owning stops the rent was in the model as data and was
+    // unreachable: everybody was lodging or homeless, for ever.
+    //
+    // The rungs are real and so is what separates them. A room in somebody
+    // else's place is what you can get with a fortnight's wages; a tenancy
+    // of your own wants a deposit and a month up front; and **buying
+    // outright wants the price of a house**, which at something like eight
+    // times a year's income is out of reach for most people for most of
+    // their lives. That is not a flaw in the model, it is the housing
+    // market.
+    if person.housing != Housing::Homeless {
+        let rent = rent_per_day(econ, person.market);
+        match person.housing {
+            Housing::Lodging => {
+                // A place of his own: a deposit and a month in advance.
+                //
+                // **And a real buffer behind it**, because taking a
+                // tenancy *doubles* what housing costs — a room is half a
+                // flat — and somebody who moves on the day he can just
+                // about afford the deposit is one bad fortnight from the
+                // street. Moving up on a thin margin put 43% of a cohort
+                // out of doors inside twenty-five years, which is worse
+                // than never moving at all.
+                let moving_in = rent * 30.0 * 2.5;
+                let food = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+                let safe = (rent + food) * 90.0;
+                if person.money > moving_in + safe {
+                    person.money -= moving_in;
+                    person.spent += moving_in;
+                    person.housing = Housing::Rented;
+                    person.note(day, "took a tenancy of his own");
+                }
+            }
+            Housing::Rented => {
+                // **Bought outright, and the rent stops.** There is no
+                // mortgage in this economy, so this is cash — which is
+                // why hardly anybody manages it, and why the ones who do
+                // pull away from everybody else afterwards.
+                let price = econ.house_price(person.market);
+                if person.money > price {
+                    person.money -= price;
+                    person.spent += price;
+                    person.housing = Housing::Owned;
+                    person.note(day, "bought his own front door");
+                }
+            }
+            _ => {}
         }
     }
 

@@ -1,4 +1,4 @@
-﻿//! The vertical slice scenario.
+//! The vertical slice scenario.
 //!
 //! Two towns joined by one road. Ashford has the farm, mill, cannery and
 //! the power station that runs them; Bexley across the road has a shop and
