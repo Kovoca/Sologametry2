@@ -357,6 +357,113 @@ pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
     }
 }
 
+impl Trade {
+    /// **The skill this work practises**, which is what improves by doing
+    /// it and what decides how well it is done.
+    pub fn skill(self) -> Skill {
+        match self {
+            Trade::Haulier => Skill::Driving,
+            Trade::Labourer => Skill::Machining,
+            Trade::Shopworker => Skill::Retail,
+            Trade::Hospitality => Skill::Catering,
+            Trade::Builder => Skill::Building,
+            Trade::Electrician => Skill::Wiring,
+            Trade::Pipefitter => Skill::Pipework,
+            Trade::Doctor => Skill::Medicine,
+            Trade::Nurse | Trade::CareAssistant => Skill::Nursing,
+            // Teaching, clerking, administering: the same competence, and
+            // the difference between a school and an office is the
+            // employer rather than the work.
+            Trade::Public | Trade::Office => Skill::Clerical,
+            // **Supervising is not a skill of its own here.** Real
+            // management is largely the trade plus the watching of it,
+            // and inventing a separate one would mean a chargehand
+            // forgetting how to do the job he is in charge of.
+            Trade::Supervisor => Skill::Clerical,
+        }
+    }
+
+    /// **The level the work wants**, below which somebody is not up to it.
+    ///
+    /// CDDA's rule: a recipe names a level and you cannot do it under.
+    /// This is softer — a job below your level is done badly rather than
+    /// refused — but the figures are the same shape, and they line up with
+    /// what the training actually is. A doctor is expected to be expert
+    /// because that is what six years and a foundation programme buy.
+    pub fn wants_level(self) -> u8 {
+        match self {
+            Trade::Doctor => 7,
+            Trade::Nurse => 5,
+            Trade::Electrician | Trade::Pipefitter => 5,
+            Trade::Builder | Trade::Supervisor => 4,
+            Trade::CareAssistant | Trade::Public | Trade::Office => 3,
+            Trade::Haulier => 3,
+            Trade::Labourer => 2,
+            Trade::Shopworker | Trade::Hospitality => 1,
+        }
+    }
+}
+
+impl Person {
+    /// What level they are at, 0-10.
+    pub fn level(&self, skill: Skill) -> u8 {
+        Skill::level_from_days(self.practice[skill as usize])
+    }
+
+    /// The level in the work they do for a living.
+    pub fn competence(&self) -> u8 {
+        self.level(self.trade.skill())
+    }
+
+    /// **What they are worth against the going rate**, from how good they
+    /// actually are at the work.
+    pub fn worth(&self) -> f64 {
+        skill_premium(self.competence(), self.trade.wants_level())
+    }
+
+    /// **The ceiling on what somebody can become.**
+    ///
+    /// Aptitude is what they can learn — the same axis that decides
+    /// whether a course is out of reach — so it decides where practice
+    /// stops paying. Most people top out competent to skilled at their
+    /// work, which is the honest shape of it: **legendary is rare because
+    /// the ability to get there is rare**, not because the hours are
+    /// unavailable.
+    pub fn ceiling(&self) -> u8 {
+        // **Most people top out competent to skilled at their work.**
+        // Set at 4 to 10 the average person came out a master of their
+        // trade, which flatters everybody: the point of a ceiling is that
+        // it is usually low enough to matter.
+        (2.0 + self.aptitude * 6.0).round().clamp(1.0, 10.0) as u8
+    }
+
+    /// **A day of doing the work.**
+    ///
+    /// Practice accrues at the trade's own skill, faster for somebody who
+    /// is good at their job, and stops counting once they have reached
+    /// what they are capable of. DF and CDDA both let use raise a skill
+    /// and disuse lower it; this does the same, slowly, because a trade
+    /// you have not worked for years is a trade you are rusty at rather
+    /// than one you have forgotten.
+    pub fn practise(&mut self, worked: bool) {
+        let here = self.trade.skill() as usize;
+        if worked {
+            if self.level(self.trade.skill()) < self.ceiling() {
+                // Somebody diligent gets more out of the same day.
+                self.practice[here] += 0.6 + 0.8 * self.diligence;
+            }
+        }
+        // **Everything else fades.** Real skill decay is slow — a trade
+        // is still there years later, just rusty — so this is set so that
+        // a decade away costs a couple of levels rather than all of them.
+        for i in 0..self.practice.len() {
+            if i != here || !worked {
+                self.practice[i] = (self.practice[i] - 0.06).max(0.0);
+            }
+        }
+    }
+}
+
 /// Work somebody wants done, posted because the economy wants it done.
 #[derive(Clone, Debug)]
 pub struct Contract {
@@ -678,6 +785,9 @@ pub struct Person {
     /// version: **ability and money each gate the same door, and neither
     /// alone opens it.**
     pub aptitude: f64,
+    /// **Days of practice at each skill.** Levels are read off this rather
+    /// than stored, the way experience works in both references.
+    pub practice: [f64; 11],
     /// **How they are regarded**, 0 to 1 — which is a different thing.
     ///
     /// Promotion does not run on days worked. It runs on what the people
@@ -769,6 +879,7 @@ impl Person {
             diligence,
             // Middling until a caller draws from a real distribution.
             aptitude: 0.5,
+            practice: [0.0; 11],
             standing: 0.5,
             visibility: 0.0,
             log: Vec::new(),
@@ -814,6 +925,128 @@ pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     // letting it go is a decision somebody makes rather than an accident.
     let kept = 0.55 + 0.45 * econ.fabric_condition(market);
     day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE * kept
+}
+
+/// **What somebody is actually good at**, as against what they are
+/// licensed to do.
+///
+/// Dwarf Fortress and CDDA arrive at the same model from different ends
+/// and it is the right one: a person holds *many* skills at *levels*, work
+/// names a level it requires, and the level moves with practice. DF grades
+/// from Novice to Legendary and lets skill decide speed and the quality of
+/// what comes out; CDDA runs 0-10, refuses a recipe above your level, and
+/// makes each level cost more than the last. This takes CDDA's scale
+/// because it is the tractable one.
+///
+/// **A qualification is a licence and a skill is competence**, and the two
+/// come apart in both directions: you can be a certified electrician who
+/// is bad at it, and you can be very good at something nobody will let you
+/// do professionally. `Qualification` is the gate on the *job*; this is
+/// what decides how well the work is done and what it pays.
+///
+/// The set is deliberately small — one for each kind of work this economy
+/// actually contains. There is no point in a woodcarving skill until
+/// somebody can carve wood.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Skill {
+    /// Ground, beasts and the getting-in of a harvest.
+    Husbandry,
+    /// Running a machine: a mill, a furnace, a press.
+    Machining,
+    /// Wiring, and everything that runs on it.
+    Wiring,
+    /// Pipes: water in, waste out, gas and heat.
+    Pipework,
+    /// Bricks, timber, mortar and a roof that stays on.
+    Building,
+    /// Driving, loading and getting a load there.
+    Driving,
+    /// A counter, a till and the people on the other side of it.
+    Retail,
+    /// Feeding and housing people who are not at home.
+    Catering,
+    /// Hands-on care: washing, feeding, lifting, watching.
+    Nursing,
+    /// Diagnosis and treatment. The deepest of them.
+    Medicine,
+    /// Paper, numbers, records and the running of things.
+    Clerical,
+}
+
+impl Skill {
+    pub const ALL: [Skill; 11] = [
+        Skill::Husbandry,
+        Skill::Machining,
+        Skill::Wiring,
+        Skill::Pipework,
+        Skill::Building,
+        Skill::Driving,
+        Skill::Retail,
+        Skill::Catering,
+        Skill::Nursing,
+        Skill::Medicine,
+        Skill::Clerical,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Skill::Husbandry => "husbandry",
+            Skill::Machining => "machining",
+            Skill::Wiring => "wiring",
+            Skill::Pipework => "pipework",
+            Skill::Building => "building",
+            Skill::Driving => "driving",
+            Skill::Retail => "retail",
+            Skill::Catering => "catering",
+            Skill::Nursing => "nursing",
+            Skill::Medicine => "medicine",
+            Skill::Clerical => "clerical",
+        }
+    }
+
+    /// **What a level is called**, DF's grades on CDDA's scale. The words
+    /// matter more than the number: "competent" is a real thing to be and
+    /// so is "no idea whatever".
+    pub fn grade(level: u8) -> &'static str {
+        match level {
+            0 => "untrained",
+            1 => "dabbling",
+            2 => "novice",
+            3 => "adequate",
+            4 => "competent",
+            5 => "skilled",
+            6 => "proficient",
+            7 => "expert",
+            8 => "master",
+            9 => "great",
+            _ => "legendary",
+        }
+    }
+
+    /// **Experience to reach a level from nothing.**
+    ///
+    /// Each level costs more than the last, which is CDDA's shape and the
+    /// real one. Anchored on the familiar figure: **about ten thousand
+    /// hours to mastery**, which at a 1,800-hour working year is five or
+    /// six years of doing nothing else — so level 8 sits near 1,400 days
+    /// of practice and level 10 is a career.
+    pub fn days_to_reach(level: u8) -> f64 {
+        if level == 0 {
+            return 0.0;
+        }
+        let l = level as f64;
+        // Quadratic: cheap at the start, punishing at the top.
+        14.0 * l * l
+    }
+
+    /// The level that much practice buys.
+    pub fn level_from_days(days: f64) -> u8 {
+        let mut lvl = 0u8;
+        while lvl < 10 && days >= Skill::days_to_reach(lvl + 1) {
+            lvl += 1;
+        }
+        lvl
+    }
 }
 
 /// **What somebody is qualified to do**, which the model did not ask.
@@ -985,6 +1218,39 @@ pub fn household_share_for(adults: usize) -> f64 {
 /// local labour market: **wages sag where the works are idle**, though not
 /// nearly as far as the idleness itself, because nominal wages are sticky
 /// and what really gives is whether anybody is hiring at all.
+/// **What experience is worth**, as a multiple of the going rate.
+///
+/// Real earnings rise something like 50-80% between entering a trade and
+/// the peak of a career, then flatten — which is why this tops out rather
+/// than climbing for ever, and why the biggest jumps are early. Somebody
+/// below what the work wants is paid below the rate, because they are not
+/// yet doing the job properly.
+pub fn skill_premium(level: u8, wanted: u8) -> f64 {
+    let l = level as f64;
+    let w = wanted as f64;
+    if l >= w {
+        // **A deep trade rewards depth and a shallow one does not.**
+        //
+        // Real earnings profiles are steep in the professions and flat in
+        // low-skill work: a doctor of fifty earns far more than one of
+        // thirty, and a shop worker of fifty does not. Paying a flat
+        // premium per level made a legendary shop worker worth twice the
+        // going rate, which is not a thing that happens — there is only so
+        // well a till can be worked.
+        let per_level = 0.03 + 0.012 * w;
+        (1.0 + per_level * (l - w)).min(1.8)
+    } else {
+        // Below it, and it shows in the pay packet.
+        (1.0 - 0.18 * (w - l)).max(0.45)
+    }
+}
+
+/// What a person is worth a day, their own competence included.
+pub fn day_rate_for(econ: &Economy, market: usize, person: &Person) -> f64 {
+    day_rate(econ, market, person.trade)
+        * skill_premium(person.competence(), person.trade.wants_level())
+}
+
 pub fn day_rate(econ: &Economy, market: usize, trade: Trade) -> f64 {
     let index = econ
         .workforce
@@ -1901,8 +2167,10 @@ pub fn live_a_day_with(
                     // tonnage would be inventing freight that did not
                     // happen.
                     Job::Driving { km, .. } => {
-                        person.money += job.pay;
-                        person.earned += job.pay;
+                        let paid = job.pay * person.worth();
+                        person.money += paid;
+                        person.earned += paid;
+                        let job = Contract { pay: paid, ..job.clone() };
                         person.note(
                             day,
                             format!("drove {km:.0} km for a carrier, {:.0}", job.pay),
@@ -1911,8 +2179,10 @@ pub fn live_a_day_with(
                     // A day's service work: it produces nothing that
                     // moves, which is what a service is.
                     Job::Service { sector, .. } => {
-                        person.money += job.pay;
-                        person.earned += job.pay;
+                        let paid = job.pay * person.worth();
+                        person.money += paid;
+                        person.earned += paid;
+                        let job = Contract { pay: paid, ..job.clone() };
                         person.note(
                             day,
                             format!(
@@ -2338,6 +2608,8 @@ pub fn live_a_day_with(
                     until: day + c.days.ceil() as u64,
                 };
                 person.days_worked += c.days.ceil() as u64;
+                // **A day at the trade is a day of practice at it.**
+                person.practise(true);
                 person.job = Some(c);
             } else {
                 // **When a town stops working, people leave it.**
@@ -2354,6 +2626,8 @@ pub fn live_a_day_with(
                 // to get there and eat when he arrives. Somebody with
                 // nothing is trapped, which is the real shape of it.
                 person.days_idle += 1;
+                // And a day away from it is a day of forgetting.
+                person.practise(false);
                 let here = econ
                     .workforce
                     .get(person.market)

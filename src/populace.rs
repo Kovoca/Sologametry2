@@ -194,11 +194,30 @@ impl Populace {
                 } else {
                     free
                 };
+                // **The adults are given their years as well as their
+                // skills.** A world's starting population has already
+                // worked: somebody of forty has twenty-odd years at their
+                // trade behind them, and a model where every adult begins
+                // untrained has no experienced anybody on its first
+                // morning.
+                //
+                // Practice stops at what they are capable of, so it is
+                // experience that gets a person to their ceiling and
+                // aptitude that decides where the ceiling is. Most people
+                // reach it; **legendary is rare because the ability to get
+                // there is rare**, not because the hours are unavailable.
                 // Nobody works at a trade they are not qualified for, so
                 // the sample has to be drawn consistently.
                 if p.qualification < qualification_for(p.trade) {
                     p.trade = Trade::Shopworker;
                 }
+                // **After the trade is settled, not before.** Assigning
+                // the years first put them against the skill of a trade
+                // the person then did not end up in, and 44% of a country
+                // came out untrained at everything.
+                let years_in = (p.age_years - 18.0 - p.qualification.years_to_earn()).max(0.0);
+                let cap = crate::person::Skill::days_to_reach(p.ceiling());
+                p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
                 households.push(h);
                 people.push(p);
                 represents.push(pop / n as f64);
@@ -546,6 +565,11 @@ impl Populace {
             let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
             p.aptitude = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
                 / 3.0) as f64;
+            // A replacement is a cross-section of the living, not a
+            // school leaver, so they bring their years with them.
+            let years_in = (p.age_years - 18.0 - p.qualification.years_to_earn()).max(0.0);
+            let cap = crate::person::Skill::days_to_reach(p.ceiling());
+            p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
             p.diligence = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
                 / 3.0) as f64;
             // **A replacement is somebody else from the population, not a
