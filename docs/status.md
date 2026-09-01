@@ -7,8 +7,8 @@ the specification describes the target.
 | | |
 |---|---|
 | Commit | `ffed8f2` + Phase 0 work |
-| Source | 28 modules, ~21,700 lines |
-| Tests | 17 binaries, **157 tests, all passing** |
+| Source | 29 modules, ~22,100 lines |
+| Tests | 18 binaries, **161 tests, all passing** |
 | Build | clean, no warnings that matter |
 
 This file replaces scattered "known gap" notes as the single place to look
@@ -71,6 +71,25 @@ with shorter lanes, steel equalises too (5.02× → 1.43×). The rule is
 distance-sensitive, which is correct — and it is the same rule that puts a
 cement works in every region on earth.
 
+### What the money layer cost, and what it found
+
+Turning payroll into a real expense collapsed employment to 68%
+unemployment, which found three structural gaps rather than one bug:
+
+- **Firms did not pay each other.** Only shops took money from households,
+  so every works upstream of a counter had no income whatever.
+- **A shop bought and sold at the same price**, giving every business a
+  gross margin of exactly nothing. Real margins are 25-30% retail, 10-15%
+  wholesale, 20-35% manufacturing.
+- **A service has no customer.** The hospital and the building trade
+  produce nothing shippable and sell to nobody — which is what makes them
+  services — and had staff, costs and no revenue.
+
+Two ordering rules fell out, both the same shape: **services must be paid
+before wages fall due**, because a hospital cannot meet today's payroll
+out of money it will be given this evening; and the state's affordability
+has to be carried from yesterday for the same reason.
+
 ---
 
 ## Where each specification area actually stands
@@ -97,7 +116,7 @@ scope the spec asks for; **absent** means not started.
 | Vehicles | **partial** | parts on a grid, structure, splitting, drag, centre of mass | ordinary fleet, doors/windows, movement, collision |
 | Trees | **partial** | biomass and timber stock per cell | multi-Z individuals |
 | Fields/hazards | **absent** | — | fire, smoke, gas, liquids |
-| Economy | **partial** | 18 commodities, 32 recipes, freight, retail, state | **money conservation**, firms, procurement |
+| Economy | **partial** | 18 commodities, 32 recipes, freight, retail, state, **conserved money** | firms as entities, procurement, credit |
 | People | **partial** | sampled households, contracts, education, promotion, ageing | persistent identity, bodies, inventories, plans |
 | Play | **absent** | generators and inspection binaries | player, scheduler, commands, save loop |
 
@@ -113,27 +132,38 @@ which is exactly what the specification says.
 
 Real defects, each visible in a test or measurable in a binary.
 
-**1. Money is not conserved.** Firms do not pay wages, so nothing
-counterweights a wage. `Person` balances close (`money == start + earned −
-spent − staked`, asserted), but there is no firm-side ledger, so a
-prolonged disinflation lets a worker come out ahead in a way real sticky
-wages would not allow. *This is the largest hole in the model.*
+**1. A sampled person's pocket is not drawn from the household pool.**
+`money.rs` conserves the aggregate — households, firms, the state and
+abroad, asserted every tick — and `Person` conserves its own pocket. The
+two are not yet the same money: an individuated person's balance sits
+alongside `Account::Households(m)` rather than inside it, so promoting
+somebody to detail creates their savings and demoting them destroys them.
+*This is what remains of the money hole, and it is the reification problem
+the specification's §15.3 describes rather than an accounting one.*
 
-**2. Shops are under-fitted.** Works employment lands at 8.8% of the
+**2. The wage share of household income is far too low.** Works, shops,
+the state and the building trade pay wages through the treasury; private
+services are **37% of employment** and are nobody's payroll, so profit
+does most of the work of getting money to households. Real: wages ~60% of
+household income, profit and rent ~20%. Profit is also distributed evenly
+to households in the firm's own town, which understates concentration of
+ownership considerably.
+
+**3. Shops are under-fitted.** Works employment lands at 8.8% of the
 workforce against a real ~10% for agriculture + manufacturing + mining +
 utilities, which is right. Shops land at **1.2% against a real 14.1%**.
 The fixture arithmetic in `building.rs` is correct; a nation of 44M is not
 being given anything like the retail floorspace it would really have.
 
-**3. There are no villages.** The 2,000th settlement still holds 260k
+**4. There are no villages.** The 2,000th settlement still holds 260k
 people, so every link earns its pavement and `Road::Track` never appears.
 A hole in `settlement.rs`.
 
-**4. `biota.game` has no consumer.** Huntable game is generated and
+**5. `biota.game` has no consumer.** Huntable game is generated and
 nothing hunts it. (`biota.timber` and `geology.petroleum` gained consumers
 in the industry work; game did not.)
 
-**5. No history sim.** Polities are partitioned geographically and never
+**6. No history sim.** Polities are partitioned geographically and never
 consolidate into great powers.
 
 ---
@@ -170,13 +200,17 @@ hangs off:
 The specification's phases are sound. The order that matters most, given
 what exists:
 
-1. **Phase 1 — the persistence seam.** Durable IDs, type-safe coordinates,
+1. ~~**Money conservation.**~~ **Done.** `money.rs` gives money the same
+   one-write-path discipline the commodity ledger gives tonnage, and a
+   firm that cannot make payroll now employs fewer people — which is the
+   demand-side recession this model could never express.
+2. **Phase 1 — the persistence seam.** Durable IDs, type-safe coordinates,
    snapshot + delta journal, save/load. Everything else is easier
    afterwards and harder before. It touches every module and will break
-   most of the 157 tests before it fixes them, which is the cost of doing
-   it properly rather than bolting it on later.
-2. **Money conservation.** Tracked gap 1. Smaller than Phase 1 and it
-   closes the model's biggest hole.
+   most of the 161 tests before it fixes them, which is the cost of doing
+   it properly rather than bolting it on later. It also subsumes tracked
+   gap 1, because a person's pocket and the household pool being the same
+   money *is* a reification problem.
 3. **Phase 2 — the material/item/process kernel.** What makes a chair, a
    cartridge, a brick and a faucet *data* rather than engine branches.
 
