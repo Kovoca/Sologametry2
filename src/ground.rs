@@ -1086,7 +1086,49 @@ impl Ground {
                 }
             }
         }
-        seen
+        // **You can see a wall if you can see the floor in front of it.**
+        //
+        // A boundary is one tile thick and a long way off, so at a shallow
+        // angle the ray that would land on it steps past instead — and a
+        // shop's far wall came out as a dashed line with holes in it,
+        // while the open floor right in front of that wall was in plain
+        // view. Which is nonsense: the thing you are looking *at* across
+        // the room is the wall.
+        //
+        // This is the standard roguelike wall pass and it gives away
+        // nothing, because the floor doing the revealing is always on your
+        // own side of the boundary. What is behind it stays hidden.
+        let mut lit = seen.clone();
+        for y in 0..self.h {
+            for x in 0..self.w {
+                let i = y * self.w + x;
+                // **Glazing is part of the envelope too.** A window does
+                // not stop a ray, so it is not caught by the blocker test
+                // — and a shopfront came out with its windows missing at
+                // the far end while the wall either side of them was
+                // drawn. You see the whole face of a room you are in.
+                let boundary = self.blocks_sight(x, y)
+                    || matches!(self.at(x, y), Tile::Window | Tile::Door);
+                if seen[i] || !boundary {
+                    continue;
+                }
+                let open = [(0i64, -1i64), (1, 0), (0, 1), (-1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)]
+                    .iter()
+                    .any(|&(dx, dy)| {
+                        let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                        nx >= 0
+                            && ny >= 0
+                            && (nx as usize) < self.w
+                            && (ny as usize) < self.h
+                            && seen[ny as usize * self.w + nx as usize]
+                            && !self.blocks_sight(nx as usize, ny as usize)
+                    });
+                if open {
+                    lit[i] = true;
+                }
+            }
+        }
+        lit
     }
 
     /// **What stops a ray at this cell**: the ground, or whatever is

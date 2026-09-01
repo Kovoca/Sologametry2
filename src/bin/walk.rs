@@ -234,6 +234,34 @@ fn main() {
         Ground::window_on(seed, &plan, centre, 80, 34, z)
     };
 
+    // **Stand on something you can stand on.**
+    //
+    // The spot picked out of the plan is the middle of a plot, which in a
+    // supermarket is as likely to be a shelf as an aisle — and the player
+    // came out standing inside the shelving. Nothing walks through
+    // furniture, so step to the nearest tile that is actually floor.
+    if !g
+        .at((centre.0 - g.origin.0) as usize, (centre.1 - g.origin.1) as usize)
+        .walkable()
+    {
+        let mut best: Option<((i64, i64), i64)> = None;
+        for vy in 0..g.h {
+            for vx in 0..g.w {
+                if !g.at(vx, vy).walkable() {
+                    continue;
+                }
+                let (gx, gy) = (g.origin.0 + vx as i64, g.origin.1 + vy as i64);
+                let d = (gx - centre.0).abs() + (gy - centre.1).abs();
+                if best.is_none_or(|(_, bd)| d < bd) {
+                    best = Some(((gx, gy), d));
+                }
+            }
+        }
+        if let Some((p, _)) = best {
+            centre = p;
+        }
+    }
+
     // **Park the lorry where a lorry goes.**
     //
     // It used to be dropped on the nearest road tile with only that one

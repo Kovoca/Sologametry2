@@ -486,3 +486,79 @@ fn a_town_plan_never_draws_two_classes_alike() {
         }
     }
 }
+
+/// **A room you are standing in has no gaps in its walls.**
+///
+/// A boundary is one tile thick and can be a long way off, so at a shallow
+/// angle the ray that would land on it steps past instead. A supermarket
+/// ninety-six metres across came out with its far wall drawn as a dashed
+/// line — holes in the north face, most of the south partition missing —
+/// while the open floor immediately in front of those walls was in plain
+/// view. Which is nonsense: the thing you are looking *at* across a room
+/// is its wall.
+///
+/// You can see a wall if you can see the floor in front of it. That gives
+/// away nothing, because the floor doing the revealing is always on your
+/// own side of the boundary — which is what the sibling test checks.
+/// Glazing counts too: a window does not stop a ray, so it is not caught
+/// by the blocker test, and a shopfront came out with its windows missing
+/// at the far end and the wall either side of them drawn.
+#[test]
+fn the_walls_of_a_room_you_are_in_are_not_dashed() {
+    let (seed, plan, _) = a_town();
+    // Inside a shop, which is the biggest room the model has — and the
+    // one where the shallow-angle gaps showed up.
+    let t = scale_sim::townplan::TILES_PER_PLOT as i64;
+    let mut spot = None;
+    'find: for py in 1..plan.height - 1 {
+        for px in 1..plan.width - 1 {
+            if plan.at(px, py) == Lot::Shop {
+                spot = Some((px as i64 * t + t / 2, py as i64 * t + t / 2));
+                break 'find;
+            }
+        }
+    }
+    let at = spot.expect("a town with no shop in it");
+    let g = Ground::window(seed, &plan, at, 104, 72);
+    // Stand somewhere you can actually stand.
+    let (sx, sy) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let stand = (0..g.w * g.h)
+        .filter(|i| g.tiles[*i] == Tile::Floor)
+        .min_by_key(|i| ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs())
+        .expect("a shop with no floor in it");
+    let eye = (
+        g.origin.0 + (stand % g.w) as i64,
+        g.origin.1 + (stand / g.w) as i64,
+    );
+    let seen = g.visible_from(eye);
+
+    // Every wall tile that touches floor you can see is itself visible.
+    let (mut facing, mut drawn) = (0, 0);
+    for y in 1..g.h - 1 {
+        for x in 1..g.w - 1 {
+            if !matches!(g.at(x, y), Tile::Wall | Tile::Window | Tile::Door) {
+                continue;
+            }
+            let touches_seen_floor = [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)]
+                .iter()
+                .any(|&(dx, dy)| {
+                    let (nx, ny) = ((x as i64 + dx) as usize, (y as i64 + dy) as usize);
+                    g.at(nx, ny) == Tile::Floor && seen[ny * g.w + nx]
+                });
+            if !touches_seen_floor {
+                continue;
+            }
+            facing += 1;
+            if seen[y * g.w + x] {
+                drawn += 1;
+            }
+        }
+    }
+    assert!(facing > 60, "only {facing} wall tiles face floor you can see");
+    assert_eq!(
+        facing, drawn,
+        "{} of {facing} wall tiles face floor in plain view and are not \
+         drawn, so the room has holes in it",
+        facing - drawn
+    );
+}

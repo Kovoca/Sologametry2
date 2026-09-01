@@ -1909,6 +1909,12 @@ tiles on foot, 288 in a vehicle.
 - **A corner shop is not a small supermarket.** Under about 400 m² there
   is a served counter and no checkout line — the difference between two
   trades rather than a matter of scale.
+- **Nothing stands in the furniture.** The spot picked out of the plan is
+  the middle of a plot, which in a supermarket is as likely to be a shelf
+  as an aisle, so the player came out standing inside the shelving. Step
+  to the nearest tile that is actually floor. The same mistake in a test
+  hid a real bug: flood-filling from the first floor tile in the window
+  starts inside whatever building the corner of the view happens to clip.
 - **A superstore is bigger than a plot, so it has to span several.** The
   first attempt bought circulation by taking the space out of the
   shelving, which is the wrong trade: what a big shop has is *more room*,
@@ -2120,6 +2126,20 @@ they front**, not to themselves — that is what a building line is, and it
 is why you step off a kerb and not off a cliff. Terraces still step down a
 hillside in runs, the way Bath does; what they do not do is stand three
 metres above their own pavement.
+
+**You can see a wall if you can see the floor in front of it.** A boundary
+is one tile thick and can be a long way off, so at a shallow angle the ray
+that would land on it steps past instead — and a supermarket ninety-six
+metres across came out with its far wall drawn as a **dashed line**, holes
+in the north face and most of the south partition missing, while the open
+floor immediately in front of those walls was in plain view. Which is
+nonsense: the thing you are looking *at* across a room is its wall.
+
+The standard roguelike wall pass fixes it and gives away nothing, because
+the floor doing the revealing is always on your own side of the boundary.
+**Glazing counts as envelope too** — a window does not stop a ray, so it
+is not caught by the blocker test, and a shopfront came out with its
+windows missing at the far end and the wall either side of them drawn.
 
 **One Bresenham line is not symmetric.** Stepping from the eye and
 stepping from the target visit different cells, so places plainly in view
