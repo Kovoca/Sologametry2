@@ -200,7 +200,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     let peak = cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0;
 
     let markets_len = markets.len();
-    Economy {
+    let mut economy = Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
         markets,
@@ -215,6 +215,11 @@ pub fn build(doctrine: Doctrine) -> Economy {
         workforce: vec![crate::labour::Workforce::default(); markets_len],
         government: None,
         logistics: None,
+        treasury: crate::money::Treasury::new(),
+        staff_today: Vec::new(),
         services: None,
-    }
+    };
+    // A hand-built slice needs money in it like anywhere else.
+    economy.issue_currency();
+    economy
 }

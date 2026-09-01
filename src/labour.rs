@@ -158,7 +158,11 @@ pub fn update(econ: &mut Economy) {
     let mut supervisory = vec![0.0f64; n];
 
     let grid_capacity = econ.grid.capacity();
-    for site in econ.ledger.sites.iter() {
+    // **Who is on today, firm by firm.** The market totals say how many
+    // hands a town is using; a wage is paid by a particular employer, so
+    // payroll needs it broken down.
+    let mut per_site = vec![0.0f64; econ.ledger.sites.len()];
+    for (idx, site) in econ.ledger.sites.iter().enumerate() {
         // **Shops employ people, and used to employ none.**
         //
         // Retail is around a tenth of all jobs in a developed economy
@@ -190,7 +194,9 @@ pub fn update(econ: &mut Economy) {
             let stocked = Commodity::ALL
                 .iter()
                 .any(|&c| site.stock[c as usize] > 0.0);
-            working[site.market] += if stocked { b.staff_today(busy) } else { 0.0 };
+            let on_today = if stocked { b.staff_today(busy) } else { 0.0 };
+            working[site.market] += on_today;
+            per_site[idx] += on_today;
         }
         let Some(r) = site.recipe else { continue };
         let labour = RECIPES[r].labour;
@@ -246,7 +252,9 @@ pub fn update(econ: &mut Economy) {
             }
         };
         posts[site.market] += with_charge(hands_for(rated, labour));
-        working[site.market] += with_charge(hands_for(actual, labour));
+        let on_today = with_charge(hands_for(actual, labour));
+        working[site.market] += on_today;
+        per_site[idx] += on_today;
         // **The supply of promotions**, counted separately, because it is
         // not a share of employment — it is a fixed number of posts and
         // most people will never hold one.
@@ -261,6 +269,8 @@ pub fn update(econ: &mut Economy) {
         .map(|m| econ.price(m, Commodity::ProcessedFood) * FOOD_PER_DAY)
         .collect();
     let drift = WORKFORCE_DRIFT_PER_YEAR / 365.0;
+    econ.staff_today = per_site;
+
     for m in 0..n {
         let w = &mut econ.workforce[m];
         w.posts = posts[m];

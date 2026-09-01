@@ -2323,6 +2323,16 @@ pub struct Economy {
     /// a different algorithm rather than a better-tuned version of the
     /// same one.
     pub logistics: Option<crate::logistics::Logistics>,
+    /// **Who has money.**
+    ///
+    /// The economy priced everything and paid for nothing: households took
+    /// goods off a shelf without the shop being better off, and a wage
+    /// came from nowhere. A wage has to be an expense somebody bears
+    /// before a firm can fail to bear it.
+    pub treasury: crate::money::Treasury,
+    /// Hands on today at each site, filled by `labour::update`. Payroll is
+    /// paid by a particular employer, so it needs the breakdown.
+    pub staff_today: Vec<f64>,
 }
 
 impl Economy {
@@ -2330,6 +2340,10 @@ impl Economy {
     pub fn step(&mut self) {
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
+        // **Open the books at the start of the day, not wipe them at the
+        // end.** Clearing on the way out left `today` empty for anything
+        // that looked after `step` returned — which is everything.
+        self.treasury.open_the_books();
 
         for site in self.ledger.sites.iter_mut() {
             site.ran = 0.0;
@@ -2369,12 +2383,23 @@ impl Economy {
             self.logistics = Some(freight);
         }
         self.trade();
+        // **Wages, after the day's work is known.** `labour::update` has
+        // already said who was on today; this is what it cost the people
+        // who employed them.
+        self.pay_wages();
+        // The state takes its share and pays its own staff out of it.
+        self.tax_and_spend();
+        // And what is left over after the wages is somebody's income too.
+        self.distribute_profits();
         self.update_prices();
         // **At the end of the day, after everything has moved.** Meat
         // that was sold this morning is not in the cold store tonight,
         // and a cargo that arrived is.
         self.spoil_stock();
         self.discard_unused_power();
+        // The same guarantee the commodity ledger gives for tonnage.
+        #[cfg(debug_assertions)]
+        self.treasury.assert_conserved();
 
         self.ledger.day += 1;
 
@@ -3098,6 +3123,7 @@ impl Economy {
     /// People eat. Demand is a floor: what cannot be met is recorded as
     /// people going without, not quietly reduced.
     fn consume_households(&mut self) {
+        let day = self.ledger.day;
         for m in 0..self.markets.len() {
             for &c in Commodity::ALL.iter() {
                 let want = self.markets[m].daily_household_demand(c);
@@ -3125,6 +3151,17 @@ impl Economy {
                             qty: take,
                             reason: Use::Household,
                         },
+                    );
+                    // **And somebody pays for it.** Goods came off the
+                    // shelf and the shop was no better off, which is the
+                    // whole reason a wage could not be anybody's cost.
+                    let due = take * self.markets[m].price[c as usize];
+                    self.treasury.pay(
+                        day,
+                        crate::money::Account::Households(m),
+                        crate::money::Account::Firm(site),
+                        due,
+                        crate::money::Why::Purchase,
                     );
                     // What the shop actually sold today. A shop is busy or
                     // it is not, and how many tills it opens follows.
@@ -3164,6 +3201,234 @@ impl Economy {
                 1.0
             };
         }
+    }
+
+    /// **Put money into the world**, once, sized on what it has to move.
+    ///
+    /// A money stock is not arbitrary. Real narrow money runs somewhere
+    /// around a third of a year's consumption, so ninety days of what the
+    /// country's households actually spend is the right order — and it is
+    /// split the way real balances are, with households holding most of
+    /// it and firms working capital against their trade.
+    pub fn issue_currency(&mut self) {
+        use crate::money::Account;
+        const DAYS_OF_SPENDING: f64 = 90.0;
+
+        let mut per_market = vec![0.0f64; self.markets.len()];
+        for m in 0..self.markets.len() {
+            per_market[m] = Commodity::ALL
+                .iter()
+                .map(|&c| {
+                    self.markets[m].daily_household_demand(c) * self.markets[m].price[c as usize]
+                })
+                .sum::<f64>()
+                * DAYS_OF_SPENDING;
+        }
+        let national: f64 = per_market.iter().sum();
+
+        // Households hold the bulk of narrow money; a firm holds working
+        // capital rather than a fortune.
+        for m in 0..self.markets.len() {
+            self.treasury.open(Account::Households(m), per_market[m] * 0.55);
+        }
+        let firms: Vec<usize> = (0..self.ledger.sites.len()).collect();
+        if !firms.is_empty() {
+            let each = national * 0.35 / firms.len() as f64;
+            for i in firms {
+                self.treasury.open(Account::Firm(i), each);
+            }
+        }
+        self.treasury.open(Account::State, national * 0.10);
+        // The rest of the world starts with a great deal, because from
+        // here it is effectively unlimited — what matters is that trade
+        // moves money across the boundary rather than conjuring it.
+        self.treasury.open(Account::Abroad, national * 10.0);
+    }
+
+    /// **Payroll: the point of the whole exercise.**
+    ///
+    /// A firm pays the people who worked there today, out of its own
+    /// balance. What it cannot pay is recorded rather than waived, because
+    /// a firm that cannot make payroll is the mechanism the project's
+    /// notes have been missing:
+    ///
+    /// > Real disinflation with sticky wages causes unemployment for
+    /// > exactly this reason — firms cannot afford the real wage.
+    ///
+    /// The wage itself is the one `person.rs` already uses: a multiple of
+    /// the **settled** cost of a day's food, not today's price, because
+    /// nominal wages are renegotiated about once a year and that lag is
+    /// how a supply shock makes people poorer.
+    fn pay_wages(&mut self) {
+        use crate::money::{Account, Why};
+        let day = self.ledger.day;
+        if self.staff_today.len() != self.ledger.sites.len() {
+            return;
+        }
+        for site in 0..self.ledger.sites.len() {
+            let hands = self.staff_today[site];
+            if hands <= 0.0 {
+                continue;
+            }
+            let m = self.ledger.sites[site].market;
+            let bill = hands * self.day_rate_here(m);
+            self.treasury.pay(
+                day,
+                Account::Firm(site),
+                Account::Households(m),
+                bill,
+                Why::Payroll,
+            );
+        }
+    }
+
+    /// **The state taxes, and then it pays people.**
+    ///
+    /// `state.rs` already sizes a public sector properly — health,
+    /// education and administration at one post per 45 people, which is
+    /// the 14-21% of the workforce real governments employ — but those
+    /// posts were an accounting fact and nobody drew a wage from them.
+    ///
+    /// **A state sizes its take to its spending.** The first attempt
+    /// levied `Capacity::tax_take` on every firm's takings, which
+    /// over-collects badly: a tax rate is quoted against *value added* and
+    /// turnover counts the same value at every step of a supply chain, so
+    /// a 38% rate on turnover took nearly ten billion against six billion
+    /// of spending and the treasury simply hoarded the difference. That is
+    /// precisely why real turnover taxes are levied on the value added.
+    ///
+    /// So the wage bill is computed first and collected second, in
+    /// proportion to who took money today — capped by what the state can
+    /// actually reach. **A weak state cannot tax what it cannot reach**,
+    /// and the shortfall shows up the way it does everywhere else: as
+    /// fewer people paid, not a worse multiplier.
+    fn tax_and_spend(&mut self) {
+        use crate::money::{Account, Why};
+        let Some(gov) = self.government.as_ref() else {
+            return;
+        };
+        let day = self.ledger.day;
+        let ceiling = gov.capacity.tax_take() * gov.capacity.collection();
+        let posts: Vec<f64> = (0..self.markets.len()).map(|m| gov.posts_in(m)).collect();
+
+        let bill: f64 = (0..self.markets.len())
+            .map(|m| posts[m] * self.day_rate_here(m))
+            .sum();
+        if bill <= 0.0 {
+            return;
+        }
+
+        // Who took money over the counter today, and how much.
+        let takings: Vec<(usize, f64)> = self
+            .treasury
+            .today
+            .iter()
+            .filter(|t| t.why == Why::Purchase)
+            .filter_map(|t| match t.to {
+                Account::Firm(i) => Some((i, t.amount)),
+                _ => None,
+            })
+            .collect();
+        let turnover: f64 = takings.iter().map(|&(_, a)| a).sum();
+        if turnover <= 0.0 {
+            return;
+        }
+
+        // What it needs, or what it can reach, whichever is less.
+        let wanted = bill.min(turnover * ceiling);
+        let rate = wanted / turnover;
+        let mut collected = 0.0;
+        for (firm, amount) in takings {
+            collected += self.treasury.pay(
+                day,
+                Account::Firm(firm),
+                Account::State,
+                amount * rate,
+                Why::Tax,
+            );
+        }
+
+        // And pay its own people out of it. A teacher is a job somebody
+        // holds, and a state that could not collect enough employs fewer
+        // of them rather than paying them less.
+        let afford = if bill > 0.0 {
+            (collected / bill).min(1.0)
+        } else {
+            0.0
+        };
+        for m in 0..self.markets.len() {
+            let pay = posts[m] * self.day_rate_here(m) * afford;
+            self.treasury.pay(
+                day,
+                Account::State,
+                Account::Households(m),
+                pay,
+                Why::PublicSpending,
+            );
+        }
+    }
+
+    /// **The residual belongs to somebody.**
+    ///
+    /// Wages were the first flow and on their own they do not close the
+    /// circuit: firms took in three times what they paid out, households
+    /// were drained inside a fortnight, and the difference sat in company
+    /// balances doing nothing. That difference is **profit**, and in a
+    /// real economy it is not lost — it is somebody's income.
+    ///
+    /// A firm keeps working capital against its own wage bill and remits
+    /// what is over. Real corporate cash holdings run to a month or two of
+    /// operating costs, which is what the reserve is set to.
+    ///
+    /// **Known simplification, and a real one:** profit goes to households
+    /// in the firm's own town, evenly. Real ownership is concentrated —
+    /// `building.rs` already knows that almost every *business* is one
+    /// person while almost every *job* is at a company — so this
+    /// understates inequality considerably. It conserves, which is what
+    /// this pass is for; who owns what is the next question, not this one.
+    fn distribute_profits(&mut self) {
+        use crate::money::{Account, Why};
+        /// Days of its own payroll a firm holds as working capital.
+        const RESERVE_DAYS: f64 = 45.0;
+
+        let day = self.ledger.day;
+        if self.staff_today.len() != self.ledger.sites.len() {
+            return;
+        }
+        for site in 0..self.ledger.sites.len() {
+            let m = self.ledger.sites[site].market;
+            let wage = self.day_rate_here(m);
+            let reserve = (self.staff_today[site] * wage * RESERVE_DAYS).max(wage * 30.0);
+            let held = self.treasury.balance(Account::Firm(site));
+            let surplus = held - reserve;
+            if surplus <= 0.0 {
+                continue;
+            }
+            self.treasury.pay(
+                day,
+                Account::Firm(site),
+                Account::Households(m),
+                surplus,
+                Why::Profit,
+            );
+        }
+    }
+
+    /// What a day's work fetches in this market, against the settled cost
+    /// of living rather than today's price.
+    fn day_rate_here(&self, m: usize) -> f64 {
+        /// Real low-wage work buys 6-10 days of food for a day's labour.
+        const DAYS_OF_FOOD: f64 = 6.0;
+        let (anchor, index) = match self.workforce.get(m) {
+            Some(w) if w.food_anchor > 0.0 => (w.food_anchor, w.wage_index),
+            _ => (
+                self.price(m, Commodity::ProcessedFood)
+                    * Commodity::ProcessedFood.per_capita_annual()
+                    / 365.0,
+                1.0,
+            ),
+        };
+        anchor * DAYS_OF_FOOD * index
     }
 
     /// Move goods where the price gap beats the freight cost.

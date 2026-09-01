@@ -1879,6 +1879,8 @@ impl Region {
             workforce: vec![crate::labour::Workforce::default(); markets_len],
             government: None,
             logistics: None,
+            treasury: crate::money::Treasury::new(),
+            staff_today: Vec::new(),
             services: None,
         };
         // **Hang the distribution network under the transmission**, so a
@@ -1901,6 +1903,8 @@ impl Region {
         // roads exist, because a carrier's fleet is sized on the tonnage
         // it has to shift over the distances it actually has to cover.
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
+        // And it has money, sized on what that trade is worth.
+        economy.issue_currency();
 
         // **Licence areas, not one national utility.**
         //
@@ -2151,6 +2155,7 @@ impl Nations {
         // that does not require it to win a separate price test at every
         // hop on the way.
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
+        economy.issue_currency();
 
         let north = economy.markets.iter().filter(|m| !m.southern).count();
         notes.push(format!(
