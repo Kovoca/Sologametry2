@@ -109,10 +109,14 @@ fn wages_come_out_of_a_firms_own_balance() {
         .sum();
     assert!(payroll > 0.0, "nobody was paid a wage today");
 
-    // Every wage is paid *by a firm* and *to a household*, never conjured.
+    // **Every wage is paid by an employer and to a household**, never
+    // conjured. An employer is a firm with premises or the pooled service
+    // sector of a town — construction, hospitality, recreation and offices
+    // are 37% of employment and have no premises in this model, because a
+    // service is consumed where the people are and cannot be shipped.
     for t in e.treasury.today.iter().filter(|t| t.why == Why::Payroll) {
         assert!(
-            matches!(t.from, Account::Firm(_)),
+            matches!(t.from, Account::Firm(_) | Account::ServiceSector(_)),
             "a wage was paid by {}",
             t.from.name()
         );
@@ -122,6 +126,27 @@ fn wages_come_out_of_a_firms_own_balance() {
             t.to.name()
         );
     }
+
+    // **And wages are most of what households live on**, which they were
+    // not until the service sector had a payroll: profit was doing four
+    // fifths of the work of getting money to people. Real household income
+    // is about 60% wages, 20% profit and rent, 20% transfers.
+    let into_households = |why: Why| -> f64 {
+        e.treasury
+            .today
+            .iter()
+            .filter(|t| t.why == why && matches!(t.to, Account::Households(_)))
+            .map(|t| t.amount)
+            .sum::<f64>()
+    };
+    let earned = into_households(Why::Payroll) + into_households(Why::PublicSpending);
+    let unearned = into_households(Why::Profit);
+    assert!(
+        earned > unearned * 0.7,
+        "wages are only {:.0} against {unearned:.0} of profit, which is a \
+         rentier economy rather than a working one",
+        earned
+    );
 
     // The state pays its own, out of what it collected.
     let public: f64 = e

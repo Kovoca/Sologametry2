@@ -2408,6 +2408,7 @@ impl Economy {
         // who employed them.
         // Services are paid for before their wages fall due.
         self.pay_for_services();
+        self.run_the_service_sector();
         self.pay_wages();
         // The state takes its share and pays its own staff out of it.
         self.tax_and_spend();
@@ -3438,6 +3439,70 @@ impl Economy {
                 pay,
                 Why::PublicSpending,
             );
+        }
+    }
+
+    /// **The service sector earns and pays like anybody else.**
+    ///
+    /// Construction, hospitality, recreation and offices come to 37% of
+    /// employment, and until now not one of those people was paid by
+    /// anybody: `services.rs` counted the posts and the money to fill them
+    /// came from nowhere. That is why profit was doing four fifths of the
+    /// work of getting money to households when real wages are about
+    /// three fifths of household income.
+    ///
+    /// **Nobody imports a haircut**, so the customer is the town itself.
+    /// Households buy the service, the sector pays its people, and what is
+    /// left over is its owners' — the same circuit a firm runs, with the
+    /// sector pooled per town because it has no premises here.
+    fn run_the_service_sector(&mut self) {
+        use crate::money::{Account, Why};
+        /// A service business keeps a margin over its wage bill: rent,
+        /// equipment, and the owner's living. Real service-sector gross
+        /// margins run 15-40%; hospitality is at the bottom of that and
+        /// professional work at the top.
+        const MARGIN: f64 = 1.25;
+
+        let Some(svc) = self.services.as_ref() else {
+            return;
+        };
+        let day = self.ledger.day;
+        let posts: Vec<f64> = (0..self.markets.len())
+            .map(|m| svc.total_in(m))
+            .collect();
+
+        for m in 0..self.markets.len() {
+            if posts[m] <= 0.0 {
+                continue;
+            }
+            let wages = posts[m] * self.day_rate_here(m);
+            // Bought by the households of the town it stands in.
+            self.treasury.pay(
+                day,
+                Account::Households(m),
+                Account::ServiceSector(m),
+                wages * MARGIN,
+                Why::Purchase,
+            );
+            // Paid to the people who did the work.
+            self.treasury.pay(
+                day,
+                Account::ServiceSector(m),
+                Account::Households(m),
+                wages,
+                Why::Payroll,
+            );
+            // And the margin is somebody's income too.
+            let over = self.treasury.balance(Account::ServiceSector(m)) - wages * 30.0;
+            if over > 0.0 {
+                self.treasury.pay(
+                    day,
+                    Account::ServiceSector(m),
+                    Account::Households(m),
+                    over,
+                    Why::Profit,
+                );
+            }
         }
     }
 

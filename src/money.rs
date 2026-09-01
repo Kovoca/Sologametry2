@@ -46,6 +46,15 @@ pub enum Account {
     /// `Person`'s pocket is drawn from this pool and returned to it, never
     /// held alongside it.
     Households(usize),
+    /// **The private service sector of one town, pooled.**
+    ///
+    /// Construction, hospitality, recreation and offices are 37% of
+    /// employment and have no premises in the model — a service is
+    /// consumed where the people are and cannot be shipped, so it is
+    /// counted as posts against population rather than as sites. It still
+    /// needs somewhere to take money in and pay wages out of, or that
+    /// third of the workforce earns nothing.
+    ServiceSector(usize),
     /// The state: one treasury, taxing and spending.
     State,
     /// **The rest of the world.** A country is not a closed system: it
@@ -60,6 +69,7 @@ impl Account {
         match self {
             Account::Firm(i) => format!("firm {i}"),
             Account::Households(m) => format!("households {m}"),
+            Account::ServiceSector(m) => format!("services {m}"),
             Account::State => "the state".into(),
             Account::Abroad => "abroad".into(),
         }
