@@ -114,13 +114,45 @@ fn a_lorry_is_ordinary_traffic_and_a_tank_is_not() {
     use scale_sim::townplan::{Permission, StreetClass::*};
     use scale_sim::vehicle::Vehicle;
 
-    // A lorry is 2.55 m — the European legal maximum — and is nobody's
-    // special case. It nearly fills its 3.65 m lane, with 55 cm either
-    // side, which is real and is why lorries feel enormous beside you.
+    // **Two questions, and they take two different widths.**
+    //
+    // The law measures a vehicle over its *body* — 2.55 m is the European
+    // legal maximum and mirrors are excluded — so an artic is ordinary
+    // traffic and nobody's special case. What physically clips is the
+    // width over the mirrors, and that is what decides whether anything
+    // can get past you.
+    let artic = Vehicle::artic();
+    assert!(
+        artic.body_width_m() < artic.width_m,
+        "an artic should be wider over its mirrors than over its body"
+    );
     for road in [Lane, Road, Dual, Motorway] {
-        let c = road.clearance_for(Vehicle::artic().width_m);
-        assert_eq!(c.permission, Permission::Ordinary, "an artic is ordinary traffic");
-        assert!(!c.will_not_fit && !c.blocks_the_road, "an artic on a {}", road.name());
+        assert_eq!(
+            road.clearance_for(artic.body_width_m()).permission,
+            Permission::Ordinary,
+            "an artic is ordinary traffic on a {}",
+            road.name()
+        );
+        assert!(
+            !road.clearance_for(artic.width_m).will_not_fit,
+            "an artic does not fit on a {}",
+            road.name()
+        );
+    }
+    // **But it does block a village lane**, and that is true: 2.8 m over
+    // the mirrors on 5.5 m of surface leaves too little to pass, which is
+    // why you wait in a gateway for a lorry and never do on a dual
+    // carriageway.
+    assert!(
+        Lane.clearance_for(artic.width_m).blocks_the_road,
+        "an artic down a village lane and the traffic still flowing"
+    );
+    for road in [Dual, Motorway] {
+        assert!(
+            !road.clearance_for(artic.width_m).blocks_the_road,
+            "an artic should not block a {}",
+            road.name()
+        );
     }
 
     // A main battle tank is 3.5-3.9 m: escorted wherever it goes...
@@ -161,28 +193,44 @@ fn a_lorry_is_ordinary_traffic_and_a_tank_is_not() {
 
 #[test]
 fn the_tiles_agree_with_the_real_width() {
-    // A vehicle's width is the one measurement not read off the tile grid,
-    // because a metre is too coarse: an artic is 2.55 m and rounds up to
-    // three tiles, and 3.0 m would put an ordinary lorry over the 2.9 m
-    // line where the police want notice. This holds the two together so a
-    // layout cannot quietly drift from the real figure.
-    use scale_sim::vehicle::Vehicle;
+    // **Width is read off the tiles, but not linearly**, and that is the
+    // settled contract. A metre to the tile is too coarse to carry both
+    // jobs at once: two squares is the honest width of a car and cannot
+    // hold two seats, two doors and the bodywork round them. So the grid
+    // is spent on interior resolution and the real width comes from a
+    // compression table.
+    //
+    // What this holds together is that the two never drift apart: every
+    // vehicle's width must be exactly what its tile count says it is.
+    use scale_sim::vehicle::{modelled_width_m, Vehicle};
     for v in [
         Vehicle::bicycle(),
         Vehicle::van(),
         Vehicle::box_truck(),
         Vehicle::artic(),
-        Vehicle::reefer(),
     ] {
-        let tiles = v.footprint().1 as f64;
+        let tiles = v.footprint().1;
         assert_eq!(
-            v.width_m.ceil(),
-            tiles,
-            "{} is {:.2} m but takes up {tiles} tiles",
+            v.width_m,
+            modelled_width_m(tiles),
+            "{} is {:.2} m across {tiles} tiles, which is not what the table says",
+            v.name,
+            v.width_m
+        );
+        // And a grid wide enough to lay a cab out in is still a vehicle
+        // narrow enough for the road it drives on.
+        assert!(
+            v.width_m < 2.9,
+            "{} would need an abnormal-load notice at {:.2} m",
             v.name,
             v.width_m
         );
     }
+    // A reefer is the exception that proves the table is a default rather
+    // than a law: insulation costs real width, and a refrigerated body is
+    // allowed 2.6 m where a dry one is held to 2.55.
+    let reefer = Vehicle::reefer();
+    assert!(reefer.width_m < modelled_width_m(reefer.footprint().1));
 }
 
 #[test]

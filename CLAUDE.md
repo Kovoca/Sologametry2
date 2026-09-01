@@ -1775,12 +1775,18 @@ tiles on foot, 288 in a vehicle.
   solid, the line between lanes is not; the dash lengthens with speed
   (2 m mark / 7 m gap on a centre line). Painting them all solid turns a
   road into a set of rails. Nothing is painted through a junction.
-- **A lorry fills its lane, and that is not a rounding artefact.** A
-  2.55 m artic — the European legal maximum — in a 3.65 m lane has 55 cm
-  either side, which is finer than a metre grid can express. Vehicle width
-  is therefore the one measurement *not* read off the tiles: 3.0 m would
-  put an ordinary lorry over the 2.9 m line where the police want notice.
-  A test holds `width_m` and the tile footprint together.
+- **Width is read off the tiles, but not linearly.** A metre to the tile
+  cannot carry both jobs: two squares is the honest width of a car and
+  cannot hold two seats, two doors and the bodywork round them. CDDA's
+  answer is to spend the grid on *interior resolution* and compress the
+  width — 1 tile 0.9 m, 4 tiles 2.1, 7 tiles 2.8 — so you get a cabin you
+  can lay out and a vehicle the right size on the road. This replaced a
+  `width_m` typed in per vehicle and called "the one measurement not read
+  off the tiles"; it is read off them now, just not linearly.
+- **The law measures the body; what clips is the mirrors.** Legal width
+  excludes mirrors, which is why a 2.55 m artic stands 2.8 m over them and
+  is still ordinary traffic. Two questions, two figures — an artic is
+  ordinary traffic on every road *and* blocks a village lane.
 - **What you must arrange is a property of the load; whether anything can
   get past you is a property of the road.** Folding them into one scale
   gave every class of street the same verdict, which is the tell that the
@@ -2123,6 +2129,36 @@ What the parts add up to, against real figures:
   Using his own record is circular — he cannot trade without a vehicle, so
   his record says never, so he never buys one. A man sat on seven thousand
   days of food doing casual work for five a time because of it.
+
+### A vehicle is a grid of parts, and it comes apart where it breaks
+
+CDDA's structural model, which is the half that makes a part list worth
+having:
+
+- **Nothing is bolted to thin air.** A frame must exist at a coordinate
+  before anything installs onto it, and `well_formed()` says so. A layout
+  typed in by hand grows a seat hanging in mid-air otherwise — which is
+  exactly what the reefer did when the grids widened underneath it.
+- **A vehicle is one object while its structure stays joined up.**
+  `sections()` is the connected frame graph; `destroy_frames()` removes
+  what was hit and re-checks it, so **a crash tears the back off a lorry**
+  rather than subtracting from one health bar. One lost tile out of a
+  five-wide slab severs nothing, and that is right — a lorry does not come
+  in half because somebody put a hole in the floor.
+- **Where the weight sits is a fact about where the cargo is.** Centre of
+  mass is computed from part positions, and a vehicle is undriveable when
+  it falls outside the ground the wheels cover. Four tonnes on a van's
+  tailgate is a real way to make a serviceable vehicle useless.
+- **Top speed is where the engine runs out of push** — `P = ½·ρ·Cd·A·v³ +
+  Crr·m·g·v`, which is what makes the width table matter, because frontal
+  area is width times height.
+- **An artic is limited by law, not by power.** It has the engine for 126
+  km/h and an EU speed limiter holds it to 90.
+
+Calibrated against real kerb weights: van 2.7 t, box truck 4.6 t, artic
+16.1 t + 24 t payload against a real 44 t gross limit. **Frame mass had to
+be recalibrated when the grids widened** — a figure set against two- and
+three-tile layouts makes every lorry far too heavy at four to seven.
 
 ### Getting there is not free (`src/travel.rs`)
 

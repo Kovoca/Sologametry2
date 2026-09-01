@@ -36,6 +36,50 @@
 //! handcart and pack mule. Those belonged to a different century and were
 //! simply the wrong furniture.
 
+/// **How wide a vehicle really is, given how many tiles it occupies.**
+///
+/// The grid is not square-on to reality, and CDDA's answer to that is
+/// better than the one this file had before. Length in tiles is length in
+/// metres, near enough — but **width is deliberately compressed**:
+///
+/// | tiles | modelled |
+/// |---:|---:|
+/// | 1 | 0.90 m |
+/// | 2 | 1.30 m |
+/// | 3 | 1.70 m |
+/// | 4 | 2.10 m |
+/// | 5 | 2.50 m |
+/// | 6 | 2.65 m |
+/// | 7 | 2.80 m |
+///
+/// The point is **interior resolution**. A real car is about 2 m across,
+/// which at one metre to the tile is two squares — and two squares cannot
+/// hold two seats, two doors and the bodywork round them. Spending four
+/// squares on it and then reading the width off this table gets both: a
+/// cabin you can lay out and a vehicle that is the right size on the road.
+///
+/// This replaces a stored `width_m` that had to be typed in per vehicle,
+/// with a note in the project file calling it "the one measurement not
+/// read off the tiles". It is read off the tiles now; it just is not read
+/// off them linearly.
+///
+/// Above seven tiles the curve has flattened — a bus and an artic are both
+/// about 2.8 m over the mirrors, and the law is why. Which is a pleasing
+/// fit with `townplan::clearance_for`: **2.9 m is the width above which
+/// you must give the police two days' notice**, so the widest ordinary
+/// vehicle on the road is the widest one that needs no paperwork.
+pub fn modelled_width_m(tiles: i32) -> f64 {
+    match tiles.max(1) {
+        1 => 0.90,
+        2 => 1.30,
+        3 => 1.70,
+        4 => 2.10,
+        5 => 2.50,
+        6 => 2.65,
+        _ => 2.80,
+    }
+}
+
 /// One component of a vehicle.
 ///
 /// ## What CDDA has, and what is here
@@ -123,16 +167,20 @@ impl Part {
     /// a tenth of the payload it is rated to carry.
     pub fn mass_kg(self) -> f64 {
         match self {
-            // **One tile of structure**, not a whole chassis. An artic is
-            // 51 tiles of frame and 13-15 t of vehicle before anything
-            // goes in it, so a tile of it is about 120 kg. Sizing a frame
-            // as if it were the entire ladder chassis gave a 54-tonne
-            // empty lorry.
+            // **One tile of structure**, not a whole chassis — a square
+            // metre of chassis rail and bodywork.
+            //
+            // Recalibrated when the grids widened to CDDA footprints: a
+            // vehicle drawn four to seven tiles across has two or three
+            // times the frame tiles it had at two or three, so a figure
+            // set against the old narrow layouts made every lorry far too
+            // heavy. An artic is 85 tiles of frame and 13-15 t empty,
+            // which is about 65 kg a tile; car bodywork is 25.
             Part::Frame { heavy } => {
                 if heavy {
-                    120.0
+                    65.0
                 } else {
-                    15.0
+                    25.0
                 }
             }
             Part::Engine(kw) => 40.0 + 1.5 * kw as f64,
@@ -307,13 +355,15 @@ pub struct Vehicle {
 }
 
 impl Vehicle {
-    fn of(name: &'static str, parts: Vec<(Part, i32, i32)>, width_m: f64) -> Self {
-        Vehicle {
+    fn of(name: &'static str, parts: Vec<(Part, i32, i32)>) -> Self {
+        let mut v = Vehicle {
             name,
             parts,
             condition: 1.0,
-            width_m,
-        }
+            width_m: 0.0,
+        };
+        v.width_m = modelled_width_m(v.footprint().1);
+        v
     }
 
     /// Just the parts, for the sums that do not care where anything is.
@@ -384,14 +434,14 @@ impl Vehicle {
             "a bicycle and trailer",
             vec![
                 (Part::Frame { heavy: false }, 0, 0),
-                (Part::Seat, 0, 0),
-                (Part::Controls, 0, 0),
                 (Part::Wheel { heavy: false }, 0, 0),
-                (Part::CargoBay(80), 1, 0),
-                (Part::Wheel { heavy: false }, 1, 0),
-                (Part::Wheel { heavy: false }, 1, 0),
+                (Part::Frame { heavy: false }, 1, 0),
+                (Part::Seat, 1, 0),
+                (Part::Controls, 1, 0),
+                (Part::Frame { heavy: false }, 2, 0),
+                (Part::Wheel { heavy: false }, 2, 0),
+                (Part::CargoBay(80), 2, 0),
             ],
-            0.8, // a cargo trailer is wider than the handlebars
         )
     }
 
@@ -399,82 +449,106 @@ impl Vehicle {
     /// that is a living rather than an errand, and the first that needs
     /// fuel.
     pub fn van() -> Self {
-        let mut p = vec![
-            (Part::Engine(90), 0, 0),
-            (Part::Engine(0), 0, 1),
-            (Part::Seat, 1, 0),
-            (Part::Controls, 1, 0),
-            (Part::Alternator(1500), 0, 0),
-            (Part::Battery(3), 0, 1),
-            (Part::Frame { heavy: true }, 1, 1),
-            (Part::Tank(70), 2, 1),
-        ];
-        p.retain(|&(part, _, _)| part.power_kw() != 0.0 || !matches!(part, Part::Engine(_)));
-        for y in 0..2 {
-            p.push((Part::Wheel { heavy: false }, 0, y));
-            p.push((Part::Wheel { heavy: false }, 4, y));
-        }
-        for x in 2..6 {
-            for y in 0..2 {
+        // **Seven by four**, which is a cargo van in CDDA's stock list and
+        // 7.0 x 2.1 m once the width table is applied. Four across is what
+        // buys a cab you can lay out: two seats side by side with the
+        // bodywork either side of them, rather than a two-tile slab that
+        // has to pretend.
+        let mut p = Vec::new();
+        // A van has a ladder chassis under it, not a car's monocoque.
+        for x in 0..7 {
+            for y in 0..4 {
                 p.push((Part::Frame { heavy: true }, x, y));
             }
         }
-        p.push((Part::CargoBay(1200), 4, 0));
-        Vehicle::of("a second-hand van", p, 2.0)
+        p.push((Part::Engine(90), 0, 1));
+        p.push((Part::Seat, 1, 1));
+        p.push((Part::Controls, 1, 1));
+        p.push((Part::Seat, 1, 2));
+        p.push((Part::Alternator(1500), 0, 2));
+        p.push((Part::Battery(3), 0, 0));
+        p.push((Part::Tank(70), 2, 3));
+        for y in [0, 3] {
+            p.push((Part::Wheel { heavy: false }, 0, y));
+            p.push((Part::Wheel { heavy: false }, 5, y));
+        }
+        for x in 3..6 {
+            p.push((Part::CargoBay(400), x, 1));
+        }
+        Vehicle::of("a second-hand van", p)
     }
 
     /// **A rigid box truck** — 8 m by 2.5, so 8 tiles by 3.
     pub fn box_truck() -> Self {
-        let mut p = vec![
-            (Part::Engine(160), 0, 1),
-            (Part::Seat, 1, 1),
-            (Part::Controls, 1, 1),
-            (Part::Alternator(2000), 0, 0),
-            (Part::Battery(3), 0, 2),
-            (Part::Tank(150), 1, 2),
-        ];
+        // **Eight by seven** — CDDA's cube van. The body is five tiles
+        // across and the seven-tile span is the mirrors, which is exactly
+        // what matters on a road: mirrors are what clip.
+        let mut p = Vec::new();
         for x in 0..8 {
-            for y in 0..3 {
+            for y in 1..6 {
                 p.push((Part::Frame { heavy: true }, x, y));
             }
         }
+        // Mirrors, standing proud of the body at the cab.
+        p.push((Part::Frame { heavy: false }, 1, 0));
+        p.push((Part::Frame { heavy: false }, 1, 6));
+        p.push((Part::Engine(160), 0, 3));
+        p.push((Part::Seat, 1, 2));
+        p.push((Part::Controls, 1, 2));
+        p.push((Part::Seat, 1, 4));
+        p.push((Part::Alternator(2000), 0, 1));
+        p.push((Part::Battery(3), 0, 5));
+        p.push((Part::Tank(150), 2, 5));
         for &x in &[0i32, 6] {
-            p.push((Part::Wheel { heavy: true }, x, 0));
-            p.push((Part::Wheel { heavy: true }, x, 2));
+            p.push((Part::Wheel { heavy: true }, x, 1));
+            p.push((Part::Wheel { heavy: true }, x, 5));
         }
-        p.push((Part::CargoBay(1800), 4, 1));
-        p.push((Part::CargoBay(1800), 6, 1));
-        Vehicle::of("a box truck", p, 2.5)
+        for x in 3..8 {
+            p.push((Part::CargoBay(720), x, 3));
+        }
+        Vehicle::of("a box truck", p)
     }
 
     /// **An artic** — 16.5 m by 2.55, so 17 tiles by 3. Forty-four tonnes
     /// gross on European roads, which leaves the twenty-four tonnes of
     /// payload hauliers quote.
     pub fn artic() -> Self {
-        let mut p = vec![
-            (Part::Engine(330), 0, 1),
-            (Part::Seat, 1, 1),
-            (Part::Controls, 1, 1),
-            (Part::Alternator(3000), 0, 0),
-            (Part::Battery(5), 0, 2),
-            (Part::Tank(500), 2, 0),
-        ];
-        // Tractor unit, then the trailer behind it.
-        for x in 0..17 {
-            for y in 0..3 {
+        let mut p = Vec::new();
+        // **Tractor unit, five tiles across with the mirrors out to
+        // seven.** CDDA gives a semi tractor 9x7 and a trailer 10x5, and
+        // the mirrors are the reason for the difference.
+        for x in 0..7 {
+            for y in 1..6 {
                 p.push((Part::Frame { heavy: true }, x, y));
             }
         }
+        p.push((Part::Frame { heavy: false }, 1, 0));
+        p.push((Part::Frame { heavy: false }, 1, 6));
+        // The trailer behind it, five across and no wider.
+        for x in 7..17 {
+            for y in 1..6 {
+                p.push((Part::Frame { heavy: true }, x, y));
+            }
+        }
+        p.push((Part::Engine(330), 0, 3));
+        p.push((Part::Seat, 1, 2));
+        p.push((Part::Controls, 1, 2));
+        p.push((Part::Seat, 1, 4));
+        p.push((Part::Alternator(3000), 0, 1));
+        p.push((Part::Battery(5), 0, 5));
+        p.push((Part::Tank(500), 2, 1));
+        p.push((Part::Tank(500), 2, 5));
         // Steer axle, drive axles, and the trailer bogie.
-        for &x in &[0i32, 2, 3, 13, 14, 15] {
-            p.push((Part::Wheel { heavy: true }, x, 0));
-            p.push((Part::Wheel { heavy: true }, x, 2));
+        for &x in &[0i32, 4, 5, 13, 14, 15] {
+            p.push((Part::Wheel { heavy: true }, x, 1));
+            p.push((Part::Wheel { heavy: true }, x, 5));
         }
-        // Eight pallet bays down the trailer.
-        for i in 0..8 {
-            p.push((Part::CargoBay(3000), 5 + i, 1));
+        // Thirteen pallet bays down the trailer, which is what a standard
+        // 13.6 m curtainsider takes.
+        for i in 0..13 {
+            p.push((Part::CargoBay(1850), 4 + i / 2, 2 + (i % 2) * 2));
         }
-        Vehicle::of("an artic", p, 2.55)
+        Vehicle::of("an artic", p)
     }
 
     /// **A refrigerated artic.** The same lorry with a fridge on the front
@@ -483,11 +557,15 @@ impl Vehicle {
     pub fn reefer() -> Self {
         let mut v = Vehicle::artic();
         v.name = "a refrigerated artic";
-        v.parts.push((Part::Refrigeration(12_000), 4, 1));
+        // On the front bulkhead of the trailer, which is where a
+        // transport refrigeration unit actually hangs — and inside the
+        // frame, because a part with no frame under it is a part falling
+        // off.
+        v.parts.push((Part::Refrigeration(12_000), 7, 3));
         // A reefer carries its own generator set; the tractor's alternator
         // comes nowhere near 12 kW around the clock.
-        v.parts.push((Part::Alternator(42_000), 4, 0));
-        v.parts.push((Part::Battery(20), 4, 2));
+        v.parts.push((Part::Alternator(42_000), 7, 2));
+        v.parts.push((Part::Battery(20), 7, 4));
         // Insulation costs you width: a refrigerated body is allowed 2.6 m
         // where a dry one is held to 2.55.
         v.width_m = 2.6;
@@ -581,21 +659,11 @@ impl Vehicle {
         self.kinds().any(|p| matches!(p, Part::Refrigeration(_))) && self.powered()
     }
 
-    /// Cruising speed, in km/h.
-    ///
-    /// **From power against weight**, which is what actually decides
-    /// whether a lorry holds its speed. The EU requires at least 5 kW per
-    /// tonne to be roadworthy; a well-powered artic runs 7-8 and cruises
-    /// at 85. Below that it crawls on the hills, which is the whole reason
-    /// heavy freight and mountains do not get on.
-    pub fn cruise_kmh(&self) -> f64 {
-        let kw_per_t = self.power_kw() / self.gross_t().max(0.01);
-        if kw_per_t <= 0.0 {
-            // Muscle. A cyclist with a loaded trailer does 15 km/h and is
-            // not much slower up a hill than down it.
-            return 15.0;
-        }
-        (30.0 + 8.0 * kw_per_t).min(90.0)
+    /// **Power to weight**, which is what decides whether a lorry holds
+    /// its speed on a hill. The EU requires at least 5 kW per tonne to be
+    /// roadworthy; a well-powered artic runs 7-8.
+    pub fn kw_per_tonne(&self) -> f64 {
+        self.power_kw() / self.gross_t().max(0.01)
     }
 
     /// Litres of fuel per 100 km *(real)*.
@@ -614,3 +682,317 @@ impl Vehicle {
         self.kinds().map(|p| p.price_in_wage_days()).sum::<f64>()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Structure: what holds a vehicle together, and what happens when it does not
+// ---------------------------------------------------------------------------
+
+impl Part {
+    /// **Does this have to be bolted to something?**
+    ///
+    /// CDDA's rule, and it is the one that makes a part list a structure
+    /// rather than a bag: nearly everything requires a frame or a mounting
+    /// point beneath it, and **the frame must exist before anything can be
+    /// installed onto it**. A seat with no floor under it is not a seat, it
+    /// is a seat falling through the hole where the floor was.
+    pub fn needs_a_frame(self) -> bool {
+        !matches!(self, Part::Frame { .. })
+    }
+}
+
+impl Vehicle {
+    /// Every coordinate that has a frame on it.
+    fn frames(&self) -> Vec<(i32, i32)> {
+        let mut v: Vec<(i32, i32)> = self
+            .parts
+            .iter()
+            .filter(|(p, _, _)| matches!(p, Part::Frame { .. }))
+            .map(|&(_, x, y)| (x, y))
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v
+    }
+
+    /// **Is everything actually attached to something?**
+    ///
+    /// A well-formed vehicle has a frame under every part that needs one.
+    /// This is cheap to check and worth checking, because a layout typed
+    /// in by hand is exactly the sort of thing that quietly grows a seat
+    /// hanging in mid-air.
+    pub fn well_formed(&self) -> bool {
+        let frames = self.frames();
+        self.parts
+            .iter()
+            .filter(|(p, _, _)| p.needs_a_frame())
+            .all(|&(_, x, y)| frames.binary_search(&(x, y)).is_ok())
+    }
+
+    /// **The connected sections of the frame**, four-connected.
+    ///
+    /// A vehicle is one object for as long as its surviving structure
+    /// stays joined up. This is the question `destroy_frame` asks
+    /// afterwards.
+    pub fn sections(&self) -> Vec<Vec<(i32, i32)>> {
+        let frames = self.frames();
+        let mut unseen: Vec<(i32, i32)> = frames.clone();
+        let mut out: Vec<Vec<(i32, i32)>> = Vec::new();
+
+        while let Some(&start) = unseen.first() {
+            let mut group = Vec::new();
+            let mut stack = vec![start];
+            unseen.retain(|&t| t != start);
+            while let Some((x, y)) = stack.pop() {
+                group.push((x, y));
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+                    let n = (x + dx, y + dy);
+                    if let Some(i) = unseen.iter().position(|&t| t == n) {
+                        unseen.remove(i);
+                        stack.push(n);
+                    }
+                }
+            }
+            group.sort_unstable();
+            out.push(group);
+        }
+        // Biggest first, and deterministic on a tie.
+        out.sort_by(|a, b| b.len().cmp(&a.len()).then(a[0].cmp(&b[0])));
+        out
+    }
+
+    /// **Knock the structure out of one tile and see what is left.**
+    ///
+    /// This is the property the whole part model exists for. A collision
+    /// does not subtract from one global health bar: it destroys the frame
+    /// it hit, everything installed on that frame goes with it, and then
+    /// **whatever is no longer joined to the rest becomes separate
+    /// wreckage**. That is how a crash tears the back off a lorry.
+    ///
+    /// Returns the pieces, largest first. One piece means it held
+    /// together; none means there was nothing left.
+    pub fn destroy_frame(&self, x: i32, y: i32) -> Vec<Vehicle> {
+        self.destroy_frames(&[(x, y)])
+    }
+
+    /// **What a real impact does**, which is take out several tiles at
+    /// once.
+    ///
+    /// Losing one square metre out of a five-wide slab disconnects
+    /// nothing, and that is correct — a lorry does not come in half
+    /// because somebody put a hole in the floor. It comes in half when a
+    /// whole cross-section goes, which is what this takes.
+    pub fn destroy_frames(&self, gone: &[(i32, i32)]) -> Vec<Vehicle> {
+        let mut wreck = Vehicle {
+            name: self.name,
+            parts: self
+                .parts
+                .iter()
+                .copied()
+                .filter(|&(_, px, py)| !gone.contains(&(px, py)))
+                .collect(),
+            condition: self.condition,
+            width_m: 0.0,
+        };
+        if wreck.parts.is_empty() {
+            return Vec::new();
+        }
+
+        let sections = wreck.sections();
+        if sections.len() <= 1 {
+            wreck.width_m = modelled_width_m(wreck.footprint().1);
+            return vec![wreck];
+        }
+
+        sections
+            .into_iter()
+            .map(|group| {
+                let mut piece = Vehicle {
+                    name: self.name,
+                    parts: wreck
+                        .parts
+                        .iter()
+                        .copied()
+                        .filter(|&(_, px, py)| group.binary_search(&(px, py)).is_ok())
+                        .collect(),
+                    condition: self.condition * 0.5,
+                    width_m: 0.0,
+                };
+                piece.width_m = modelled_width_m(piece.footprint().1);
+                piece
+            })
+            .filter(|p| !p.parts.is_empty())
+            .collect()
+    }
+
+    /// **Where the weight actually sits**, in tiles.
+    ///
+    /// Cargo is not one global number: it is stowed at a coordinate, it
+    /// adds its mass there, and it shifts this. Which is why loading a
+    /// lorry badly is a real mistake and not a cosmetic one.
+    pub fn centre_of_mass(&self) -> (f64, f64) {
+        let mut m = 0.0;
+        let (mut sx, mut sy) = (0.0, 0.0);
+        for &(p, x, y) in self.parts.iter() {
+            let kg = p.mass_kg();
+            m += kg;
+            sx += kg * x as f64;
+            sy += kg * y as f64;
+        }
+        if m <= 0.0 {
+            return (0.0, 0.0);
+        }
+        (sx / m, sy / m)
+    }
+
+    /// **Is it standing on its own wheels?**
+    ///
+    /// A valid arrangement needs enough working wheels, and the centre of
+    /// mass has to fall inside the ground they cover. Outside it, the
+    /// thing tips — which is the real reason a loaded vehicle can be
+    /// undriveable while every individual part still works.
+    pub fn supported(&self) -> bool {
+        let wheels: Vec<(i32, i32)> = self
+            .parts
+            .iter()
+            .filter(|(p, _, _)| matches!(p, Part::Wheel { .. }))
+            .map(|&(_, x, y)| (x, y))
+            .collect();
+        if wheels.len() < 2 {
+            return false;
+        }
+        let (cx, cy) = self.centre_of_mass();
+        let xs: Vec<i32> = wheels.iter().map(|&(x, _)| x).collect();
+        let ys: Vec<i32> = wheels.iter().map(|&(_, y)| y).collect();
+        let (x0, x1) = (
+            *xs.iter().min().unwrap() as f64,
+            *xs.iter().max().unwrap() as f64,
+        );
+        let (y0, y1) = (
+            *ys.iter().min().unwrap() as f64,
+            *ys.iter().max().unwrap() as f64,
+        );
+        cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1
+    }
+
+    /// **The width the law measures**, which is not the width that clips.
+    ///
+    /// A vehicle's legal width is taken over the **body**: mirrors are
+    /// excluded, which is why a 2.55 m artic — the European legal maximum
+    /// — stands 2.9 m over its mirrors and is still ordinary traffic.
+    /// `width_m` is the over-mirrors figure, because that is what actually
+    /// hits things; this is the one the paperwork is written against.
+    ///
+    /// The body is found rather than declared: mirrors stick out for one
+    /// tile of the length, so a row carrying only a tile or two of parts
+    /// is not bodywork.
+    pub fn body_width_m(&self) -> f64 {
+        let (_, w) = self.footprint();
+        if self.parts.is_empty() {
+            return 0.0;
+        }
+        let y0 = self.parts.iter().map(|&(_, _, y)| y).min().unwrap();
+        let mut along: Vec<usize> = vec![0; w as usize];
+        for row in 0..w {
+            let mut xs: Vec<i32> = self
+                .parts
+                .iter()
+                .filter(|&&(_, _, y)| y == y0 + row)
+                .map(|&(_, x, _)| x)
+                .collect();
+            xs.sort_unstable();
+            xs.dedup();
+            along[row as usize] = xs.len();
+        }
+        let longest = along.iter().copied().max().unwrap_or(0);
+        let body = along
+            .iter()
+            .filter(|&&n| n * 4 > longest)
+            .count() as i32;
+        modelled_width_m(body.max(1))
+    }
+
+    /// **How tall it stands**, in metres — the other half of frontal area.
+    ///
+    /// Not stored, because it follows from what the thing is: a car sits
+    /// low, a rigid box is about the height of a doorway and a half, and a
+    /// trailer is four metres because that is what the bridges allow.
+    pub fn height_m(&self) -> f64 {
+        let heavy = self
+            .kinds()
+            .any(|p| matches!(p, Part::Frame { heavy: true }));
+        let (len, _) = self.footprint();
+        if !heavy {
+            1.5
+        } else if len > 8 {
+            4.0
+        } else {
+            2.9
+        }
+    }
+
+    /// **The speed at which the engine runs out of push.**
+    ///
+    /// Maximum velocity is where available power equals aerodynamic drag
+    /// plus rolling resistance — which is the actual physics and is what
+    /// makes the width table matter, because frontal area is width times
+    /// height.
+    ///
+    /// ```text
+    /// P = Â½Â·ÏÂ·CdÂ·AÂ·vÂ³  +  CrrÂ·mÂ·gÂ·v
+    /// ```
+    ///
+    /// Real constants: air at **1.225 kg/mÂ³**; rolling resistance
+    /// **0.007** for truck tyres on asphalt and 0.009 for car tyres; a
+    /// drivetrain gives about **85%** of engine power to the road.
+    pub fn top_speed_kmh(&self) -> f64 {
+        const AIR: f64 = 1.225;
+        const G: f64 = 9.81;
+        const DRIVETRAIN: f64 = 0.85;
+
+        let power = self.power_kw() * 1000.0 * DRIVETRAIN;
+        if power <= 0.0 {
+            // Muscle. A cyclist with a loaded trailer does about 15 km/h
+            // and is not much slower up a hill than down it.
+            return 15.0;
+        }
+        let heavy = self
+            .kinds()
+            .any(|p| matches!(p, Part::Frame { heavy: true }));
+        let area = self.width_m * self.height_m();
+        // A bluff box against something shaped to go through the air.
+        let cd = if heavy { 0.60 } else { 0.32 };
+        let crr = if heavy { 0.007 } else { 0.009 };
+        let mass = self.gross_t() * 1000.0;
+
+        // Bisection: the left-hand side rises monotonically with v.
+        let needed = |v: f64| 0.5 * AIR * cd * area * v * v * v + crr * mass * G * v;
+        let (mut lo, mut hi) = (0.0f64, 120.0f64);
+        for _ in 0..48 {
+            let mid = 0.5 * (lo + hi);
+            if needed(mid) > power {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        lo * 3.6
+    }
+
+    /// **What it actually travels at**, which is not what it could do.
+    ///
+    /// A heavy goods vehicle is **limited by law, not by power**: an EU
+    /// speed limiter caps one at 90 km/h, and an artic with 330 kW would
+    /// otherwise sit well above that. Everything else is held by the
+    /// motorway limit and by the fact that nobody cruises flat out.
+    pub fn cruise_kmh(&self) -> f64 {
+        let top = self.top_speed_kmh();
+        if self.power_kw() <= 0.0 {
+            return top;
+        }
+        // Real: 3.5 t is the line between a van and a lorry, and 12 t the
+        // line above which the limiter is compulsory.
+        let governed = if self.gross_t() > 3.5 { 90.0 } else { 112.0 };
+        (top * 0.85).min(governed)
+    }
+}
+
