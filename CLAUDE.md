@@ -2853,6 +2853,54 @@ which is only right while nothing is ever removed — once a death frees a
 slot the arena reuses it and a pushed household lands at the end, against
 nobody. Arrays that run alongside an arena follow the slot it chose.
 
+## A person is not one happiness number (`src/mind.rs`)
+
+`docs/mind-spec.md` is the target; this is slice 1 of nine. The claim the
+whole thing rests on: **a mind is an assembly**, and an event goes on
+affecting somebody after it is over.
+
+**Calibrated on the Big Five, not on a game's tables.** DF's personality
+system *is* a five-factor model, which is the hook that lets this keep the
+project's own rule. Real anchors: five factors with facets beneath them,
+approximately normal distribution, heritability **40-60%**, rank-order
+stability **r ≈ 0.6-0.7** across decades, and the *maturity principle* —
+conscientiousness and agreeableness rise with age while neuroticism
+falls. That last one is why facets are stored as something that can move
+at all.
+
+- **A facet is a weight, not a command.** High anger propensity is not
+  attacking people: it is a lower threshold, a stronger reaction, slower
+  de-escalation and a greater chance of choosing confrontation.
+- **A facet is not a value**, and collapsing them makes a hot-tempered
+  pacifist inexpressible. Two people with identical anger and opposite
+  convictions are equally angry and do entirely different things — one is
+  *outraged*, because a principle they actually hold has been broken.
+- **One event, several emotions, and they may disagree.** A friend
+  promoted over you makes an envious person envious, an ambitious one
+  frustrated, and one who is neither mildly glad — often all three in the
+  same head. A single number can only go down by ten.
+- **Stress, mood and focus are three different things**, and the
+  separation earns itself immediately: a grieving parent is heavily
+  loaded and completely focused, while somebody who has just had the best
+  news of their life cannot concentrate. What takes focus is *arousal*,
+  not load.
+- **Arousal is what fades.** Grief is low-arousal and lasts; rage is
+  high-arousal and does not — which is why somebody is still grieving a
+  year later and nobody is still furious. The decay half-life comes off
+  arousal, and that asymmetry is what makes the grieving-but-focused case
+  exist at all.
+- **An individual departs from their culture.** Culture sets the
+  baseline conviction and the person drifts from it, because everybody
+  agreeing exactly leaves no room for a heretic, a reformer, or a
+  criminal who thinks they are in the right.
+
+**A test that asserted a game's number instead of a measured one.** "Most
+people are 40-60" describes DF's own scale. Three averaged uniforms give
+SD ≈ 16.7, so that band is 0.6 SD wide and holds 45% of a normal — the
+test failed at 44% while the code was right. The real claim is
+distributional: about two thirds within one SD, and an extreme trait
+under 6%.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
