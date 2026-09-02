@@ -3092,6 +3092,67 @@ trace, because the person doing the remembering is not the same person.
   think Urist a hero, the victims' families think he caused it, and both
   records are real.
 
+## Whether somebody was in a position to know (`src/witness.rs`)
+
+Slice 3. `memory.rs` takes an exposure and decides what is perceived;
+this is where an exposure comes from. **The visibility system in
+`ground.rs` has been able to answer "could this person see that" since it
+was built, and nothing had ever asked it.**
+
+**Three tiers, because a distant miner has no tile.** A person on
+generated ground gets line of sight and acoustics; a sampled person in a
+town gets a shared-context answer; somebody far off gets told or does
+not. Exposure stays the interface, so all three supply it and memory
+neither knows nor cares which — wiring memory to tiles directly would
+make it depend on everybody having a position finer than which market
+they are in, which is not true of a sampled person.
+
+### Seeing and hearing are not the same sense
+
+Which is the whole reason two honest witnesses give different accounts.
+
+- **Sight needs a clear line and it needs to be close.** A person is
+  detectable at a kilometre, **recognisable at about 25 m**, and their
+  expression readable at about 10. The gap between detecting and
+  recognising is where mistaken identity lives — you can watch something
+  happen and be unable to say who did it.
+- **Sound needs neither**, and it goes much further: inverse square, 6 dB
+  per doubling. Ordinary talk is **60 dB at a metre**, a raised voice 75,
+  a scream 90, a structural collapse 120. Ambient decides audibility: a
+  house is 40 dB, a street 65, a factory floor 85.
+- **A wall takes far more out of a voice than out of a rumble** — 35-45
+  dB at speech frequencies against 15-20 down in the low end. That is why
+  you hear the bass through a party wall and not the singing, and why a
+  collapse carries across a street that a shout does not.
+- **A scream is built to be heard.** Treating audibility as "louder than
+  the background" made one masonry wall render a scream at twelve metres
+  inaudible in a quiet room, which is plainly wrong. Screams occupy a
+  **roughness band** — 30-150 Hz modulation — that speech does not use
+  and which reaches the amygdala by a shorter route *(Arnal et al.)*, so
+  they cut through noise that would bury a shout of the same level. The
+  model only knew how loud things were, not what they were.
+
+So **a wall does not make somebody ignorant — it makes them a different
+sort of witness**, which is exactly the neighbour who heard the screaming
+and cannot say who was shouting.
+
+### Three tests that were measuring the wrong thing
+
+All three failures in this slice were the tests, and each was the same
+mistake in a different coat: **not holding the geometry still.**
+
+- A scream was asserted to carry from a supermarket *backroom*, two
+  masonry walls and forty metres into traffic. It does not, and it should
+  not. The next-door case has to be *found* — one wall, a few metres —
+  rather than assumed.
+- A collapse was measured through three buildings, so the test was about
+  architecture and not about loudness. Two points on an open street, and
+  the walls are constant while the sound varies.
+- A conversation across a factory floor came back perceived, because at
+  85 dB it is inaudible and the two men **can still see each other**.
+  Which is the real consequence rather than a defect: a stamping shop is
+  a place you communicate by sight.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

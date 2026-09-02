@@ -394,6 +394,29 @@ impl Memory {
         })
     }
 
+    /// **Perceive it the way a particular sense delivered it.**
+    ///
+    /// `witness.rs` decides whether somebody saw it, heard it through a
+    /// wall, or was told — and crucially whether they could say *who*.
+    /// Seeing that something happened and seeing who did it are two
+    /// different perceptions, and the gap between them is where mistaken
+    /// identity lives.
+    pub fn perceive_as(
+        &self,
+        ev: &WorldEvent,
+        id: Option<Id<WorldEvent>>,
+        w: &crate::witness::Witnessing,
+        rng: &mut Rng,
+    ) -> Option<Perceived> {
+        let mut p = self.perceive(ev, id, w.source, w.exposure, rng)?;
+        // The sense has the last word on identity: a clear line at thirty
+        // metres gives you a figure, and a wall gives you a noise.
+        if !w.could_identify {
+            p.believed_actor = None;
+        }
+        Some(p)
+    }
+
     /// **Somebody said so.** A claim, carried by whoever carried it, and
     /// it may be false.
     ///
