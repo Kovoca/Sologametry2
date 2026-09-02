@@ -3278,6 +3278,29 @@ single "opinion" number cannot state.
   is going without something for a long time; an interpersonal grievance
   is somebody having done you wrong. Only one of them has a defendant.
 
+### Magnitude and confidence are different things
+
+One polite act and thirty years of unbroken civility both imply affection
+of about 0.1 — and the second must be far harder for one rude afternoon
+to overturn. So an estimate carries the **weight of evidence behind it**
+and a new observation is folded in as a weighted mean: repetition buys
+*confidence in a modest conclusion*, not a larger conclusion.
+
+- **Bad is stronger than good.** Negative information weighs more in
+  impression formation than positive information of the same size — one
+  of the better-replicated findings there is *(Baumeister; Rozin &
+  Royzman)* — so an unkindness is more diagnostic than a kindness.
+- **A betrayal is not another data point.** A weighted mean alone makes a
+  long history nearly immovable, which is right for civility and wrong
+  for treachery. One clear defection reveals a *disposition*, and what it
+  does is **invalidate the history** rather than be averaged against it —
+  "I did not know him at all" is the ordinary way of saying the prior
+  weight has just been discounted. That, and not two different rates, is
+  why trust is hard to build and easy to destroy.
+- Measured: two hundred honest days give trust 0.6+ at full confidence;
+  one careless afternoon costs almost nothing; outright theft drops it
+  below 0.3 **and takes the confidence with it**.
+
 ### A trivial act cannot take you past what a trivial act is worth
 
 The bug the saturation test exists to catch, and I wrote it anyway.

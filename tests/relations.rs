@@ -88,9 +88,9 @@ fn familiarity_affection_and_trust_are_three_different_things() {
     }
     assert!(colleague.familiarity > 0.9, "two hundred days and still a stranger");
     assert!(
-        colleague.affection.abs() < 0.05,
+        colleague.affection().abs() < 0.05,
         "seeing somebody daily made him fond of them ({:.2})",
-        colleague.affection
+        colleague.affection()
     );
 
     // A brother-in-law he is fond of and would not lend a penny.
@@ -107,7 +107,7 @@ fn familiarity_affection_and_trust_are_three_different_things() {
             d,
         );
     }
-    assert!(charmer.affection > 0.5, "he is not fond of the charmer");
+    assert!(charmer.affection() > 0.5, "he is not fond of the charmer");
     assert!(
         charmer.trust_in(TrustIn::Money) < -0.3,
         "he would lend the charmer money"
@@ -165,8 +165,8 @@ fn an_enemy_can_be_respected_and_still_feared() {
     }
     r.saw(&Evidence { wrong: 0.8, ..Default::default() }, 41);
 
-    assert!(r.affection < -0.3, "he likes his enemy");
-    assert!(r.fear > 0.4, "he does not fear a dangerous man");
+    assert!(r.affection() < -0.3, "he likes his enemy");
+    assert!(r.fear() > 0.4, "he does not fear a dangerous man");
     assert!(
         r.respect_for(RespectFor::Competence) > 0.4,
         "he cannot admit the man is good at it"
@@ -196,7 +196,7 @@ fn a_hated_parent_is_still_a_parent() {
     }
     r.saw(&Evidence { wrong: 0.9, ..Default::default() }, 51);
 
-    assert!(r.affection < -0.5);
+    assert!(r.affection() < -0.5);
     assert!(r.resentment() > 0.5);
 
     let l = labels(&r, &[SocialFact::ParentOf]);
@@ -237,7 +237,7 @@ fn a_disposition_produces_a_feeling_and_is_not_one() {
         mind.feeling_of(Emotion::Fear) < 0.01,
         "he is afraid of a man who is not there"
     );
-    assert!(r.fear > 0.4, "and yet he is not wary of him at all");
+    assert!(r.fear() > 0.4, "and yet he is not wary of him at all");
 
     // In the room: afraid.
     let felt = r.on_meeting(&mind, true);
@@ -255,7 +255,7 @@ fn a_disposition_produces_a_feeling_and_is_not_one() {
         mind.a_day_passes(&mut rng);
     }
     assert!(mind.feeling_of(Emotion::Fear) < 0.05, "still in a panic three weeks later");
-    assert!(r.fear > 0.4, "the wariness evaporated with the fright");
+    assert!(r.fear() > 0.4, "the wariness evaporated with the fright");
 }
 
 // --- 7 -----------------------------------------------------------------
@@ -274,8 +274,8 @@ fn one_exchange_two_different_conclusions() {
         1,
     );
 
-    assert!(taker.gratitude > 0.1, "she is not grateful");
-    assert_eq!(giver.gratitude, 0.0, "he is grateful to her for accepting");
+    assert!(taker.gratitude() > 0.1, "she is not grateful");
+    assert_eq!(giver.gratitude(), 0.0, "he is grateful to her for accepting");
     assert!(taker.obligation > 0.3, "she owes him nothing");
     assert_eq!(giver.obligation, 0.0);
     assert!(labels(&taker, &[]).contains(&Label::Beholden));
@@ -354,7 +354,7 @@ fn resentment_follows_the_belief_and_not_the_truth() {
     );
     // **Being cleared is not being liked again.** Affection and trust
     // have their own histories and are untouched.
-    assert_eq!(on_carol.affection, 0.0);
+    assert_eq!(on_carol.affection(), 0.0);
     assert_eq!(on_carol.trust_in(TrustIn::General), 0.0);
 }
 
@@ -376,15 +376,15 @@ fn the_dead_can_still_be_loved_and_resented() {
         r.saw(&Evidence { contact: 1.0, warmth: 0.8, kindness: 0.4, ..Default::default() }, d);
     }
     r.saw(&Evidence { wrong: 0.5, ..Default::default() }, 81);
-    let loved = r.affection;
+    let loved = r.affection();
 
     folk.remove(gone);
     assert!(!folk.holds(gone), "he did not die");
 
     // The relationship is untouched and still points where it pointed.
     assert_eq!(r.object, gone);
-    assert_eq!(r.affection, loved, "his feeling for her died with her");
-    assert!(r.gratitude > 0.0 && r.resentment() > 0.0);
+    assert_eq!(r.affection(), loved, "his feeling for her died with her");
+    assert!(r.gratitude() > 0.0 && r.resentment() > 0.0);
     assert!(labels(&r, &[SocialFact::MarriedTo]).contains(&Label::Spouse));
 
     // And nobody else can become her.
@@ -489,9 +489,9 @@ fn small_kindnesses_saturate_rather_than_accumulate() {
         r.saw(&trivial, d);
     }
     assert!(
-        r.affection <= 0.15,
+        r.affection() <= 0.15,
         "two thousand small courtesies produced {:.2} of devotion",
-        r.affection
+        r.affection()
     );
 
     // Whereas a few real ones go much further.
@@ -500,7 +500,7 @@ fn small_kindnesses_saturate_rather_than_accumulate() {
         real.saw(&Evidence { contact: 1.0, warmth: 0.9, ..Default::default() }, d);
     }
     assert!(
-        real.affection > r.affection * 3.0,
+        real.affection() > r.affection() * 3.0,
         "thirty genuine kindnesses were worth less than two thousand nods"
     );
 }
@@ -532,7 +532,7 @@ fn a_betrayal_is_specific_and_an_apology_must_be_credible() {
         );
     }
     let (was_fond, was_able, was_known) =
-        (r.affection, r.respect_for(RespectFor::Competence), r.familiarity);
+        (r.affection(), r.respect_for(RespectFor::Competence), r.familiarity);
     let trusted_with_money = r.trust_in(TrustIn::Money);
 
     // He takes the money and runs.
@@ -560,7 +560,7 @@ fn a_betrayal_is_specific_and_an_apology_must_be_credible() {
         r.respect_for(RespectFor::Competence) > was_able - 0.2,
         "being robbed made the man bad at his trade"
     );
-    assert!(r.affection < was_fond, "and it cost him nothing in affection");
+    assert!(r.affection() < was_fond, "and it cost him nothing in affection");
     assert!(r.resentment() > 0.5);
 
     // A cheap apology closes nothing.
@@ -591,4 +591,120 @@ fn the_same_history_gives_the_same_relationship() {
         r
     };
     assert_eq!(build(), build());
+}
+
+/// **How much is believed and how firmly are different things.**
+///
+/// One polite act and thirty years of unbroken civility both imply about
+/// the same modest affection — and one rude afternoon should not do the
+/// same damage to each. Repetition buys **confidence in a modest
+/// conclusion**, not a larger conclusion.
+#[test]
+fn a_long_acquaintance_is_harder_to_overturn_than_a_first_impression() {
+    let (_folk, id) = a_village();
+    let civil = Evidence { contact: 0.4, warmth: 0.12, ..Default::default() };
+    let rude = Evidence { contact: 0.4, warmth: -0.35, ..Default::default() };
+
+    let mut one_meeting = Relationship::strangers(id[0], id[1]);
+    one_meeting.saw(&civil, 0);
+
+    let mut thirty_years = Relationship::strangers(id[0], id[2]);
+    for d in 0..2000 {
+        thirty_years.saw(&civil, d);
+    }
+
+    // Both conclusions are modest, and about the same size.
+    assert!(
+        (one_meeting.affection() - thirty_years.affection()).abs() < 0.06,
+        "repetition inflated the conclusion instead of the confidence: \
+         {:.2} against {:.2}",
+        one_meeting.affection(),
+        thirty_years.affection()
+    );
+    // The confidence is not.
+    assert!(
+        thirty_years.sureness_of_affection() > 3.0 * one_meeting.sureness_of_affection(),
+        "thirty years left him no surer than one afternoon"
+    );
+
+    // Now one rude encounter each.
+    let (a_was, b_was) = (one_meeting.affection(), thirty_years.affection());
+    one_meeting.saw(&rude, 3000);
+    thirty_years.saw(&rude, 3000);
+    let a_moved = (one_meeting.affection() - a_was).abs();
+    let b_moved = (thirty_years.affection() - b_was).abs();
+
+    assert!(
+        a_moved > 3.0 * b_moved,
+        "one rude afternoon cost a stranger {a_moved:.3} and a man of \
+         thirty years' acquaintance {b_moved:.3}"
+    );
+    assert!(
+        thirty_years.affection() > 0.0,
+        "one bad day undid thirty years of civility"
+    );
+    assert!(one_meeting.affection() < 0.0, "a stranger who was rude is still liked");
+}
+
+/// **A betrayal is not another data point.**
+///
+/// A weighted mean alone makes a long history nearly immovable, which is
+/// right for civility and wrong for treachery: one clear defection
+/// reveals a disposition and *invalidates* the history rather than being
+/// averaged against it. That asymmetry is why trust is hard to build and
+/// easy to destroy.
+#[test]
+fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
+    let (_folk, id) = a_village();
+    let steady = Evidence {
+        contact: 1.0,
+        reliability: 0.8,
+        reliability_in: Some(TrustIn::Money),
+        ..Default::default()
+    };
+
+    let mut r = Relationship::strangers(id[0], id[1]);
+    for d in 0..200 {
+        r.saw(&steady, d);
+    }
+    let earned = r.trust_in(TrustIn::Money);
+    let sureness = r.sureness_of_trust(TrustIn::Money);
+    assert!(earned > 0.6 && sureness > 0.8, "two hundred honest days built nothing");
+
+    // A small lapse barely registers against that history.
+    let mut careless = r.clone();
+    careless.saw(
+        &Evidence {
+            contact: 1.0,
+            reliability: -0.3,
+            reliability_in: Some(TrustIn::Money),
+            ..Default::default()
+        },
+        201,
+    );
+    assert!(
+        careless.trust_in(TrustIn::Money) > earned - 0.2,
+        "one careless afternoon undid two hundred honest days"
+    );
+
+    // Outright theft does not average — it discards.
+    let mut robbed = r.clone();
+    robbed.saw(
+        &Evidence {
+            contact: 1.0,
+            reliability: -1.0,
+            reliability_in: Some(TrustIn::Money),
+            ..Default::default()
+        },
+        201,
+    );
+    assert!(
+        robbed.trust_in(TrustIn::Money) < 0.3,
+        "he was robbed and would still hand over the takings ({:.2})",
+        robbed.trust_in(TrustIn::Money)
+    );
+    assert!(
+        robbed.sureness_of_trust(TrustIn::Money) < sureness,
+        "he is as sure of the man as he ever was, having just been robbed"
+    );
 }

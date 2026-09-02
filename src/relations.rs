@@ -149,14 +149,11 @@ pub struct Relationship {
 
     /// How well they know them. Rises with any contact at all.
     pub familiarity: f64,
-    /// Liking. **Not** trust and **not** duty.
-    pub affection: f64,
-    trust: [f64; 6],
-    respect: [f64; 4],
-    /// Expected threat *from this person*. A disposition, not a feeling.
-    pub fear: f64,
-    /// Durable attributed benefit. Not the same as liking them.
-    pub gratitude: f64,
+    affection_of: Estimate,
+    trust: [Estimate; 6],
+    respect: [Estimate; 4],
+    fear_of: Estimate,
+    gratitude_to: Estimate,
     /// Perceived duty or debt. Not the same as the objective one.
     pub obligation: f64,
 
@@ -175,11 +172,11 @@ impl Relationship {
             subject,
             object,
             familiarity: 0.0,
-            affection: 0.0,
-            trust: [0.0; 6],
-            respect: [0.0; 4],
-            fear: 0.0,
-            gratitude: 0.0,
+            affection_of: Estimate::default(),
+            trust: [Estimate::default(); 6],
+            respect: [Estimate::default(); 4],
+            fear_of: Estimate::default(),
+            gratitude_to: Estimate::default(),
             obligation: 0.0,
             last_meaningful: None,
             best_thing_they_did: 0.0,
@@ -200,6 +197,24 @@ impl Relationship {
             .min(1.0)
     }
 
+    pub fn affection(&self) -> f64 {
+        self.affection_of.value()
+    }
+    pub fn fear(&self) -> f64 {
+        self.fear_of.value()
+    }
+    pub fn gratitude(&self) -> f64 {
+        self.gratitude_to.value()
+    }
+    /// **How sure they are of their own opinion**, which is what makes a
+    /// long acquaintance hard to overturn.
+    pub fn sureness_of_affection(&self) -> f64 {
+        self.affection_of.confidence()
+    }
+    pub fn sureness_of_trust(&self, what: TrustIn) -> f64 {
+        self.trust[what.index()].confidence()
+    }
+
     pub fn trust_in(&self, what: TrustIn) -> f64 {
         if what == TrustIn::General {
             // A weighted summary of what is known, falling back to the
@@ -207,22 +222,22 @@ impl Relationship {
             let specific: Vec<f64> = TrustIn::ALL
                 .iter()
                 .filter(|t| **t != TrustIn::General)
-                .map(|t| self.trust[t.index()])
+                .map(|t| self.trust[t.index()].value())
                 .filter(|v| *v != 0.0)
                 .collect();
             if specific.is_empty() {
-                return self.trust[0];
+                return self.trust[0].value();
             }
             let mean = specific.iter().sum::<f64>() / specific.len() as f64;
             // **No general impression is not a bad one.** Diluting the
             // summary toward zero would make somebody proven reliable in
             // every particular look only middlingly trustworthy.
-            if self.trust[0] == 0.0 {
+            if self.trust[0].value() == 0.0 {
                 return mean;
             }
-            return 0.4 * self.trust[0] + 0.6 * mean;
+            return 0.4 * self.trust[0].value() + 0.6 * mean;
         }
-        self.trust[what.index()]
+        self.trust[what.index()].value()
     }
 
     pub fn respect_for(&self, what: RespectFor) -> f64 {
@@ -230,19 +245,19 @@ impl Relationship {
             let specific: Vec<f64> = RespectFor::ALL
                 .iter()
                 .filter(|r| **r != RespectFor::General)
-                .map(|r| self.respect[r.index()])
+                .map(|r| self.respect[r.index()].value())
                 .filter(|v| *v != 0.0)
                 .collect();
             if specific.is_empty() {
-                return self.respect[0];
+                return self.respect[0].value();
             }
             let mean = specific.iter().sum::<f64>() / specific.len() as f64;
-            if self.respect[0] == 0.0 {
+            if self.respect[0].value() == 0.0 {
                 return mean;
             }
-            return 0.4 * self.respect[0] + 0.6 * mean;
+            return 0.4 * self.respect[0].value() + 0.6 * mean;
         }
-        self.respect[what.index()]
+        self.respect[what.index()].value()
     }
 }
 
@@ -290,6 +305,82 @@ const TRUST_DOWN: f64 = 0.45;
 const RESPECT_RATE: f64 = 0.08;
 const FEAR_RATE: f64 = 0.30;
 
+/// **How much is believed, and how firmly.**
+///
+/// Magnitude and confidence are different things, and collapsing them
+/// loses something real: one polite act and thirty years of unbroken
+/// civility may both imply affection of about 0.1, and the second should
+/// be far harder for one rude afternoon to overturn.
+///
+/// So an estimate carries the *weight of evidence behind it*, and a new
+/// observation is folded in as a weighted mean. Repetition then buys
+/// **confidence in a modest conclusion** rather than a larger one.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Estimate {
+    magnitude: f64,
+    weight: f64,
+}
+
+/// Beyond this, nobody's mind is ever changed again. A ceiling exists so
+/// that a long enough history cannot become unfalsifiable.
+const MOST_EVIDENCE: f64 = 40.0;
+
+/// **Bad is stronger than good.** Negative information weighs more
+/// heavily in forming an impression than positive information of the same
+/// size — one of the better-replicated findings in the area *(Baumeister;
+/// Rozin & Royzman)* — so an unkindness is more diagnostic than a
+/// kindness.
+const NEGATIVITY_BIAS: f64 = 2.5;
+
+/// **A severe betrayal is not another data point.**
+///
+/// A weighted mean alone makes a long history nearly immovable, which is
+/// right for civility and wrong for treachery: one clear defection
+/// reveals a *disposition*, and what it actually does to somebody is
+/// invalidate the history rather than be averaged against it. "I did not
+/// know him at all" is the ordinary way of saying that the prior weight
+/// has just been discounted.
+///
+/// Which is why trust is hard to build and easy to destroy — not because
+/// the numbers move at different rates, but because one of them throws
+/// the evidence away.
+const BETRAYAL: f64 = 0.7;
+const BETRAYAL_DISCOUNT: f64 = 5.0;
+
+impl Estimate {
+    pub fn value(self) -> f64 {
+        self.magnitude
+    }
+
+    /// How much has been seen, against as much as anybody ever weighs.
+    /// Somebody you have watched for years is harder to be wrong about —
+    /// and harder to change your mind about.
+    ///
+    /// **Measured against the ceiling** rather than an arbitrary
+    /// fraction of it, so that a betrayal discounting the history is
+    /// visible as a loss of confidence and not merely of regard: being
+    /// robbed does not leave you as sure of a man as you ever were.
+    pub fn confidence(self) -> f64 {
+        (self.weight / MOST_EVIDENCE).min(1.0)
+    }
+
+    /// Take in one observation. `telling` is how diagnostic this sort of
+    /// evidence is at all.
+    fn observe(&mut self, evidence: f64, telling: f64) {
+        let e = evidence.clamp(-1.0, 1.0);
+        if e == 0.0 {
+            return;
+        }
+        let bias = if e < 0.0 { NEGATIVITY_BIAS } else { 1.0 };
+        if e < -BETRAYAL {
+            self.weight /= BETRAYAL_DISCOUNT;
+        }
+        let k = telling * bias * e.abs();
+        self.magnitude = (self.magnitude * self.weight + e * k) / (self.weight + k);
+        self.weight = (self.weight + k).min(MOST_EVIDENCE);
+    }
+}
+
 /// **A trivial act cannot take you past what a trivial act is worth.**
 ///
 /// Approaching a target rather than accumulating is *most* of saturation
@@ -325,24 +416,25 @@ impl Relationship {
             self.familiarity = toward(self.familiarity, 1.0, FAMILIARITY_RATE * e.contact);
         }
         if e.warmth != 0.0 {
-            self.affection = toward(self.affection, e.warmth, AFFECTION_RATE);
+            self.affection_of.observe(e.warmth, 1.0);
         }
         if e.reliability != 0.0 {
+            // **Reliability is the most diagnostic thing anybody shows
+            // you**, which is why trust is what a betrayal wrecks.
             let which = e.reliability_in.unwrap_or(TrustIn::General);
-            let rate = if e.reliability > 0.0 { TRUST_UP } else { TRUST_DOWN };
-            let i = which.index();
-            self.trust[i] = toward(self.trust[i], e.reliability, rate);
+            self.trust[which.index()].observe(e.reliability, 1.6);
         }
         if e.esteem != 0.0 {
             let which = e.esteem_for.unwrap_or(RespectFor::General);
-            let i = which.index();
-            self.respect[i] = toward(self.respect[i], e.esteem, RESPECT_RATE);
+            self.respect[which.index()].observe(e.esteem, 1.0);
         }
         if e.menace != 0.0 {
-            self.fear = toward(self.fear, e.menace.clamp(0.0, 1.0), FEAR_RATE);
+            // Menace is read fast and forgotten slowly: one frightening
+            // encounter tells you a great deal.
+            self.fear_of.observe(e.menace.clamp(0.0, 1.0), 3.0);
         }
         if e.kindness != 0.0 {
-            self.gratitude = toward(self.gratitude, e.kindness, 0.2);
+            self.gratitude_to.observe(e.kindness, 2.0);
         }
         if e.owing != 0.0 {
             self.obligation = (self.obligation + e.owing).clamp(-1.0, 1.0);
@@ -388,8 +480,8 @@ impl Relationship {
     pub fn on_meeting(&self, mind: &Mind, threatening: bool) -> Vec<Episode> {
         let mut out = Vec::new();
         let jumpy = (mind.person.z(Facet::Anxiety) as f64 / 5.0 + 0.5).clamp(0.0, 1.0);
-        if self.fear > 0.1 && threatening {
-            let strength = self.fear * (0.5 + 0.5 * jumpy);
+        if self.fear() > 0.1 && threatening {
+            let strength = self.fear() * (0.5 + 0.5 * jumpy);
             out.push(Episode {
                 what: Emotion::Fear,
                 strength: strength.min(1.0),
@@ -408,19 +500,19 @@ impl Relationship {
                 about: None,
             });
         }
-        if self.gratitude > 0.2 {
+        if self.gratitude() > 0.2 {
             out.push(Episode {
                 what: Emotion::Gratitude,
-                strength: self.gratitude.min(1.0),
+                strength: self.gratitude().min(1.0),
                 activation: Emotion::Gratitude.activation(),
                 age_days: 0.0,
                 about: None,
             });
         }
-        if self.affection > 0.3 {
+        if self.affection() > 0.3 {
             out.push(Episode {
                 what: Emotion::Affection,
-                strength: self.affection.min(1.0),
+                strength: self.affection().min(1.0),
                 activation: Emotion::Affection.activation(),
                 age_days: 0.0,
                 about: None,
@@ -461,26 +553,26 @@ pub fn labels(r: &Relationship, facts: &[SocialFact]) -> Vec<Label> {
     let mut out = Vec::new();
     if r.familiarity < 0.15 {
         out.push(Label::Stranger);
-    } else if r.affection < 0.3 {
+    } else if r.affection() < 0.3 {
         out.push(Label::Acquaintance);
     }
-    if r.familiarity > 0.3 && r.affection > 0.3 && r.trust_in(TrustIn::General) > 0.2 {
+    if r.familiarity > 0.3 && r.affection() > 0.3 && r.trust_in(TrustIn::General) > 0.2 {
         out.push(Label::Friend);
-        if r.affection > 0.7 && r.trust_in(TrustIn::General) > 0.6 {
+        if r.affection() > 0.7 && r.trust_in(TrustIn::General) > 0.6 {
             out.push(Label::CloseFriend);
         }
     }
     if r.resentment() > 0.25 {
         out.push(Label::Grudge);
     }
-    if r.resentment() > 0.5 && r.affection < 0.0 {
+    if r.resentment() > 0.5 && r.affection() < 0.0 {
         out.push(Label::Enemy);
     }
     // **A rival is not an enemy**: contested, familiar, and not hated.
-    if r.familiarity > 0.3 && r.respect_for(RespectFor::Competence) > 0.3 && r.affection < 0.2 {
+    if r.familiarity > 0.3 && r.respect_for(RespectFor::Competence) > 0.3 && r.affection() < 0.2 {
         out.push(Label::Rival);
     }
-    if r.fear > 0.35 {
+    if r.fear() > 0.35 {
         out.push(Label::Feared);
     }
     if r.respect_for(RespectFor::General) > 0.4 {
@@ -516,6 +608,6 @@ pub fn labels(r: &Relationship, facts: &[SocialFact]) -> Vec<Label> {
 /// worth nothing at all. This is what `needs.rs` means by
 /// `SomebodyKnown` — asked of the *relationship*, not of the room.
 pub fn worth_of_company(r: &Relationship, quality: f64) -> f64 {
-    let closeness = (0.3 * r.familiarity + 0.7 * r.affection.max(0.0)).clamp(0.0, 1.0);
+    let closeness = (0.3 * r.familiarity + 0.7 * r.affection().max(0.0)).clamp(0.0, 1.0);
     (closeness * quality - 0.5 * r.resentment()).max(0.0)
 }
