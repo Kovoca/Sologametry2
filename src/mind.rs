@@ -344,6 +344,12 @@ pub struct Personality {
 /// below *(Mõttus et al.)*. Trait-specific values can come later.
 const HERITABILITY: f32 = 0.40;
 
+/// **The ceiling on durable adaptation**, in z, per facet. Named rather
+/// than written into the clamp because `growth.rs` has to respect the
+/// same number: anything tracking what it has already pushed must know
+/// where the pushing stops, or it records movement that never happened.
+pub const ADAPTATION_LIMIT: f32 = 1.5;
+
 /// **How well a personality can be measured at all.** Good inventories
 /// report internal consistency around 0.80, and that ceiling is why
 /// observed stability never reaches true stability.
@@ -489,7 +495,8 @@ impl Personality {
     /// silently share one bound.
     pub fn adapt(&mut self, f: Facet, by: f32) {
         let i = f.index();
-        self.adaptation[i] = (self.adaptation[i] + by).clamp(-1.5, 1.5);
+        self.adaptation[i] =
+            (self.adaptation[i] + by).clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT);
     }
 
     /// Years pass. Only the trajectory moves; the baseline is who they

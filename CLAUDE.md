@@ -3519,6 +3519,96 @@ import `relations` at all, so an exchange cannot reach into a
 relationship: what an act does to one is the caller's decision, taken
 from a reading.
 
+## Nobody changes, and then one day they have (`src/growth.rs`)
+
+Mind slice 7, spec sections 8 and 20. Everything before it could give
+somebody a bad year; nothing could give them a changed life.
+`Personality::adapt` existed and only tests ever called it, and
+`Conviction::held` was drawn when the person was made and no argument,
+defeat, conversion or disillusion could ever move it.
+
+### Rare, cumulative, and mechanism-tagged
+
+The tag is not bookkeeping — **it is what decides whether the change
+lasts**, and the figures are not intuitive:
+
+| | one instance | what survives | |
+|---|---|---|---|
+| a role's daily demands | 0.0006 | 90% | it is still being made every day |
+| bereavement | **0.30** | **25%** | people substantially recover |
+| losing work | 0.20 | **85%** | and they do not recover from this |
+| trauma | 0.35 | 55% | |
+| lasting impairment | 0.30 | 90% | very little adaptation |
+| a week of trying to change | 0.016 | 80% | 24 of them is a course of treatment |
+
+- **The larger blow leaves less behind.** Widowhood fades substantially
+  over about two years; unemployment does not, and is **not repaired by
+  getting another job** *(Lucas et al.)* — the strongest evidence there
+  is against one set-point everybody drifts back to. Nothing about that
+  ordering follows from how much each hurt at the time, which is exactly
+  why the mechanism has to be recorded rather than the magnitude alone.
+- Life events move personality **0.1–0.3 SD** *(Bleidorn et al.)*, and
+  clinical intervention about **0.37 SD on neuroticism over ~24 weeks**,
+  which persists *(Roberts et al., 207 studies)*.
+- **A role practised daily beats one dramatic day**, and by a long way
+  after five years — which is what "cumulative" means and why the
+  per-day figure has to be a five-hundredth of the effect it builds to.
+- **Growth writes through `adapt` and nowhere else**, so the ±1.5
+  ceiling still holds. It sends the *difference* each day rather than
+  the total, which is what lets a fading change actually fade — and a
+  negative delta is not a contradiction of the clamp but the reason the
+  clamp is a state bound rather than a lifetime budget.
+- **Record what was applied, not what was asked.** A working lifetime in
+  one role sums far past ±1.5; storing the sum meant the first day
+  anything faded subtracted a difference from a value that never got
+  there, walking the whole adaptation off the far side.
+
+### Doubt comes before change
+
+An argument does not move a conviction. It makes somebody less sure, and
+doubt is a separate object with its own decay — without it, argument
+either converts on the spot or never works, and both are wrong.
+Convictions are among the most stable things measured about a person
+(test–retest 0.7–0.8 over years), so a crossing is worth four points out
+of a hundred.
+
+- **Preaching to the converted does nothing**, or every conversation
+  between people who agree is a persuasion event.
+- **A conviction held hard resists**, which is why argument works on the
+  undecided. Identity-protective cognition, and it falls out of the
+  strength of the holding rather than a special case.
+- **Credibility does more than the argument does.** Force is what the
+  *listener* made of it — slice 6's reading — never what the speaker
+  meant, which is section 17's rule arriving where it decides whether
+  anybody's mind changes.
+- **Backfire is the exception and not the rule.** Its fame far exceeds
+  the evidence: large replications find people updating *toward* the
+  argument in almost every condition tested *(Wood & Porter)*. It
+  survives here only where a firmly held conviction meets somebody taken
+  for a liar.
+- **A convert becomes a heretic** with nothing having to say so, because
+  `heterodoxy` is already distance from the culture.
+
+**The bug worth recording, because both constants read perfectly
+sensibly on their own.** A decay rate and a threshold together imply a
+ceiling on how far anybody can ever be persuaded:
+
+```text
+most doubt ever reached = added / (1 - ½^(interval / half-life))
+```
+
+At a three-week half-life, weekly argument from somebody wholly credible
+converges on **0.55 against a bar of 0.75** — so the model silently
+asserted that nobody is ever talked round by anybody they see every week.
+Neither number looks wrong; only the fixed point does. `Doubts::
+ceiling_at` is public so a new kind of influence can be asked whether it
+is *capable* of persuading anybody before somebody wonders why nobody is
+being persuaded.
+
+And a matching test lesson: the hardening branch was never reached by the
+test that claimed hardening is rare, so it was passing on nothing. **A
+test that never enters the branch is not evidence the branch is rare.**
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
