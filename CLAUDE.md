@@ -2915,6 +2915,36 @@ one of these was stated loosely here first.
   person carries a slope of their own, and the test requires a solid
   minority to move against the average.
 
+### Where a number came from is part of the number
+
+- **Provenance on every loading.** NEO-PI-R has **thirty** facets, six to
+  a domain; this is a subset plus extensions. Cruelty, violence,
+  vengefulness and greed are **not NEO facets** — their negative
+  agreeableness loadings are sensible modelling and nothing more.
+  Published loadings are estimates from particular samples, and real
+  analyses find useful secondary cross-loadings *(Furnham et al.)*, so a
+  clean one-facet-one-domain structure is a simplification and is
+  recorded as one. `Facet::provenance` says which of the three each is.
+- **Pin down which heritability is being modelled, because the two claims
+  are the same claim.** This is an *additive* breeding-value model, so
+  `r(parent, child) ≈ h²/2` — and asserting h² of 0.40–0.60 while also
+  requiring relatives to correlate at 0.15–0.20 asks for two different
+  numbers at once. Adopted: **h² = 0.40, parent–offspring ≈ 0.20**, which
+  is what a multimethod family study found alongside narrow-sense
+  heritability near 40% *(Mõttus et al.)*; single-method estimates come
+  in at 0.15 or below. Higher twin figures can carry non-additive effects
+  a breeding value does not represent.
+- **The measurement model has to be standardised or the arithmetic is
+  not exact.** `observed = √R × latent + √(1−R) × noise`. Adding raw
+  noise to the latent score inflates the variance and gives 0.83 where
+  0.80 was wanted. Then two readings of an unchanged person correlate at
+  exactly **R**, a reading correlates with the truth at **√R**, and over
+  an interval `r_observed = r_latent × √(R₁R₂)`. Testing the error
+  generator directly is what stops the twenty-year figure coming out
+  right by accident. **Only calibration and reporting use it** — a person
+  deciding what to do uses their expressed personality, not a noisy
+  questionnaire about themselves.
+
 ### Appraisal is the bridge between trait and value
 
 **The trait does not say what somebody is angry about; the value does not
@@ -2932,6 +2962,31 @@ angry* and only one is outraged. And one event produces several emotions
 that stay separate when their valences fight: a promotion given to a
 friend can yield gladness, envy, frustration, resentment at a crooked
 process and shame at a confirmed fear, at once.
+
+### An appraisal belongs to the perceiver, not to the event
+
+**If the happening carries `unfair`, everybody who hears about it
+inherits the same moral conclusion** — and the perception boundary is
+already broken before slice 2 begins. There is then no room for two
+witnesses to disagree, for a rumour to be wrong, or for the person who
+made the decision to think it perfectly proper.
+
+```text
+Happening:   the manager chose Alice; Bob was also a candidate
+Bob reads:   unfair 0.82, confirms a fear 0.61
+Carol reads: unfair 0.05, confirms a fear 0.00
+```
+
+So `Happening` holds the facts and `Mind::read` produces one person's
+`Appraisal` from them. Unfairness needs a process, a stake **and**
+somebody who cares about fairness — all three, which is why a bystander
+reads almost none. A defeat confirms a fear only in somebody already
+inclined to think poorly of themselves.
+
+And one event *permits* five emotions rather than producing all five:
+gladness for a friend, envy at the comparison, frustration at a blocked
+goal, resentment at attributed unfairness, shame at a confirmed
+inadequacy. Each needs its own reason.
 
 ### Acute activation fades; the concern that made it remains
 
@@ -2951,6 +3006,24 @@ thought *(Verduyn et al.)* — arousal alone cannot carry it.
 - Bereavement is **recurrent waves**, with bearable days between them,
   not a permanent emotion.
 - Habituation is real and partial: it hurts less, it does not go away.
+
+**And a concern goes quiet.** Without that, an elderly person accumulates
+decades of live bereavements, grievances and abandoned goals and carries
+every one of them daily for ever. `Active → Dormant → Resolved`, and a
+strong cue can wake a dormant one — which is what makes an anniversary
+worse than the week around it. The distinction that carries it is
+**pressure against depth**: pressure is what it costs on an ordinary
+Tuesday and goes to nearly nothing; depth is what is still there to be
+touched and does not. "It hurts less and does not leave" is a claim about
+depth.
+
+**The daily tick is an abstraction of the timescale, not a claim about
+it.** Acute activation can be gone in minutes; what carries an episode
+across days is repeated attention, rumination, exposure and reappraisal.
+A day's tick stores what integrates over that day, and a locally
+simulated person would run in minutes. The spontaneous roll that produces
+a wave is a **placeholder for a cue** — slice 2 supplies the real ones,
+and `Mind::cued` is the door they come through.
 
 **Focus is taken by activation first, and by load a little.** Acute
 activation and intrusive recollection dominate; chronic load still exerts

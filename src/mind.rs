@@ -19,10 +19,24 @@
 //! facet z  = loading × domain + √(1 − loading²) × residual
 //! ```
 //!
-//! Real NEO-PI-R facet loadings on their parent domain run **0.5–0.75**,
-//! which leaves each facet with substantial variance of its own — so a
-//! person can be an anxious *and* even-tempered neurotic, which is a real
-//! kind of person.
+//! Facet loadings on their parent domain run around **0.5–0.75**, which
+//! leaves each facet substantial variance of its own — so a person can be
+//! an anxious *and* even-tempered neurotic, which is a real kind of
+//! person.
+//!
+//! **Where each loading comes from is recorded, because they do not all
+//! come from the same place.** NEO-PI-R has **thirty** facets, six to a
+//! domain; the list here is a deliberate subset plus extensions this
+//! simulation needs. Cruelty, violence, vengefulness and greed are *not*
+//! NEO facets — their negative agreeableness loadings are sensible
+//! modelled mappings and nothing more. And published loadings are
+//! estimates from particular samples and models, not constants: real NEO
+//! analyses find useful secondary cross-loadings, and exploratory
+//! structural models fit better than a perfectly clean one-facet-one-
+//! domain structure *(Furnham et al.)*, which this deliberately is.
+//!
+//! `Facet::provenance` carries that, so a later document cannot present a
+//! designed mapping as a measured coefficient.
 //!
 //! ## Latent inside, 0–100 at the edges
 //!
@@ -103,6 +117,19 @@ impl Domain {
             Domain::Openness => -0.03,
         }
     }
+}
+
+/// **Where a loading came from.** No behaviour depends on it; it exists
+/// so that a designed mapping is never mistaken for a measured one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum LoadingSource {
+    /// A NEO-PI-R facet, loading in the range those analyses report.
+    MeasuredNeo,
+    /// Not a NEO facet, but a close stand-in for one that is.
+    EmpiricalProxy,
+    /// This simulation's own, mapped onto a domain because the mapping is
+    /// sensible — not because anybody measured it.
+    DesignedExtension,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -212,6 +239,26 @@ impl Facet {
         }
     }
 
+    /// See [`LoadingSource`]. Anxiety, anger, gloom, vulnerability,
+    /// gregariousness, assertiveness, excitement-seeking, cheerfulness,
+    /// trust, altruism, dutifulness, orderliness and the two openness
+    /// facets are NEO facets or close to them. Envy, pride, tolerance,
+    /// gratitude, privacy, perseverance and ambition stand in for ones
+    /// that are. The remaining four are this simulation's own.
+    pub fn provenance(self) -> LoadingSource {
+        use Facet::*;
+        use LoadingSource::*;
+        match self {
+            Anxiety | Anger | Gloom | StressVulnerability => MeasuredNeo,
+            Gregariousness | Assertiveness | ExcitementSeeking | Cheerfulness => MeasuredNeo,
+            Trust | Altruism | Dutifulness | Orderliness => MeasuredNeo,
+            Curiosity | LoveOfMaking => MeasuredNeo,
+            Envy | Pride | Tolerance | Gratitude | Privacy => EmpiricalProxy,
+            Perseverance | Ambition => EmpiricalProxy,
+            Cruelty | Violence | Vengefulness | Greed => DesignedExtension,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         use Facet::*;
         match self {
@@ -270,19 +317,27 @@ pub struct Personality {
 /// person.**
 ///
 /// Twin estimates for the five domains run about **41–61%** *(Jang et
-/// al.: 41, 53, 61, 41, 44)*, and estimates from measured common variants
-/// are lower. What that emphatically does not license is
-/// `personality = 0.5 × parents + 0.5 × environment`, which is a
-/// statement about an individual and is meaningless.
+/// al.)* and variant-based estimates are lower. What that emphatically
+/// does not license is `personality = 0.5 × parents + 0.5 ×
+/// environment`, which is a claim about an individual and is
+/// meaningless. What it licenses is a **breeding value**: mid-parent plus
+/// segregation noise, a developmental residual on top, and the check is a
+/// *population* correlation between relatives.
 ///
-/// What it does license is a **breeding value**: an offspring's genetic
-/// value is the mid-parent value plus segregation noise, the phenotype is
-/// that plus a developmental residual, and the ratio of their variances
-/// is the heritability. The check is then a *population* correlation
-/// between relatives — parent-offspring should come out near h²/2, which
-/// for h² ≈ 0.45 is about **0.22**, and measured parent-offspring
-/// personality correlations run 0.15–0.20.
-const HERITABILITY: f32 = 0.45;
+/// **Which heritability is being modelled has to be pinned down, because
+/// the two claims are the same claim.** This is an *additive* model, so
+/// `r(parent, child) ≈ h²/2` — and asserting h² of 0.40–0.60 while also
+/// requiring relatives to correlate at 0.15–0.20 asks for two different
+/// numbers at once. Higher twin estimates can carry non-additive genetic
+/// effects and design differences that a breeding value does not
+/// represent.
+///
+/// So: **additive heritability 0.40, expected parent–offspring ≈ 0.20.**
+/// A multimethod family study found parent–offspring and sibling
+/// correlations near **0.20** with narrow-sense heritability around
+/// **40%**, while ordinary single-method estimates come in at 0.15 or
+/// below *(Mõttus et al.)*. Trait-specific values can come later.
+const HERITABILITY: f32 = 0.40;
 
 /// **Accumulated durable change over a decade, in z.**
 ///
@@ -386,12 +441,25 @@ impl Personality {
 
     /// **What a questionnaire would say**, which is not what is true.
     ///
-    /// Measurement error, at the reliability real inventories achieve.
-    /// Without it, comparing this model's stability to a published
-    /// test-retest coefficient compares two different quantities.
+    /// Standardised, so the observation has the same variance as the
+    /// trait and the arithmetic is exact:
+    ///
+    /// ```text
+    /// observed = √R × latent + √(1 − R) × noise
+    /// ```
+    ///
+    /// Two independent observations of an unchanged person then correlate
+    /// at exactly **R**, and an observation correlates with the truth at
+    /// **√R**. Adding raw noise to the latent score instead — which is
+    /// what this did first — inflates the variance and gives 0.83 where
+    /// 0.80 was wanted. For an interval, `r_observed = r_latent × √(R₁R₂)`,
+    /// so at R = 0.80 a true stability of 0.85 shows up as 0.68.
+    ///
+    /// **Only for calibration and for anything that reports a score.** A
+    /// person deciding what to do uses their expressed personality, not a
+    /// noisy questionnaire about themselves.
     pub fn observed(&self, f: Facet, rng: &mut Rng) -> f32 {
-        let error = (1.0 - RELIABILITY).sqrt() * gauss(rng);
-        self.z(f) + error
+        RELIABILITY.sqrt() * self.z(f) + (1.0 - RELIABILITY).sqrt() * gauss(rng)
     }
 
     /// **0–100 for showing somebody**, never for storing. A z of 0 is 50.
@@ -629,9 +697,41 @@ pub enum ConcernKind {
     BlockedGoal,
 }
 
+impl ConcernKind {
+    fn first_feeling(self) -> Emotion {
+        match self {
+            ConcernKind::Bereavement => Emotion::Grief,
+            ConcernKind::Grievance => Emotion::Anger,
+            ConcernKind::Threat => Emotion::Anxiety,
+            ConcernKind::BlockedGoal => Emotion::Frustration,
+        }
+    }
+}
+
+/// **A concern is not permanently loud.**
+///
+/// Without this an elderly person accumulates decades of nonzero
+/// bereavements, grievances and failed goals, and carries all of them
+/// every day for ever. What actually happens is that the attachment and
+/// the memory stay while the *daily burden* goes: a dormant loss costs
+/// almost nothing on an ordinary Tuesday and still produces an episode at
+/// an anniversary, a familiar place, or a remembered conversation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConcernState {
+    /// Live: throws off episodes unprompted and weighs every day.
+    Active,
+    /// Accommodated into a life. Almost no ordinary load; still answers a
+    /// cue.
+    Dormant,
+    /// Settled — the grievance was answered, the goal abandoned, the loss
+    /// made sense of. A cue may still touch it, faintly.
+    Resolved,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Concern {
     pub kind: ConcernKind,
+    pub state: ConcernState,
     /// How much it matters. The strongest predictor of how long an
     /// emotion runs.
     pub importance: f64,
@@ -645,8 +745,21 @@ pub struct Concern {
 }
 
 impl Concern {
-    /// The force behind the next wave.
+    /// **What it costs on an ordinary day.** Nearly nothing once it has
+    /// been accommodated — which is what accommodation *is*.
     pub fn pressure(&self) -> f64 {
+        self.depth()
+            * match self.state {
+                ConcernState::Active => 1.0,
+                ConcernState::Dormant => 0.06,
+                ConcernState::Resolved => 0.0,
+            }
+    }
+
+    /// **What is still there to be touched.** Unchanged by dormancy: the
+    /// attachment and the memory do not go, only the daily burden does.
+    /// This is what a cue reaches.
+    pub fn depth(&self) -> f64 {
         (self.importance * self.unresolvedness * (1.0 - self.adaptation)).max(0.0)
     }
 }
@@ -668,9 +781,61 @@ pub struct Episode {
 // appraisal
 // ---------------------------------------------------------------------
 
-/// **What happened, as this person read it.** Slice 3 splits the world
-/// event from the perceived one; this is the shape the second collapses
-/// to, because a person reacts to what they believe happened.
+/// **What happened.** The facts, as far as anybody has them — not what
+/// they mean.
+///
+/// The boundary matters before slice 2 rather than after it. If the event
+/// itself carries `unfair`, then everybody who hears about it inherits
+/// the same moral conclusion, and there is no room for two witnesses to
+/// disagree about a promotion, for a rumour to be wrong, or for the
+/// person who made the decision to think it was perfectly proper.
+///
+/// ```text
+/// Happening:   the manager chose Alice; Bob was also a candidate
+/// Bob reads:   unfair 0.82, confirms a fear 0.61
+/// Carol reads: unfair 0.05, confirms a fear 0.00
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Happening {
+    pub severity: f64,
+    pub to_me: f64,
+    pub to_mine: f64,
+    pub deliberate: bool,
+    pub my_doing: bool,
+    pub control: f64,
+    pub unexpected: f64,
+    /// Which value it bears on, and whether it upheld or broke it. Still
+    /// a fact about the act; what it is *worth* is the reader's.
+    pub bears_on: Option<(Value, bool)>,
+    pub someone_gained: bool,
+    pub blocks_a_goal: bool,
+    pub nothing_happening: bool,
+    /// **Somebody decided this**, so there is a process to have an
+    /// opinion about. An accident has no fairness.
+    pub by_a_decision: bool,
+}
+
+impl Default for Happening {
+    fn default() -> Self {
+        Happening {
+            severity: 0.0,
+            to_me: 0.0,
+            to_mine: 0.0,
+            deliberate: false,
+            my_doing: false,
+            control: 0.5,
+            unexpected: 0.3,
+            bears_on: None,
+            someone_gained: false,
+            blocks_a_goal: false,
+            nothing_happening: false,
+            by_a_decision: false,
+        }
+    }
+}
+
+/// **What one person made of it.** Produced by [`Mind::read`], never
+/// shared: two people reading the same happening produce two of these.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Appraisal {
     pub severity: f64,
@@ -682,11 +847,15 @@ pub struct Appraisal {
     pub unexpected: f64,
     pub touches: Option<(Value, bool)>,
     pub someone_gained: bool,
-    /// The process itself was crooked, which is a different complaint
-    /// from losing.
-    pub unfair: bool,
-    /// It confirms something they already feared about themselves.
-    pub confirms_a_fear: bool,
+    /// **How crooked they think the process was**, which is a different
+    /// complaint from losing, and is theirs and not the event's. Somebody
+    /// with no stake and no strong feeling about fairness reads almost
+    /// none.
+    pub unfair: f64,
+    /// **How much it confirms something they already feared about
+    /// themselves.** A defeat is only humiliating to somebody who half
+    /// expected it.
+    pub confirms_a_fear: f64,
     pub blocks_a_goal: bool,
     pub nothing_happening: bool,
 }
@@ -703,8 +872,8 @@ impl Default for Appraisal {
             unexpected: 0.3,
             touches: None,
             someone_gained: false,
-            unfair: false,
-            confirms_a_fear: false,
+            unfair: 0.0,
+            confirms_a_fear: 0.0,
             blocks_a_goal: false,
             nothing_happening: false,
         }
@@ -786,6 +955,53 @@ impl Mind {
             willpower: gauss(rng),
             empathy: gauss(rng),
             person,
+        }
+    }
+
+    /// **Read a happening.** This is the perception/appraisal boundary,
+    /// and it is where two people looking at one event stop agreeing.
+    ///
+    /// Nothing here decides what is *true* — the facts arrive already
+    /// settled. What it decides is what they are worth to this person:
+    /// whether the process was crooked, and whether the outcome confirms
+    /// something they already suspected about themselves.
+    pub fn read(&self, h: &Happening) -> Appraisal {
+        // **A crooked process needs a process, a stake and somebody who
+        // cares about fairness.** All three, which is why a bystander
+        // reads almost nothing and the loser reads a great deal.
+        let cares = (self.conviction(Value::Fairness) as f64 / 50.0).max(0.0);
+        let stake = h.to_me.min(1.0);
+        let against_me = if h.severity < 0.0 { 1.0 } else { 0.0 };
+        let suspicious = 1.0 - self.f(Facet::Trust);
+        let unfair = if h.by_a_decision {
+            (stake * against_me * (0.35 * cares + 0.45 * cares * suspicious + 0.2 * suspicious))
+                .clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        // **A defeat confirms a fear** in somebody already inclined to
+        // think poorly of themselves, and barely registers in somebody
+        // who is not.
+        let confirms = if h.severity < 0.0 {
+            (stake * (0.8 * self.f(Facet::Gloom) + 0.4 * (1.0 - self.f(Facet::Pride)) - 0.2))
+                .clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        Appraisal {
+            severity: h.severity,
+            to_me: h.to_me,
+            to_mine: h.to_mine,
+            deliberate: h.deliberate,
+            my_doing: h.my_doing,
+            control: h.control,
+            unexpected: h.unexpected,
+            touches: h.bears_on,
+            someone_gained: h.someone_gained,
+            unfair,
+            confirms_a_fear: confirms,
+            blocks_a_goal: h.blocks_a_goal,
+            nothing_happening: h.nothing_happening,
         }
     }
 
@@ -903,13 +1119,17 @@ impl Mind {
             // **Gladness for a friend, in the same head as the envy.**
             add(Emotion::Joy, 0.5 * pct(Facet::Altruism) * ev.to_mine);
         }
-        if ev.unfair {
-            add(Emotion::Outrage, 0.3 + 0.7 * (self.conviction(Value::Fairness) as f64 / 50.0).max(0.0));
-            add(Emotion::Resentment, 0.2 + 0.8 * pct(Facet::Vengefulness));
+        if ev.unfair > 0.01 {
+            let cares = (self.conviction(Value::Fairness) as f64 / 50.0).max(0.0);
+            add(Emotion::Outrage, ev.unfair * (0.3 + 0.7 * cares));
+            add(Emotion::Resentment, ev.unfair * (0.2 + 0.8 * pct(Facet::Vengefulness)));
         }
-        if ev.confirms_a_fear {
-            add(Emotion::Shame, 0.3 + 0.7 * pct(Facet::Gloom));
-            add(Emotion::Discouragement, 0.3 + 0.7 * pct(Facet::Gloom));
+        if ev.confirms_a_fear > 0.01 {
+            add(Emotion::Shame, ev.confirms_a_fear * (0.3 + 0.7 * pct(Facet::Gloom)));
+            add(
+                Emotion::Discouragement,
+                ev.confirms_a_fear * (0.3 + 0.7 * pct(Facet::Gloom)),
+            );
         }
         if ev.blocks_a_goal {
             add(Emotion::Frustration, bite.max(0.3) * (0.3 + 0.7 * pct(Facet::Ambition)));
@@ -931,12 +1151,52 @@ impl Mind {
     pub fn take_on(&mut self, kind: ConcernKind, importance: f64) -> usize {
         self.concerns.push(Concern {
             kind,
+            state: ConcernState::Active,
             importance,
             unresolvedness: 1.0,
             adaptation: 0.0,
             age_days: 0.0,
         });
         self.concerns.len() - 1
+    }
+
+    /// **Something reminded them.**
+    ///
+    /// A place, a name, an anniversary, a conversation, a similar danger
+    /// — slice 2 supplies what did the reminding; this is the door it
+    /// comes through. A cue reaches a concern's *depth* rather than its
+    /// daily pressure, so a dormant loss can still take somebody apart on
+    /// the right afternoon.
+    ///
+    /// A strong cue can wake a dormant concern back up, which is what
+    /// makes an anniversary worse than the week around it.
+    pub fn cued(&mut self, which: usize, strength: f64) -> Option<Episode> {
+        let c = self.concerns.get_mut(which)?;
+        let force = c.depth() * strength.clamp(0.0, 1.0);
+        if force <= 0.02 {
+            return None;
+        }
+        if c.state == ConcernState::Dormant && strength > 0.7 {
+            c.state = ConcernState::Active;
+            c.adaptation = (c.adaptation - 0.1).max(0.0);
+        }
+        let what = c.kind.first_feeling();
+        Some(Episode {
+            what,
+            strength: force,
+            activation: what.activation(),
+            age_days: 0.0,
+            about: Some(which),
+        })
+    }
+
+    /// The grievance was answered, the loss made sense of, the goal let
+    /// go. Nothing is deleted — it settles.
+    pub fn settle(&mut self, which: usize) {
+        if let Some(c) = self.concerns.get_mut(which) {
+            c.state = ConcernState::Resolved;
+            c.unresolvedness = (c.unresolvedness * 0.2).min(0.15);
+        }
     }
 
     pub fn feel(&mut self, episodes: Vec<Episode>) {
@@ -963,9 +1223,16 @@ impl Mind {
 
     /// A day passes.
     ///
-    /// **Activation fades fast for everything.** What differs between
-    /// grief and rage is not the decay rate — it is whether there is a
-    /// standing concern still throwing off fresh episodes.
+    /// **This is the daily scale, and the decay here is an abstraction
+    /// of it.** Acute activation can be gone in minutes or hours; what
+    /// carries an episode across days is repeated attention, rumination,
+    /// exposure and reappraisal, not the arousal itself *(Verduyn et
+    /// al.)*. A tick of a day therefore stores what integrates over that
+    /// day, and a locally simulated person would run this in minutes.
+    /// **It is not a claim that everything takes days to fade.**
+    ///
+    /// What differs between grief and rage is not a decay rate — it is
+    /// whether a standing concern is still throwing off fresh episodes.
     pub fn a_day_passes(&mut self, rng: &mut Rng) {
         for e in self.episodes.iter_mut() {
             e.age_days += 1.0;
@@ -984,12 +1251,21 @@ impl Mind {
             c.age_days += 1.0;
             // Habituation, slowly. It hurts less; it does not go away.
             c.adaptation = (c.adaptation + 0.0015).min(0.75);
+            // **And then it goes quiet.** Accommodation is not the same
+            // as resolution: the loss is still there and still answers a
+            // cue, but it stops being what every day is about.
+            if c.state == ConcernState::Active && c.adaptation > 0.55 {
+                c.state = ConcernState::Dormant;
+            }
             let pressure = c.pressure();
             if pressure <= 0.02 {
                 continue;
             }
-            // Waves, not a level. Whether one arrives today is a matter
-            // of what reminded them.
+            // Waves, not a level. **This spontaneous roll is a
+            // placeholder for a cue.** Slice 2 supplies the real ones — a
+            // place, a name, an anniversary, a similar danger — and
+            // `cued` is the door they come through; intrusive
+            // recollection out of nowhere stays one of them.
             if (rng.next_f32() as f64) < 0.10 + 0.25 * pressure {
                 let what = match c.kind {
                     ConcernKind::Bereavement => {

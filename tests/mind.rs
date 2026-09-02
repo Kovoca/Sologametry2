@@ -5,7 +5,8 @@
 //! the argument.
 
 use scale_sim::mind::{
-    Appraisal, ConcernKind, Emotion, Episode, Facet, Mind, Personality, Value, RELIABILITY,
+    Appraisal, ConcernKind, ConcernState, Emotion, Episode, Facet, Happening, LoadingSource, Mind,
+    Personality, Value, RELIABILITY,
 };
 use scale_sim::rng::Rng;
 
@@ -379,8 +380,8 @@ fn one_event_produces_several_emotions_and_they_may_disagree() {
     );
     assert!(e.len() >= 3, "a happiness bar with extra steps");
 
-    let crooked = Appraisal { unfair: true, ..promotion };
-    let fearful = Appraisal { confirms_a_fear: true, ..promotion };
+    let crooked = Appraisal { unfair: 0.8, ..promotion };
+    let fearful = Appraisal { confirms_a_fear: 0.8, ..promotion };
     assert!(
         of(&envious.appraise(&crooked), Emotion::Outrage) > of(&e, Emotion::Outrage) + 0.2,
         "a crooked process produced no more outrage than a fair one"
@@ -410,7 +411,7 @@ fn activation_fades_and_the_grievance_stays() {
         to_me: 1.0,
         deliberate: true,
         control: 0.1,
-        unfair: true,
+        unfair: 0.8,
         ..Default::default()
     };
     let felt = m.appraise(&insult);
@@ -447,7 +448,17 @@ fn activation_fades_and_the_grievance_stays() {
          and not a grievance"
     );
     assert!(m.concerns[0].adaptation > 0.2, "no habituation at all in a year");
-    assert!(m.concerns[0].pressure() > 0.05, "the grievance simply expired");
+    // **"It hurts less and does not leave" is about depth, not daily
+    // load.** A year on it may be going quiet — which is what
+    // accommodation is — but the grievance itself is still there to be
+    // touched, and a cue still reaches it.
+    assert!(m.concerns[0].depth() > 0.15, "the grievance simply expired");
+    let reminded = m.cued(0, 0.9).expect("nothing left to remind him of");
+    assert!(
+        reminded.strength > 0.1,
+        "being reminded of it produced {:.2}",
+        reminded.strength
+    );
 }
 
 /// **Bereavement is recurrent waves, not one uninterrupted year of
@@ -570,4 +581,202 @@ fn the_same_seed_draws_the_same_person() {
         ..Default::default()
     };
     assert_eq!(a.appraise(&ev), b.appraise(&ev));
+}
+
+// ---------------------------------------------------------------------
+// gate tests
+// ---------------------------------------------------------------------
+
+/// **A designed mapping must never be mistaken for a measured
+/// coefficient.**
+///
+/// NEO-PI-R has thirty facets, six to a domain; this is a subset plus
+/// extensions. Cruelty, violence, vengefulness and greed are not NEO
+/// facets at all — their negative agreeableness loadings are sensible
+/// modelling and nothing more. Recording that costs nothing now and stops
+/// a later document claiming otherwise.
+#[test]
+fn every_loading_says_where_it_came_from() {
+    use LoadingSource::*;
+    assert_eq!(Facet::Anxiety.provenance(), MeasuredNeo);
+    assert_eq!(Facet::Trust.provenance(), MeasuredNeo);
+    for f in [Facet::Cruelty, Facet::Violence, Facet::Vengefulness, Facet::Greed] {
+        assert_eq!(
+            f.provenance(),
+            DesignedExtension,
+            "{} is not a NEO facet and must not be recorded as one",
+            f.name()
+        );
+    }
+    // The subset is smaller than the instrument it draws on.
+    assert!(
+        Facet::ALL.len() < 30,
+        "this claims to be all thirty NEO facets, which it is not"
+    );
+}
+
+/// **Two independent observations of an unchanged person correlate at the
+/// reliability**, which checks the error generator itself rather than
+/// letting the twenty-year result come out right by accident.
+///
+/// The standardised form is what makes this exact:
+/// `observed = √R × latent + √(1−R) × noise`. Adding raw noise to the
+/// latent score instead inflates the variance and yields 0.83 where 0.80
+/// was wanted.
+#[test]
+fn two_observations_of_the_same_person_correlate_at_the_reliability() {
+    let mut rng = Rng::new(5150);
+    let folk: Vec<Personality> = (0..4000).map(|_| Personality::draw(&mut rng)).collect();
+    let once: Vec<f32> = folk.iter().map(|p| p.observed(Facet::Anxiety, &mut rng)).collect();
+    let twice: Vec<f32> = folk.iter().map(|p| p.observed(Facet::Anxiety, &mut rng)).collect();
+
+    let r = corr(&once, &twice);
+    assert!(
+        (r - RELIABILITY as f64).abs() < 0.04,
+        "two readings of an unchanged population correlate at {r:.3}, not \
+         the {RELIABILITY} the instrument claims"
+    );
+
+    // An observation against the truth: √R.
+    let latent: Vec<f32> = folk.iter().map(|p| p.z(Facet::Anxiety)).collect();
+    let against_truth = corr(&once, &latent);
+    assert!(
+        (against_truth - (RELIABILITY as f64).sqrt()).abs() < 0.04,
+        "a reading correlates with the truth at {against_truth:.3}, not √R"
+    );
+
+    // And it is standardised, or none of the above is exact.
+    let n = once.len() as f64;
+    let m = once.iter().map(|x| *x as f64).sum::<f64>() / n;
+    let sd = (once.iter().map(|x| (*x as f64 - m).powi(2)).sum::<f64>() / n).sqrt();
+    assert!((0.94..1.06).contains(&sd), "observations have spread {sd:.3}, not 1");
+}
+
+/// **Two people assign different unfairness to the same event.**
+///
+/// The perception boundary, and the reason it has to hold *before* slice
+/// 2 rather than after. If the happening itself carried `unfair`, then
+/// everybody who heard about it would inherit the same moral conclusion —
+/// and there would be no room for two witnesses to disagree, for a rumour
+/// to be wrong, or for the person who made the decision to think it
+/// perfectly proper.
+#[test]
+fn two_people_read_the_same_event_differently() {
+    // The manager chose Alice. Bob was also a candidate; Carol was not.
+    let choice = Happening {
+        severity: -0.4,
+        someone_gained: true,
+        by_a_decision: true,
+        deliberate: true,
+        control: 0.1,
+        unexpected: 0.5,
+        to_me: 0.0,
+        ..Default::default()
+    };
+    let passed_over = Happening { to_me: 0.9, blocks_a_goal: true, ..choice };
+
+    let bob = with(21, &[(Facet::Gloom, 1.2), (Facet::Trust, -1.2)]);
+    let mut carol = with(21, &[]);
+    for c in carol.values.iter_mut() {
+        if c.topic == Value::Fairness {
+            c.held = 20;
+        }
+    }
+
+    let bobs = bob.read(&passed_over);
+    let carols = carol.read(&choice);
+
+    assert!(
+        bobs.unfair > 0.3,
+        "the man passed over reads no unfairness at all ({:.2})",
+        bobs.unfair
+    );
+    assert!(
+        carols.unfair < 0.1,
+        "a bystander with no stake reads the promotion as crooked ({:.2})",
+        carols.unfair
+    );
+    assert!(
+        bobs.confirms_a_fear > carols.confirms_a_fear,
+        "a defeat confirmed nothing for the man who lost and something for \
+         the woman who was not in the running"
+    );
+
+    // **The facts are shared and the verdict is not.**
+    assert_eq!(bobs.severity, carols.severity);
+    assert_ne!(bobs.unfair, carols.unfair);
+
+    // And the same man, less inclined to think ill of himself, reads it
+    // differently again — which is the point of it being his and not the
+    // event's.
+    let sanguine = with(21, &[(Facet::Gloom, -1.5), (Facet::Pride, 1.5), (Facet::Trust, 1.2)]);
+    assert!(
+        sanguine.read(&passed_over).confirms_a_fear < bobs.confirms_a_fear,
+        "a confident man read his own defeat as confirming a fear just as \
+         much as a gloomy one"
+    );
+}
+
+/// **A long life does not accumulate unbounded permanent stress.**
+///
+/// The failure this guards is quiet and would only show up decades in:
+/// every loss, grievance and abandoned goal staying live for ever, so an
+/// elderly person carries fifty of them at once and is permanently at
+/// breaking point. What actually happens is accommodation — the
+/// attachment and the memory stay, and the *daily burden* goes.
+///
+/// A dormant loss must still answer a cue, or nothing would ever hurt on
+/// an anniversary.
+#[test]
+fn old_accommodated_losses_go_quiet_without_going_away() {
+    let mut rng = Rng::new(1919);
+    let mut m = with(31, &[(Facet::StressVulnerability, 0.5)]);
+
+    // A long life: a dozen serious losses and grievances, spread out.
+    for k in 0..12 {
+        m.take_on(
+            if k % 2 == 0 { ConcernKind::Bereavement } else { ConcernKind::Grievance },
+            0.8,
+        );
+        for _ in 0..600 {
+            m.a_day_passes(&mut rng);
+        }
+    }
+
+    let dormant = m
+        .concerns
+        .iter()
+        .filter(|c| c.state == ConcernState::Dormant)
+        .count();
+    assert!(
+        dormant >= 10,
+        "only {dormant} of twelve old losses ever went quiet, so a long \
+         life is a permanently rising burden"
+    );
+
+    // Carrying them all costs something, and not everything.
+    let daily: f64 = m.concerns.iter().map(|c| c.pressure()).sum();
+    assert!(
+        daily < 1.0,
+        "twelve accommodated losses still weigh {daily:.2} every day"
+    );
+    assert!(
+        !m.overloaded(),
+        "an ordinary long life left somebody permanently past breaking point"
+    );
+    assert!(m.focus.current > 0.5, "and unable to concentrate on anything, for ever");
+
+    // **But nothing was deleted.** The oldest loss still answers.
+    assert!(m.concerns[0].depth() > 0.1, "an old loss stopped existing");
+    let anniversary = m.cued(0, 1.0).expect("an anniversary reached nothing");
+    assert!(
+        anniversary.strength > 0.1,
+        "the anniversary of a death produced a feeling of {:.2}",
+        anniversary.strength
+    );
+    assert_eq!(
+        m.concerns[0].state,
+        ConcernState::Active,
+        "a strong cue did not wake a dormant loss"
+    );
 }
