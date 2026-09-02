@@ -229,7 +229,7 @@ fn main() {
         // **Wide enough to hold a superstore.** One runs across three
         // plots — 96 m, because 2,800-4,650 m² does not fit on one — and
         // an 80-column window cut it off at both ends.
-        Ground::window_on(seed, &plan, centre, 104, 40, z)
+        Ground::window_on(seed, &plan, centre, 104, 76, z)
     } else {
         Ground::window_on(seed, &plan, centre, 80, 34, z)
     };
@@ -345,6 +345,29 @@ fn main() {
             ""
         }
     );
+    // **Say what kind of store this is.** The trade bands are real and the
+    // spread between them is enormous — a convenience store is 2,000 sq ft
+    // and a supercenter 178,000 — so "a shop" says nothing at all.
+    if want == Lot::Shop {
+        use scale_sim::building::Fixture;
+        let sales = g
+            .tiles
+            .iter()
+            .filter(|t| {
+                matches!(
+                    t,
+                    Tile::Floor
+                        | Tile::Fitting(Fixture::Shelving)
+                        | Tile::Fitting(Fixture::ChillCabinet)
+                        | Tile::Fitting(Fixture::Till)
+                )
+            })
+            .count() as i64;
+        println!(
+            "  {} — about {sales} m² of sales floor in view",
+            scale_sim::ground::shop_grade(sales)
+        );
+    }
     println!();
     if let Some(c) = plan.street_class(found.0, found.1) {
         println!(

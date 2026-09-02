@@ -456,11 +456,11 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
     out.push_str(&line(
         "made",
         &[
-            (Tile::Road, "carriageway"),
-            (Tile::Marking, "marking"),
-            (Tile::Shoulder, "hard shoulder"),
-            (Tile::Pavement, "footway"),
-            (Tile::Parking, "yard"),
+            (Tile::Road, "roadway"),
+            (Tile::Marking, "striping"),
+            (Tile::Shoulder, "shoulder"),
+            (Tile::Pavement, "sidewalk"),
+            (Tile::Parking, "lot"),
         ],
     ));
     out.push_str(&line(
@@ -493,8 +493,8 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
     out.push_str(&line(
         "vertical",
         &[
-            (Tile::Stairs, "stair"),
-            (Tile::Lift, "lift"),
+            (Tile::Stairs, "stairs"),
+            (Tile::Lift, "elevator"),
             (Tile::Ramp, "ramp"),
             (Tile::Sky, "open air"),
         ],
@@ -502,13 +502,13 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
     out.push_str(&line(
         "fittings",
         &[
-            (Tile::Fitting(Fixture::Till), "till"),
-            (Tile::Fitting(Fixture::Shelving), "shelving"),
-            (Tile::Fitting(Fixture::StockRack), "racking"),
-            (Tile::Fitting(Fixture::LoadingBay), "loading bay"),
-            (Tile::Fitting(Fixture::Counter), "counter"),
-            (Tile::Fitting(Fixture::ChillCabinet), "chiller"),
-            (Tile::Fitting(Fixture::ColdStore), "cold store"),
+            (Tile::Fitting(Fixture::Till), "register"),
+            (Tile::Fitting(Fixture::Shelving), "gondola"),
+            (Tile::Fitting(Fixture::StockRack), "pallet rack"),
+            (Tile::Fitting(Fixture::LoadingBay), "dock door"),
+            (Tile::Fitting(Fixture::Counter), "deli counter"),
+            (Tile::Fitting(Fixture::ChillCabinet), "cold case"),
+            (Tile::Fitting(Fixture::ColdStore), "walk-in"),
         ],
     ));
     out.push_str(&line(
@@ -1545,7 +1545,7 @@ const DOCK_DOOR: i64 = 3;
 ///
 /// | | real |
 /// |---|---|
-/// | deliveries to a large supermarket | **5-15 HGVs a day** |
+/// | deliveries to a large supermarket | **5-15 trucks a day** |
 /// | turnaround at a dock | 45-60 min, so **8-10 a day per door** |
 /// | sales through a supermarket | ~25 t/day per 1,000 m² of sales floor |
 /// | a dock's throughput | 40 t/day *(`Fixture::LoadingBay`)* |
@@ -1578,9 +1578,11 @@ fn evenly_spaced(across: i64, lo: i64, hi: i64, n: i64, run: i64) -> bool {
     })
 }
 
-/// **An articulated trailer is 13.6 m long** *(EU maximum semi-trailer)*,
-/// which is the length of yard a dock bay has to be marked out over.
-const TRAILER_M: i64 = 14;
+/// **A semi-trailer is 16.2 m** *(the US standard 53 ft dry van; the older
+/// 48 ft one is still common)*, which is the length of lot a dock bay has
+/// to be striped out over. A tractor and trailer together is about 22 m,
+/// and the apron needs that again to back into.
+const TRAILER_M: i64 = 16;
 
 /// **A repeating run of fittings, centred between the walls.**
 ///
@@ -1615,20 +1617,28 @@ fn shop_sales_m2(width: i64, depth: i64) -> i64 {
 /// ones, and they are why calling a 1,600 m² sales floor a superstore was
 /// wrong: that is a supermarket, and a superstore is twice it.
 ///
+/// **US trade bands, measured in metres.** The model is metric all the way
+/// down — one tile is a metre, sixteen thousand of them to a region cell —
+/// so the terms are American and the measure is not.
+///
 /// | | sales floor |
 /// |---|---|
-/// | corner shop | under 280 m² *(the UK Sunday-trading line)* |
-/// | convenience store | 280-1,400 |
-/// | **supermarket** | **1,400-3,000** |
-/// | superstore | 3,000-5,600 |
-/// | hypermarket | over 5,600 |
+/// | convenience store | under 280 m² |
+/// | small-format grocery | 280-1,850 |
+/// | **supermarket** | **1,850-4,650** |
+/// | superstore | 4,650-11,000 |
+/// | supercenter | over 11,000 *(Walmart averages ~16,500)* |
+///
+/// The median US supermarket is about **3,700 m²** — four times what a
+/// 96 m frontage one plot deep can hold, and that gap is the reason a
+/// store has to take a block rather than a strip.
 pub fn shop_grade(sales_m2: i64) -> &'static str {
     match sales_m2 {
-        ..280 => "a corner shop",
-        280..1_400 => "a convenience store",
-        1_400..3_000 => "a supermarket",
-        3_000..5_600 => "a superstore",
-        _ => "a hypermarket",
+        ..280 => "a convenience store",
+        280..1_850 => "a small-format grocery",
+        1_850..4_650 => "a supermarket",
+        4_650..11_000 => "a superstore",
+        _ => "a supercenter",
     }
 }
 
@@ -1639,34 +1649,40 @@ pub fn shop_grade(sales_m2: i64) -> &'static str {
 /// a building is levelled to the street it fronts, and one a level up is
 /// a separate building — and at three plots, which is where the real size
 /// range runs out.
-fn shop_run(seed: u64, plan: &Plan, lot: Lot, px: i64, py: i64) -> (i64, i64) {
-    let most_plots = crate::townplan::SHOP_PLOTS as i64;
+fn shop_run(seed: u64, plan: &Plan, lot: Lot, px: i64, py: i64) -> (i64, i64, i64, i64) {
     if lot != Lot::Shop {
-        return (px, 1);
+        return (px, 1, py, 1);
     }
     let t = TILES_PER_PLOT as i64;
-    let level = |x: i64| surface_z(seed, plan, x * t + t / 2, py * t + t / 2);
-    let here = level(px);
-    let joins = |x: i64| {
+    let level = |x: i64, y: i64| surface_z(seed, plan, x * t + t / 2, y * t + t / 2);
+    let here = level(px, py);
+    let joins = |x: i64, y: i64| {
         x >= 0
+            && y >= 0
             && x < plan.width as i64
-            && plan.at(x as usize, py as usize) == Lot::Shop
-            && level(x) == here
+            && y < plan.height as i64
+            && plan.at(x as usize, y as usize) == Lot::Shop
+            && level(x, y) == here
     };
-    // Walk to the start of the run, then take up to three plots from it,
-    // so every plot in the run agrees about where the building begins.
-    let mut from = px;
-    while joins(from - 1) {
-        from -= 1;
-    }
-    let mut len = 0;
-    while joins(from + len) {
-        len += 1;
-    }
-    // Whole shops of three, so the last one is not left as a scrap of one.
-    let block = (px - from) / most_plots;
-    let start = from + block * most_plots;
-    (start, (len - block * most_plots).min(most_plots))
+    // Walk to the start of the run, then take a whole block from it, so
+    // every plot in the run agrees about where the building begins and
+    // the last one is not left as a scrap.
+    let axis = |along: i64, most: i64, horizontal: bool| -> (i64, i64) {
+        let at = |k: i64| if horizontal { joins(k, py) } else { joins(px, k) };
+        let mut from = along;
+        while at(from - 1) {
+            from -= 1;
+        }
+        let mut len = 0;
+        while at(from + len) {
+            len += 1;
+        }
+        let block = (along - from) / most;
+        (from + block * most, (len - block * most).min(most))
+    };
+    let (fx, nx) = axis(px, crate::townplan::SHOP_PLOTS as i64, true);
+    let (fy, ny) = axis(py, crate::townplan::SHOP_DEEP as i64, false);
+    (fx, nx, fy, ny)
 }
 
 /// The shell of a building on its plot, and what is inside it.
@@ -1698,11 +1714,17 @@ fn building_tile(
     // building, with no wall at the joins. Three plots is 96 m of frontage
     // and lands squarely in the real range; beyond that it would be a
     // shopping centre, which is a different thing.
-    let (run_from, run_plots) = shop_run(seed, plan, lot, px, py);
+    // **And deeper than a plot, too.** A 96 m frontage one plot deep is a
+    // 910 m² strip — a small-format grocery — when the median US
+    // supermarket is about **40,000 sq ft, 3,700 m²**. A store is a block,
+    // not a strip: three plots of frontage and two of depth comes to
+    // roughly 3,000 m² of sales floor, which is a supermarket.
+    let (run_from, run_plots, run_from_y, run_deep) = shop_run(seed, plan, lot, px, py);
     let ix = ix + (px - run_from) * t;
+    let iy = iy + (py - run_from_y) * t;
 
     // The front faces the street, which here means the low side.
-    let (lo_y, hi_y) = (f.front, t - 1 - f.back);
+    let (lo_y, hi_y) = (f.front, run_deep * t - 1 - f.back);
     let (lo_x, hi_x) = if f.terraced {
         // Runs the full width and shares the wall on the low side, so
         // between two neighbours there is one wall and not two.
@@ -1783,7 +1805,7 @@ fn building_tile(
     // party wall is only shared by two buildings standing on the same
     // ground.
     let closed_by_next_door = f.terraced && {
-        let (nx, ny) = (run_from + run_plots, py);
+        let (nx, ny) = (run_from + run_plots, run_from_y);
         let t = TILES_PER_PLOT as i64;
         nx >= 0
             && ny >= 0
@@ -2103,12 +2125,12 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
         //
         // | truck | aisle |
         // |---|---|
-        // | counterbalance | **3.0-3.6 m** |
-        // | reach truck | 2.5-2.8 m |
-        // | very narrow aisle | 1.6-1.9 m, and it runs on wire guidance |
+        // | counterbalance | **3.7-4.0 m** |
+        // | reach truck | 2.4-3.0 m |
+        // | very narrow aisle | 1.8 m, and it runs on wire guidance |
         //
-        // A pallet is 1.2 x 1.0 m, so racking back to back is about 2.4 m
-        // and a bay is 2.7 m long. The runs go **in from the dock wall**
+        // A GMA pallet is 1.22 x 1.02 m, so racking back to back is
+        // about 2.4 m and a bay is 2.7 m long. The runs go **in from the dock wall**
         // with the aisles between them, which is what makes a long thin
         // stockroom work: a pallet comes off the lorry, is set down, and
         // goes straight up an aisle.
@@ -2141,7 +2163,7 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
         if back <= 1 {
             return Tile::Floor;
         }
-        if !centred_run(ix, lo_x + 1, hi_x - 1, 5, 2) {
+        if !centred_run(ix, lo_x + 1, hi_x - 1, 6, 2) {
             return Tile::Floor;
         }
         // **The cold store is a room, at one end of the racking.**
@@ -2237,8 +2259,14 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
     if !centred_run(ix, lo_x + 3, hi_x - 3, 13, 11) {
         return Tile::Floor;
     }
-    // Gondolas back to back, then an aisle two trolleys wide.
-    if (from_front - floor_start) % 4 >= 2 {
+    // **Gondolas back to back, then a US grocery aisle.** American
+    // supermarkets run wider than European ones: 2.4-3.0 m between
+    // gondola runs against a European 1.8, and 3.0-3.7 on the main cross
+    // aisles. It is
+    // one of the first things anybody notices in the other country's
+    // stores, and it is a large part of why the same merchandise needs
+    // more building.
+    if (from_front - floor_start) % 5 >= 2 {
         return Tile::Floor;
     }
     // **The milk is at the back**, which is not a joke about supermarkets

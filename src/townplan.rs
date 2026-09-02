@@ -34,6 +34,12 @@ use crate::world::Biome;
 /// which is a different thing.
 pub const SHOP_PLOTS: usize = 3;
 
+/// **Plots deep a big store runs.** A 96 m frontage one plot deep is a
+/// 910 m² strip; two deep is about 3,000 m² of sales floor, which is a
+/// supermarket by the US bands *(20,000-50,000 sq ft, median ~40,000)*.
+/// A store is a block, not a strip.
+pub const SHOP_DEEP: usize = 2;
+
 /// Metres across one plot — a house and its garden, a shop front, a lane.
 ///
 /// **32, so the ladder multiplies out.** A region cell is 16 localities of
@@ -162,11 +168,27 @@ impl StreetClass {
     /// 3.5-4.5 m and often needs the order.
     pub fn clearance_for(self, width_m: f64) -> Clearance {
         let usable = self.usable_m();
-        let permission = if width_m > 4.3 {
+        // **US bands** *(FHWA National Network and state permit practice)*:
+        //
+        // | over | what it takes |
+        // |---|---|
+        // | **8 ft 6 in** | an oversize permit from every state crossed |
+        // | **12 ft** | pilot cars, daylight running only |
+        // | **14 ft** | police escort and a surveyed route, in most states |
+        // | 16 ft *(or 200,000 lb)* | superload: bridge-by-bridge review |
+        //
+        // For scale: a semi is 8 ft 6 in and legal everywhere; an M1
+        // Abrams is 12 ft and escorted everywhere; a large power
+        // transformer is 12-15 ft and is why a substation stays dark.
+        //
+        // **Known gap:** a superload is triggered by *weight* as much as
+        // width — a 400-ton transformer trips it whatever its beam — and
+        // this only knows about width.
+        let permission = if width_m > 4.27 {
             Permission::SpecialOrder
-        } else if width_m > 3.5 {
+        } else if width_m > 3.66 {
             Permission::Escorted
-        } else if width_m > 2.9 {
+        } else if width_m > 2.59 {
             Permission::Notifiable
         } else {
             Permission::Ordinary
@@ -205,10 +227,10 @@ impl StreetClass {
 
     pub fn name(self) -> &'static str {
         match self {
-            StreetClass::Lane => "lane",
-            StreetClass::Road => "road",
-            StreetClass::Dual => "dual carriageway",
-            StreetClass::Motorway => "motorway",
+            StreetClass::Lane => "local street",
+            StreetClass::Road => "collector",
+            StreetClass::Dual => "divided arterial",
+            StreetClass::Motorway => "freeway",
         }
     }
 }
@@ -253,10 +275,10 @@ impl Clearance {
             return "will not physically fit".into();
         }
         let p = match self.permission {
-            Permission::Ordinary => "ordinary traffic",
-            Permission::Notifiable => "notifiable: two days' notice to the police",
-            Permission::Escorted => "escorted, at walking pace, on a surveyed route",
-            Permission::SpecialOrder => "an order from the highway authority: weeks",
+            Permission::Ordinary => "legal load",
+            Permission::Notifiable => "oversize permit, per state",
+            Permission::Escorted => "permit and pilot cars, daylight only",
+            Permission::SpecialOrder => "superload: engineering review, weeks",
         };
         if self.blocks_the_road {
             format!("{p}; nothing gets past it")
@@ -662,6 +684,35 @@ impl Plan {
             }
         }
 
+        // **And back off the street, because a store is a block.** The
+        // frontage is what sells, so retail grows along the street first;
+        // the depth behind it is the sales floor, the backroom and the
+        // dock, and none of that needs a window. A big American store is
+        // set back in its lot with the parking in front of it.
+        for y in 0..size {
+            for x in 0..size {
+                if lots[y * size + x] != Lot::Shop {
+                    continue;
+                }
+                if y > 0 && lots[(y - 1) * size + x] == Lot::Shop {
+                    continue; // not the front of the store
+                }
+                let mut deep = 1;
+                while deep < SHOP_DEEP && y + deep < size && lots[(y + deep) * size + x] == Lot::Shop
+                {
+                    deep += 1;
+                }
+                while deep < SHOP_DEEP && y + deep < size {
+                    let j = (y + deep) * size + x;
+                    if !matches!(lots[j], Lot::House | Lot::Flats) {
+                        break;
+                    }
+                    lots[j] = Lot::Shop;
+                    deep += 1;
+                }
+            }
+        }
+
         // --- How big is each street? ---
         //
         // **A hierarchy, because that is what road networks are.** By
@@ -1017,10 +1068,10 @@ pub fn plan_legend_in(ground: Biome, colour: bool) -> String {
     }
     out.push_str("  streets   ");
     for (r, name) in [
-        (StreetClass::Lane, "lane"),
-        (StreetClass::Road, "road"),
-        (StreetClass::Dual, "dual carriageway"),
-        (StreetClass::Motorway, "motorway"),
+        (StreetClass::Lane, "local street"),
+        (StreetClass::Road, "collector"),
+        (StreetClass::Dual, "divided arterial"),
+        (StreetClass::Motorway, "freeway"),
     ] {
         out.push_str(&item(r.glyph(), road_colour(r), name));
         out.push_str("   ");
@@ -1028,9 +1079,9 @@ pub fn plan_legend_in(ground: Biome, colour: bool) -> String {
     out.push_str("\n  built     ");
     for (l, name) in [
         (Lot::House, "houses"),
-        (Lot::Flats, "flats"),
-        (Lot::Shop, "shop"),
-        (Lot::Works, "works"),
+        (Lot::Flats, "apartments"),
+        (Lot::Shop, "store"),
+        (Lot::Works, "plant"),
         (Lot::Park, "park"),
     ] {
         out.push_str(&item(l.glyph(), lot_colour(l), name));

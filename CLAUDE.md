@@ -1940,6 +1940,43 @@ tiles on foot, 288 in a vehicle.
   trailer's length. Fixing it means letting a store's yard occupy the plot
   behind, the way spanning three plots sideways let it be a big shop at
   all.
+### American terms, metric measure
+
+The world is an American one now, and the vocabulary follows it: sidewalk,
+roadway, striping, shoulder, lot; local street, collector, divided
+arterial, freeway; store, register, gondola, pallet rack, dock door, deli
+counter, cold case, walk-in; backroom, receiving; truck and semi-trailer,
+not lorry and artic.
+
+**The measure stays metric**, because the model is metric all the way down
+— one tile is a metre and sixteen thousand of them make a region cell —
+and there is no reason for the output to change units at the last step.
+Real American figures are quoted in metres: a 53 ft dry van is 16.2 m, a
+counterbalance forklift aisle is 3.7-4.0, a GMA pallet is 1.22 x 1.02.
+
+The figures that genuinely differ from the European ones, and they are not
+small:
+
+| | US | Europe |
+|---|---|---|
+| semi-trailer | **16.2 m** | 13.6 |
+| legal truck width | 2.59 m | 2.55 |
+| gross weight | 36 t | 44 |
+| grocery aisle | **2.4-3.0 m** | 1.8 |
+| forklift aisle | 3.7-4.0 m | 3.0-3.6 |
+| median supermarket | **3,700 m²** | ~1,200 |
+
+**A wider aisle is why the same merchandise needs more building**, and it
+is one of the first things anybody notices in the other country's stores.
+
+**The oversize ladder has four rungs, not three**, and flattening the
+middle two put a grid transformer in the same class as a tank: over
+**2.59 m** an oversize permit from every state crossed, over **3.66** pilot
+cars and daylight running, over **4.27** a police escort and a surveyed
+route, over 4.88 a superload needing a bridge-by-bridge review. *Known
+gap: a superload is triggered by weight as much as width — a 360-tonne
+transformer trips it whatever its beam — and this only knows about width.*
+
 - **Call a shop what it is.** Real trade bands by sales floor: a corner
   shop under 280 m² *(the UK Sunday-trading line)*, a convenience store to
   1,400, a **supermarket 1,400-3,000**, a superstore 3,000-5,600, a

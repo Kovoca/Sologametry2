@@ -148,11 +148,11 @@ impl Fixture {
     pub fn name(self) -> &'static str {
         match self {
             Fixture::Till => "checkout",
-            Fixture::Shelving => "shelving",
+            Fixture::Shelving => "gondola",
             Fixture::StockRack => "stockroom racking",
-            Fixture::LoadingBay => "loading bay",
-            Fixture::ChillCabinet => "chilled cabinet",
-            Fixture::ColdStore => "cold store",
+            Fixture::LoadingBay => "dock door",
+            Fixture::ChillCabinet => "refrigerated case",
+            Fixture::ColdStore => "walk-in cooler",
             Fixture::Counter => "served counter",
         }
     }

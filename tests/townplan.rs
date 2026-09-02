@@ -86,11 +86,19 @@ fn shops_face_the_street_and_crowd_the_middle() {
         edge * 100.0
     );
 
-    // Every shop has a frontage.
+    // **Every store has a frontage — the store, not every plot of it.**
+    //
+    // A big store is a block: three plots of frontage and two of depth.
+    // The back half is the sales floor, the backroom and the dock, and
+    // none of that wants a window. What has to front a street is the
+    // front of the building, so walk to it first.
     for y in 0..size {
         for x in 0..size {
             if plan.at(x, y) != Lot::Shop {
                 continue;
+            }
+            if y > 0 && plan.at(x, y - 1) == Lot::Shop {
+                continue; // the back of a store, behind its own frontage
             }
             let touches = [
                 (x.wrapping_sub(1), y),
@@ -100,7 +108,7 @@ fn shops_face_the_street_and_crowd_the_middle() {
             ]
             .iter()
             .any(|&(nx, ny)| nx < size && ny < size && plan.at(nx, ny) == Lot::Street);
-            assert!(touches, "a shop at {x},{y} with no street to open onto");
+            assert!(touches, "a store fronting at {x},{y} with no street to open onto");
         }
     }
 }
