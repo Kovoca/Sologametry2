@@ -239,7 +239,6 @@ fn a_roof_coming_in_carries_and_a_conversation_does_not() {
 
     let (seed, plan, spot) = a_shop();
     let g = Ground::around(seed, &plan, spot, 70);
-    let far = (spot.0 + 60, spot.1);
 
     // **And a wall takes far more out of a voice than out of a rumble**,
     // which is why the collapse gets through and the talking does not.
@@ -261,6 +260,18 @@ fn a_roof_coming_in_carries_and_a_conversation_does_not() {
     assert!(
         crash.is_some(),
         "a roof came in {} m down an open street and nobody noticed",
+        (there.0 - here.0).abs()
+    );
+    // **And the conversation does not**, which is the half this test is
+    // named for and did not check. Ordinary talk is 60 dB at a metre, so
+    // sixty metres of open street takes ~36 dB off it and leaves it far
+    // under a 65 dB street. The words are the measure, not whether
+    // anything was perceived at all — they can still *see* each other
+    // down an open street, which is the whole reason acoustics and sight
+    // are separate senses.
+    assert!(
+        chat.map_or(true, |w| !w.cues.words),
+        "a conversation {} m down an open street was overheard",
         (there.0 - here.0).abs()
     );
     // **And a factory floor hears nothing**, which is real and is why

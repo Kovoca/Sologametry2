@@ -8,7 +8,7 @@ use scale_sim::memory::{
     holds, testimony, Cue, EventKind, Memory, PerceivedWho, Place, Source, WorldEvent,
 };
 use scale_sim::mind::{
-    Appraisal, ConcernKind, Emotion, Facet, Happening, Mind, Personality, Value,
+    ConcernKind, Emotion, Facet, Happening, Mind, Personality, Value,
 };
 use scale_sim::id::{Arena, Id};
 use scale_sim::person::{Person, Trade};
@@ -580,7 +580,7 @@ fn a_cue_reaches_a_memory_and_the_concern_keeps_it_alive() {
     let grievance = mind.take_on(ConcernKind::Grievance, 0.85);
 
     // A year of ordinary days, then the anniversary.
-    for d in 1..365u64 {
+    for _ in 1..365u64 {
         mind.a_day_passes(&mut rng);
         mem.a_day_passes();
     }

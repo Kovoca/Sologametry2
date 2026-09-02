@@ -341,17 +341,6 @@ pub struct Personality {
 /// below *(Mõttus et al.)*. Trait-specific values can come later.
 const HERITABILITY: f32 = 0.40;
 
-/// **Accumulated durable change over a decade, in z.**
-///
-/// Set so that latent rank-order stability over twenty years lands near
-/// 0.85. That is *not* the 0.6–0.7 usually quoted: the quoted figures are
-/// **observed** test-retest correlations and carry measurement error with
-/// them. Observed = true × reliability, so 0.85 × 0.80 ≈ 0.68, which is
-/// where the literature sits. Modelling latent traits and then comparing
-/// them to an observed coefficient would make people far less stable than
-/// they are.
-const ADAPTATION_PER_DECADE: f32 = 0.44;
-
 /// **How well a personality can be measured at all.** Good inventories
 /// report internal consistency around 0.80, and that ceiling is why
 /// observed stability never reaches true stability.
@@ -470,7 +459,16 @@ impl Personality {
     }
 
     /// Push a facet durably, the way a core memory is allowed to.
-    /// **Bounded**: life bends people, it does not replace them.
+    ///
+    /// **Bounded**: life bends people, it does not replace them, and this
+    /// clamp is the whole of what enforces it — nothing else limits how
+    /// often a memory may push. It is set so that latent rank-order
+    /// stability over twenty years lands near **0.85**, which is *not*
+    /// the 0.6–0.7 usually quoted: those are **observed** test-retest
+    /// correlations carrying measurement error. Observed = true ×
+    /// reliability, so 0.85 × 0.80 ≈ 0.68, which is where the literature
+    /// sits. Comparing a latent trait against an observed coefficient
+    /// makes people far less stable than they are.
     pub fn adapt(&mut self, f: Facet, by: f32) {
         let i = f.index();
         self.adaptation[i] = (self.adaptation[i] + by).clamp(-1.5, 1.5);

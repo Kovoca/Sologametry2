@@ -211,7 +211,7 @@ fn main() {
     // is the floor above, -1 is the cellar. Absolute levels are the
     // engine's business — at 60 m above the sea, absolute 0 is twenty
     // levels underground.
-    let here_z = scale_sim::ground::surface_z(seed, &plan, centre.0, centre.1);
+    let _here_z = scale_sim::ground::surface_z(seed, &plan, centre.0, centre.1);
 
     // A viewport, not the bubble: 80 x 34 looks square in a terminal.
     // A corner is worth looking at further, because what is interesting

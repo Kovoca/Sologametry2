@@ -183,7 +183,7 @@ fn a_waterlogged_floodplain_reads_wet_and_roots_shallow() {
     // of it, because capillary rise carries it up — and what suffers is
     // the plant's ability to use it. Which is why the penalty belongs to
     // the crop and not to the water figure. Rice does not care.
-    use scale_sim::biota::{best_crop, settle, Crop};
+    use scale_sim::biota::{settle, Crop};
     let at_water_table = |depth_m: f32| {
         settle(600_000.0, 18.0, 18.0, 0.45, 3.0, 500.0, 0.22, depth_m)
     };

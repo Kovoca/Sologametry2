@@ -159,15 +159,16 @@ impl Locality {
             // Walk from one to the other, wandering a little each step the
             // way water does when the ground is not perfectly tilted.
             let steps = ((ex - sx).abs().max((ey - sy).abs())).max(1);
-            let (mut x, mut y) = (sx as f32, sy as f32);
             let mut last: Option<(i32, i32)> = None;
             for t in 0..=steps {
                 let f = t as f32 / steps as f32;
                 let tx = sx as f32 + (ex - sx) as f32 * f;
                 let ty = sy as f32 + (ey - sy) as f32 * f;
+                // Nil at both ends, so the channel meets its neighbours
+                // where they said it would and wanders in between.
                 let wander = 1.8 * (1.0 - (2.0 * f - 1.0).abs());
-                x = tx + detail(world.seed, cell, t as usize, 0, 7) * wander;
-                y = ty + detail(world.seed, cell, 0, t as usize, 8) * wander;
+                let x = tx + detail(world.seed, cell, t as usize, 0, 7) * wander;
+                let y = ty + detail(world.seed, cell, 0, t as usize, 8) * wander;
                 // **Join it to the last point**, or the wander leaves
                 // gaps and the river arrives in pieces. Water is
                 // continuous; that is most of what makes it a river.
@@ -326,51 +327,12 @@ fn detail(seed: u64, cell: usize, lx: usize, ly: usize, layer: u64) -> f32 {
     ((h >> 11) as f32 / (1u64 << 53) as f32) * 2.0 - 1.0
 }
 
-/// Same rules the coarse pass uses, so a zoomed valley is made of the same
-/// stuff as the map it came out of.
-fn classify(world: &World, elevation: f32, temperature: f32, rainfall: f32) -> Biome {
-    if elevation < world.sea_level {
-        return Biome::Ocean;
-    }
-    let above = (elevation - world.sea_level) / (1.0 - world.sea_level).max(1e-3);
-    if above > 0.72 {
-        return if temperature < 0.25 {
-            Biome::Snowcap
-        } else {
-            Biome::Mountain
-        };
-    }
-    if temperature < 0.18 {
-        return Biome::Tundra;
-    }
-    if temperature < 0.35 {
-        return if rainfall > 0.45 {
-            Biome::Taiga
-        } else {
-            Biome::Tundra
-        };
-    }
-    if rainfall < 0.18 {
-        return Biome::Desert;
-    }
-    if rainfall < 0.30 {
-        return if temperature > 0.65 {
-            Biome::Savanna
-        } else {
-            Biome::Grassland
-        };
-    }
-    if rainfall < 0.42 {
-        return Biome::Shrubland;
-    }
-    if temperature > 0.72 && rainfall > 0.62 {
-        return Biome::Rainforest;
-    }
-    if rainfall > 0.78 {
-        return Biome::Swamp;
-    }
-    Biome::Forest
-}
+// **There is deliberately no `classify` here.** Re-deriving a biome from
+// absolute thresholds is the bug this module already unlearned: the
+// coarse pass classifies by percentile rank over land, so fixed cuts
+// turned a mountain cell into flat desert. A zoomed patch takes its
+// parent's country or a neighbour's near the edge. Restoring a
+// classifier would restore the fault with it.
 
 fn glyph(b: Biome) -> char {
     match b {

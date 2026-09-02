@@ -334,15 +334,16 @@ impl Default for Aspect {
     }
 }
 
-/// How fast each dimension moves. **They are deliberately not equal**:
-/// familiarity comes free with contact, trust is slow to build, and a
-/// betrayal is fast.
+/// Familiarity is the one dimension that really does come free with
+/// contact, so it keeps a plain rate.
+///
+/// **The others no longer have one.** Separate up and down rates were how
+/// this module used to make trust slow to build and quick to lose, and
+/// that is now a consequence rather than a setting: evidence is folded in
+/// by weight, `Diagnosticity` decides what an act was worth, and a
+/// rupture discounts the epoch behind it. Two rate constants cannot say
+/// that being robbed leaves you *more* certain of a worse expectation.
 const FAMILIARITY_RATE: f64 = 0.18;
-const AFFECTION_RATE: f64 = 0.06;
-const TRUST_UP: f64 = 0.05;
-const TRUST_DOWN: f64 = 0.45;
-const RESPECT_RATE: f64 = 0.08;
-const FEAR_RATE: f64 = 0.30;
 
 /// **What an observation was worth as evidence.**
 ///

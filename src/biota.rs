@@ -112,17 +112,14 @@ pub struct Biota {
     pub stocking: Field,
 }
 
-/// Kilograms of herbivore per km² per unit of grazeable productivity.
-///
-/// Anchored on the Serengeti: ~900 g/m²/yr of production at full
-/// grazeable share carries about 5,000 kg/km² of large herbivores.
-const HERBIVORE_PER_NPP: f32 = 5.6;
-
-/// **Carnivores run at one to two percent of the herbivore biomass they
-/// live on** *(Serengeti: ~100 kg/km² of large carnivore against ~5,000
-/// of herbivore)*. Two trophic steps is a hundredfold loss, which is why
-/// predators are rare everywhere and not merely rare where it is cold.
-const CARNIVORE_OF_HERBIVORE: f32 = 0.02;
+// **Two shortcuts used to live here and the settling pass replaced
+// both.** Herbivores were a multiple of productivity, which sized a herd
+// on regrowth rather than on standing crop; carnivores were a flat 2% of
+// them. Both are now consequences of `settle` — animals track forage on a
+// lag, and a predator is fed by its prey's *production* against a real
+// intake of ~4% of body weight a day. The figures they were anchored on
+// are still the check: ~5,000 kg/km² of herbivore on the Serengeti and
+// ~100 of large carnivore, a hundredfold loss over two trophic steps.
 
 /// Cubic metres of standing timber per hectare at full forest cover.
 const TIMBER_AT_FULL_COVER: f32 = 380.0;
@@ -607,7 +604,11 @@ struct HerdNeeds {
     /// How dry it will tolerate, as the climatic-moisture index below
     /// which it fails.
     driest: f32,
-    /// Live weight per head, kg — real.
+    /// Live weight per head, kg — real. **Recorded, not yet read**: the
+    /// stocking figures are biomass per km², and nothing has needed to
+    /// turn those into a headcount yet. `econ.rs` already dresses a 450 kg
+    /// beast, so this is the figure it should come from when it does.
+    #[allow(dead_code)]
     head_kg: f32,
     /// How productive it is to keep, against cattle at 1.0. Milk, meat,
     /// wool, traction and hide together.

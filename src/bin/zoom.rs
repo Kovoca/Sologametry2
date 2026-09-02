@@ -100,7 +100,7 @@ fn main() {
         println!("  {line}");
     }
 
-    let (elevation_m, relief_m) = ground_of(&world, cell);
+    let (_elevation_m, _relief_m) = ground_of(&world, cell);
     // --- 2. the region cell, zoomed ---
     // **How high, and how much it moves.** Absolute height from the
     // elevation field against a real ceiling, and relief from how fast the

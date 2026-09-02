@@ -301,17 +301,17 @@ fn generate_soil_depth(
     rock: &[crate::geology::Rock],
 ) -> Field {
     let (w, h) = (elev.width, elev.height);
-    /// **What a planar slope carries, by what is under it.**
-    ///
-    /// Real weathering depths: crystalline basement — granite, gneiss,
-    /// schist — weathers slowly to a thin sandy or stony soil, 0.3-0.8 m,
-    /// and limestone dissolves away leaving almost nothing, which is why
-    /// karst country is famously soil-poor. Bedded rock generally gives
-    /// more: shale and mudstone weather to a deep clay, sandstone to a
-    /// metre or so of sand.
-    ///
-    /// This is the constant the note said substrate would replace, and it
-    /// replaces it without disturbing anything around it.
+    // **What a planar slope carries, by what is under it.**
+    //
+    // Real weathering depths: crystalline basement — granite, gneiss,
+    // schist — weathers slowly to a thin sandy or stony soil, 0.3-0.8 m,
+    // and limestone dissolves away leaving almost nothing, which is why
+    // karst country is famously soil-poor. Bedded rock generally gives
+    // more: shale and mudstone weather to a deep clay, sandstone to a
+    // metre or so of sand.
+    //
+    // This is the constant the note said substrate would replace, and it
+    // replaces it without disturbing anything around it.
     let regional_depth_m = |r: crate::geology::Rock| -> f32 {
         match r {
             crate::geology::Rock::Metamorphic => 0.7,

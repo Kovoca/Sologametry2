@@ -575,7 +575,7 @@ impl Plan {
                 // Clark's law: density decays exponentially with distance
                 // from the centre. Real cities follow this closely, which
                 // is why the edge of a town is a gradient and not a line.
-                let mut built = (-d / radius_plots.max(1.0)).exp();
+                let built = (-d / radius_plots.max(1.0)).exp();
 
                 // **Everything fronts a road**, because a building needs
                 // to be got at. Without this a village of nine hundred was

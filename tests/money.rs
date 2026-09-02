@@ -85,6 +85,14 @@ fn the_circuit_closes() {
         firms3 < issued * 0.05,
         "firms are sitting on {firms3:.0} of {issued:.0}"
     );
+    // **Steady as well as small**, the same test households and the
+    // treasury get. Working capital that drifts over two years is money
+    // accumulating or leaking somewhere in the circuit, and a level check
+    // alone cannot see it.
+    assert!(
+        (firms3 - firms1).abs() < firms1.max(1.0) * 0.5,
+        "firm balances went {firms1:.0} -> {firms3:.0} over two years"
+    );
     assert!(
         (state3 - state1).abs() < state1.max(1.0) * 0.25,
         "the treasury went {state1:.0} -> {state3:.0}: it is hoarding or bleeding"

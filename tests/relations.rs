@@ -348,7 +348,7 @@ fn resentment_follows_the_belief_and_not_the_truth() {
     // He decides it was Carol, and resents Carol for it.
     mem.reattribute(trace, PerceivedWho::Believed { person: carol, confidence: 0.7 }, 0.7);
     let mut on_carol = Relationship::strangers(id[1], carol);
-    let mut on_alice = Relationship::strangers(id[1], alice);
+    let on_alice = Relationship::strangers(id[1], alice);
     on_carol.saw(&Evidence { wrong: 0.7, ..Default::default() }, 11);
 
     assert!(on_carol.resentment() > 0.5, "he does not resent the woman he blames");

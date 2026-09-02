@@ -39,12 +39,11 @@ fn cities(seed: u64, how_many: usize) -> Vec<(String, Plan, f64)> {
         .collect()
 }
 
-/// Build the largest town on a seed and hand back its plan.
-fn biggest_town(seed: u64) -> (Plan, f64) {
-    let mut c = cities(seed, 1);
-    let (_, plan, pop) = c.remove(0);
-    (plan, pop)
-}
+// **No `biggest_town` helper, deliberately.** The density-gradient test
+// used one and was measuring nothing: the largest settlement on a seed is
+// millions of people on a plan 1.3 km across, so the town filled it
+// corner to corner and every band came out uniformly urban. A gradient
+// can only be seen on a town small enough to sit inside its own plan.
 
 /// **The centre of a city is built up in every direction.**
 #[test]
