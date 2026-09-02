@@ -806,3 +806,98 @@ fn old_accommodated_losses_go_quiet_without_going_away() {
         "a strong cue did not wake a dormant loss"
     );
 }
+
+// ---------------------------------------------------------------------
+// what the adaptation clamp actually guarantees
+// ---------------------------------------------------------------------
+
+/// **The bound is on the state, not on the journey.** All durable
+/// adaptation together contributes at most ±1.5 z to one facet at any
+/// moment, however much has been asked of it.
+#[test]
+fn a_lifetime_of_one_kind_of_experience_saturates() {
+    let mut p = Personality::draw(&mut Rng::new(31));
+    let was = p.z(Facet::Anxiety);
+    for _ in 0..10_000 {
+        p.adapt(Facet::Anxiety, 0.4);
+    }
+    let moved = p.z(Facet::Anxiety) - was;
+    assert!(
+        (moved - 1.5).abs() < 1e-4,
+        "ten thousand concordant experiences moved a facet by {moved:.3}, not 1.5"
+    );
+    // And it is a ceiling, not a target: pushing further changes nothing.
+    p.adapt(Facet::Anxiety, 50.0);
+    assert!((p.z(Facet::Anxiety) - was - 1.5).abs() < 1e-4);
+}
+
+/// **It is not a lifetime movement budget**, and pretending otherwise
+/// would be the wrong model: people are moved back by later life.
+#[test]
+fn life_can_move_somebody_back_again() {
+    let mut p = Personality::draw(&mut Rng::new(32));
+    let was = p.z(Facet::Anxiety);
+    for _ in 0..20 {
+        p.adapt(Facet::Anxiety, 0.5);
+    }
+    assert!((p.z(Facet::Anxiety) - was - 1.5).abs() < 1e-4);
+    for _ in 0..40 {
+        p.adapt(Facet::Anxiety, -0.5);
+    }
+    assert!(
+        (p.z(Facet::Anxiety) - was + 1.5).abs() < 1e-4,
+        "a frightened man could never be settled again"
+    );
+    // 0 → +1.5 → −1.5 is 3.0 z travelled while never leaving the band,
+    // which is the distinction: a state bound is not a budget.
+}
+
+/// **`adapt` deliberately does not clamp one push**, because how much a
+/// single experience may ask for belongs to whatever is asking.
+///
+/// The per-memory limit is real and lives in `memory::Trace::plasticity`,
+/// which caps one core memory at 0.15 z per facet — see
+/// `a_core_memory_asks_rather_than_writes` in `tests/memory.rs`. Putting
+/// the cap here instead would break the twenty-year stability
+/// calibration, which drives adaptation at 0.62 a step on purpose.
+#[test]
+fn the_per_push_limit_is_not_this_clamps_job() {
+    let mut p = Personality::draw(&mut Rng::new(33));
+    let was = p.z(Facet::Anxiety);
+    p.adapt(Facet::Anxiety, -5.0);
+    assert!((p.z(Facet::Anxiety) - was + 1.5).abs() < 1e-4);
+    // One call really can cross the whole band. Nothing in the model
+    // makes such a call; that is the memory's restraint, not this one's.
+    p.adapt(Facet::Anxiety, 5.0);
+    assert!(
+        (p.z(Facet::Anxiety) - was - 1.5).abs() < 1e-4,
+        "adapt silently limited a single push, which the calibration relies on it not doing"
+    );
+}
+
+/// **The four things slice 1 separated must not share one bound.**
+///
+/// Baseline, the age trajectory, durable adaptation and temporary state
+/// are different terms for different reasons. Only adaptation is clamped,
+/// and an accidental clamp on the sum would quietly undo the separation.
+#[test]
+fn only_the_durable_term_is_clamped() {
+    let mut p = Personality::draw(&mut Rng::new(34));
+    p.set_baseline(Facet::Anxiety, 2.2);
+    for _ in 0..10 {
+        p.adapt(Facet::Anxiety, 1.0);
+    }
+    assert!(
+        p.z(Facet::Anxiety) > 3.0,
+        "an anxious man plus a hard life came out inside the adaptation band"
+    );
+
+    // The age trajectory still moves somebody whose adaptation is pinned.
+    let young = p.z(Facet::Anxiety);
+    p.age_years = 75.0;
+    let old = p.z(Facet::Anxiety);
+    assert!(
+        (old - young).abs() > 1e-6,
+        "ageing did nothing to a man at the adaptation ceiling: the terms share a clamp"
+    );
+}

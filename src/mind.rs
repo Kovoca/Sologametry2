@@ -309,8 +309,11 @@ pub struct Personality {
     /// Each person's own slope, in z per decade, so some move against the
     /// population tendency.
     slope: [f32; 5],
-    /// What life has durably done. This is what a core memory moves.
-    pub adaptation: [f32; FACETS],
+    /// What life has durably done. This is what a core memory moves —
+    /// **through `adapt` and nowhere else**. Public, it was a clamp any
+    /// caller could step around, which is the same failure the economy's
+    /// journal exists to prevent.
+    adaptation: [f32; FACETS],
     /// Years lived, for the age trajectory.
     pub age_years: f32,
 }
@@ -460,15 +463,30 @@ impl Personality {
 
     /// Push a facet durably, the way a core memory is allowed to.
     ///
-    /// **Bounded**: life bends people, it does not replace them, and this
-    /// clamp is the whole of what enforces it — nothing else limits how
-    /// often a memory may push. It is set so that latent rank-order
-    /// stability over twenty years lands near **0.85**, which is *not*
-    /// the 0.6–0.7 usually quoted: those are **observed** test-retest
-    /// correlations carrying measurement error. Observed = true ×
-    /// reliability, so 0.85 × 0.80 ≈ 0.68, which is where the literature
-    /// sits. Comparing a latent trait against an observed coefficient
-    /// makes people far less stable than they are.
+    /// **Exactly what the clamp guarantees, and no more:** all durable
+    /// adaptations combined contribute at most **±1.5 z to any one facet
+    /// at a given time**. It is a designed bound on the *net present
+    /// state*, not a measured rate of personality change, and it is
+    /// deliberately none of the following:
+    ///
+    /// - a lifetime movement budget — `0 → +1.5 → −1.5 → +1.5` obeys it
+    ///   throughout and travels 7.5 z on the way;
+    /// - a per-push limit — `by` is not clamped, because the size of a
+    ///   single request belongs to whatever is making it;
+    /// - a bound on the whole personality vector, which is per facet;
+    /// - a rate. Nothing here says how fast anything happens.
+    ///
+    /// **The per-memory limit is real and lives elsewhere**, in
+    /// `memory::Trace::plasticity`, which caps one core memory's request
+    /// at 0.15 z per facet — so replacing somebody takes a great many
+    /// concordant memories rather than one bad afternoon. Keeping the two
+    /// apart is the point: a memory decides how much it asks for, a
+    /// personality decides how far it will ever be moved.
+    ///
+    /// Only `adaptation` is clamped. `baseline`, the age trajectory and
+    /// any temporary state are separate terms of `z()` and are not
+    /// touched by this, or the four things slice 1 separated would
+    /// silently share one bound.
     pub fn adapt(&mut self, f: Facet, by: f32) {
         let i = f.index();
         self.adaptation[i] = (self.adaptation[i] + by).clamp(-1.5, 1.5);
@@ -1389,6 +1407,11 @@ fn unit(z: f32) -> f64 {
 /// The verdicts are a **different vocabulary** from the speaker's
 /// strategies: `Ingratiate` is a plan and `Flattery` is a conclusion, and
 /// one word for both would let the listener read the plan.
+/// Carried by `ListenerReading` so that nothing outside this module can
+/// construct one. Deliberately unnameable elsewhere.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+struct Sealed;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Reading {
     SincerePraise,
@@ -1418,6 +1441,12 @@ pub struct WeightedReading {
 /// signals, and a remark can plausibly be either.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ListenerReading {
+    /// **Only `mind` can build one of these.** A private field is what
+    /// makes that a compile error rather than a convention: `social.rs`
+    /// is a sibling module and cannot name it, so it cannot construct a
+    /// reading however much it would like to. Without this every field
+    /// was public and the boundary rested on nobody trying.
+    seal: Sealed,
     /// The literal content, when the words got through. **Comprehension
     /// and interpretation are separate**: somebody can understand every
     /// word and misjudge entirely what was meant by them.
@@ -1574,6 +1603,7 @@ impl Mind {
             .map(|w| w.weight)
             .fold(0.0, f64::max);
         ListenerReading {
+            seal: Sealed,
             understood,
             inferred,
             sincerity,

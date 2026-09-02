@@ -3081,10 +3081,21 @@ trace, because the person doing the remembering is not the same person.
   separation too, precisely so similar experiences stay distinguishable,
   so the night somebody proposed over dinner stays its own memory.
 - **A core memory asks rather than writes.** It emits a bounded
-  plasticity signal; the caller decides; `Personality::adapt` clamps what
-  a whole life can do. A memory able to set a facet directly would let
-  one bad afternoon replace somebody — two hundred recollections of the
-  same day move a trait by less than 1.5 z in total.
+  plasticity signal; the caller decides. A memory able to set a facet
+  directly would let one bad afternoon replace somebody.
+- **Two bounds, and they are not the same bound.** `Trace::plasticity`
+  caps *one memory's request* at 0.15 z per facet; `Personality::adapt`
+  caps the *net present total* at ±1.5 z per facet. Saying the clamp
+  bounds "what a whole life can do" overstated it — it is a **state
+  bound, not a lifetime budget and not a rate**: `0 → +1.5 → −1.5`
+  obeys it throughout and travels 3 z on the way, which is correct,
+  because later life really does move people back. `adapt` deliberately
+  does not clamp a single push, since how much one experience may ask
+  belongs to whatever is asking; the twenty-year stability calibration
+  drives it at 0.62 a step on purpose. And only `adaptation` is clamped —
+  baseline, the age trajectory and temporary state are separate terms of
+  `z()`, or the four things slice 1 pulled apart would quietly share one
+  ceiling. The field is private so `adapt` is the only way in.
 - **A lie creates a belief about the world and does not modify the
   world.** Ten years of rehearsal later, a rumour is still a rumour and a
   thing he watched is still firsthand. Which is what makes reputation the
@@ -3375,17 +3386,42 @@ override.
 ### Facing away takes the face, not the words
 
 Perception is **modality-specific**, and a wall between two people is not
-a veto. Through it a listener gets every word and the tone; what they
-lose is the expression, the gesture and who the remark was aimed at. An
-expression is legible to about **10 m** against a face being
-recognisable at 25, so a remark shouted across a yard falls into the gap
-too.
+a veto. What a listener loses first is the expression, the gesture and
+who the remark was aimed at. An expression is legible to about **10 m**
+against a face being recognisable at 25, so a remark shouted across a
+yard falls into the gap too.
 
 That is worth much more than a perception veto, because it lets a remark
 be **misread rather than unheard** — friendly teasing taken as mockery
 for want of the grin that came with it. Being *told* something carries
 the words alone, which is most of why a remark repeated to you sounds
 worse than it was.
+
+**Hearing a voice and making out the words are two thresholds, and they
+were the wrong way round.** Words came free the moment anything was
+audible and the *tone* cost 6 dB more, which is backwards and left the
+model unable to state the commonest case of overhearing there is: two
+people are plainly talking and there is no telling what about. Speech is
+detectable at about the level of the background; understanding it wants
+**10-15 dB above** it *(the speech-interference criterion for reliable
+conversation — near-full sentence recognition around +15 dB SNR, about
+half of it at 0)*.
+
+So there are **three results, not two**, and collapsing them loses the
+middle one:
+
+| | |
+|---|---|
+| you can see two people talking | sight, out to a hundred metres |
+| you can hear that they are talking | audible at roughly the background |
+| you can make out what they say | **+10 dB, and it goes first** |
+
+This corrects the line that used to stand here saying a wall leaves every
+word. It leaves the **voice** — which is what this file's own acoustics
+already said, that a party wall passes the bass and not the singing, and
+what makes the neighbour who heard shouting unable to say what was
+shouted. The claim that survives unchanged is about *sight*: facing away
+takes the face and not the words.
 
 ## Nobody can hear what you meant (`src/social.rs`)
 
@@ -3461,6 +3497,27 @@ reputation produce pleasure *and* anxiety in the same breath.
 - Real shape: a conversation is a budget of turns and minutes, and
   satisfaction follows *interpreted quality*, not utterance count —
   talking a lot at somebody is not good company.
+
+**A rule nobody can break beats a rule nobody breaks.** Sixteen
+behavioural tests show telepathy does not happen; they cannot show it
+*could not*. Four `compile_fail` doctests do — no dependency, run by
+`cargo test` — and each is paired with a normal test reaching the
+sibling field beside it on the same type, because a `compile_fail` block
+passes if the snippet fails for *any* reason, a typo included.
+
+| proved unreachable | reachable beside it |
+|---|---|
+| `act.motives` | `act.delivery` |
+| `act.strategy` | `act.topic` |
+| `claim.believed` | `claim.asserted` |
+| building a `ListenerReading` | one obtained from `read_act` |
+
+`ListenerReading` is sealed by a private field, so `social.rs` — a
+sibling module that cannot name it — is unable to manufacture an
+interpretation however much it would like to. And `social.rs` does not
+import `relations` at all, so an exchange cannot reach into a
+relationship: what an act does to one is the caller's decision, taken
+from a reading.
 
 ## Conventions
 

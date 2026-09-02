@@ -30,7 +30,7 @@ fn who(n: u32) -> Id<Person> {
 use scale_sim::townplan::{Lot, Plan, TILES_PER_PLOT};
 use scale_sim::witness::{
     from_the_ground, in_the_settlement, loudness_db, told, walls_between, Context,
-    AMBIENT_INDOORS_DB, AMBIENT_STREET_DB,
+    AMBIENT_INDOORS_DB, AMBIENT_STREET_DB, INTELLIGIBLE_DB,
 };
 
 fn a_mind(seed: u64) -> Mind {
@@ -227,13 +227,14 @@ fn far_enough_away_and_nothing_happened() {
     );
 }
 
-/// **A collapse carries and a conversation does not.**
+/// **A collapse stays audible where conversational words stop being
+/// intelligible.**
 ///
 /// Real acoustics, and it falls out of the decibel figures rather than
 /// being asserted: ordinary talk is 60 dB at a metre, a scream 90, a roof
 /// coming in 110, and every doubling of distance costs 6.
 #[test]
-fn a_roof_coming_in_carries_and_a_conversation_does_not() {
+fn a_collapse_carries_where_conversational_words_no_longer_do() {
     assert!(loudness_db(EventKind::Collapse) > loudness_db(EventKind::Assault));
     assert!(loudness_db(EventKind::Assault) > loudness_db(EventKind::Conversation));
 
@@ -257,23 +258,39 @@ fn a_roof_coming_in_carries_and_a_conversation_does_not() {
 
     let crash = from_the_ground(&g, here, there, EventKind::Collapse, AMBIENT_STREET_DB);
     let chat = from_the_ground(&g, here, there, EventKind::Conversation, AMBIENT_STREET_DB);
-    assert!(
-        crash.is_some(),
+    let crash = crash.expect(&format!(
         "a roof came in {} m down an open street and nobody noticed",
         (there.0 - here.0).abs()
-    );
-    // **And the conversation does not**, which is the half this test is
-    // named for and did not check. Ordinary talk is 60 dB at a metre, so
-    // sixty metres of open street takes ~36 dB off it and leaves it far
-    // under a 65 dB street. The words are the measure, not whether
-    // anything was perceived at all — they can still *see* each other
-    // down an open street, which is the whole reason acoustics and sight
-    // are separate senses.
-    assert!(
-        chat.map_or(true, |w| !w.cues.words),
-        "a conversation {} m down an open street was overheard",
-        (there.0 - here.0).abs()
-    );
+    ));
+    assert!(crash.cues.prosody, "a roof coming in was not even audible");
+
+    // **The conversation is not simply unperceived, and saying so would
+    // be worse than saying nothing.** Three results have to stay apart or
+    // a later change can "fix" this by deleting the socially obvious fact
+    // that two people were talking:
+    //
+    //   the collapse is audible          — asserted above
+    //   the talking is plainly visible   — they are in the open
+    //   the words are not intelligible   — sixty metres of street takes
+    //                                      ~36 dB out of a 60 dB voice
+    //
+    // Hold the sight case still by asking it only where the collapse was
+    // *seen*, which is the same clear line.
+    if crash.source == Source::Witnessed {
+        let chat = chat.expect(
+            "two people talking in plain view down an open street went wholly unnoticed",
+        );
+        assert_eq!(
+            chat.source,
+            Source::Witnessed,
+            "the line was clear for a collapse and not for the men talking on it"
+        );
+        assert!(
+            !chat.cues.words,
+            "the words of a conversation {} m off were made out over a street",
+            (there.0 - here.0).abs()
+        );
+    }
     // **And a factory floor hears nothing**, which is real and is why
     // some workplaces produce no social contact at all.
     // **And a factory floor is a place you communicate by sight**, which
@@ -285,6 +302,72 @@ fn a_roof_coming_in_carries_and_a_conversation_does_not() {
             w.source,
             Source::Witnessed,
             "two men heard each other talking across a stamping shop"
+        );
+    }
+}
+
+/// **You can hear that people are talking without hearing what.**
+///
+/// The band between the two thresholds, which is where most overhearing
+/// in a real street actually sits. Detection is nearly free; understanding
+/// wants 10-15 dB of headroom over the background.
+///
+/// **Two points, one event, and only the background varies** — the same
+/// discipline the other acoustic tests had to learn. The ambients are
+/// derived from the physics rather than typed in, so this cannot drift
+/// apart from the model it is checking.
+#[test]
+fn you_can_hear_that_people_are_talking_without_hearing_what() {
+    let (seed, plan, spot) = a_shop();
+    let g = Ground::around(seed, &plan, spot, 40);
+    let open: Vec<(i64, i64)> = (0..g.w)
+        .filter(|&x| matches!(g.at(x, g.h / 2), Tile::Road | Tile::Marking))
+        .map(|x| (g.origin.0 + x as i64, g.origin.1 + g.h as i64 / 2))
+        .collect();
+    if open.len() < 6 {
+        return;
+    }
+    let (ear, talkers) = (open[0], open[open.len() - 1]);
+    let dx = (talkers.0 - ear.0) as f64;
+    let dy = (talkers.1 - ear.1) as f64;
+    let d = (dx * dx + dy * dy).sqrt().max(1.0);
+    // What arrives at the ear, by the same inverse-square the model uses.
+    let at_the_ear = loudness_db(EventKind::Conversation) - 20.0 * d.log10();
+
+    let quiet = from_the_ground(
+        &g,
+        ear,
+        talkers,
+        EventKind::Conversation,
+        at_the_ear - INTELLIGIBLE_DB - 8.0,
+    )
+    .expect("a conversation in a quiet street reached nobody at all");
+    assert!(quiet.cues.prosody, "no voice in a quiet street");
+    assert!(quiet.cues.words, "the words did not carry with 18 dB of headroom");
+
+    let busy = from_the_ground(
+        &g,
+        ear,
+        talkers,
+        EventKind::Conversation,
+        at_the_ear - INTELLIGIBLE_DB + 5.0,
+    )
+    .expect("a conversation in a busier street reached nobody at all");
+    assert!(
+        busy.cues.prosody,
+        "the voices stopped being audible before the words did, which is backwards"
+    );
+    assert!(
+        !busy.cues.words,
+        "the words were made out over a background that buries them"
+    );
+
+    // **The ordering is the invariant**, not either threshold: nobody
+    // ever makes out words they cannot hear.
+    for w in [quiet, busy] {
+        assert!(
+            !(w.cues.words && !w.cues.prosody),
+            "words were understood through a voice that never arrived"
         );
     }
 }
@@ -394,7 +477,7 @@ fn all_three_tiers_produce_the_same_kind_of_answer() {
 /// taken as mockery for want of the grin that came with it. And the
 /// speaker only learns of it if they perceive the reply.
 #[test]
-fn a_wall_takes_the_face_and_leaves_the_words() {
+fn a_wall_takes_the_face_and_leaves_the_voice() {
     let (seed, plan, spot) = a_shop();
     let g = Ground::around(seed, &plan, spot, 40);
 
@@ -431,13 +514,23 @@ fn a_wall_takes_the_face_and_leaves_the_words() {
     assert!(facing.cues.gesture);
     assert_eq!(facing.cues.completeness(), 1.0);
 
-    // Through the wall: the words and the tone, and nothing to look at.
+    // Through the wall: a voice, and nothing to look at.
     let Some(muffled) =
         from_the_ground(&g, outside, inside, EventKind::Assault, AMBIENT_INDOORS_DB)
     else {
         return;
     };
-    assert!(muffled.cues.words, "a shout through a wall carried no words at all");
+    // **The voice carries; whether the words do is a separate question**
+    // and depends on what is left above the background after a masonry
+    // wall has taken 35 dB out of it. Asserting the words survive was
+    // asserting the stronger of the two claims, and it is the one that
+    // fails first — which is exactly the neighbour who heard shouting
+    // and cannot tell you what was shouted.
+    assert!(muffled.cues.prosody, "a shout through a wall carried no voice at all");
+    assert!(
+        !muffled.cues.words || muffled.cues.prosody,
+        "words were made out that could not be heard"
+    );
     assert!(
         !muffled.cues.expression,
         "he read the man's expression through a masonry wall"

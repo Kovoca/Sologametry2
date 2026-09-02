@@ -693,3 +693,55 @@ fn the_same_speaker_performs_the_same_act() {
     let b = perform(&plan, 0.5, false, &mut Rng::new(99));
     assert_eq!(a, b);
 }
+
+// ---------------------------------------------------------------------
+// what the compile_fail doctests are worth
+// ---------------------------------------------------------------------
+
+/// **The observable half of every sealed pair is reachable.**
+///
+/// A `compile_fail` doctest passes if the snippet fails for *any* reason,
+/// including a typo, so on its own it proves very little. This is the
+/// other half: for each thing `src/social.rs` proves unreachable, reach
+/// the sibling beside it on the same type by the same path. If these
+/// compile and those do not, the boundary is what is stopping them and
+/// not a mistake in the test.
+#[test]
+fn the_observable_half_is_reachable() {
+    let (_folk, id) = a_village();
+    let plan = SpeakerPlan {
+        speaker: id[0],
+        addressee: id[1],
+        motives: motives(&[(Motive::Deception, 0.9)]),
+        topic: Topic::TheirWork,
+        strategy: Strategy::Persuade,
+    };
+    let act = perform(&plan, 0.6, true, &mut Rng::new(77));
+
+    // `act.motives` and `act.strategy` are proved unreachable; these are.
+    let _: &Delivery = &act.delivery;
+    let _: Topic = act.topic;
+    let _: Content = act.content;
+
+    // `claim.believed` is proved unreachable; `asserted` is the public
+    // half of the same struct, and the private half is readable only
+    // through the accessor that checks who is asking.
+    if let Content::Claim(c) = act.content {
+        let _: f64 = c.asserted;
+        assert!(
+            c.privately_believed(plan.speaker, plan.speaker).is_some(),
+            "a speaker could not consult their own belief"
+        );
+        assert!(
+            c.privately_believed(id[1], plan.speaker).is_none(),
+            "the listener read what the speaker privately believed"
+        );
+    }
+
+    // `ListenerReading` cannot be built here; it can be obtained from the
+    // mind that did the reading, and read freely once it exists.
+    let m = person(77, &[]);
+    let r = m.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.0, 0.5)));
+    let _: f64 = r.confidence;
+    assert!(!r.inferred.is_empty(), "a reading with nothing in it proves nothing");
+}

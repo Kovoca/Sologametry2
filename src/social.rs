@@ -40,6 +40,81 @@
 //! belittling     0.00
 //! ```
 
+//! # The boundary, checked by the compiler
+//!
+//! The sixteen behavioural tests show that telepathy does not happen.
+//! They cannot show that it *could not*, and a rule resting on nobody
+//! trying is not a rule. These are `compile_fail` doctests, so they are
+//! run by `cargo test` and cost no dependency.
+//!
+//! **A `SocialAct` carries no motive.** Anything downstream — a witness,
+//! a listener, a bystander — holds one of these and nothing else.
+//!
+//! ```compile_fail
+//! fn peek(act: &scale_sim::social::SocialAct) -> &Vec<scale_sim::social::WeightedMotive> {
+//!     &act.motives
+//! }
+//! ```
+//!
+//! **Nor a strategy.**
+//!
+//! ```compile_fail
+//! fn peek(act: &scale_sim::social::SocialAct) -> scale_sim::social::Strategy {
+//!     act.strategy
+//! }
+//! ```
+//!
+//! **What a speaker privately believed is not on the act.** A lie and an
+//! honest mistake are identical to everybody but the speaker, and this is
+//! what makes that structural rather than conventional.
+//!
+//! ```compile_fail
+//! fn peek(c: &scale_sim::social::AssertedClaim) -> f64 {
+//!     c.believed
+//! }
+//! ```
+//!
+//! **This module cannot manufacture an interpretation.** A
+//! `ListenerReading` is sealed by a private field, so only `mind` can
+//! build one — which is what stops telepathy returning through module
+//! ownership after it was shut out of the types.
+//!
+//! ```compile_fail
+//! fn forge() -> scale_sim::mind::ListenerReading {
+//!     scale_sim::mind::ListenerReading {
+//!         understood: None,
+//!         inferred: Vec::new(),
+//!         sincerity: 1.0,
+//!         stance: 1.0,
+//!         confidence: 1.0,
+//!     }
+//! }
+//! ```
+//!
+//! And one that **must** compile, or the seal has locked out the module
+//! that is supposed to do the reading:
+//!
+//! ```
+//! use scale_sim::mind::{Mind, Value};
+//! use scale_sim::rng::Rng;
+//! use scale_sim::social::{Content, Delivery, Topic};
+//! use scale_sim::witness::Cues;
+//!
+//! let m = Mind::draw(&mut Rng::new(1), &[(Value::Fairness, 20)]);
+//! let cues = Cues { words: true, prosody: true, expression: true, gesture: true };
+//! let r = m.read_act(
+//!     &Content::Praise { about: Topic::TheirWork, strength: 0.6 },
+//!     &Delivery::default(),
+//!     &cues,
+//!     Some((0.5, 0.5)),
+//! );
+//! assert!(r.understood.is_some());
+//! ```
+//!
+//! Note also that `social.rs` does not import `relations` at all, so
+//! social exchange cannot reach into a relationship: what an act does to
+//! one is the caller's decision, made from a reading.
+
 use crate::id::Id;
 use crate::memory::EventKind;
 use crate::mind::{Facet, Mind};

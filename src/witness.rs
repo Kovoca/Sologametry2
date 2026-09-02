@@ -185,6 +185,16 @@ impl Cues {
     }
 }
 
+/// **How far speech has to stand above the background to be understood,
+/// rather than merely heard.**
+///
+/// Detection is nearly free — a voice is audible at about the level of
+/// the noise around it. Intelligibility is not: the speech-interference
+/// criterion for reliable conversation is 10-15 dB of headroom, and
+/// sentence recognition runs about half at 0 dB SNR and near-complete by
+/// +15.
+pub const INTELLIGIBLE_DB: f64 = 10.0;
+
 /// What somebody got, and how.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Witnessing {
@@ -243,9 +253,21 @@ pub fn from_the_ground(
     // **An expression needs to be close as well as visible.** You can see
     // that a man is standing there at fifty metres and not that he is
     // smiling.
+    // **Hearing a voice and making out the words are two thresholds,
+    // and this had them the wrong way round** — words came free the
+    // moment anything was audible and the *tone* cost 6 dB more. It is
+    // the other way about: speech is detectable at or below the level of
+    // the background, and understanding it wants roughly **10-15 dB
+    // above** it *(the speech-interference-level criterion for reliable
+    // conversation; near-full sentence recognition is about +15 dB SNR
+    // and half of it around 0)*.
+    //
+    // Which is what puts a listener in the band this model could not
+    // previously express: two people are plainly talking and there is no
+    // telling what about.
     let cues = Cues {
-        words: heard,
-        prosody: heard && over_ambient > 6.0,
+        words: over_ambient > INTELLIGIBLE_DB,
+        prosody: heard,
         expression: seen && distance <= EXPRESSION_M,
         gesture: seen && distance <= RECOGNITION_M * 4.0,
     };

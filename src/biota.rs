@@ -604,11 +604,23 @@ struct HerdNeeds {
     /// How dry it will tolerate, as the climatic-moisture index below
     /// which it fails.
     driest: f32,
-    /// Live weight per head, kg — real. **Recorded, not yet read**: the
-    /// stocking figures are biomass per km², and nothing has needed to
-    /// turn those into a headcount yet. `econ.rs` already dresses a 450 kg
-    /// beast, so this is the figure it should come from when it does.
-    #[allow(dead_code)]
+    /// Live weight per head, kg — real. **Recorded, not yet read.**
+    ///
+    /// Its consumers are the places a *headcount* is wanted: turning
+    /// biomass per km² into animals, stockyard and vehicle capacity, a
+    /// slaughter line rated in beasts an hour, water and handling.
+    ///
+    /// **It is not what the butcher needs**, which was the wrong closure
+    /// to write down. That recipe converts mass to mass — 1 t of retail
+    /// meat needs 1 / (0.56 × 0.70) ≈ 2.55 t live — and the 450 kg
+    /// cancels out of it entirely, so the same 2.55 t holds whether it
+    /// walks in as cattle, sheep or goats. Species-specific meat wants
+    /// separate fields — carcass fraction, retail fraction of carcass,
+    /// offal, hide — and this is not a stand-in for them.
+    #[expect(
+        dead_code,
+        reason = "awaits headcount, transport and slaughter-throughput integration"
+    )]
     head_kg: f32,
     /// How productive it is to keep, against cattle at 1.0. Milk, meat,
     /// wool, traction and hide together.
