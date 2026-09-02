@@ -16,6 +16,7 @@ pub mod infrastructure;
 pub mod labour;
 pub mod locality;
 pub mod logistics;
+pub mod memory;
 pub mod mind;
 pub mod money;
 pub mod network;

@@ -93,8 +93,8 @@ In slices that each land green, the same way Phase 1 is going.
 | slice | what | state |
 |---|---|---|
 | 1 | Static mind: attributes, facets, values. Appraisal producing **several** emotions. Stress, mood and focus as three separate things | **built** |
-| 2 | Memory: episodic store, salience, similarity suppression, recall producing a *new* appraisal | |
-| 3 | Perception: `WorldEvent` against `PerceivedEvent`, confidence, source | |
+| 2 | Memory: provenance first — world event / perceived / trace / recollection; routine consolidation; recall producing a *new* appraisal | **built** |
+| 3 | Perception driven by the visibility system: exposure from line of sight rather than supplied by the caller | |
 | 4 | Needs, semantic satisfaction, focus driven by them | |
 | 5 | Relationships as asymmetric multidimensional records | |
 | 6 | Social opportunity, intention, tactic, interpretation, exchange | |

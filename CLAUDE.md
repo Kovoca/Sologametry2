@@ -3031,6 +3031,67 @@ a smaller indirect penalty through vigilance, rumination and exhaustion,
 because carrying something indefinitely is not free. Both cases survive —
 grieving and functional, delighted and temporarily useless.
 
+## What somebody knows, and how they came to know it (`src/memory.rs`)
+
+Slice 2, and it starts with **provenance** rather than salience or
+forgetting — because lies, rumours, mistaken identity, conflicting
+witnesses and reconstructed recall all depend on that boundary, and a
+boundary added afterwards is not a boundary.
+
+**Four objects, not interchangeable:** what happened, what *this person*
+took in, what was kept, and what comes back when it is brought up. A
+murder produces as many mental histories as there are minds near it — one
+saw it, one heard screaming and not who, a relative got a report a week
+later, a rumour blamed the wrong man, and somebody two streets away never
+learns it happened.
+
+### Recall cannot replay the original, and the types say so
+
+A `Trace` keeps what the event meant at the time as a
+**`RememberedFeeling`** — a memory of having felt something. That is a
+*different type* from `Episode`, and there is no conversion between them
+anywhere. So there is no stored transaction to replay: recall has to
+reconstruct the content and appraise it with **today's** personality,
+values and concerns.
+
+Which is exactly why a memory can change meaning. The terror of a mine
+collapse becomes grief for the dead, pride at having got anybody out, and
+fresh anger the day somebody learns it was preventable — from the same
+trace, because the person doing the remembering is not the same person.
+
+- **Half of a trace cannot change and half must.** The snapshot, the
+  encoding appraisal and the provenance are fixed; accessibility,
+  confidence and attributed blame are not. Learning later that a
+  different man gave the order changes who is blamed and **not what was
+  seen**, so a witness can be wrong, be corrected, and still say what
+  they actually saw.
+- **A memory is not a surprise**, and novelty is most of what makes an
+  event bite. Remembering something is survivable and living it was not.
+- **Habituation, or rumination is unbounded.** Without it a man who goes
+  over a bad day daily is charged daily and breaks inside a year from one
+  event — measured at **79x** the original cost. Repeated exposure to a
+  memory with nothing new in it is what makes exposure therapy work, so
+  a recollection dulls with rehearsal. Learning something genuinely new
+  still bites, because that changes the facts rather than rehearsing
+  them.
+- **Routine consolidation, not similarity suppression.** Thirty ordinary
+  dinners are one fact about a life; what is dropped is the separate
+  *episode* and what is kept is everything the repetition produced —
+  count, span, companions, average and range. Human memory does pattern
+  separation too, precisely so similar experiences stay distinguishable,
+  so the night somebody proposed over dinner stays its own memory.
+- **A core memory asks rather than writes.** It emits a bounded
+  plasticity signal; the caller decides; `Personality::adapt` clamps what
+  a whole life can do. A memory able to set a facet directly would let
+  one bad afternoon replace somebody — two hundred recollections of the
+  same day move a trait by less than 1.5 z in total.
+- **A lie creates a belief about the world and does not modify the
+  world.** Ten years of rehearsal later, a rumour is still a rumour and a
+  thing he watched is still firsthand. Which is what makes reputation the
+  *aggregate of distributed beliefs* rather than a number: some people
+  think Urist a hero, the victims' families think he caused it, and both
+  records are real.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
