@@ -66,6 +66,8 @@
 //! by one bad afternoon.
 
 use crate::rng::Rng;
+use crate::social::{Content, Delivery};
+use crate::witness::Cues;
 
 // ---------------------------------------------------------------------
 // the five factors, and the facets that hang off them
@@ -1373,4 +1375,251 @@ impl Mind {
 /// z to 0..1, for weighting. ±2.5 z covers essentially everybody.
 fn unit(z: f32) -> f64 {
     ((z as f64 / 5.0) + 0.5).clamp(0.0, 1.0)
+}
+
+// ---------------------------------------------------------------------
+// what a listener made of it
+// ---------------------------------------------------------------------
+
+/// **What a listener concluded somebody meant.**
+///
+/// Lives here rather than in `social.rs` on purpose. A module that could
+/// manufacture this would need the speaker's intent to do it, and
+/// telepathy would come back in through module ownership rather than
+/// through a field.
+///
+/// The verdicts are a **different vocabulary** from the speaker's
+/// strategies: `Ingratiate` is a plan and `Flattery` is a conclusion, and
+/// one word for both would let the listener read the plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Reading {
+    SincerePraise,
+    Flattery,
+    FriendlyTeasing,
+    Mockery,
+    Threat,
+    Manipulation,
+    Consolation,
+    /// Meant kindly and landed badly, which is what a clumsy
+    /// encouragement sounds like.
+    Condescension,
+    PlainStatement,
+    AnApology,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WeightedReading {
+    pub reading: Reading,
+    pub weight: f64,
+}
+
+/// **What one person took from one exchange.**
+///
+/// Weighted, because a listener can be pleased and suspicious at the same
+/// time — sincere praise and flattery are different informational
+/// signals, and a remark can plausibly be either.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ListenerReading {
+    /// The literal content, when the words got through. **Comprehension
+    /// and interpretation are separate**: somebody can understand every
+    /// word and misjudge entirely what was meant by them.
+    pub understood: Option<Content>,
+    pub inferred: Vec<WeightedReading>,
+    /// How much of it they took to be meant.
+    pub sincerity: f64,
+    /// Warm to hostile, as read.
+    pub stance: f64,
+    pub confidence: f64,
+}
+
+impl ListenerReading {
+    pub fn weight_of(&self, r: Reading) -> f64 {
+        self.inferred.iter().find(|w| w.reading == r).map(|w| w.weight).unwrap_or(0.0)
+    }
+    /// The likeliest verdict — for a line of dialogue or a label, never
+    /// for the arithmetic, which uses the whole distribution.
+    pub fn likeliest(&self) -> Option<Reading> {
+        self.inferred
+            .iter()
+            .max_by(|a, b| a.weight.total_cmp(&b.weight).then(b.reading.cmp(&a.reading)))
+            .map(|w| w.reading)
+    }
+}
+
+impl Mind {
+    /// **Read an act.** The listener's own conclusion, from what actually
+    /// reached them.
+    ///
+    /// Nothing in `SocialAct` says why it was said. What this works from
+    /// is the content, the delivery cues that got through, and what this
+    /// listener already believes about the speaker — so the same words
+    /// with the same delivery produce different verdicts in different
+    /// heads, and the same words with *fewer cues* produce a different
+    /// verdict in the same head.
+    pub fn read_act(
+        &self,
+        act: &Content,
+        delivery: &Delivery,
+        cues: &Cues,
+        about_the_speaker: Option<(f64, f64)>,
+    ) -> ListenerReading {
+        let pct = |f: Facet| (self.person.z(f) as f64 / 5.0 + 0.5).clamp(0.0, 1.0);
+        // What is known of the speaker: how much they are trusted, and
+        // how well they are known.
+        let (trusted, known) = about_the_speaker.unwrap_or((0.0, 0.0));
+        // **A suspicious listener reads a motive into anything**, and a
+        // trusting one takes things at face value.
+        let wary = (1.0 - pct(Facet::Trust)) * 0.6 + (1.0 - (trusted + 1.0) / 2.0) * 0.4;
+        // Reading somebody accurately is a skill, and it needs the cues.
+        let acuity = (0.3 * pct(Facet::Gregariousness)
+            + 0.4 * ((self.empathy as f64 / 5.0) + 0.5).clamp(0.0, 1.0)
+            + 0.3 * known)
+            .clamp(0.0, 1.0);
+        let seen = cues.completeness();
+        // **Missing the face is what makes a remark ambiguous.**
+        let clarity = (0.25 + 0.75 * seen) * (0.5 + 0.5 * acuity);
+
+        let understood = cues.words.then_some(*act);
+        let mut inferred: Vec<WeightedReading> = Vec::new();
+        let mut push = |r: Reading, w: f64| {
+            if w > 0.02 {
+                inferred.push(WeightedReading { reading: r, weight: w });
+            }
+        };
+
+        match act {
+            Content::Praise { strength, .. } => {
+                // Warmth that shows, from somebody trusted, reads as
+                // meant. Eagerness showing through reads as an angle.
+                let genuine = (delivery.warmth * clarity + 0.3 * trusted).clamp(0.0, 1.0);
+                // **A kindness from somebody you distrust gets explained
+                // away**, and strongly — the ultimate attribution error
+                // is that a disliked person's good behaviour is put down
+                // to an angle rather than to them. Half-weighting it left
+                // a thoroughly suspicious man taking warm praise mostly
+                // at face value.
+                let angled = (delivery.eagerness + wary * 0.8).clamp(0.0, 1.0);
+                push(Reading::SincerePraise, genuine * strength);
+                push(Reading::Flattery, angled * strength);
+                push(Reading::Manipulation, angled * wary * 0.6);
+                // **Clumsy encouragement sounds like being patronised**,
+                // and what makes it so is in the *delivery*: emphatic
+                // approval said without warmth. Reading it off the
+                // listener's clarity was wrong twice over — that measures
+                // how well the listener could see, which does not change
+                // when the speaker fumbles it, so a deft compliment and a
+                // graceless one landed identically.
+                let flat = (1.0 - delivery.warmth.max(0.0)) * delivery.emphasis;
+                push(Reading::Condescension, (flat + 0.5 * delivery.hesitation) * 0.9);
+            }
+            Content::Barb { sharpness, .. } => {
+                // **The grin is the whole difference.** With it, teasing;
+                // without it, the identical words are mockery.
+                let friendly = if cues.expression && delivery.smiling {
+                    0.7 + 0.3 * clarity
+                } else {
+                    // No face to read: fall back on what is known of the
+                    // man, and on how ready you are to think ill.
+                    (0.45 + 0.35 * trusted - 0.4 * wary).clamp(0.0, 1.0)
+                };
+                push(Reading::FriendlyTeasing, friendly * sharpness);
+                push(Reading::Mockery, (1.0 - friendly) * sharpness + delivery.edge * 0.5);
+            }
+            Content::Insult { strength } => {
+                push(Reading::Threat, strength * (0.5 + 0.5 * delivery.edge));
+                push(Reading::Mockery, strength * 0.6);
+            }
+            Content::Console => {
+                let believed = (delivery.warmth * clarity + 0.3 * trusted).clamp(0.0, 1.0);
+                push(Reading::Consolation, believed);
+                push(Reading::Condescension, (1.0 - believed) * 0.6);
+                push(Reading::Manipulation, wary * (1.0 - believed) * 0.5);
+            }
+            Content::Request { costs_them } => {
+                push(Reading::PlainStatement, 0.6);
+                push(Reading::Manipulation, wary * costs_them);
+            }
+            Content::Apology(a) => {
+                // **An apology is read, not applied.** Whether it repairs
+                // anything is the listener's decision, later.
+                let credible = ((a.acknowledgement + a.responsibility + a.remorse) / 3.0
+                    * clarity
+                    + 0.25 * trusted
+                    - 0.3 * wary)
+                    .clamp(0.0, 1.0);
+                push(Reading::AnApology, credible);
+                push(Reading::Manipulation, (1.0 - credible) * wary);
+            }
+            Content::Claim(c) => {
+                // Confidence in the voice is not truth, and a wary
+                // listener knows it.
+                push(Reading::PlainStatement, (c.asserted * (0.5 + 0.5 * trusted)).clamp(0.0, 1.0));
+                push(Reading::Manipulation, wary * 0.4 * c.asserted);
+            }
+            Content::Remark { .. } => push(Reading::PlainStatement, 0.8),
+        }
+
+        inferred.sort_by(|a, b| b.weight.total_cmp(&a.weight).then(a.reading.cmp(&b.reading)));
+        let sincerity = inferred
+            .iter()
+            .filter(|w| {
+                matches!(
+                    w.reading,
+                    Reading::SincerePraise | Reading::Consolation | Reading::AnApology | Reading::PlainStatement
+                )
+            })
+            .map(|w| w.weight)
+            .fold(0.0, f64::max);
+        let hostile = inferred
+            .iter()
+            .filter(|w| matches!(w.reading, Reading::Mockery | Reading::Threat))
+            .map(|w| w.weight)
+            .fold(0.0, f64::max);
+        ListenerReading {
+            understood,
+            inferred,
+            sincerity,
+            stance: (delivery.warmth * clarity - hostile).clamp(-1.0, 1.0),
+            // **Fewer cues, less certainty.** Which is what makes a
+            // misreading a misreading rather than a coin toss.
+            confidence: clarity,
+        }
+    }
+
+    /// **What that did to them**, as an ordinary appraisal.
+    ///
+    /// The social module produces no emotion of its own: a reading
+    /// becomes a `Happening`, this mind reads it, and everything
+    /// downstream is the machinery that already exists.
+    pub fn appraise_reading(&self, r: &ListenerReading, from_a_friend: f64) -> Vec<Episode> {
+        let good = r.weight_of(Reading::SincerePraise)
+            + r.weight_of(Reading::Consolation)
+            + r.weight_of(Reading::FriendlyTeasing) * 0.4;
+        let bad = r.weight_of(Reading::Mockery) + r.weight_of(Reading::Threat)
+            + r.weight_of(Reading::Condescension) * 0.7;
+        let h = Happening {
+            severity: (good - bad).clamp(-1.0, 1.0),
+            to_me: 1.0,
+            to_mine: from_a_friend,
+            deliberate: true,
+            control: 0.4,
+            unexpected: 1.0 - r.confidence,
+            ..Default::default()
+        };
+        let mut felt = self.appraise(&self.read(&h));
+        // **Pleased and suspicious at once.** A reading that is largely
+        // sincere and partly self-serving is exactly that, and one enum
+        // on either side would have to choose.
+        let suspicion = r.weight_of(Reading::Flattery) + r.weight_of(Reading::Manipulation);
+        if suspicion > 0.15 {
+            felt.push(Episode {
+                what: Emotion::Anxiety,
+                strength: (suspicion * 0.5).min(1.0),
+                activation: Emotion::Anxiety.activation(),
+                age_days: 0.0,
+                about: None,
+            });
+        }
+        felt
+    }
 }

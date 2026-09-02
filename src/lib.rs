@@ -30,6 +30,7 @@ pub mod relations;
 pub mod rng;
 pub mod services;
 pub mod settlement;
+pub mod social;
 pub mod state;
 pub mod slice;
 pub mod townplan;

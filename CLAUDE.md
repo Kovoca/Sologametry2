@@ -3387,6 +3387,81 @@ for want of the grin that came with it. Being *told* something carries
 the words alone, which is most of why a remark repeated to you sounds
 worse than it was.
 
+## Nobody can hear what you meant (`src/social.rs`)
+
+Mind slice 6, and the danger in it is **telepathy disguised as
+convenience**. If a listener is handed anything the speaker knew, then
+praise, sarcasm, deception, failed jokes, rejected apologies and honest
+misunderstanding all have to be written as separate special cases. If the
+only thing that crosses is what could be observed, every one of them
+falls out of the same pipeline.
+
+So there are two objects and a hard line between them:
+
+- **`SpeakerPlan`** — motives, strategy, what they actually believe.
+  Private, and it never leaves the speaker.
+- **`SocialAct`** — the words and how they were said. This is the *whole*
+  of what `witness.rs` distributes.
+
+`perform()` is the only bridge, and it turns the first into the second.
+**The plan is not attached to the act**, not even privately, because a
+field that exists is a field something will read.
+
+- **The verdicts are a different vocabulary from the plans.** `Ingratiate`
+  is a strategy and `Flattery` is a conclusion; one word for both would
+  let a listener read the plan by matching names.
+- **The reading lives in `mind.rs`, not here.** A module that could
+  manufacture an interpretation would need the intent to do it, and
+  telepathy would come back through module ownership instead of through a
+  field. `social.rs` cannot construct a `ListenerReading` at all.
+- **Comprehension and interpretation are separate.** `understood` is the
+  literal content and is present whenever the words carried; the inferred
+  meaning is a *weighted set*, because somebody can catch every word and
+  still be wrong about what was meant by them.
+
+### A listener is pleased and suspicious at the same time
+
+One enum on either side would have to choose, and people do not. A
+reading is a distribution — sincere praise 0.5, flattery 0.3 — and the
+appraisal takes both, which is why warm words from somebody with a
+reputation produce pleasure *and* anxiety in the same breath.
+
+- **The grin is the whole difference.** Identical barbs read as teasing
+  with the expression and as mockery without it, which is exactly the gap
+  `witness.rs` opens: an expression is legible to ~10 m against a face at
+  25, so a joke shouted across a yard arrives with its words and without
+  its face. Deliberate cruelty delivered smoothly *does* get taken as
+  teasing by an old friend, and that is the model working.
+- **A kindness from somebody you distrust gets explained away, strongly.**
+  The ultimate attribution error: a disliked person's good behaviour is
+  put down to an angle rather than to them. At half weight a thoroughly
+  suspicious man took warm praise mostly at face value, which is not what
+  suspicion is.
+- **Condescension is in the delivery, not in the listener.** Reading it
+  off how clearly the listener could see measured the wrong end — that
+  does not change when the speaker fumbles it, so a deft compliment and a
+  graceless one landed identically. What patronises is emphatic approval
+  said without warmth.
+- **Skill does not buy the outcome.** A polished speaker is more likely to
+  be read as meant; he is not guaranteed it, and against real mistrust he
+  is read as smooth.
+- **An apology is performed, and the listener decides.** Saying it does
+  not clear the grievance — `relations.rs` already required that, and this
+  is where the words come from. Being forgiven is not being trusted again:
+  the grievance closes and the domain estimate does not move.
+- **A lie and a mistake look identical.** `AssertedClaim` holds what was
+  believed and what was asserted; the believed half is readable only by
+  the speaker, so the difference exists in the world and not in anybody
+  else's ear.
+- **The speaker learns only through exposure.** Whether it landed comes
+  back as the listener's response or not at all, which is why somebody can
+  go on being tactless for years.
+- **Nobody has to say anything.** Silence is a valid outcome, not a
+  failure to produce dialogue.
+- Real shape: a conversation is a budget of turns and minutes, and
+  satisfaction follows *interpreted quality*, not utterance count —
+  talking a lot at somebody is not good company.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
