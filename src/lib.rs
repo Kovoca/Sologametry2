@@ -11,6 +11,7 @@ pub mod field;
 pub mod geology;
 pub mod ground;
 pub mod hydrology;
+pub mod id;
 pub mod infrastructure;
 pub mod labour;
 pub mod locality;
