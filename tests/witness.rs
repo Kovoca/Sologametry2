@@ -371,3 +371,109 @@ fn all_three_tiers_produce_the_same_kind_of_answer() {
         assert!(a.severity <= 0.0);
     }
 }
+
+/// **Facing away removes the smile, not the words.**
+///
+/// A joke told to somebody who cannot see you does not fail because a
+/// visibility rule vetoed it. They hear every word, the timing and the
+/// tone; what they miss is the face, the gesture and who it was aimed at.
+///
+/// That is a far better thing to model than a perception veto, because it
+/// lets a remark be **misread** rather than unheard — friendly teasing
+/// taken as mockery for want of the grin that came with it. And the
+/// speaker only learns of it if they perceive the reply.
+#[test]
+fn a_wall_takes_the_face_and_leaves_the_words() {
+    let (seed, plan, spot) = a_shop();
+    let g = Ground::around(seed, &plan, spot, 40);
+
+    let floors: Vec<(i64, i64)> = (0..g.h)
+        .flat_map(|y| (0..g.w).map(move |x| (x, y)))
+        .filter(|&(x, y)| g.at(x, y) == Tile::Floor)
+        .map(|(x, y)| (g.origin.0 + x as i64, g.origin.1 + y as i64))
+        .collect();
+    let streets: Vec<(i64, i64)> = (0..g.h)
+        .flat_map(|y| (0..g.w).map(move |x| (x, y)))
+        .filter(|&(x, y)| matches!(g.at(x, y), Tile::Road | Tile::Pavement))
+        .map(|(x, y)| (g.origin.0 + x as i64, g.origin.1 + y as i64))
+        .collect();
+    let Some((inside, outside)) = floors.iter().find_map(|&i| {
+        streets.iter().copied().find_map(|o| {
+            let d = (o.0 - i.0).abs() + (o.1 - i.1).abs();
+            (d <= 12 && walls_between(&g, o, i) == 1).then_some((i, o))
+        })
+    }) else {
+        return;
+    };
+
+    // In the room with him: everything.
+    let facing = from_the_ground(
+        &g,
+        (inside.0, inside.1 + 1),
+        inside,
+        EventKind::Conversation,
+        AMBIENT_INDOORS_DB,
+    )
+    .expect("a man a metre away heard nothing");
+    assert!(facing.cues.words && facing.cues.prosody);
+    assert!(facing.cues.expression, "a man a metre away could not see a face");
+    assert!(facing.cues.gesture);
+    assert_eq!(facing.cues.completeness(), 1.0);
+
+    // Through the wall: the words and the tone, and nothing to look at.
+    let Some(muffled) =
+        from_the_ground(&g, outside, inside, EventKind::Assault, AMBIENT_INDOORS_DB)
+    else {
+        return;
+    };
+    assert!(muffled.cues.words, "a shout through a wall carried no words at all");
+    assert!(
+        !muffled.cues.expression,
+        "he read the man's expression through a masonry wall"
+    );
+    assert!(!muffled.cues.gesture, "and saw the gesture too");
+    assert!(
+        muffled.cues.completeness() < facing.cues.completeness(),
+        "standing in the street told him as much as standing in the room"
+    );
+
+    // **Being told carries the words and nothing else**, which is most of
+    // why a remark repeated to you sounds worse than it was.
+    let hearsay = told(EventKind::Insult, 1, who(3));
+    if let Some(w) = hearsay {
+        assert!(w.cues.words);
+        assert!(!w.cues.prosody, "a story carried the tone it was said in");
+        assert!(!w.cues.expression);
+    }
+}
+
+/// **An expression needs to be close as well as visible.** You can see a
+/// man at fifty metres and not that he is smiling — which is the gap a
+/// remark shouted across a yard falls into.
+#[test]
+fn a_face_is_legible_much_closer_than_a_figure() {
+    let (seed, plan, spot) = a_shop();
+    let g = Ground::around(seed, &plan, spot, 60);
+    let open: Vec<(i64, i64)> = (0..g.w)
+        .filter(|&x| matches!(g.at(x, g.h / 2), Tile::Road | Tile::Marking))
+        .map(|x| (g.origin.0 + x as i64, g.origin.1 + g.h as i64 / 2))
+        .collect();
+    if open.len() < 30 {
+        return;
+    }
+    let near = open[0];
+    let far = open[open.len() - 1];
+
+    let close_up = from_the_ground(&g, near, open[3], EventKind::Assault, AMBIENT_STREET_DB)
+        .expect("three metres away and nothing reached him");
+    assert!(close_up.cues.expression, "no face at three metres");
+
+    if let Some(across) = from_the_ground(&g, far, open[3], EventKind::Assault, AMBIENT_STREET_DB)
+    {
+        assert!(
+            !across.cues.expression,
+            "he read an expression from {} metres",
+            (far.0 - open[3].0).abs()
+        );
+    }
+}

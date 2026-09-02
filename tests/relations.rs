@@ -11,7 +11,8 @@ use scale_sim::memory::{
 use scale_sim::mind::{Emotion, Facet, Happening, Mind, Value};
 use scale_sim::person::{Person, Trade};
 use scale_sim::relations::{
-    labels, worth_of_company, Evidence, Label, Relationship, RespectFor, SocialFact, TrustIn,
+    labels, worth_of_company, Aspect, Diagnosticity, Evidence, Label, Relationship, RespectFor,
+    SocialFact, TrustIn,
 };
 use scale_sim::rng::Rng;
 
@@ -37,6 +38,20 @@ fn kindly() -> Evidence {
     Evidence { contact: 1.0, warmth: 0.6, ..Default::default() }
 }
 
+/// **A day on which he could have done otherwise and did not.** Anything
+/// less shows nothing: two hundred uneventful days are not two hundred
+/// observed honesty opportunities.
+fn shown(reliability: f64, about: Aspect, domain: TrustIn) -> Evidence {
+    Evidence {
+        contact: 1.0,
+        reliability,
+        reliability_in: Some(domain),
+        reliability_about: about,
+        telling: Diagnosticity::default(),
+        ..Default::default()
+    }
+}
+
 // --- 1 -----------------------------------------------------------------
 
 /// **Alice trusts Bob while Bob distrusts Alice.**
@@ -54,11 +69,11 @@ fn a_relationship_is_directed() {
 
     for d in 0..30 {
         alice_on_bob.saw(
-            &Evidence { contact: 1.0, reliability: 0.8, ..Default::default() },
+            &Evidence { contact: 1.0, reliability: 0.8, telling: Diagnosticity::default(), ..Default::default() },
             d,
         );
         bob_on_alice.saw(
-            &Evidence { contact: 1.0, reliability: -0.6, ..Default::default() },
+            &Evidence { contact: 1.0, reliability: -0.6, telling: Diagnosticity::default(), ..Default::default() },
             d,
         );
     }
@@ -102,6 +117,7 @@ fn familiarity_affection_and_trust_are_three_different_things() {
                 contact: 1.0,
                 reliability: -0.5,
                 reliability_in: Some(TrustIn::Money),
+                telling: Diagnosticity::default(),
                 ..Default::default()
             },
             d,
@@ -122,6 +138,7 @@ fn familiarity_affection_and_trust_are_three_different_things() {
                 contact: 1.0,
                 reliability: 0.9,
                 reliability_in: Some(TrustIn::Danger),
+                telling: Diagnosticity::default(),
                 ..Default::default()
             },
             d,
@@ -131,6 +148,7 @@ fn familiarity_affection_and_trust_are_three_different_things() {
                 contact: 0.0,
                 reliability: -0.8,
                 reliability_in: Some(TrustIn::Secrets),
+                telling: Diagnosticity::default(),
                 ..Default::default()
             },
             d,
@@ -409,6 +427,7 @@ fn labels_are_derived_plural_and_impermanent() {
                 contact: 1.0,
                 warmth: 0.7,
                 reliability: 0.8,
+                telling: Diagnosticity::default(),
                 esteem: 0.7,
                 esteem_for: Some(RespectFor::Competence),
                 owing: -0.02,
@@ -660,6 +679,7 @@ fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
         contact: 1.0,
         reliability: 0.8,
         reliability_in: Some(TrustIn::Money),
+        telling: Diagnosticity::default(),
         ..Default::default()
     };
 
@@ -678,6 +698,7 @@ fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
             contact: 1.0,
             reliability: -0.3,
             reliability_in: Some(TrustIn::Money),
+            telling: Diagnosticity::default(),
             ..Default::default()
         },
         201,
@@ -694,6 +715,7 @@ fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
             contact: 1.0,
             reliability: -1.0,
             reliability_in: Some(TrustIn::Money),
+            telling: Diagnosticity::default(),
             ..Default::default()
         },
         201,
@@ -706,5 +728,248 @@ fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
     assert!(
         robbed.sureness_of_trust(TrustIn::Money) < sureness,
         "he is as sure of the man as he ever was, having just been robbed"
+    );
+}
+
+// ---------------------------------------------------------------------
+// rupture, diagnosticity and epochs
+// ---------------------------------------------------------------------
+
+/// **Two hundred uneventful days are not two hundred observed honesty
+/// opportunities.**
+///
+/// Mere time without theft is not the same as handing back money when
+/// nobody would have known. A man who never had the chance has shown you
+/// nothing.
+#[test]
+fn time_without_temptation_shows_nothing() {
+    let (_folk, id) = a_village();
+
+    let mut never_tempted = Relationship::strangers(id[0], id[1]);
+    let mut proved = Relationship::strangers(id[0], id[2]);
+    for d in 0..200 {
+        never_tempted.saw(
+            &Evidence {
+                contact: 1.0,
+                reliability: 0.8,
+                reliability_in: Some(TrustIn::Money),
+                reliability_about: Aspect::Integrity,
+                telling: Diagnosticity { opportunity: 0.0, ..Default::default() },
+                ..Default::default()
+            },
+            d,
+        );
+        proved.saw(&shown(0.8, Aspect::Integrity, TrustIn::Money), d);
+    }
+
+    assert_eq!(
+        never_tempted.trust_that(TrustIn::Money, Aspect::Integrity),
+        0.0,
+        "two hundred days of no opportunity to steal proved him honest"
+    );
+    assert_eq!(never_tempted.sureness_of_trust(TrustIn::Money), 0.0);
+    assert!(
+        proved.trust_that(TrustIn::Money, Aspect::Integrity) > 0.6,
+        "two hundred days of returning the money proved nothing"
+    );
+    // Familiarity is not the same question and does rise either way.
+    assert!(never_tempted.familiarity > 0.9);
+}
+
+/// **Deliberate theft damages integrity; carelessness damages
+/// competence.**
+///
+/// The asymmetry does not run one way for everything. Negative behaviour
+/// is especially diagnostic for **morality** and positive behaviour for
+/// **ability** *(Mende-Siedlecki et al.)*: one dishonest act says a great
+/// deal about honesty, one failure says little about capability, and one
+/// brilliant performance says a lot.
+#[test]
+fn what_an_act_is_evidence_of_depends_on_what_is_being_judged() {
+    let (_folk, id) = a_village();
+    let honest = shown(0.8, Aspect::Integrity, TrustIn::Money);
+    let able = shown(0.7, Aspect::Competence, TrustIn::Money);
+
+    let mut careless = Relationship::strangers(id[0], id[1]);
+    let mut thief = Relationship::strangers(id[0], id[2]);
+    for d in 0..120 {
+        careless.saw(&honest, d);
+        careless.saw(&able, d);
+        thief.saw(&honest, d);
+        thief.saw(&able, d);
+    }
+
+    // He makes a mess of the books, and not on purpose.
+    careless.saw(
+        &Evidence {
+            contact: 1.0,
+            reliability: -0.7,
+            reliability_in: Some(TrustIn::Money),
+            reliability_about: Aspect::Competence,
+            telling: Diagnosticity { intentional: 0.0, ..Default::default() },
+            ..Default::default()
+        },
+        121,
+    );
+    // He takes the money, knowing exactly what he is doing.
+    thief.saw(&shown(-1.0, Aspect::Integrity, TrustIn::Money), 121);
+
+    assert!(
+        careless.trust_that(TrustIn::Money, Aspect::Integrity) > 0.6,
+        "bad bookkeeping made him a thief"
+    );
+    assert!(
+        careless.trust_that(TrustIn::Money, Aspect::Competence)
+            < careless.trust_that(TrustIn::Money, Aspect::Integrity),
+        "bad bookkeeping said nothing about his bookkeeping"
+    );
+    assert!(
+        thief.trust_that(TrustIn::Money, Aspect::Integrity) < 0.3,
+        "theft left his honesty intact"
+    );
+    assert!(
+        thief.trust_that(TrustIn::Money, Aspect::Competence) > 0.5,
+        "stealing the money made him bad at counting it"
+    );
+}
+
+/// **A failure at something hard is weak evidence; a brilliant success is
+/// strong.** The other half of the asymmetry, running the other way.
+#[test]
+fn one_triumph_outweighs_an_ordinary_failure() {
+    let (_folk, id) = a_village();
+    let mut r = Relationship::strangers(id[0], id[1]);
+    for d in 0..20 {
+        r.saw(&shown(0.2, Aspect::Competence, TrustIn::Craft), d);
+    }
+    let before = r.trust_that(TrustIn::Craft, Aspect::Competence);
+
+    let mut after_a_failure = r.clone();
+    after_a_failure.saw(&shown(-0.8, Aspect::Competence, TrustIn::Craft), 21);
+    let mut after_a_triumph = r.clone();
+    after_a_triumph.saw(&shown(0.95, Aspect::Competence, TrustIn::Craft), 21);
+
+    let fell = before - after_a_failure.trust_that(TrustIn::Craft, Aspect::Competence);
+    let rose = after_a_triumph.trust_that(TrustIn::Craft, Aspect::Competence) - before;
+    assert!(
+        rose > fell,
+        "one botched job counted for more than one masterpiece ({fell:.3} against {rose:.3})"
+    );
+}
+
+/// **Coercion is not character.**
+///
+/// A man who steals with a knife at his back has shown you something
+/// about what he will do under duress and very little about what he is.
+#[test]
+fn a_coerced_act_says_less_about_the_man() {
+    let (_folk, id) = a_village();
+    let steady = shown(0.8, Aspect::Integrity, TrustIn::Money);
+
+    let mut freely = Relationship::strangers(id[0], id[1]);
+    let mut forced = Relationship::strangers(id[0], id[2]);
+    for d in 0..150 {
+        freely.saw(&steady, d);
+        forced.saw(&steady, d);
+    }
+    freely.saw(&shown(-1.0, Aspect::Integrity, TrustIn::Money), 151);
+    forced.saw(
+        &Evidence {
+            contact: 1.0,
+            reliability: -1.0,
+            reliability_in: Some(TrustIn::Money),
+            reliability_about: Aspect::Integrity,
+            // He did it, and it was not his idea.
+            telling: Diagnosticity { responsibility: 0.2, intentional: 0.3, ..Default::default() },
+            ..Default::default()
+        },
+        151,
+    );
+
+    assert!(
+        forced.trust_that(TrustIn::Money, Aspect::Integrity)
+            > freely.trust_that(TrustIn::Money, Aspect::Integrity) + 0.2,
+        "a man with a knife at his back is judged like a man with a plan"
+    );
+    // It still lowers what you would predict of him under pressure.
+    assert!(
+        forced.trust_that(TrustIn::Money, Aspect::Integrity) < 0.8,
+        "being robbed by him at knifepoint changed nothing at all"
+    );
+}
+
+/// **Low expectation, high certainty.**
+///
+/// Two quantities cannot say what being robbed does. After a clear theft
+/// a man may be *very sure* the thief is untrustworthy, and separately
+/// have no idea what else the fellow might do.
+#[test]
+fn certainty_expectation_and_volatility_are_three_things() {
+    let (_folk, id) = a_village();
+    let mut r = Relationship::strangers(id[0], id[1]);
+    for d in 0..200 {
+        r.saw(&shown(0.8, Aspect::Integrity, TrustIn::Money), d);
+    }
+    let settled = r.volatility_of(TrustIn::Money, Aspect::Integrity);
+    assert!(settled < 0.1, "a steady man read as unpredictable");
+
+    r.saw(&shown(-1.0, Aspect::Integrity, TrustIn::Money), 201);
+
+    assert!(
+        r.trust_that(TrustIn::Money, Aspect::Integrity) < 0.3,
+        "he would still hand over the takings"
+    );
+    assert!(
+        r.sureness_of_trust(TrustIn::Money) > 0.3,
+        "watching a man steal left him unsure of anything"
+    );
+    assert!(
+        r.volatility_of(TrustIn::Money, Aspect::Integrity) > settled + 0.2,
+        "the contradiction did not make the man harder to predict"
+    );
+}
+
+/// **Disproving it restores what it discounted.**
+///
+/// The history is kept and not deleted, so a man cleared of a theft does
+/// not have to earn two hundred days of trust over again.
+#[test]
+fn exoneration_gives_back_the_years() {
+    let (_folk, id) = a_village();
+    let mut r = Relationship::strangers(id[0], id[1]);
+    for d in 0..200 {
+        r.saw(&shown(0.8, Aspect::Integrity, TrustIn::Money), d);
+    }
+    let earned = r.trust_that(TrustIn::Money, Aspect::Integrity);
+
+    r.saw(&shown(-1.0, Aspect::Integrity, TrustIn::Money), 201);
+    assert!(r.trust_that(TrustIn::Money, Aspect::Integrity) < 0.3);
+
+    // It was not him.
+    r.disproved(TrustIn::Money, Aspect::Integrity);
+    assert!(
+        (r.trust_that(TrustIn::Money, Aspect::Integrity) - earned).abs() < 0.02,
+        "clearing him left him having to earn two hundred days over again ({:.2} against {earned:.2})",
+        r.trust_that(TrustIn::Money, Aspect::Integrity)
+    );
+}
+
+/// **A betrayal over money does not erase unrelated competence.**
+#[test]
+fn stealing_the_money_does_not_make_him_a_coward() {
+    let (_folk, id) = a_village();
+    let mut r = Relationship::strangers(id[0], id[1]);
+    for d in 0..80 {
+        r.saw(&shown(0.9, Aspect::Competence, TrustIn::Danger), d);
+        r.saw(&shown(0.8, Aspect::Integrity, TrustIn::Money), d);
+    }
+    let beside_him = r.trust_that(TrustIn::Danger, Aspect::Competence);
+    r.saw(&shown(-1.0, Aspect::Integrity, TrustIn::Money), 81);
+
+    assert!(r.trust_that(TrustIn::Money, Aspect::Integrity) < 0.3);
+    assert_eq!(
+        r.trust_that(TrustIn::Danger, Aspect::Competence),
+        beside_him,
+        "the thief became useless in a fight"
     );
 }

@@ -124,6 +124,10 @@ fn cuts_through_db(kind: EventKind) -> f64 {
 /// to about 25 m; beyond that you have a figure and a coat.
 const RECOGNITION_M: f64 = 25.0;
 
+/// **Reading a face** — an expression is legible to about ten metres,
+/// which is a good deal closer than merely knowing who somebody is.
+const EXPRESSION_M: f64 = 10.0;
+
 /// **Where somebody is when it happens.**
 #[derive(Clone, Debug, PartialEq)]
 pub enum Vantage {
@@ -149,6 +153,38 @@ pub enum Context {
     Unit(u32),
 }
 
+/// **Which channels actually got through.**
+///
+/// Not a single "did they perceive it": a man facing away hears every
+/// word and misses the smile, and that is the difference between friendly
+/// teasing and mockery. Treating him as simply not having perceived it
+/// would veto the joke rather than let it be *misread*, which is a much
+/// poorer thing to model.
+///
+/// So a joke can fail to land through **interpretation** rather than
+/// through a visibility rule — and the speaker only finds out if they
+/// perceive the reply.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct Cues {
+    /// What was said.
+    pub words: bool,
+    /// How it was said — timing, and the tone that carries irony.
+    pub prosody: bool,
+    /// The face it was said with.
+    pub expression: bool,
+    /// Hands, posture, and who it was aimed at.
+    pub gesture: bool,
+}
+
+impl Cues {
+    /// How much of the delivery arrived, 0 to 1. Missing the visual half
+    /// is what makes a remark ambiguous.
+    pub fn completeness(self) -> f64 {
+        let n = self.words as u8 + self.prosody as u8 + self.expression as u8 + self.gesture as u8;
+        n as f64 / 4.0
+    }
+}
+
 /// What somebody got, and how.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Witnessing {
@@ -158,6 +194,8 @@ pub struct Witnessing {
     /// seeing who did it are two different perceptions, and the gap
     /// between them is where mistaken identity lives.
     pub could_identify: bool,
+    /// Which channels got through.
+    pub cues: Cues,
 }
 
 /// Nothing reached them.
@@ -202,27 +240,38 @@ pub fn from_the_ground(
         return OBLIVIOUS;
     }
 
+    // **An expression needs to be close as well as visible.** You can see
+    // that a man is standing there at fifty metres and not that he is
+    // smiling.
+    let cues = Cues {
+        words: heard,
+        prosody: heard && over_ambient > 6.0,
+        expression: seen && distance <= EXPRESSION_M,
+        gesture: seen && distance <= RECOGNITION_M * 4.0,
+    };
+
     if seen && sharpness > 0.35 {
-        // Close enough, and a clear line: they saw it and can say who.
         Some(Witnessing {
             exposure: (0.5 + 0.5 * sharpness).min(1.0),
             source: Source::Witnessed,
             could_identify: true,
+            cues,
         })
     } else if seen {
-        // A clear line and too far to be sure of a face. They watched it
-        // happen and could not tell you who.
         Some(Witnessing {
             exposure: (0.25 + 0.5 * sharpness).min(0.7),
             source: Source::Witnessed,
             could_identify: false,
+            cues,
         })
     } else {
-        // Heard it through a wall or round a corner.
+        // Heard it through a wall or round a corner: every word and no
+        // face at all.
         Some(Witnessing {
             exposure: (over_ambient / 40.0).clamp(0.05, 0.5),
             source: Source::Overheard,
             could_identify: false,
+            cues,
         })
     }
 }
@@ -260,6 +309,8 @@ pub fn in_the_settlement(
         exposure,
         source: Source::Witnessed,
         could_identify: exposure > 0.4,
+        // In the same room: everything.
+        cues: Cues { words: true, prosody: true, expression: true, gesture: true },
     })
 }
 
@@ -294,6 +345,9 @@ pub fn told(kind: EventKind, hops: u8, teller: Id<Person>) -> Option<Witnessing>
         // **Second-hand identity is the weakest link in the chain**, and
         // it is where a rumour blames the wrong man.
         could_identify: hops <= 1,
+        // **Being told carries the words and nothing else** — which is
+        // most of why a remark repeated to you sounds worse than it was.
+        cues: Cues { words: true, ..Default::default() },
     })
 }
 

@@ -150,8 +150,11 @@ pub struct Relationship {
     /// How well they know them. Rises with any contact at all.
     pub familiarity: f64,
     affection_of: Estimate,
-    trust: [Estimate; 6],
-    respect: [Estimate; 4],
+    /// **Domain by aspect.** Would he, and could he, are two questions
+    /// about every kind of reliability — and one dishonest act answers
+    /// the first while one bungle barely touches the second.
+    trust: Vec<[Estimate; 2]>,
+    respect: Vec<Estimate>,
     fear_of: Estimate,
     gratitude_to: Estimate,
     /// Perceived duty or debt. Not the same as the objective one.
@@ -173,8 +176,8 @@ impl Relationship {
             object,
             familiarity: 0.0,
             affection_of: Estimate::default(),
-            trust: [Estimate::default(); 6],
-            respect: [Estimate::default(); 4],
+            trust: (0..6).map(|_| [Estimate::default(), Estimate::default()]).collect(),
+            respect: (0..4).map(|_| Estimate::default()).collect(),
             fear_of: Estimate::default(),
             gratitude_to: Estimate::default(),
             obligation: 0.0,
@@ -212,7 +215,23 @@ impl Relationship {
         self.affection_of.confidence()
     }
     pub fn sureness_of_trust(&self, what: TrustIn) -> f64 {
-        self.trust[what.index()].confidence()
+        let i = what.index();
+        self.trust[i][0].confidence().max(self.trust[i][1].confidence())
+    }
+
+    /// **Would he, or could he?** The two halves of relying on somebody.
+    pub fn trust_that(&self, what: TrustIn, aspect: Aspect) -> f64 {
+        self.trust[what.index()][aspect as usize].value()
+    }
+
+    /// How unpredictable they have become in this respect.
+    pub fn volatility_of(&self, what: TrustIn, aspect: Aspect) -> f64 {
+        self.trust[what.index()][aspect as usize].volatility()
+    }
+
+    /// The accusation was false. Restores what it discounted.
+    pub fn disproved(&mut self, what: TrustIn, aspect: Aspect) {
+        self.trust[what.index()][aspect as usize].disproved_the_last();
     }
 
     pub fn trust_in(&self, what: TrustIn) -> f64 {
@@ -222,22 +241,29 @@ impl Relationship {
             let specific: Vec<f64> = TrustIn::ALL
                 .iter()
                 .filter(|t| **t != TrustIn::General)
-                .map(|t| self.trust[t.index()].value())
+                .map(|t| combine(&self.trust[t.index()]))
                 .filter(|v| *v != 0.0)
                 .collect();
             if specific.is_empty() {
-                return self.trust[0].value();
+                // **Whichever aspects have been seen**, averaged — not
+                // the larger of them. Taking the maximum reported an
+                // untrustworthy man as neutral, because the aspect
+                // nobody had looked at read as zero.
+                return combine(&self.trust[0]);
             }
             let mean = specific.iter().sum::<f64>() / specific.len() as f64;
             // **No general impression is not a bad one.** Diluting the
             // summary toward zero would make somebody proven reliable in
             // every particular look only middlingly trustworthy.
-            if self.trust[0].value() == 0.0 {
+            let general = self.trust[0][0].value();
+            if general == 0.0 {
                 return mean;
             }
-            return 0.4 * self.trust[0].value() + 0.6 * mean;
+            return 0.4 * general + 0.6 * mean;
         }
-        self.trust[what.index()].value()
+        // **Relying on somebody needs both halves.** Whichever aspects
+        // have been seen at all, averaged.
+        combine(&self.trust[what.index()])
     }
 
     pub fn respect_for(&self, what: RespectFor) -> f64 {
@@ -275,6 +301,13 @@ pub struct Evidence {
     /// They came through, or they did not — and at what.
     pub reliability: f64,
     pub reliability_in: Option<TrustIn>,
+    /// **Would he, or could he.** Theft is about integrity; bad
+    /// bookkeeping is about competence, and they are not the same news.
+    pub reliability_about: Aspect,
+    /// **How much this was worth seeing.** A day on which nobody could
+    /// have stolen anything shows nothing about honesty; a theft under
+    /// duress shows less about character than one for gain.
+    pub telling: Diagnosticity,
     /// They were good at something, or admirable, or important.
     pub esteem: f64,
     pub esteem_for: Option<RespectFor>,
@@ -295,6 +328,12 @@ impl Default for TrustIn {
     }
 }
 
+impl Default for Aspect {
+    fn default() -> Self {
+        Aspect::Integrity
+    }
+}
+
 /// How fast each dimension moves. **They are deliberately not equal**:
 /// familiarity comes free with contact, trust is slow to build, and a
 /// betrayal is fast.
@@ -305,83 +344,228 @@ const TRUST_DOWN: f64 = 0.45;
 const RESPECT_RATE: f64 = 0.08;
 const FEAR_RATE: f64 = 0.30;
 
-/// **How much is believed, and how firmly.**
+/// **What an observation was worth as evidence.**
 ///
-/// Magnitude and confidence are different things, and collapsing them
-/// loses something real: one polite act and thirty years of unbroken
-/// civility may both imply affection of about 0.1, and the second should
-/// be far harder for one rude afternoon to overturn.
-///
-/// So an estimate carries the *weight of evidence behind it*, and a new
-/// observation is folded in as a weighted mean. Repetition then buys
-/// **confidence in a modest conclusion** rather than a larger one.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
-pub struct Estimate {
-    magnitude: f64,
-    weight: f64,
+/// Not "was it bad" — how much it *tells you*. A man who never had the
+/// chance to steal has shown you nothing about whether he would.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Diagnosticity {
+    /// How clearly it was observed.
+    pub quality: f64,
+    /// **Was there a chance to do otherwise.** Two hundred uneventful
+    /// days are not two hundred observed honesty opportunities: mere time
+    /// without theft is not the same as handing back money when nobody
+    /// would have known.
+    pub opportunity: f64,
+    /// Was it theirs to answer for.
+    pub responsibility: f64,
+    /// Deliberate, or an accident.
+    pub intentional: f64,
 }
 
-/// Beyond this, nobody's mind is ever changed again. A ceiling exists so
-/// that a long enough history cannot become unfalsifiable.
+impl Default for Diagnosticity {
+    fn default() -> Self {
+        Diagnosticity { quality: 1.0, opportunity: 1.0, responsibility: 1.0, intentional: 1.0 }
+    }
+}
+
+/// **What sort of judgement an act bears on.**
+///
+/// The asymmetry is not universal and must not be applied as one.
+/// Impression-updating work finds negative behaviour especially
+/// diagnostic for **morality** and positive behaviour more diagnostic for
+/// **ability** *(Mende-Siedlecki et al.)*: one dishonest act says a great
+/// deal about honesty, and one failure says little about competence,
+/// while one brilliant performance says a lot.
+///
+/// So `if negative { weight *= 2.5 }` is wrong. Which way the asymmetry
+/// runs depends on what is being judged.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Aspect {
+    /// Would they? A moral judgement.
+    Integrity,
+    /// Could they? A judgement of capability.
+    Competence,
+}
+
+impl Aspect {
+    /// How much more an observation counts, given its sign.
+    fn asymmetry(self, evidence: f64) -> f64 {
+        match (self, evidence < 0.0) {
+            // **One dishonest act is worth many honest ones.** Six, and
+            // the figure is doing real work: it is what lets a clear
+            // deliberate theft nearly eliminate the predictive weight of
+            // two hundred ordinary transactions, rather than being
+            // averaged against them.
+            (Aspect::Integrity, true) => 6.0,
+            (Aspect::Integrity, false) => 1.0,
+            // Failure at something hard says little; a brilliant
+            // performance says a great deal.
+            (Aspect::Competence, true) => 0.6,
+            (Aspect::Competence, false) => 1.8,
+        }
+    }
+}
+
+impl Diagnosticity {
+    /// 0 to 1: how much this observation is worth knowing.
+    pub fn worth(&self, aspect: Aspect, evidence: f64) -> f64 {
+        (self.quality * self.opportunity * self.responsibility.max(0.05)
+            * (0.3 + 0.7 * self.intentional)
+            * aspect.asymmetry(evidence)
+            * evidence.abs())
+        .clamp(0.0, 6.0)
+    }
+}
+
+/// **One stretch of time during which a model of somebody held.**
+///
+/// Kept rather than deleted, so that disproving what ended it can bring
+/// it back. Two hundred days of honesty do not have to be lived again
+/// because an accusation turned out to be false.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Epoch {
+    magnitude: f64,
+    weight: f64,
+    /// How much of it still predicts anything. A rupture discounts this;
+    /// exoneration restores it.
+    live: f64,
+}
+
+/// **What somebody expects of another, and how much they can rely on
+/// expecting it.**
+///
+/// Three quantities, because two cannot say what being robbed does. After
+/// a clear theft a man may be *very sure* the thief is untrustworthy —
+/// high certainty about a low expectation — while his old model of the
+/// man is dead and he has no idea what else the fellow might do.
+///
+/// | | after watching a theft |
+/// |---|---|
+/// | expectation | **low** — he will not safeguard money |
+/// | precision | **high** — and I am sure of it |
+/// | volatility | **high** — I no longer know what he may do |
+///
+/// Collapsing precision and volatility into one "confidence" says the
+/// observer became *less* certain, which is the opposite of what
+/// happened.
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct Estimate {
+    epochs: Vec<Epoch>,
+    volatility: f64,
+}
+
+/// Beyond this, nobody's mind is ever changed again.
 const MOST_EVIDENCE: f64 = 40.0;
 
-/// **Bad is stronger than good.** Negative information weighs more
-/// heavily in forming an impression than positive information of the same
-/// size — one of the better-replicated findings in the area *(Baumeister;
-/// Rozin & Royzman)* — so an unkindness is more diagnostic than a
-/// kindness.
-const NEGATIVITY_BIAS: f64 = 2.5;
-
-/// **A severe betrayal is not another data point.**
-///
-/// A weighted mean alone makes a long history nearly immovable, which is
-/// right for civility and wrong for treachery: one clear defection
-/// reveals a *disposition*, and what it actually does to somebody is
-/// invalidate the history rather than be averaged against it. "I did not
-/// know him at all" is the ordinary way of saying that the prior weight
-/// has just been discounted.
-///
-/// Which is why trust is hard to build and easy to destroy — not because
-/// the numbers move at different rates, but because one of them throws
-/// the evidence away.
-const BETRAYAL: f64 = 0.7;
-const BETRAYAL_DISCOUNT: f64 = 5.0;
-
 impl Estimate {
-    pub fn value(self) -> f64 {
-        self.magnitude
+    /// Expected behaviour: a weighted mean over what still predicts.
+    pub fn value(&self) -> f64 {
+        let w: f64 = self.epochs.iter().map(|e| e.weight * e.live).sum();
+        if w <= 0.0 {
+            return 0.0;
+        }
+        self.epochs.iter().map(|e| e.magnitude * e.weight * e.live).sum::<f64>() / w
     }
 
-    /// How much has been seen, against as much as anybody ever weighs.
-    /// Somebody you have watched for years is harder to be wrong about —
-    /// and harder to change your mind about.
+    /// **How sure they are of the estimate they now hold.** Not how sure
+    /// they are that the person will stay that way — that is volatility.
+    pub fn confidence(&self) -> f64 {
+        let w: f64 = self.epochs.iter().map(|e| e.weight * e.live).sum();
+        (w / MOST_EVIDENCE).min(1.0)
+    }
+
+    /// **The chance that what somebody has done stops predicting what
+    /// they will do.** Raised by contradiction, and it is what makes the
+    /// *next* surprise easier to accept.
+    pub fn volatility(&self) -> f64 {
+        self.volatility
+    }
+
+    /// Take in one observation.
     ///
-    /// **Measured against the ceiling** rather than an arbitrary
-    /// fraction of it, so that a betrayal discounting the history is
-    /// visible as a loss of confidence and not merely of regard: being
-    /// robbed does not leave you as sure of a man as you ever were.
-    pub fn confidence(self) -> f64 {
-        (self.weight / MOST_EVIDENCE).min(1.0)
-    }
-
-    /// Take in one observation. `telling` is how diagnostic this sort of
-    /// evidence is at all.
-    fn observe(&mut self, evidence: f64, telling: f64) {
+    /// **The general mechanism is a model rupture, not a special case for
+    /// betrayal.** Evidence that strongly contradicts the prior, and that
+    /// is worth believing, makes the old evidence stop predicting —
+    /// which is one appraisal of a contradiction and not a law about
+    /// treachery. The same machinery will later carry conversion,
+    /// rehabilitation, coercion, injury and genuine change of character,
+    /// none of which need an override.
+    fn observe(&mut self, evidence: f64, aspect: Aspect, d: &Diagnosticity) {
         let e = evidence.clamp(-1.0, 1.0);
         if e == 0.0 {
             return;
         }
-        let bias = if e < 0.0 { NEGATIVITY_BIAS } else { 1.0 };
-        if e < -BETRAYAL {
-            self.weight /= BETRAYAL_DISCOUNT;
+        let k = d.worth(aspect, e);
+        if k <= 0.001 {
+            // **Nothing was shown.** A day on which nobody could have
+            // stolen anything is not a day of demonstrated honesty.
+            return;
         }
-        let k = telling * bias * e.abs();
-        self.magnitude = (self.magnitude * self.weight + e * k) / (self.weight + k);
-        self.weight = (self.weight + k).min(MOST_EVIDENCE);
+        let prior = self.value();
+        let prior_weight: f64 = self.epochs.iter().map(|x| x.weight * x.live).sum();
+
+        // How far this cuts against what was believed, and how much that
+        // belief was worth in the first place.
+        let contradiction = ((prior - e).abs() / 2.0).clamp(0.0, 1.0)
+            * (prior_weight / MOST_EVIDENCE).min(1.0);
+        let confident_in_it = (k / 6.0).min(1.0);
+        // Somebody who already believes people change abandons a model
+        // faster; somebody who believes they do not resists.
+        let rupture =
+            (contradiction * confident_in_it * (0.75 + 0.25 * self.volatility)).clamp(0.0, 0.95);
+
+        if rupture > 0.05 {
+            for old in self.epochs.iter_mut() {
+                old.live *= 1.0 - rupture;
+            }
+            // A contradiction is itself evidence that this person is
+            // harder to predict than was assumed.
+            self.volatility = (self.volatility + rupture * 0.8).min(1.0);
+            self.epochs.push(Epoch { magnitude: e, weight: k, live: 1.0 });
+            return;
+        }
+
+        // Otherwise fold it into the current model.
+        match self.epochs.last_mut() {
+            Some(cur) => {
+                let w = cur.weight * cur.live;
+                cur.magnitude = (cur.magnitude * w + e * k) / (w + k);
+                cur.weight = (cur.weight + k).min(MOST_EVIDENCE);
+                cur.live = 1.0;
+            }
+            None => self.epochs.push(Epoch { magnitude: e, weight: k, live: 1.0 }),
+        }
+        self.volatility *= 0.995;
+    }
+
+    /// **What ended the old model turned out to be false.**
+    ///
+    /// Drops the epoch that caused the rupture and restores what it
+    /// discounted — so a man cleared of a theft does not have to earn two
+    /// hundred days of trust over again.
+    pub fn disproved_the_last(&mut self) {
+        if self.epochs.len() < 2 {
+            return;
+        }
+        self.epochs.pop();
+        for e in self.epochs.iter_mut() {
+            e.live = 1.0;
+        }
+        self.volatility *= 0.5;
     }
 }
 
-/// **A trivial act cannot take you past what a trivial act is worth.**
+/// **Would he, and could he**, averaged over whichever has been seen.
+fn combine(d: &[Estimate; 2]) -> f64 {
+    let seen: Vec<f64> = d.iter().map(|e| e.value()).filter(|v| *v != 0.0).collect();
+    if seen.is_empty() {
+        return 0.0;
+    }
+    seen.iter().sum::<f64>() / seen.len() as f64
+}
+
+/// **A trivial act cannot take you past what a trivial act is worth.**/// **A trivial act cannot take you past what a trivial act is worth.**
 ///
 /// Approaching a target rather than accumulating is *most* of saturation
 /// and not all of it: aiming every piece of evidence at ±1 and varying
@@ -416,25 +600,26 @@ impl Relationship {
             self.familiarity = toward(self.familiarity, 1.0, FAMILIARITY_RATE * e.contact);
         }
         if e.warmth != 0.0 {
-            self.affection_of.observe(e.warmth, 1.0);
+            self.affection_of.observe(e.warmth, Aspect::Integrity, &Diagnosticity::default());
         }
         if e.reliability != 0.0 {
             // **Reliability is the most diagnostic thing anybody shows
             // you**, which is why trust is what a betrayal wrecks.
             let which = e.reliability_in.unwrap_or(TrustIn::General);
-            self.trust[which.index()].observe(e.reliability, 1.6);
+            let a = e.reliability_about;
+            self.trust[which.index()][a as usize].observe(e.reliability, a, &e.telling);
         }
         if e.esteem != 0.0 {
             let which = e.esteem_for.unwrap_or(RespectFor::General);
-            self.respect[which.index()].observe(e.esteem, 1.0);
+            self.respect[which.index()].observe(e.esteem, Aspect::Competence, &e.telling);
         }
         if e.menace != 0.0 {
             // Menace is read fast and forgotten slowly: one frightening
             // encounter tells you a great deal.
-            self.fear_of.observe(e.menace.clamp(0.0, 1.0), 3.0);
+            self.fear_of.observe(e.menace.clamp(0.0, 1.0), Aspect::Integrity, &Diagnosticity::default());
         }
         if e.kindness != 0.0 {
-            self.gratitude_to.observe(e.kindness, 2.0);
+            self.gratitude_to.observe(e.kindness, Aspect::Integrity, &Diagnosticity::default());
         }
         if e.owing != 0.0 {
             self.obligation = (self.obligation + e.owing).clamp(-1.0, 1.0);

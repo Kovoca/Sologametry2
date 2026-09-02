@@ -3325,6 +3325,68 @@ him later closes the grievance and changes the attribution while leaving
 what he originally saw untouched. A fabricated rumour can also name
 nobody at all, which no person handle could express.
 
+### Contradictory, diagnostic evidence can stop a history predicting
+
+The mechanism, and "betrayal invalidates history" was a special case
+wearing its clothes. Betrayal is evidence that the old model may no
+longer predict the person — **not proof of why**. After a trusted man
+steals, several explanations survive: he was dishonest all along and the
+old evidence was weak; his disposition changed; he was coerced or
+desperate; it was a misunderstanding; or the observer named the wrong
+man. "I never knew him" is *one appraisal* of the contradiction and must
+not be a rule the evidence emits.
+
+```text
+diagnosticity = quality x opportunity x responsibility x intentionality
+rupture       = contradiction x diagnosticity x perceived volatility
+retained      = old weight x (1 - rupture)
+```
+
+The same machinery will later carry conversion, rehabilitation,
+coercion, injury and genuine change of character, none of which need an
+override.
+
+- **Three quantities, not two.** Expectation, precision and volatility.
+  Two cannot say what being robbed does: *low* expectation (he will not
+  safeguard money), **high** precision (and I am sure of it), **high**
+  volatility (I no longer know what he may do). Collapsing the last two
+  into one "confidence" says the observer became *less* certain, which is
+  the opposite of what happened.
+- **Keep the discounted history, do not delete it.** Evidence lives in
+  epochs, so disproving what caused the rupture restores what it
+  discounted — a man cleared of a theft does not earn two hundred days of
+  trust over again.
+- **Negativity bias is diagnostic, not universal.** `if negative {
+  weight *= 2.5 }` is wrong. Negative behaviour is especially diagnostic
+  for **morality** and positive behaviour for **ability** *(Mende-
+  Siedlecki et al.)*: one dishonest act says a great deal about honesty,
+  one failure says little about capability, one brilliant performance
+  says a lot. So deliberate theft wrecks integrity and leaves competence;
+  careless bookkeeping damages competence and barely touches integrity.
+- **Time is not evidence.** Two hundred uneventful days are not two
+  hundred observed honesty opportunities — mere time without theft is not
+  the same as handing back money when nobody would have known. Without an
+  `opportunity` term a man proves himself by never being tempted.
+- **Coercion is not character.** A man who steals with a knife at his
+  back has shown you what he does under duress and little about what he
+  is, so `responsibility` and `intentionality` discount the inference
+  without erasing it.
+
+### Facing away takes the face, not the words
+
+Perception is **modality-specific**, and a wall between two people is not
+a veto. Through it a listener gets every word and the tone; what they
+lose is the expression, the gesture and who the remark was aimed at. An
+expression is legible to about **10 m** against a face being
+recognisable at 25, so a remark shouted across a yard falls into the gap
+too.
+
+That is worth much more than a perception veto, because it lets a remark
+be **misread rather than unheard** — friendly teasing taken as mockery
+for want of the grin that came with it. Being *told* something carries
+the words alone, which is most of why a remark repeated to you sounds
+worse than it was.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
