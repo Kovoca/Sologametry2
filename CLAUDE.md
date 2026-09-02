@@ -2806,6 +2806,47 @@ firm's payroll, the household pool that tracked gap 1 is about — it hands
 Alice's savings to Bob and **every conservation check still passes**,
 because the money went somewhere.
 
+### An estate goes somewhere
+
+A dead person's money used to go **nowhere**: they were overwritten and
+their replacement handed fifty out of the air. Money was destroyed at one
+end of the sample and created at the other, and nothing caught it, because
+a person's pocket is not yet inside the money ledger *(tracked gap 1)*.
+
+**Intestate succession**, which is what applies to about two thirds of
+Americans — **67% die without a will**. Every state runs the same ladder:
+
+1. the **spouse**;
+2. failing that, the **surviving children**, in equal shares;
+3. failing that, the **parents**;
+4. failing all of it, the estate **escheats to the state**.
+
+- **Escheat is genuinely rare**, because almost everybody has somebody.
+  Unclaimed property is not: US states hold something like **$70bn** of
+  it. Escheated estates are recorded rather than discarded — a number
+  that vanishes is a number nobody can check.
+- **No estate tax, and that is realistic.** The federal exemption is about
+  $13.6M, so it touches roughly one estate in a thousand and none of
+  these.
+- **A couple is two people and the sample knows only one of them.**
+  Households are drawn per sampled person, so nothing said *which* couple
+  — and with nobody married, almost every estate would escheat, which is
+  the opposite of the truth. Couples in the same market are paired off in
+  slot order; an odd one out stays single, which is honest, because their
+  spouse is one of the people the sample did not draw.
+- **The roof and the wheels go with it.** An heir who inherits a house
+  stops paying rent, which is most of how property stays in a family
+  across a generation.
+- **Probate runs before the slot is reused**, or there is nobody left to
+  read an estate off. And it is `pub` for the same reason `biota::settle`
+  is: a ladder with four rungs cannot be checked by running six years and
+  hoping the right deaths happen.
+
+**This is the first thing in the model to hold another person's handle
+across a day**, and it is why identity had to become durable first: a
+spouse stored as an index would have pointed at whoever moved into the
+slot.
+
 One rule fell out of the migration: **one way into the sample.** A birth
 used to `push` onto the people, households and represents arrays at once,
 which is only right while nothing is ever removed — once a death frees a

@@ -21,6 +21,7 @@
 //! market they are in, relationships, beliefs, or a life beyond earning
 //! and eating. Those are specced (A3, B1, B6) and unbuilt.
 
+use crate::id::Id;
 use crate::econ::{Commodity, Economy};
 use crate::building::Fixture;
 use crate::travel::Conveyance;
@@ -744,7 +745,20 @@ pub struct Person {
     /// take-home wage in England**, and after-school care for a five to
     /// eleven year old is **17%**. That cliff is why maternal employment
     /// with under-fives is **just over 60%** against about 75% overall.
+    /// Ages of dependent children still at home. They become people of
+    /// their own at sixteen.
     pub children: Vec<f64>,
+    /// **Who they are married to**, if anybody.
+    ///
+    /// The first thing in this model to hold another person's handle
+    /// across a day, and the reason the handle had to become durable
+    /// first: an index would have pointed at whoever moved into the slot.
+    pub spouse: Option<Id<Person>>,
+    /// **Who they came from.** Set when a child turns sixteen and becomes
+    /// a person in their own right. Children are not stored the other way
+    /// round — a cohort is small and scanning it on a death is cheaper
+    /// than keeping two lists that can disagree.
+    pub parents: Vec<Id<Person>>,
     /// **What share of a household's costs this person carries.**
     ///
     /// Everybody was living alone and paying a full rent, which is not how
@@ -872,6 +886,8 @@ impl Person {
             // Grown, and nobody's parent, until somebody says otherwise.
             age_years: 30.0,
             children: Vec::new(),
+            spouse: None,
+            parents: Vec::new(),
             days_homeless: 0,
             job: None,
             // **Ability varies from person to person**, and it has to be

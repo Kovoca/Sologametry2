@@ -25,6 +25,7 @@
 
 use crate::econ::Economy;
 use crate::id::{Arena, Id};
+use crate::travel::Conveyance;
 use crate::person::{
     day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
     Qualification, Trade,
@@ -107,6 +108,12 @@ pub struct Populace {
     /// property of the place in the sample rather than of the person: a
     /// replacement moves into the same household the deceased left.
     pub households: Vec<Household>,
+    /// **Estates that went to the state** because nobody was left to take
+    /// them. Kept rather than discarded, so the money can be accounted
+    /// for instead of quietly ceasing to exist.
+    pub escheated: f64,
+    /// Estates that passed to kin.
+    pub inherited: f64,
     /// Everyone who has died, so a run can be judged on the people it
     /// killed as well as the ones still standing.
     pub gone: Vec<(String, u64)>,
@@ -237,12 +244,46 @@ impl Populace {
             }
         }
 
-        Populace {
+        let mut folk = Populace {
+            escheated: 0.0,
+            inherited: 0.0,
             people,
             represents,
             households,
             gone: Vec::new(),
             rng,
+        };
+        folk.marry_the_couples();
+        folk
+    }
+
+    /// **A couple is two people, and the sample knows only one of them.**
+    ///
+    /// Households are drawn per sampled person — this one lives alone,
+    /// that one is half of a couple — so nothing said *which* couple. For
+    /// probate it has to: a spouse is the first rung of the ladder and by
+    /// far the commonest answer, since **the great majority of estates go
+    /// to one**, and a model where nobody is married would escheat almost
+    /// everything to the state.
+    ///
+    /// So couples in the same market are paired off, two at a time, in
+    /// slot order — deterministic, like everything else here. An odd one
+    /// out stays single, which is honest: their spouse is one of the
+    /// people the sample did not draw.
+    fn marry_the_couples(&mut self) {
+        let mut waiting: Vec<(usize, Id<Person>)> = Vec::new();
+        for id in self.people.ids().collect::<Vec<_>>() {
+            if !matches!(self.households[id.slot()], Household::Couple | Household::Family(_)) {
+                continue;
+            }
+            let market = self.people[id].market;
+            if let Some(pos) = waiting.iter().position(|(m, _)| *m == market) {
+                let (_, other) = waiting.remove(pos);
+                self.people[id].spouse = Some(other);
+                self.people[other].spouse = Some(id);
+            } else {
+                waiting.push((market, id));
+            }
         }
     }
 
@@ -484,6 +525,12 @@ impl Populace {
             p.aptitude = aptitude;
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
+            // **A child knows who it came from.** The first kinship link
+            // in the model, and it is what probate walks on a death.
+            p.parents.push(parent);
+            if let Some(other) = self.people[parent].spouse {
+                p.parents.push(other);
+            }
             let stands_for = self.represents.get(parent.slot()).copied().unwrap_or(1.0);
             self.settle(p, h, stands_for);
         }
@@ -581,6 +628,98 @@ impl Populace {
         id
     }
 
+    /// **Where a dead person's estate goes.**
+    ///
+    /// Until now it went nowhere: the deceased was overwritten and their
+    /// replacement handed fifty out of the air. Money was destroyed at one
+    /// end of the sample and created at the other, and nothing caught it,
+    /// because a person's pocket is not yet inside the money ledger.
+    ///
+    /// **Intestate succession**, which is what applies to about two thirds
+    /// of Americans — **67% die without a will**. Every state runs
+    /// essentially the same ladder, and it is the one asked for here:
+    ///
+    /// 1. the **spouse**;
+    /// 2. failing that, the **surviving children**, in equal shares;
+    /// 3. failing that, the **parents**;
+    /// 4. failing all of it, the estate **escheats to the state**.
+    ///
+    /// Escheat is genuinely rare, because most people have somebody — but
+    /// unclaimed property is not: US states are holding something like
+    /// **$70bn** of it. There is no estate tax here and that is realistic:
+    /// the federal exemption is about $13.6M, so it touches roughly one
+    /// estate in a thousand and none of these.
+    ///
+    /// **The house and the vehicle go with it**, to whoever takes the
+    /// largest share — which is the consequence worth having, because an
+    /// heir who inherits a house stops paying rent.
+    /// **Public so a test can hold everything still and vary one
+    /// thing**, the same reason `biota::settle` and `person::live_a_day`
+    /// are. A ladder with four rungs cannot be checked by running six
+    /// years and hoping the right deaths happen.
+    pub fn probate(&mut self, who: Id<Person>) {
+        let estate = self.people[who].money;
+        let house = self.people[who].housing;
+        let conveyance = self.people[who].conveyance;
+
+        // The ladder, stopping at the first rung with anybody living on
+        // it. A handle only counts if it still resolves — which is the
+        // whole reason identity had to become durable before this could
+        // be written at all.
+        let widow = self.people[who].spouse.filter(|s| self.people.holds(*s));
+        let spouse: Vec<Id<Person>> = widow.into_iter().collect();
+        let heirs = if !spouse.is_empty() {
+            spouse
+        } else {
+            let children: Vec<Id<Person>> = self
+                .people
+                .iter()
+                .filter(|(_, p)| p.parents.contains(&who))
+                .map(|(i, _)| i)
+                .collect();
+            if !children.is_empty() {
+                children
+            } else {
+                self.people[who]
+                    .parents
+                    .iter()
+                    .copied()
+                    .filter(|p| self.people.holds(*p))
+                    .collect()
+            }
+        };
+
+        // **Widowhood.** The survivor stops being married before the
+        // estate moves, so nobody is left holding a handle to a dead
+        // spouse — the arena would catch it, but a model that knows
+        // somebody is widowed is better than one that finds out by
+        // failing a lookup.
+        if let Some(widow) = widow {
+            self.people[widow].spouse = None;
+        }
+
+        if heirs.is_empty() {
+            // **Escheat.** Recorded rather than evaporated: a number that
+            // vanishes is a number nobody can check.
+            self.escheated += estate;
+            return;
+        }
+
+        let share = estate / heirs.len() as f64;
+        for &h in &heirs {
+            self.people[h].money += share;
+        }
+        // The principal heir takes the roof and the wheels.
+        let first = heirs[0];
+        if house == Housing::Owned && self.people[first].housing != Housing::Owned {
+            self.people[first].housing = Housing::Owned;
+        }
+        if self.people[first].conveyance == Conveyance::OnFoot {
+            self.people[first].conveyance = conveyance;
+        }
+        self.inherited += estate;
+    }
+
     /// **Somebody who starves is replaced, because the town has not
     /// shrunk.**
     ///
@@ -635,6 +774,9 @@ impl Populace {
             // resolving instead of quietly naming their successor.
             // Whoever moves in stands for the same number of real
             // people the deceased did — the town has not shrunk.
+            // **Probate first, while the deceased still resolves.** After
+            // the slot is reused there is nobody to read an estate off.
+            self.probate(i);
             let stands_for = self.represents.get(i.slot()).copied().unwrap_or(1.0);
             self.people.remove(i);
             self.settle(p, h, stands_for);

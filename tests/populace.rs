@@ -1,4 +1,4 @@
-
+﻿
 //! A town of people, not a number of them.
 
 use scale_sim::econ::{Doctrine, DAYS_PER_YEAR};
@@ -44,8 +44,8 @@ fn a_cohort_of_people_lives_in_the_economy_without_breaking_it() {
     // else, so conservation covers their work too.
     e.ledger.assert_conserved();
 
-    // **Nobody starves in a working nation.** People go hungry — that is
-    // the point of modelling a larder — but a prudent nation with its
+    // **Nobody starves in a working nation.** People go hungry â€” that is
+    // the point of modelling a larder â€” but a prudent nation with its
     // lights on should not be killing a tenth of its sample.
     let died = folk.gone.len() as f64 / folk.people.len() as f64;
     assert!(
@@ -68,7 +68,7 @@ fn a_cohort_of_people_lives_in_the_economy_without_breaking_it() {
 #[test]
 fn advancement_needs_a_vacancy_and_not_a_timer() {
     // **Gated on days worked alone, every labourer in a three-year run was
-    // made up to chargehand** — the whole cohort became supervisors, which
+    // made up to chargehand** â€” the whole cohort became supervisors, which
     // is not a workforce but a promotion timer with nobody to supervise.
     //
     // Real span of control is eight to fifteen, so about one in ten of a
@@ -209,7 +209,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
 
     // **The unevenness is the point.** 28.8% of the accommodation and
     // food workforce are on zero-hours contracts against 2.1% in public
-    // administration — a fourteenfold difference in whether you know you
+    // administration â€” a fourteenfold difference in whether you know you
     // have work next week.
     // **Measured on the designed contrast**, which is fourteenfold and
     // survives a cohort of forty: 28.8% of the accommodation and food
@@ -246,7 +246,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     if !casual.is_nan() {
         assert!(
             ft > casual,
-            "a full-time contract found {:.0}% of days against casual work's {:.0}% — \
+            "a full-time contract found {:.0}% of days against casual work's {:.0}% â€” \
              the contract is buying nothing",
             ft * 100.0,
             casual * 100.0
@@ -269,7 +269,7 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     // seasonal visa purely to get the harvest in, and 30-50% of winter
     // days in the North Sea are lost to weather outright.
     //
-    // The consequence is a year with a shape to it — earn hard for three
+    // The consequence is a year with a shape to it â€” earn hard for three
     // months and make it last nine, or move. A wage that is adequate in
     // August is nothing in February, and that is not unemployment, it is
     // the job.
@@ -312,8 +312,8 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     );
 
     // **Real agricultural labour swings about twofold.** A permanent hand
-    // on the same land sees some of that — the farm's own output is
-    // seasonal — but far less of it, which is the whole difference
+    // on the same land sees some of that â€” the farm's own output is
+    // seasonal â€” but far less of it, which is the whole difference
     // between the two ways of being employed.
     assert!(
         (1.4..3.5).contains(&seasonal),
@@ -338,8 +338,8 @@ fn the_week_decides_who_works_when() {
     // **A year of 365 days was being lived as 365 identical ones.** Real
     // working life is shaped by the week far more sharply than by the
     // season: an office keeps Monday to Friday, a shop is open seven days
-    // and is busiest at the weekend — real retail footfall peaks on
-    // Saturday at about 1.5 times a weekday — and a works or a hospital
+    // and is busiest at the weekend â€” real retail footfall peaks on
+    // Saturday at about 1.5 times a weekday â€” and a works or a hospital
     // runs a rota that does not care what day it is.
     //
     // Which is why part-time and student work *is* weekend work. Not a
@@ -423,12 +423,12 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // **Everybody was living alone and paying a full rent**, which is not
     // how people live. Real British composition: one person 30%, a couple
     // 27%, a couple with children 22%, a lone parent 10%, about 11%
-    // sharing or still at home — and the average household is 2.36
+    // sharing or still at home â€” and the average household is 2.36
     // people, with 28% of 20-34 year olds living with their parents.
     //
     // A household is cheaper per head than a person. The measure is the
     // **modified OECD equivalence scale**: first adult 1.0, each further
-    // adult 0.5, each child 0.3 — because a second person does not double
+    // adult 0.5, each child 0.3 â€” because a second person does not double
     // the rent, the heating or the cooking. A two-bed is not twice a
     // one-bed.
     use scale_sim::person::{household_share_for, Housing};
@@ -441,7 +441,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     assert!(household_share_for(4) < household_share_for(3));
 
     // **A quarter off the cost of living for moving in with somebody**,
-    // and that is not a rounding — it is the difference between a
+    // and that is not a rounding â€” it is the difference between a
     // part-time wage keeping a roof and not.
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 70, 20260828);
@@ -537,7 +537,7 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
     use scale_sim::person::{qualification_for, Person, Qualification};
 
     // The gate itself: no licence, no ticket, no training for the work
-    // anybody can do — and years for the work they cannot.
+    // anybody can do â€” and years for the work they cannot.
     assert_eq!(qualification_for(Trade::Shopworker), Qualification::School);
     assert_eq!(qualification_for(Trade::Hospitality), Qualification::School);
     assert_eq!(
@@ -590,7 +590,7 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
     let shop = scale_sim::person::day_rate(&e, 0, Trade::Shopworker);
     assert!(
         office > shop * 1.4,
-        "an office pays {office:.0} against a shop's {shop:.0} — the degree buys nothing"
+        "an office pays {office:.0} against a shop's {shop:.0} â€” the degree buys nothing"
     );
 }
 
@@ -600,7 +600,7 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
     //
     // The adults a world starts with have to be *given* qualifications in
     // the proportions the economy needs, or nothing functions on the first
-    // morning — there is no time for anybody to have been to a university.
+    // morning â€” there is no time for anybody to have been to a university.
     // A child born into the simulation has to actually go, which takes
     // years and costs money.
     //
@@ -643,15 +643,15 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
 
     // **And it costs to go.** A degree is three years earning nothing, so
     // whether a household can carry somebody for three years is what
-    // decides it — the mechanism by which advantage reproduces itself,
+    // decides it â€” the mechanism by which advantage reproduces itself,
     // needing no special rule because it is the arithmetic.
     //
     // Asserted on the *band* rather than the direction: with forty
     // children against three hundred adults the population effect is real
     // but far too weak to read off a sample this size. That is the third
     // time in this codebase a population correlation could not show a
-    // mechanism that is plainly there — the soil, the childcare, and now
-    // this — and the lesson each time is the same: hold everything still
+    // mechanism that is plainly there â€” the soil, the childcare, and now
+    // this â€” and the lesson each time is the same: hold everything still
     // and vary one thing.
     let end_degrees = share(&folk, Qualification::Degree);
     assert!(
@@ -676,7 +676,7 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
 }
 
 /// **Money alone does not finish a degree, and funding schools does not
-/// produce more graduates — it changes which ones.**
+/// produce more graduates â€” it changes which ones.**
 ///
 /// Peter's point, and the reason ability had to be a separate axis from
 /// diligence: there are people who will not reach a given level whatever
@@ -754,7 +754,7 @@ fn grades_gate_what_money_cannot_buy() {
         share * 100.0
     );
     // Real: graduates average about +0.67 SD in measured ability. Nothing
-    // sets this — it falls out of the floor and of odds that keep rising
+    // sets this â€” it falls out of the floor and of odds that keep rising
     // above it.
     assert!(
         (0.5..0.9).contains(&ability),
@@ -784,7 +784,7 @@ fn grades_gate_what_money_cannot_buy() {
         share_cut * 100.0,
         share * 100.0
     );
-    // What it does instead is change who they are — the university fills
+    // What it does instead is change who they are â€” the university fills
     // with less able people, because places go on background instead.
     assert!(
         ability_cut < ability - 0.10,
@@ -812,14 +812,14 @@ fn grades_gate_what_money_cannot_buy() {
 ///
 /// The cohort is a *sample* of a population the economy still counts in
 /// full, so somebody who starves is replaced and the sample stays the
-/// same size. That replacement used to be an overwrite in place —
-/// `self.people[i] = p` — so slot 7 was Alice the haulier on Monday and
+/// same size. That replacement used to be an overwrite in place â€”
+/// `self.people[i] = p` â€” so slot 7 was Alice the haulier on Monday and
 /// Bob the shop worker on Tuesday, and nothing in the model could tell.
 ///
 /// Nothing else holds a person's index across a day *yet*, which is the
-/// only reason it never bit. The moment anything does — a tenancy, a
+/// only reason it never bit. The moment anything does â€” a tenancy, a
 /// debt, a firm's payroll, the household pool that tracked gap 1 is
-/// about — it would hand Alice's savings to Bob, and **every
+/// about â€” it would hand Alice's savings to Bob, and **every
 /// conservation check in the model would still pass**, because the money
 /// went somewhere. That is the failure this is here to prevent: not a
 /// crash, a wrong answer that looks right.
@@ -838,7 +838,7 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
         folk.live_a_day(&mut e, day);
     }
 
-    // The sample has not shrunk — that is what replacement is for.
+    // The sample has not shrunk â€” that is what replacement is for.
     assert_eq!(
         folk.people.len(),
         before.len(),
@@ -877,3 +877,122 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
         );
     }
 }
+
+/// **A dead person's estate goes to their kin, and to the state only if
+/// there are none.**
+///
+/// Until now it went nowhere at all: the deceased was overwritten in
+/// place and their replacement handed fifty out of the air. Money was
+/// destroyed at one end of the sample and created at the other, and
+/// nothing caught it, because a person's pocket is not yet inside the
+/// money ledger.
+///
+/// **Intestate succession**, which is what applies to about two thirds of
+/// Americans â€” 67% die without a will. Every state runs the same ladder:
+/// spouse, then children in equal shares, then parents, and failing all
+/// of it the estate **escheats to the state**. Escheat is genuinely rare
+/// because most people have somebody; unclaimed property is not, and US
+/// states hold something like $70bn of it.
+///
+/// Four rungs cannot be checked by running six years and hoping the right
+/// deaths happen, so each is exercised on its own.
+#[test]
+fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
+    use scale_sim::id::Id;
+    use scale_sim::person::Person;
+
+    let e = a_nation().economy;
+
+    // --- the spouse takes it ---
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let married: Vec<(Id<Person>, Id<Person>)> = folk
+        .people
+        .iter()
+        .filter_map(|(i, p)| p.spouse.map(|s| (i, s)))
+        .collect();
+    assert!(
+        !married.is_empty(),
+        "nobody in the cohort is married, so almost every estate would \
+         escheat and the first rung of the ladder is never tested"
+    );
+    let (dies, widow) = married[0];
+    folk.people[dies].money = 900.0;
+    let widow_had = folk.people[widow].money;
+    folk.probate(dies);
+    assert_eq!(
+        folk.people[widow].money, widow_had + 900.0,
+        "the widow did not inherit"
+    );
+    assert_eq!(folk.escheated, 0.0, "an estate with a widow escheated");
+    assert_eq!(folk.inherited, 900.0);
+    assert_eq!(
+        folk.people[widow].spouse, None,
+        "the survivor is still married to a dead person"
+    );
+
+    // --- with no spouse, the children split it ---
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let ids: Vec<Id<Person>> = folk.people.ids().collect();
+    let (parent, a, b) = (ids[0], ids[1], ids[2]);
+    folk.people[parent].spouse = None;
+    folk.people[a].parents = vec![parent];
+    folk.people[b].parents = vec![parent];
+    folk.people[parent].money = 1000.0;
+    let (a_had, b_had) = (folk.people[a].money, folk.people[b].money);
+    folk.probate(parent);
+    assert_eq!(folk.people[a].money, a_had + 500.0, "children split the estate");
+    assert_eq!(folk.people[b].money, b_had + 500.0);
+    assert_eq!(folk.escheated, 0.0);
+
+    // --- with neither, it goes up to the parents ---
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let ids: Vec<Id<Person>> = folk.people.ids().collect();
+    let (dies, mother) = (ids[0], ids[1]);
+    folk.people[dies].spouse = None;
+    folk.people[dies].parents = vec![mother];
+    folk.people[dies].money = 300.0;
+    let had = folk.people[mother].money;
+    folk.probate(dies);
+    assert_eq!(folk.people[mother].money, had + 300.0, "the estate skipped the parents");
+
+    // --- and with nobody at all, the state takes it ---
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let alone = folk
+        .people
+        .ids()
+        .find(|&i| folk.people[i].spouse.is_none() && folk.people[i].parents.is_empty())
+        .expect("everybody in the cohort has kin");
+    folk.people[alone].money = 250.0;
+    folk.probate(alone);
+    assert_eq!(folk.escheated, 250.0, "an estate with no heir did not escheat");
+    assert_eq!(folk.inherited, 0.0);
+}
+
+/// **The roof and the wheels go with it.**
+///
+/// The consequence worth having, and the reason inheritance is not just a
+/// number moving: an heir who inherits a house stops paying rent, which
+/// is most of how property stays in a family across a generation.
+#[test]
+fn an_heir_inherits_the_house_and_the_vehicle() {
+    use scale_sim::person::Housing;
+    use scale_sim::travel::Conveyance;
+
+    let e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let (dies, widow) = folk
+        .people
+        .iter()
+        .find_map(|(i, p)| p.spouse.map(|s| (i, s)))
+        .expect("nobody is married");
+
+    folk.people[dies].housing = Housing::Owned;
+    folk.people[dies].conveyance = Conveyance::Van;
+    folk.people[widow].housing = Housing::Rented;
+    folk.people[widow].conveyance = Conveyance::OnFoot;
+
+    folk.probate(dies);
+    assert_eq!(folk.people[widow].housing, Housing::Owned, "the house did not pass");
+    assert_eq!(folk.people[widow].conveyance, Conveyance::Van, "the vehicle did not pass");
+}
+
