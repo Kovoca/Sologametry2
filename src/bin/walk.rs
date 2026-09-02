@@ -53,7 +53,7 @@ fn main() {
             "--plain" => plain = true,
             "--omniscient" => omniscient = true,
             "--help" | "-h" => {
-                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--plain] [--omniscient] [--where street|corner|lane|road|dual|motorway|shop|flats|house|works|edge]");
+                println!("usage: walk [--seed N] [--rank K] [--which 0-4] [--z N] [--plain] [--omniscient] [--where street|corner|lane|road|dual|motorway|shop|warehouse|flats|house|works|edge]");
                 std::process::exit(0);
             }
             other => {
@@ -98,7 +98,7 @@ fn main() {
 
     // Find somewhere worth standing.
     let want = match place.as_str() {
-        "shop" => Lot::Shop,
+        "shop" | "warehouse" => Lot::Shop,
         "flats" => Lot::Flats,
         "house" => Lot::House,
         "works" => Lot::Works,
@@ -240,6 +240,29 @@ fn main() {
     // supermarket is as likely to be a shelf as an aisle — and the player
     // came out standing inside the shelving. Nothing walks through
     // furniture, so step to the nearest tile that is actually floor.
+    // **Behind the partition, if that is what was asked for.** The dock
+    // and the racking are a separate room with the wall between, so the
+    // only way to look at them is to be in there.
+    if place == "warehouse" {
+        let mut best: Option<((i64, i64), i64)> = None;
+        for vy in 0..g.h {
+            for vx in 0..g.w {
+                if g.at(vx, vy) != Tile::Fitting(scale_sim::building::Fixture::LoadingBay) {
+                    continue;
+                }
+                let (gx, gy) = (g.origin.0 + vx as i64, g.origin.1 + vy as i64);
+                let d = (gx - centre.0).abs() + (gy - centre.1).abs();
+                if best.is_none_or(|(_, bd)| d < bd) {
+                    best = Some(((gx, gy), d));
+                }
+            }
+        }
+        if let Some((p, _)) = best {
+            // Stand on the apron in front of the bay, not on the bay.
+            centre = (p.0, p.1 - 3);
+        }
+    }
+
     if !g
         .at((centre.0 - g.origin.0) as usize, (centre.1 - g.origin.1) as usize)
         .walkable()

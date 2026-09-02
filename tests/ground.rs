@@ -1036,3 +1036,145 @@ fn a_shop_floor_can_be_walked_round() {
          way in that is not between two tills"
     );
 }
+
+/// **The back of house is a warehouse, and a warehouse is worked by
+/// machine.**
+///
+/// Racking stood on every other column with a *one-metre* gap between the
+/// runs — the same fault the sales floor had, except that back here the
+/// thing that has to get down the aisle is a forklift with a pallet on it.
+/// Real aisle widths: a counterbalance truck wants **3.0-3.6 m**, a reach
+/// truck 2.5-2.8, and only a wire-guided very-narrow-aisle machine will go
+/// below two. A pallet is 1.2 x 1.0 m and racking back to back is 2.4.
+///
+/// And a dock door is **3.0-3.5 m** wide with one per **10-12 m** of wall,
+/// lined up with the bay in front of it — a bay a lorry reverses onto is
+/// no use if the wall behind it is solid. Two metres every eight was a
+/// door a pallet would not fit through, twice as often as anybody builds
+/// them.
+#[test]
+fn a_stockroom_is_worked_by_forklift() {
+    let plan = a_city();
+    let at = stand_on(&plan, Lot::Shop);
+    let g = Ground::around(1, &plan, at, TILES_PER_PLOT * 2);
+    let idx = |x: usize, y: usize| y * g.w + x;
+
+    // **One building, not everything the window clips.** A view two plots
+    // across catches the back of the shop next door, and the racking in
+    // *that* is laid out on its own building's coordinates — so measuring
+    // over the whole window reads a gap between two separate stockrooms as
+    // a gangway a metre wide. Scope to the dock nearest the shopper and
+    // the walls either side of it.
+    let (px, py) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let dock_row = (0..g.h)
+        .filter(|y| (0..g.w).any(|x| g.tiles[idx(x, *y)] == Tile::Fitting(Fixture::LoadingBay)))
+        .min_by_key(|y| (*y as i64 - py).abs())
+        .expect("a shop with no dock");
+    let bay_x = (0..g.w)
+        .filter(|x| g.tiles[idx(*x, dock_row)] == Tile::Fitting(Fixture::LoadingBay))
+        .min_by_key(|x| (*x as i64 - px).abs())
+        .expect("a dock row with no bays");
+    let mut lo = bay_x;
+    while lo > 0 && g.tiles[idx(lo - 1, dock_row)] != Tile::Wall {
+        lo -= 1;
+    }
+    let mut hi = bay_x;
+    while hi + 1 < g.w && g.tiles[idx(hi + 1, dock_row)] != Tile::Wall {
+        hi += 1;
+    }
+    assert!(hi - lo > 20, "a dock only {} m wide", hi - lo);
+
+    // And bounded above by the partition, or the scan runs on into the
+    // back of the building behind this one.
+    // Walk up the bay's own column: it is certainly inside this building,
+    // and the first wall above it is the partition.
+    let mut top = dock_row;
+    while top > 0 && g.tiles[idx(bay_x, top - 1)] != Tile::Wall {
+        top -= 1;
+    }
+    assert!(dock_row - top >= 3, "a stockroom only {} m deep", dock_row - top);
+
+    let rack = |x: usize, y: usize| {
+        g.tiles[idx(x, y)] == Tile::Fitting(Fixture::StockRack)
+    };
+
+    // --- every gangway takes a forklift ---
+    //
+    // Measured, not inferred: walk each row and take the length of every
+    // run of floor with racking at both ends. That is the aisle, in
+    // metres.
+    let mut racks = 0;
+    let mut narrowest = usize::MAX;
+    for y in top..=dock_row {
+        let (mut run, mut after_rack) = (0usize, false);
+        for x in lo..=hi {
+            if rack(x, y) {
+                racks += 1;
+                if after_rack && run > 0 {
+                    narrowest = narrowest.min(run);
+                }
+                run = 0;
+                after_rack = true;
+            } else if g.tiles[idx(x, y)] == Tile::Floor {
+                run += 1;
+            } else {
+                run = 0;
+                after_rack = false;
+            }
+        }
+    }
+    // A single-plot shop, so a couple of dozen bays of racking. A
+    // superstore across three plots carries three times this.
+    assert!(racks > 20, "only {racks} tiles of racking in a stockroom");
+    assert!(
+        narrowest >= 3,
+        "the tightest gangway between two rack runs is {narrowest} m, and a \
+         counterbalance forklift needs three"
+    );
+
+    // --- the doors line up with the bays ---
+    let mut bays = 0;
+    let mut backed_by_a_door = 0;
+    for x in lo..=hi {
+        if g.tiles[idx(x, dock_row)] != Tile::Fitting(Fixture::LoadingBay) {
+            continue;
+        }
+        bays += 1;
+        if (1..=3).any(|d| dock_row + d < g.h && g.tiles[idx(x, dock_row + d)] == Tile::Door) {
+            backed_by_a_door += 1;
+        }
+    }
+    assert!(bays > 4, "only {bays} loading bays on this dock");
+    assert_eq!(
+        bays, backed_by_a_door,
+        "{} loading bays of {bays} have no door behind them, so the goods \
+         cannot come off the lorry",
+        bays - backed_by_a_door
+    );
+
+    // --- a service elevation is blank ---
+    //
+    // The glazing belongs on the shopfront, where it sells something.
+    // **Walked along the wall itself**, not over a band of rows: a couple
+    // of rows past the dock is the yard, and beyond that the frontage of
+    // whatever building stands on the far side of it, which is glazed
+    // quite correctly.
+    let wall_row = dock_row + 1;
+    assert!(wall_row < g.h, "a dock with no wall behind it");
+    let mut wx = bay_x;
+    while wx > 0 && matches!(g.tiles[idx(wx - 1, wall_row)], Tile::Wall | Tile::Door) {
+        wx -= 1;
+    }
+    let mut span = 0;
+    while wx < g.w && matches!(g.tiles[idx(wx, wall_row)], Tile::Wall | Tile::Door | Tile::Window)
+    {
+        assert_ne!(
+            g.tiles[idx(wx, wall_row)],
+            Tile::Window,
+            "a window at {wx},{wall_row} in the dock wall"
+        );
+        wx += 1;
+        span += 1;
+    }
+    assert!(span > 20, "a rear elevation only {span} m long");
+}

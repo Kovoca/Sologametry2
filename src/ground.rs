@@ -1508,6 +1508,13 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
     }
 }
 
+/// **A dock door is 3 m wide and there is one every 12 m of wall**
+/// *(real: 3.0-3.5 m, one per 10-12 m)*. Two metres every eight was a
+/// door a pallet would not fit through, twice as often as anybody builds
+/// them.
+const DOCK_DOOR: i64 = 3;
+const DOCK_SPACING: i64 = 12;
+
 /// **How many plots this shop actually occupies**, and which one it starts
 /// at. One for anything that is not a shop.
 ///
@@ -1687,10 +1694,18 @@ fn building_tile(
         // goods have to come through. Real docks are roller shutters,
         // which is a door that happens to be three metres wide.
         if lot == Lot::Shop && gz == 0 && iy == hi_y {
-            let across = ix - lo_x;
-            if across % 8 < 2 {
+            // Real: a dock door is **3.0-3.5 m** wide, and there is one
+            // per **10-12 m** of dock wall. Two metres every eight was a
+            // door a pallet would not fit through, twice as often as
+            // anybody builds them.
+            if (ix - lo_x) % DOCK_SPACING < DOCK_DOOR {
                 return Tile::Door;
             }
+            // **A service elevation is blank.** The glazing is on the
+            // shopfront, where it sells something; nobody puts windows
+            // along a dock wall, and the back of the building came out
+            // looking like the front of it.
+            return Tile::Wall;
         }
         if party {
             return Tile::Wall;
@@ -1929,7 +1944,11 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
     // Real supermarkets put **20-30% of the floor area behind a wall**:
     // stockroom, chill room, staff area and the dock. The wall has staff
     // doors through it and nothing else.
-    let back_of_house = (depth / 4).max(4);
+    // **A fifth to a third of the floor is behind the wall** *(real
+    // supermarkets run 20-30%)*, and it has to be deep enough to hold a
+    // gangway, racking, a marshalling area and the dock itself — six rows
+    // at the very least, or the dock apron eats the racking.
+    let back_of_house = (depth * 3 / 10).max(6).min(depth - 9).max(4);
     let partition = depth - back_of_house;
     if from_front == partition {
         // Staff doors through to the shop floor, at the ends of the
@@ -1941,16 +1960,54 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
         };
     }
     if from_front > partition {
-        // **The dock is where the lorry backs up to**, so it sits against
-        // the rear wall with the racking in front of it — you unload
-        // across the bay and put it straight on a rack.
-        return if from_front == depth - 1 {
-            if across % 8 < 2 {
+        // **The back of house is a warehouse, and a warehouse is worked by
+        // machine.**
+        //
+        // Racking stood on every other column with a **one-metre** gap
+        // between the runs — which is the same fault the sales floor had,
+        // except that back here the thing that has to get down the aisle
+        // is a forklift with a pallet on it. Real aisle widths:
+        //
+        // | truck | aisle |
+        // |---|---|
+        // | counterbalance | **3.0-3.6 m** |
+        // | reach truck | 2.5-2.8 m |
+        // | very narrow aisle | 1.6-1.9 m, and it runs on wire guidance |
+        //
+        // A pallet is 1.2 x 1.0 m, so racking back to back is about 2.4 m
+        // and a bay is 2.7 m long. The runs go **in from the dock wall**
+        // with the aisles between them, which is what makes a long thin
+        // stockroom work: a pallet comes off the lorry, is set down, and
+        // goes straight up an aisle.
+        let back = from_front - partition;
+        let deep = depth - partition;
+
+        // **The dock is where the lorry backs up to.** A bay is 3.0-3.5 m
+        // wide with a leveller, and the trailer bed stands 1.2-1.4 m above
+        // the yard, which is why a dock is a raised platform and not a
+        // doorway at ground level.
+        if back == deep - 1 {
+            return if across % DOCK_SPACING < DOCK_DOOR {
                 Tile::Fitting(Fixture::LoadingBay)
             } else {
                 Tile::Floor
-            }
-        } else if across % 2 == 0 {
+            };
+        }
+        // **Nothing is racked hard against the door.** A marshalling area
+        // is where a load lands and is broken down before it is put away.
+        // A distribution centre gives that 6-12 m; a supermarket's back of
+        // house is a strip a few metres deep and gets what is left, which
+        // is exactly why deliveries are scheduled overnight and why a
+        // missed slot backs up into the aisles.
+        if back >= deep - 3 {
+            return Tile::Floor;
+        }
+        // A gangway behind the staff doors, so the shop can be picked to
+        // without walking through the racking.
+        if back <= 1 {
+            return Tile::Floor;
+        }
+        return if across % 5 < 2 {
             Tile::Fitting(Fixture::StockRack)
         } else {
             Tile::Floor

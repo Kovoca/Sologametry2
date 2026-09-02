@@ -1906,6 +1906,41 @@ tiles on foot, 288 in a vehicle.
   perimeter aisle a shop is circulated on, which there was none of at all.
   There is also a way in that is not between two tills, which is where the
   trolleys stand.
+- **The back of house is a warehouse, and a warehouse is worked by
+  machine.** The racking had the identical fault the sales floor had —
+  every other column with a **one-metre** gap — except that back here the
+  thing that has to get down the aisle is a forklift with a pallet on it.
+  A counterbalance truck wants **3.0-3.6 m**, a reach truck 2.5-2.8, and
+  only a wire-guided very-narrow-aisle machine goes below two. A pallet is
+  1.2 x 1.0 m and racking back to back is 2.4, so the runs go **in from
+  the dock wall** with the aisles between them: a pallet comes off the
+  lorry, is set down, and goes straight up an aisle.
+- **A dock door is 3.0-3.5 m wide and there is one per 10-12 m of wall**,
+  and it has to line up with the bay in front of it — a bay a lorry
+  reverses onto is no use if the wall behind it is solid. Two metres every
+  eight was a door a pallet would not fit through, twice as often as
+  anybody builds them.
+- **Nothing is racked hard against the door.** A distribution centre gives
+  its marshalling area 6-12 m; a supermarket's back of house is a strip a
+  few metres deep and gets what is left, which is exactly why deliveries
+  are scheduled overnight and why a missed slot backs up into the aisles.
+- **A service elevation is blank.** The glazing is on the shopfront, where
+  it sells something; nobody puts windows along a dock wall, and the back
+  of the building came out looking like the front of it.
+- **A vehicle frame is `X`, not `+` and not `#`.** `+` is a door, and a
+  lorry backed up to a bay puts both in one picture — the hull read as a
+  row of doorways. Moving it to `#` walked this renderer's *original*
+  vehicle bug straight back in, because a wall is `#` in the **plain**
+  table, which is why a parked lorry once came out as `a#To#########ooo#`.
+  **There are two glyph tables and the collision test only checked one.**
+  It checks both now.
+- **Scope a measurement to the building you are standing in.** Three
+  separate tests read the wrong thing by measuring over the whole window:
+  a flood fill started inside whatever building the corner of the view
+  clipped; a gangway width read the gap between two *different* stockrooms
+  as a one-metre aisle; and a check for windows in a dock wall ran two
+  rows out into the yard and found the glazed frontage of the building on
+  the far side of it. The window is a viewport, not the subject.
 - **A corner shop is not a small supermarket.** Under about 400 m² there
   is a served counter and no checkout line — the difference between two
   trades rather than a matter of scale.

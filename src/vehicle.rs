@@ -286,12 +286,17 @@ impl Part {
     /// the work themselves.
     pub fn glyph(self) -> char {
         match self {
-            // **Not '+', which is a door.** A lorry backed up to a loading
-            // bay puts both in one picture, and that is exactly the scene
-            // where it matters: the hull read as a row of doorways. It was
-            // '#' once and moved off it because a wall was '#' too; walls
-            // are box-drawing now, so it is free again.
-            Part::Frame { .. } => '#',
+            // **Not '+' and not '#'.**
+            //
+            // '+' is a door, and a lorry backed up to a loading bay puts
+            // both in one picture — the hull read as a row of doorways.
+            // So it moved to '#', and that was this project's *original*
+            // vehicle bug walking straight back in: a wall is '#' in the
+            // plain table, which is why a parked lorry once came out as
+            // `a#To#########ooo#`. Only the colour table had been checked.
+            //
+            // 'X' is free in both.
+            Part::Frame { .. } => 'X',
             Part::Engine(_) => 'E',
             Part::Wheel { .. } => 'O',
             Part::CargoBay(_) => 'B',

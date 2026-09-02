@@ -340,6 +340,21 @@ fn no_two_kinds_of_thing_are_drawn_the_same() {
     // shades of grey on the same full block do not tell a wall from a
     // rock face. That is the check; exact equality would have passed on
     // the palette this replaced.
+    // **Both tables, because there are two.** The plain one is what a
+    // screenshot and a terminal without colour show, and it has its own
+    // glyphs — a wall is '#' there and '█' in the other. Checking only the
+    // coloured table let a vehicle frame land on '#' and reintroduced the
+    // very first bug this renderer ever had, where a parked lorry came out
+    // looking like a length of wall.
+    let mut plain: Vec<(char, &str)> = Vec::new();
+    for (t, name) in &every {
+        let g = t.glyph();
+        if let Some((_, other)) = plain.iter().find(|(pg, _)| *pg == g) {
+            panic!("a {name} and a {other} are both '{g}' with the colour off");
+        }
+        plain.push((g, name));
+    }
+
     let mut seen: Vec<(char, &str, &str)> = Vec::new();
     for (t, name) in &every {
         let d = t.display();
