@@ -1915,11 +1915,47 @@ tiles on foot, 288 in a vehicle.
   1.2 x 1.0 m and racking back to back is 2.4, so the runs go **in from
   the dock wall** with the aisles between them: a pallet comes off the
   lorry, is set down, and goes straight up an aisle.
-- **A dock door is 3.0-3.5 m wide and there is one per 10-12 m of wall**,
-  and it has to line up with the bay in front of it — a bay a lorry
-  reverses onto is no use if the wall behind it is solid. Two metres every
-  eight was a door a pallet would not fit through, twice as often as
-  anybody builds them.
+- **A dock door is 3.0-3.5 m wide** and lines up with the bay in front of
+  it — a bay a lorry reverses onto is no use if the wall behind it is
+  solid. Two metres every eight was a door a pallet would not fit through.
+- **But how many doors is a question about traffic, not about wall
+  length.** One per 10-12 m is a **distribution centre's** rule — they
+  have 50-150 — and applying it to a shop gave a supermarket eight loading
+  bays. Real: a large supermarket takes **5-15 HGV deliveries a day**, a
+  dock turns a lorry round in 45-60 minutes so it handles 8-10, and a shop
+  therefore has **one to four**. Sizing it off sales (~25 t/day per
+  1,000 m² of floor against a dock's 40 t/day) lands on one or two.
+- **Nothing is laid out from one end.** The last run is then whatever is
+  left over, so the dock had a two-metre bay jammed against a corner and
+  the racking a single stub beside the wall. Count the whole ones that
+  fit and share the remainder between both ends, which is what a
+  setting-out drawing does.
+- **A loading bay is where the trailer stands.** The dock is a door and a
+  platform; the bay is the marked-out piece of yard a lorry reverses onto,
+  because eighteen metres of artic goes on blind. An EU semi-trailer is
+  **13.6 m** and the apron wants its length again to swing in — 30-40 m,
+  which does not fit on a 32 m plot alongside a shop. That is exactly why
+  a real superstore takes a whole block. **Known gap:** the yard is 6 m
+  and the marked bay runs off the back of the plot at under half a
+  trailer's length. Fixing it means letting a store's yard occupy the plot
+  behind, the way spanning three plots sideways let it be a big shop at
+  all.
+- **Call a shop what it is.** Real trade bands by sales floor: a corner
+  shop under 280 m² *(the UK Sunday-trading line)*, a convenience store to
+  1,400, a **supermarket 1,400-3,000**, a superstore 3,000-5,600, a
+  hypermarket beyond. A 96 m frontage one plot deep gives about 910 m² of
+  sales floor — which is a convenience store, and calling it a superstore
+  was wrong. **A supermarket is not a long thin strip**; it is closer to
+  square, which needs the building to span plots in *both* directions.
+- **Chilled and frozen is 30-40% of what a supermarket sells**, and
+  refrigeration is about **half its electricity** — a multideck cabinet
+  runs 2-4 kW and a walk-in cold room 3-10, around the clock. Which is
+  why a blackout costs a shop its stock rather than its time, and the
+  economy already knew that: `econ.rs` models spoilage and the cold chain,
+  and until now the tile layer had nowhere to put a fridge. **The milk is
+  at the back** — the chilled run is the wall you have to walk the length
+  of the shop to reach, which is not a joke about supermarkets but the
+  reason they are laid out the way they are.
 - **Nothing is racked hard against the door.** A distribution centre gives
   its marshalling area 6-12 m; a supermarket's back of house is a strip a
   few metres deep and gets what is left, which is exactly why deliveries

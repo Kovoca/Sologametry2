@@ -586,6 +586,8 @@ impl Contract {
                     Fixture::StockRack => "a shift in the stockroom",
                     Fixture::LoadingBay => "a shift on goods-in",
                     Fixture::Counter => "a shift on the counter",
+                    Fixture::ChillCabinet => "a shift on the chilled aisle",
+                    Fixture::ColdStore => "a shift in the cold store",
                 },
                 econ.ledger.sites[*site].name,
                 self.pay,

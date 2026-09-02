@@ -255,6 +255,8 @@ impl Tile {
                     Fixture::StockRack => 'R',
                     Fixture::LoadingBay => 'L',
                     Fixture::Counter => 'C',
+                    Fixture::ChillCabinet => 'c',
+                    Fixture::ColdStore => 'f',
                 },
                 Colour::Cyan,
             ),
@@ -294,6 +296,8 @@ impl Tile {
                 Fixture::StockRack => 'R',
                 Fixture::LoadingBay => 'L',
                 Fixture::Counter => 'C',
+                Fixture::ChillCabinet => 'c',
+                Fixture::ColdStore => 'f',
             },
             Tile::Vehicle(p) => p.glyph(),
         }
@@ -503,6 +507,8 @@ pub fn ground_legend_in(with_vehicle: bool, colour: bool) -> String {
             (Tile::Fitting(Fixture::StockRack), "racking"),
             (Tile::Fitting(Fixture::LoadingBay), "loading bay"),
             (Tile::Fitting(Fixture::Counter), "counter"),
+            (Tile::Fitting(Fixture::ChillCabinet), "chiller"),
+            (Tile::Fitting(Fixture::ColdStore), "cold store"),
         ],
     ));
     out.push_str(&line(
@@ -1492,7 +1498,23 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
         // A shopfront is on the back of the pavement, because a shop set
         // back behind a garden is not a shop anybody walks into. Service
         // yard behind. ~84% coverage.
-        Lot::Shop => Footprint { front: 1, back: 4, side: 0, terraced: true },
+        // **A dock needs a yard to reverse into.** Four metres behind the
+        // building is not a service yard, it is a gap: an articulated
+        // trailer is **13.6 m** and the marked-out bay ran off the back of
+        // the plot after a third of its length. Real practice wants the
+        // trailer's length again for the swing, so 30-40 m — which does
+        // not fit on a 32 m plot alongside a shop, and is exactly why a
+        // real superstore takes a whole block for its yard and car park.
+        //
+        // **Known gap, and it is a plot-size one.** Six metres is what can
+        // be spared without eating the stockroom — at eight the back of
+        // house was down to a single row of racking, because the yard and
+        // the warehouse are drawing on the same 32 m. The marked bay
+        // therefore runs off the back of the plot at less than half a
+        // trailer's length. Fixing it properly means letting a store's
+        // yard occupy the plot behind it, the way spanning three plots
+        // sideways let it be a superstore at all.
+        Lot::Shop => Footprint { front: 1, back: 6, side: 0, terraced: true },
         // A mansion block: on the street, joined to its neighbours, with
         // the bins and the drying green behind. ~78%.
         Lot::Flats => Footprint { front: 1, back: 6, side: 0, terraced: true },
@@ -1513,7 +1535,102 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
 /// door a pallet would not fit through, twice as often as anybody builds
 /// them.
 const DOCK_DOOR: i64 = 3;
-const DOCK_SPACING: i64 = 12;
+
+/// **How many docks a shop actually has.**
+///
+/// A door every 10-12 m of wall is the rule for a **distribution centre**,
+/// which has 50-150 of them; applying it to a shop gave a supermarket
+/// eight loading bays. A shop's dock count comes from how many lorries
+/// turn up, and the real answer is far smaller than the wall would hold:
+///
+/// | | real |
+/// |---|---|
+/// | deliveries to a large supermarket | **5-15 HGVs a day** |
+/// | turnaround at a dock | 45-60 min, so **8-10 a day per door** |
+/// | sales through a supermarket | ~25 t/day per 1,000 m² of sales floor |
+/// | a dock's throughput | 40 t/day *(`Fixture::LoadingBay`)* |
+///
+/// Which lands a supermarket on **two**, and real ones have one to four.
+fn dock_count(sales_m2: i64) -> i64 {
+    const TONNES_PER_DAY_PER_1000_M2: f64 = 25.0;
+    const PER_DOCK_T: f64 = 40.0;
+    let t = sales_m2 as f64 * TONNES_PER_DAY_PER_1000_M2 / 1000.0;
+    ((t / PER_DOCK_T).ceil() as i64).max(1)
+}
+
+/// **N runs of fittings spaced evenly across a wall**, with the same gap
+/// at each end as between them. Used for the dock, where the count comes
+/// from the traffic rather than from a repeating module.
+fn evenly_spaced(across: i64, lo: i64, hi: i64, n: i64, run: i64) -> bool {
+    if n <= 0 {
+        return false;
+    }
+    let usable = hi - lo + 1;
+    let slack = usable - n * run;
+    if slack < 0 {
+        return false;
+    }
+    let gap = slack / (n + 1);
+    let d = across - lo;
+    (0..n).any(|k| {
+        let start = gap + k * (run + gap);
+        d >= start && d < start + run
+    })
+}
+
+/// **An articulated trailer is 13.6 m long** *(EU maximum semi-trailer)*,
+/// which is the length of yard a dock bay has to be marked out over.
+const TRAILER_M: i64 = 14;
+
+/// **A repeating run of fittings, centred between the walls.**
+///
+/// Laid out from one end, the last run is whatever is left over — so a
+/// dock came out with a two-metre bay jammed against the corner and the
+/// racking with a single stub of a rack run beside the wall. Nobody
+/// builds a half bay. Count how many whole ones fit, and share the
+/// remainder between the two ends as margin, which is what a setting-out
+/// drawing does.
+fn centred_run(across: i64, lo: i64, hi: i64, period: i64, run: i64) -> bool {
+    let usable = hi - lo + 1;
+    if usable < run {
+        return false;
+    }
+    let n = ((usable + period - run) / period).max(1);
+    let span = n * period - (period - run);
+    let start = lo + (usable - span) / 2;
+    let d = across - start;
+    d >= 0 && d < span && d % period < run
+}
+
+/// **How big the sales floor is**, from the building's own dimensions —
+/// what is left after the walls, the checkouts, the queue and the back of
+/// house. Both the wall and the interior need it to agree on the dock.
+fn shop_sales_m2(width: i64, depth: i64) -> i64 {
+    let back_of_house = (depth * 3 / 10).max(6).min(depth - 9).max(4);
+    let sales_rows = (depth - back_of_house - 7).max(1);
+    (width - 5).max(1) * sales_rows
+}
+
+/// **What to call a shop of a given size.** The bands are the real trade
+/// ones, and they are why calling a 1,600 m² sales floor a superstore was
+/// wrong: that is a supermarket, and a superstore is twice it.
+///
+/// | | sales floor |
+/// |---|---|
+/// | corner shop | under 280 m² *(the UK Sunday-trading line)* |
+/// | convenience store | 280-1,400 |
+/// | **supermarket** | **1,400-3,000** |
+/// | superstore | 3,000-5,600 |
+/// | hypermarket | over 5,600 |
+pub fn shop_grade(sales_m2: i64) -> &'static str {
+    match sales_m2 {
+        ..280 => "a corner shop",
+        280..1_400 => "a convenience store",
+        1_400..3_000 => "a supermarket",
+        3_000..5_600 => "a superstore",
+        _ => "a hypermarket",
+    }
+}
 
 /// **How many plots this shop actually occupies**, and which one it starts
 /// at. One for anything that is not a shop.
@@ -1609,6 +1726,21 @@ fn building_tile(
         // bins, a service alley and somewhere to turn a van round. A
         // house's is a garden, which *is* grass and trees, and that
         // difference is the whole of it.
+        // **A loading bay is where the trailer stands.**
+        //
+        // The dock itself is a door and a platform; the bay is the piece
+        // of yard a lorry reverses onto, and it is marked out because
+        // eighteen metres of artic has to be put on it blind. An
+        // articulated trailer is 13.6 m, and a reversing apron wants twice
+        // its own length again to swing into — which is why a supermarket
+        // service yard is so much bigger than the building it serves.
+        if lot == Lot::Shop && iy > hi_y && iy - hi_y <= TRAILER_M {
+            let docks = dock_count(shop_sales_m2(hi_x - lo_x, hi_y - lo_y));
+            if evenly_spaced(ix, lo_x + 1, hi_x - 1, docks, DOCK_DOOR + 1) {
+                return Tile::Marking;
+            }
+            return Tile::Parking;
+        }
         return match lot {
             Lot::Shop | Lot::Works | Lot::Flats => {
                 // A little planting survives even on a service yard.
@@ -1698,7 +1830,8 @@ fn building_tile(
             // per **10-12 m** of dock wall. Two metres every eight was a
             // door a pallet would not fit through, twice as often as
             // anybody builds them.
-            if (ix - lo_x) % DOCK_SPACING < DOCK_DOOR {
+            let docks = dock_count(shop_sales_m2(hi_x - lo_x, hi_y - lo_y));
+            if evenly_spaced(ix, lo_x + 1, hi_x - 1, docks, DOCK_DOOR) {
                 return Tile::Door;
             }
             // **A service elevation is blank.** The glazing is on the
@@ -1987,7 +2120,8 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
         // the yard, which is why a dock is a raised platform and not a
         // doorway at ground level.
         if back == deep - 1 {
-            return if across % DOCK_SPACING < DOCK_DOOR {
+            let docks = dock_count(shop_sales_m2(width, depth));
+            return if evenly_spaced(ix, lo_x + 1, hi_x - 1, docks, DOCK_DOOR) {
                 Tile::Fitting(Fixture::LoadingBay)
             } else {
                 Tile::Floor
@@ -2007,10 +2141,20 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
         if back <= 1 {
             return Tile::Floor;
         }
-        return if across % 5 < 2 {
-            Tile::Fitting(Fixture::StockRack)
+        if !centred_run(ix, lo_x + 1, hi_x - 1, 5, 2) {
+            return Tile::Floor;
+        }
+        // **The cold store is a room, at one end of the racking.**
+        //
+        // Chilled and frozen is 30-40% of what a supermarket sells and
+        // the back of it needs somewhere to keep the stock: a walk-in
+        // chill room at 2-8 C and a freezer at -18 to -25. It sits by the
+        // dock end, because the shorter the walk from the lorry the less
+        // of the cold chain is spent standing in a yard.
+        return if across < (hi_x - lo_x) / 5 {
+            Tile::Fitting(Fixture::ColdStore)
         } else {
-            Tile::Floor
+            Tile::Fitting(Fixture::StockRack)
         };
     }
 
@@ -2088,16 +2232,24 @@ fn shop_interior(lo_x: i64, hi_x: i64, lo_y: i64, hi_y: i64, ix: i64, iy: i64) -
     if across < 3 || across > width - 3 || from_front >= partition - 2 {
         return Tile::Floor;
     }
-    // A cross aisle every dozen metres, so a run is not forty metres long.
-    if (across - 2) % 13 >= 11 {
+    // A cross aisle every dozen metres, so a run is not forty metres long,
+    // and centred so neither end of the shop gets a stub of a gondola.
+    if !centred_run(ix, lo_x + 3, hi_x - 3, 13, 11) {
         return Tile::Floor;
     }
     // Gondolas back to back, then an aisle two trolleys wide.
-    if (from_front - floor_start) % 4 < 2 {
-        Tile::Fitting(Fixture::Shelving)
-    } else {
-        Tile::Floor
+    if (from_front - floor_start) % 4 >= 2 {
+        return Tile::Floor;
     }
+    // **The milk is at the back**, which is not a joke about supermarkets
+    // but the reason they are laid out the way they are: the thing
+    // everybody came for goes where they have to walk past everything
+    // else to reach it. So the run against the back wall is the chilled
+    // one — the "power wall" — and it is 30-40% of what the shop sells.
+    if from_front >= partition - 6 {
+        return Tile::Fitting(Fixture::ChillCabinet);
+    }
+    Tile::Fitting(Fixture::Shelving)
 }
 
 /// **The natural ground, in metres above the sea.**

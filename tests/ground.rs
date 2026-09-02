@@ -1094,8 +1094,13 @@ fn a_stockroom_is_worked_by_forklift() {
     }
     assert!(dock_row - top >= 3, "a stockroom only {} m deep", dock_row - top);
 
+    // A cold room is racking that happens to be refrigerated: it stands
+    // in the same runs and wants the same gangway.
     let rack = |x: usize, y: usize| {
-        g.tiles[idx(x, y)] == Tile::Fitting(Fixture::StockRack)
+        matches!(
+            g.tiles[idx(x, y)],
+            Tile::Fitting(Fixture::StockRack) | Tile::Fitting(Fixture::ColdStore)
+        )
     };
 
     // --- every gangway takes a forklift ---
@@ -1144,7 +1149,15 @@ fn a_stockroom_is_worked_by_forklift() {
             backed_by_a_door += 1;
         }
     }
-    assert!(bays > 4, "only {bays} loading bays on this dock");
+    // **A shop has one to four docks, not one per ten metres of wall.**
+    // That is a distribution centre's rule and it gave a supermarket
+    // eight. Real: 5-15 HGV deliveries a day and 45-60 minutes to turn
+    // one round, so a door handles 8-10 and a shop needs a couple.
+    let docks = bays / 3;
+    assert!(
+        (1..=4).contains(&docks),
+        "{docks} loading docks on one shop, which is a depot and not a shop"
+    );
     assert_eq!(
         bays, backed_by_a_door,
         "{} loading bays of {bays} have no door behind them, so the goods \

@@ -38,6 +38,16 @@ pub enum Fixture {
     LoadingBay,
     /// A served counter — bakery, deli, fishmonger.
     Counter,
+    /// **A chilled or frozen display case** on the shop floor.
+    ///
+    /// Real supermarkets take **30-40% of sales** through chilled and
+    /// frozen, and it is why the milk is at the back of the shop: the
+    /// thing everybody came for is put where they have to walk past
+    /// everything else to reach it.
+    ChillCabinet,
+    /// **A walk-in cold room** out the back: chill at 2-8 C, freezer at
+    /// -18 to -25.
+    ColdStore,
 }
 
 impl Fixture {
@@ -60,6 +70,24 @@ impl Fixture {
             Fixture::StockRack => 0.04,
             Fixture::LoadingBay => 1.2,
             Fixture::Counter => 1.6,
+            // A cabinet needs facing and date-checking, which is more work
+            // per bay than a dry shelf.
+            Fixture::ChillCabinet => 0.3,
+            Fixture::ColdStore => 0.05,
+        }
+    }
+
+    /// **What it draws, in kilowatts.**
+    ///
+    /// Refrigeration is about **half a supermarket's electricity** — a
+    /// multideck cabinet runs 2-4 kW and a walk-in cold room 3-10, around
+    /// the clock, which is exactly why a blackout costs a shop its chilled
+    /// stock and only delays its flour.
+    pub fn power_kw(self) -> f64 {
+        match self {
+            Fixture::ChillCabinet => 2.5,
+            Fixture::ColdStore => 8.0,
+            _ => 0.0,
         }
     }
 
@@ -81,6 +109,10 @@ impl Fixture {
         match self {
             Fixture::Shelving => 0.4,
             Fixture::StockRack => 3.0,
+            // A cabinet holds less than a dry bay of the same size,
+            // because a third of it is the refrigeration.
+            Fixture::ChillCabinet => 0.3,
+            Fixture::ColdStore => 3.0,
             _ => 0.0,
         }
     }
@@ -93,6 +125,8 @@ impl Fixture {
             Fixture::StockRack => 3.0,
             Fixture::LoadingBay => 40.0,
             Fixture::Counter => 12.0,
+            Fixture::ChillCabinet => 4.0,
+            Fixture::ColdStore => 3.0,
         }
     }
 
@@ -104,6 +138,10 @@ impl Fixture {
             Fixture::StockRack => 3.0,
             Fixture::LoadingBay => 60.0,
             Fixture::Counter => 45.0,
+            // **Refrigeration is dear**, which is most of why a shop
+            // stocks what keeps before it stocks what does not.
+            Fixture::ChillCabinet => 30.0,
+            Fixture::ColdStore => 25.0,
         }
     }
 
@@ -113,6 +151,8 @@ impl Fixture {
             Fixture::Shelving => "shelving",
             Fixture::StockRack => "stockroom racking",
             Fixture::LoadingBay => "loading bay",
+            Fixture::ChillCabinet => "chilled cabinet",
+            Fixture::ColdStore => "cold store",
             Fixture::Counter => "served counter",
         }
     }
@@ -233,16 +273,29 @@ impl Building {
         let held = t * cover_days.max(0.0);
         // A third of the stock sits out on the shop floor and the rest is
         // out the back, which is roughly how a supermarket splits.
+        // **Chilled and frozen is 30-40% of what a supermarket sells**, and
+        // it cannot be kept on a dry shelf — which is why refrigeration is
+        // about half a supermarket's electricity bill and why a blackout
+        // costs it stock rather than time.
+        const COLD: f64 = 0.35;
         Building {
             fixtures: vec![
                 (Fixture::Till, (t / Fixture::Till.throughput_t()).ceil()),
                 (
                     Fixture::Shelving,
-                    (held * 0.33 / Fixture::Shelving.holds_t()).ceil(),
+                    (held * 0.33 * (1.0 - COLD) / Fixture::Shelving.holds_t()).ceil(),
+                ),
+                (
+                    Fixture::ChillCabinet,
+                    (held * 0.33 * COLD / Fixture::ChillCabinet.holds_t()).ceil(),
                 ),
                 (
                     Fixture::StockRack,
-                    (held * 0.67 / Fixture::StockRack.holds_t()).ceil(),
+                    (held * 0.67 * (1.0 - COLD) / Fixture::StockRack.holds_t()).ceil(),
+                ),
+                (
+                    Fixture::ColdStore,
+                    (held * 0.67 * COLD / Fixture::ColdStore.holds_t()).ceil(),
                 ),
                 (
                     Fixture::LoadingBay,
