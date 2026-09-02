@@ -123,12 +123,12 @@ fn without_credit_ownership_stays_out_of_reach() {
     let n = folk.people.len() as f64;
     let owned = folk
         .people
-        .iter()
+        .values()
         .filter(|p| p.housing == Housing::Owned)
         .count() as f64;
     let housed = folk
         .people
-        .iter()
+        .values()
         .filter(|p| p.housing != Housing::Homeless)
         .count() as f64;
 
@@ -147,7 +147,7 @@ fn without_credit_ownership_stays_out_of_reach() {
     );
     let own_door = folk
         .people
-        .iter()
+        .values()
         .filter(|p| p.housing == Housing::Rented)
         .count() as f64;
     assert!(

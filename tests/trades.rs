@@ -135,7 +135,7 @@ fn a_country_contains_the_people_it_needs() {
     let e = a_nation().economy;
     let folk = Populace::seed(&e, 200, 20260828);
     let n = folk.people.len() as f64;
-    let share = |t: Trade| folk.people.iter().filter(|p| p.trade == t).count() as f64 / n;
+    let share = |t: Trade| folk.people.values().filter(|p| p.trade == t).count() as f64 / n;
 
     // Every trade that has posts should have people, and the health
     // service is a third of a percent of nobody otherwise.
@@ -178,7 +178,7 @@ fn a_country_contains_the_people_it_needs() {
     );
     let graduates = folk
         .people
-        .iter()
+        .values()
         .filter(|p| p.qualification == Qualification::Degree)
         .count() as f64
         / n;
@@ -211,7 +211,7 @@ fn promotion_is_capped_by_the_posts_that_exist() {
         folk.live_a_day(&mut e, day);
     }
     for m in 0..e.markets.len() {
-        let mine: Vec<_> = folk.people.iter().filter(|p| p.market == m).collect();
+        let mine: Vec<_> = folk.people.values().filter(|p| p.market == m).collect();
         if mine.len() < 10 {
             continue;
         }

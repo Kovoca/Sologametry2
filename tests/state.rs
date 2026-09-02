@@ -90,7 +90,7 @@ fn public_work_is_steady_and_shop_work_is_not() {
     // permanent and full-time.
     let mut e = a_nation(Doctrine::Prudent).economy;
     let mut folk = scale_sim::populace::Populace::seed(&e, 50, 20260828);
-    for (i, p) in folk.people.iter_mut().enumerate() {
+    for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
             p.trade = Trade::Public;
             // Qualified for it: a trade you cannot enter is not a trade
@@ -104,7 +104,7 @@ fn public_work_is_steady_and_shop_work_is_not() {
     }
 
     let worked_share = |t: Trade| -> f64 {
-        let mine: Vec<_> = folk.people.iter().filter(|p| p.trade == t).collect();
+        let mine: Vec<_> = folk.people.values().filter(|p| p.trade == t).collect();
         if mine.is_empty() {
             return f64::NAN;
         }

@@ -2759,6 +2759,59 @@ number of people get degrees**, but they are +0.50 SD instead of +0.68 and
 the class gap goes 1.9x to **5.2x**. The university does not shrink; it
 fills with the well-off instead of the able.
 
+## Durable identity (`src/id.rs`)
+
+Spec Phase 1, first of four pieces. **Everything in this simulation is
+identified by a bare `usize` index into a `Vec`**, which works exactly as
+long as nothing ever moves. It fails three ways:
+
+- **An index means nothing on its own.** `Site.market` and a site's own
+  position in `Ledger.sites` are the same type, so the compiler will let
+  you pass one where the other belongs. Not hypothetical — `region.rs`
+  already carries a `settlement_of_market` translation table *precisely*
+  because two `usize` spaces had to be kept apart by hand.
+- **A removal silently re-points everything past it.**
+- **An index cannot be saved.** "Slot 7 of whatever vector this was" does
+  not survive a reload into a world built in a different order, which is
+  what makes this the first piece of persistence rather than a tidy-up.
+
+`Id<T>` is a slot and a **generation**: one `u64`, `Copy`, with its type
+in a `PhantomData` that costs nothing at run time — so `Id<Site>` and
+`Id<Market>` are different types to the compiler and the same bits to the
+machine. `Arena` bumps the generation on removal, so a handle kept across
+one is *detected*.
+
+- **Reuse is oldest-free-slot-first, not the obvious LIFO.** A seed has to
+  rebuild the same world; under LIFO two runs that removed things in a
+  different order would hand out different identifiers and a save would
+  stop matching the world that wrote it.
+- **Bump the generation on removal, not on reuse.** Bumping when the slot
+  is handed out again leaves a window in which a stale handle still
+  resolves — to nothing, but resolving at all is the bug.
+- **Indexing a stale handle panics, deliberately.** The choice is between
+  a panic in a test and a tonne of flour delivered to whatever took the
+  slot.
+
+### The failure it prevents is a wrong answer, not a crash
+
+`populace.rs` is where removal actually happens: a sampled person who
+starves is replaced, because the cohort samples a town the economy is
+still counting in full. That replacement was an overwrite in place —
+`self.people[i] = p` — so **slot 7 was Alice the haulier on Monday and
+Bob the shop worker on Tuesday**, and nothing in the model could tell.
+
+Nothing else holds a person's index across a day *yet*, which is the only
+reason it never bit. The moment anything does — a tenancy, a debt, a
+firm's payroll, the household pool that tracked gap 1 is about — it hands
+Alice's savings to Bob and **every conservation check still passes**,
+because the money went somewhere.
+
+One rule fell out of the migration: **one way into the sample.** A birth
+used to `push` onto the people, households and represents arrays at once,
+which is only right while nothing is ever removed — once a death frees a
+slot the arena reuses it and a pushed household lands at the end, against
+nobody. Arrays that run alongside an arena follow the slot it chose.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

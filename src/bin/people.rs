@@ -148,14 +148,15 @@ fn main() {
     println!("  the like-for-like comparison.");
 
     // Who did well and who did not.
-    let mut sorted: Vec<usize> = (0..folk.people.len()).collect();
+    let mut sorted: Vec<scale_sim::id::Id<scale_sim::person::Person>> =
+        folk.people.ids().collect();
     sorted.sort_by(|&a, &b| {
         folk.people[b]
             .money
             .total_cmp(&folk.people[a].money)
             .then(a.cmp(&b))
     });
-    let show = |i: usize| {
+    let show = |i: scale_sim::id::Id<scale_sim::person::Person>| {
         let p = &folk.people[i];
         println!(
             "  {:<20} {:<11} {:<16} {:>8.0}  worked {:>4}d, hungry {:>3}d",

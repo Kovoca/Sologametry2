@@ -179,14 +179,14 @@ fn a_world_begins_with_experienced_people_in_it() {
     let folk = Populace::seed(&e, 200, 20260828);
     let n = folk.people.len() as f64;
 
-    let untrained = folk.people.iter().filter(|p| p.competence() == 0).count() as f64 / n;
+    let untrained = folk.people.values().filter(|p| p.competence() == 0).count() as f64 / n;
     assert!(
         untrained < 0.10,
         "{:.0}% of a starting population cannot do their own job",
         untrained * 100.0
     );
 
-    let mean: f64 = folk.people.iter().map(|p| p.competence() as f64).sum::<f64>() / n;
+    let mean: f64 = folk.people.values().map(|p| p.competence() as f64).sum::<f64>() / n;
     // **Most people are competent to skilled at their work**, which is
     // the honest shape of a workforce. A country of masters is a country
     // that has flattered itself.
@@ -195,7 +195,7 @@ fn a_world_begins_with_experienced_people_in_it() {
         "the average worker is level {mean:.1} ({})",
         Skill::grade(mean.round() as u8)
     );
-    let masters = folk.people.iter().filter(|p| p.competence() >= 8).count() as f64 / n;
+    let masters = folk.people.values().filter(|p| p.competence() >= 8).count() as f64 / n;
     assert!(
         masters < 0.10,
         "{:.0}% of the country is a master of its trade",
@@ -213,12 +213,12 @@ fn skills_hold_up_over_a_working_life() {
         folk.live_a_day(&mut e, day);
     }
     e.ledger.assert_conserved();
-    for p in folk.people.iter() {
+    for p in folk.people.values() {
         assert!(p.competence() <= p.ceiling(), "{} exceeded their ceiling", p.name);
         assert!(p.competence() <= 10);
     }
     let mean: f64 =
-        folk.people.iter().map(|p| p.competence() as f64).sum::<f64>() / folk.people.len() as f64;
+        folk.people.values().map(|p| p.competence() as f64).sum::<f64>() / folk.people.len() as f64;
     assert!(
         mean > 3.0,
         "after a decade the average worker is only level {mean:.1}"

@@ -116,7 +116,7 @@ impl<T> Id<T> {
 /// memory and the arithmetic is the same as it was. What changes is that
 /// a handle carries a generation, and a removed slot is reused only after
 /// its generation has been bumped.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Arena<T> {
     slots: Vec<Slot<T>>,
     /// Slots whose occupant was removed, oldest first — so reuse is
@@ -128,6 +128,15 @@ pub struct Arena<T> {
 struct Slot<T> {
     generation: u32,
     value: Option<T>,
+}
+
+// **Written out rather than derived.** A derived `Default` would demand
+// `T: Default`, which is nonsense: an empty arena holds nothing, so what
+// it would have held cannot matter.
+impl<T> Default for Arena<T> {
+    fn default() -> Self {
+        Arena::new()
+    }
 }
 
 impl<T> Arena<T> {

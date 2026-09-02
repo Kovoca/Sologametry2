@@ -24,6 +24,7 @@
 //! reveal.
 
 use crate::econ::Economy;
+use crate::id::{Arena, Id};
 use crate::person::{
     day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
     Qualification, Trade,
@@ -84,7 +85,16 @@ pub struct Outcome {
 }
 
 pub struct Populace {
-    pub people: Vec<Person>,
+    /// **An arena, not a vector, because people die.**
+    ///
+    /// A dead person used to be overwritten in place by their
+    /// replacement: slot 7 was Alice the haulier on Monday and Bob the
+    /// shop worker on Tuesday, and nothing could tell. Nothing else holds
+    /// a person's index across a day *yet*, which is the only reason it
+    /// has never bitten — and the moment anything does (a tenancy, a
+    /// debt, a firm's payroll) it would hand Alice's savings to Bob and
+    /// every conservation check in the model would still pass.
+    pub people: Arena<Person>,
     /// **How many real people each individuated one stands for.**
     ///
     /// Not decoration: it is what lets the cohort be compared with the
@@ -93,6 +103,9 @@ pub struct Populace {
     pub represents: Vec<f64>,
     /// How each of them lives, which decides what share of a household's
     /// costs they carry.
+    /// Parallel to the arena's *slots*, because a household is a
+    /// property of the place in the sample rather than of the person: a
+    /// replacement moves into the same household the deceased left.
     pub households: Vec<Household>,
     /// Everyone who has died, so a run can be judged on the people it
     /// killed as well as the ones still standing.
@@ -122,7 +135,7 @@ impl Populace {
     /// about the sampling rather than about the town.
     pub fn seed(econ: &Economy, per_market: usize, seed: u64) -> Self {
         let mut rng = Rng::new(seed ^ 0x5DEE_CE66_D9B0_1B0D);
-        let mut people = Vec::new();
+        let mut people = Arena::new();
         let mut represents = Vec::new();
         let mut households = Vec::new();
 
@@ -219,7 +232,7 @@ impl Populace {
                 let cap = crate::person::Skill::days_to_reach(p.ceiling());
                 p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
                 households.push(h);
-                people.push(p);
+                people.add(p);
                 represents.push(pop / n as f64);
             }
         }
@@ -278,8 +291,13 @@ impl Populace {
         let infant_deaths = INFANT_DEATHS_WITHOUT
             + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health;
 
-        let mut grown: Vec<(usize, f64)> = Vec::new();
-        for i in 0..self.people.len() {
+        let mut grown: Vec<(Id<Person>, f64)> = Vec::new();
+        // **Handles up front.** Births during the loop add to the arena,
+        // and iterating it live would age the newborn on the day it was
+        // born. Taking the handles first is the same discipline the
+        // ledger follows: decide what to act on, then act.
+        let everyone: Vec<Id<Person>> = self.people.ids().collect();
+        for i in everyone {
             self.people[i].age_years += 1.0;
             for c in self.people[i].children.iter_mut() {
                 *c += 1.0;
@@ -336,7 +354,7 @@ impl Populace {
                         self.people[i].children.push(0.0);
                         // A child in the house changes what the household
                         // costs, on the same equivalence scale.
-                        let adults = self.households[i].adults();
+                        let adults = self.households[i.slot()].adults();
                         self.people[i].household_share = household_share_for(adults)
                             * (1.0 + 0.3 * self.people[i].children.len() as f64 / adults as f64);
                     } else {
@@ -466,9 +484,8 @@ impl Populace {
             p.aptitude = aptitude;
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
-            self.people.push(p);
-            self.households.push(h);
-            self.represents.push(self.represents.get(parent).copied().unwrap_or(1.0));
+            let stands_for = self.represents.get(parent.slot()).copied().unwrap_or(1.0);
+            self.settle(p, h, stands_for);
         }
     }
 
@@ -494,7 +511,7 @@ impl Populace {
         let n_markets = econ.markets.len();
         let mut vacancy = vec![0.0f64; n_markets];
         for m in 0..n_markets {
-            let mine: Vec<&Person> = self.people.iter().filter(|p| p.market == m).collect();
+            let mine: Vec<&Person> = self.people.values().filter(|p| p.market == m).collect();
             if mine.is_empty() {
                 continue;
             }
@@ -522,7 +539,8 @@ impl Populace {
             vacancy[m] = (mine.len() as f64 * share - bosses).max(0.0);
         }
 
-        for i in 0..self.people.len() {
+        let everyone: Vec<Id<Person>> = self.people.ids().collect();
+        for i in everyone {
             if self.people[i].condition <= 0.0 {
                 continue;
             }
@@ -543,6 +561,26 @@ impl Populace {
         }
     }
 
+    /// **One way into the sample**, so the arrays that run alongside the
+    /// arena follow the slot it chose rather than being pushed blindly.
+    ///
+    /// A birth used to `push` onto all three at once, which is only right
+    /// while nothing is ever removed: once a death frees a slot, the
+    /// arena reuses it and a pushed household lands at the end, against
+    /// nobody.
+    fn settle(&mut self, p: Person, h: Household, represents: f64) -> Id<Person> {
+        let id = self.people.add(p);
+        let slot = id.slot();
+        if slot == self.households.len() {
+            self.households.push(h);
+            self.represents.push(represents);
+        } else {
+            self.households[slot] = h;
+            self.represents[slot] = represents;
+        }
+        id
+    }
+
     /// **Somebody who starves is replaced, because the town has not
     /// shrunk.**
     ///
@@ -551,7 +589,8 @@ impl Populace {
     /// emptier the longer it was watched, which is an artefact of the
     /// sampling and not a fact about the town.
     fn bury_the_dead(&mut self, day: u64) {
-        for i in 0..self.people.len() {
+        let everyone: Vec<Id<Person>> = self.people.ids().collect();
+        for i in everyone {
             if self.people[i].condition > 0.0 {
                 continue;
             }
@@ -590,8 +629,15 @@ impl Populace {
             }
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
-            self.households[i] = h;
-            self.people[i] = p;
+            // **Removed and replaced, not overwritten.** The slot is
+            // reused — that is what keeps the sample the same size — but
+            // the generation moves, so a handle to the deceased stops
+            // resolving instead of quietly naming their successor.
+            // Whoever moves in stands for the same number of real
+            // people the deceased did — the town has not shrunk.
+            let stands_for = self.represents.get(i.slot()).copied().unwrap_or(1.0);
+            self.people.remove(i);
+            self.settle(p, h, stands_for);
         }
     }
 
@@ -608,7 +654,7 @@ impl Populace {
     pub fn worked_by(&self, market: usize, trade: Trade, days_elapsed: u64) -> f64 {
         let mine: Vec<&Person> = self
             .people
-            .iter()
+            .values()
             .filter(|p| p.market == market && p.trade == trade)
             .collect();
         if mine.is_empty() {
@@ -622,7 +668,7 @@ impl Populace {
     pub fn summary(&self, market: usize, days_elapsed: u64) -> Cohort {
         let mine: Vec<&Person> = self
             .people
-            .iter()
+            .values()
             .filter(|p| p.market == market)
             .collect();
         let n = mine.len().max(1) as f64;

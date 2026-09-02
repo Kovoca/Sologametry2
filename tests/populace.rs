@@ -56,7 +56,7 @@ fn a_cohort_of_people_lives_in_the_economy_without_breaking_it() {
 
     // Somebody has to be doing well and somebody badly, or the model is
     // not producing lives, it is producing an average.
-    let mut money: Vec<f64> = folk.people.iter().map(|p| p.money).collect();
+    let mut money: Vec<f64> = folk.people.values().map(|p| p.money).collect();
     money.sort_by(f64::total_cmp);
     let (poorest, richest) = (money[0], money[money.len() - 1]);
     assert!(
@@ -83,7 +83,7 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
 
     for m in 0..e.markets.len() {
         let mine: Vec<&scale_sim::person::Person> =
-            folk.people.iter().filter(|p| p.market == m).collect();
+            folk.people.values().filter(|p| p.market == m).collect();
         if mine.len() < 10 {
             continue;
         }
@@ -178,7 +178,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     use scale_sim::person::Employment;
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 50, 20260828);
-    for (i, p) in folk.people.iter_mut().enumerate() {
+    for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
             p.trade = Trade::Public;
             // Qualified for it: a trade you cannot enter is not a trade
@@ -194,7 +194,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     let share = |t: Option<Trade>, kind: Employment| -> f64 {
         let m: Vec<_> = folk
             .people
-            .iter()
+            .values()
             .filter(|p| t.is_none_or(|t| p.trade == t))
             .collect();
         m.iter().filter(|p| p.employment == kind).count() as f64 / m.len().max(1) as f64
@@ -234,7 +234,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     // on guaranteed hours works more days than somebody hunting for them,
     // and that is what the security *is*.
     let worked = |kind: Employment| -> f64 {
-        let m: Vec<_> = folk.people.iter().filter(|p| p.employment == kind).collect();
+        let m: Vec<_> = folk.people.values().filter(|p| p.employment == kind).collect();
         if m.is_empty() {
             return f64::NAN;
         }
@@ -276,7 +276,7 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     use scale_sim::person::Employment;
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
-    for p in folk.people.iter_mut() {
+    for p in folk.people.values_mut() {
         p.trade = Trade::Labourer;
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
@@ -284,12 +284,12 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     }
 
     let mut by_quarter = [[0u64; 4]; 2]; // [seasonal, full-time]
-    let mut prev: Vec<u64> = folk.people.iter().map(|p| p.days_worked).collect();
+    let mut prev: Vec<u64> = folk.people.values().map(|p| p.days_worked).collect();
     for day in 0..(DAYS_PER_YEAR * 3) {
         e.step();
         folk.live_a_day(&mut e, day);
         let q = ((day % DAYS_PER_YEAR) * 4 / DAYS_PER_YEAR) as usize;
-        for (i, p) in folk.people.iter().enumerate() {
+        for (i, p) in folk.people.values().enumerate() {
             if p.days_worked > prev[i] {
                 match p.employment {
                     Employment::Seasonal => by_quarter[0][q] += 1,
@@ -352,7 +352,7 @@ fn the_week_decides_who_works_when() {
 
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
-    for (i, p) in folk.people.iter_mut().enumerate() {
+    for (i, p) in folk.people.values_mut().enumerate() {
         p.trade = match i % 3 {
             0 => Trade::Office,
             1 => Trade::Shopworker,
@@ -361,13 +361,13 @@ fn the_week_decides_who_works_when() {
     }
 
     let mut tally: HashMap<(&str, bool, bool), u64> = HashMap::new();
-    let mut prev: Vec<u64> = folk.people.iter().map(|p| p.days_worked).collect();
+    let mut prev: Vec<u64> = folk.people.values().map(|p| p.days_worked).collect();
     let days = DAYS_PER_YEAR * 2;
     for day in 0..days {
         e.step();
         folk.live_a_day(&mut e, day);
         let weekend = Weekday::on(day).is_weekend();
-        for (i, p) in folk.people.iter().enumerate() {
+        for (i, p) in folk.people.values().enumerate() {
             if p.days_worked > prev[i] {
                 let key = (p.trade.name(), p.employment == Employment::FullTime, weekend);
                 *tally.entry(key).or_insert(0) += 1;
@@ -447,7 +447,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     let mut folk = Populace::seed(&e, 70, 20260828);
     // Put everybody in the worst-paid, least secure work there is, so the
     // margin is where it can actually be seen.
-    for p in folk.people.iter_mut() {
+    for p in folk.people.values_mut() {
         p.trade = Trade::Hospitality;
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
@@ -459,8 +459,15 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     }
 
     let homeless_share = |alone: bool| -> f64 {
-        let idx: Vec<usize> = (0..folk.people.len())
-            .filter(|&i| (folk.households[i] == Household::Alone) == alone)
+        // **Handles, and the household read off the slot.** The people
+        // live in an arena now, because a death frees a slot and the
+        // replacement is a different person in it; the household runs
+        // alongside by slot, since it is a property of the place in the
+        // sample rather than of whoever is in it.
+        let idx: Vec<_> = folk
+            .people
+            .ids()
+            .filter(|i| (folk.households[i.slot()] == Household::Alone) == alone)
             .collect();
         if idx.is_empty() {
             return f64::NAN;
@@ -487,8 +494,10 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // **Which is exactly why lone parents are the poorest household type
     // there is**: one adult carrying a whole household's costs.
     let money = |alone: bool| -> f64 {
-        let idx: Vec<usize> = (0..folk.people.len())
-            .filter(|&i| (folk.households[i] == Household::Alone) == alone)
+        let idx: Vec<_> = folk
+            .people
+            .ids()
+            .filter(|i| (folk.households[i.slot()] == Household::Alone) == alone)
             .collect();
         idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len().max(1) as f64
     };
@@ -603,7 +612,7 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
     let mut folk = Populace::seed(&e, 50, 20260828);
 
     let share = |f: &Populace, q: Qualification| -> f64 {
-        f.people.iter().filter(|p| p.qualification == q).count() as f64
+        f.people.values().filter(|p| p.qualification == q).count() as f64
             / f.people.len().max(1) as f64
     };
 
@@ -628,7 +637,7 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
         "twenty-five years and not one child grew up"
     );
     assert!(
-        folk.people.iter().any(|p| !p.children.is_empty()),
+        folk.people.values().any(|p| !p.children.is_empty()),
         "nobody in the country has a child"
     );
 
@@ -656,7 +665,7 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
     );
 
     // Nobody is working at something they are not qualified for.
-    for p in folk.people.iter() {
+    for p in folk.people.values() {
         assert!(
             p.qualification >= scale_sim::person::qualification_for(p.trade),
             "{} is a {} without the qualification for it",
@@ -797,4 +806,74 @@ fn grades_gate_what_money_cannot_buy() {
         gap_cut,
         blocked * 100.0
     );
+}
+
+/// **A handle to somebody who died does not name their replacement.**
+///
+/// The cohort is a *sample* of a population the economy still counts in
+/// full, so somebody who starves is replaced and the sample stays the
+/// same size. That replacement used to be an overwrite in place —
+/// `self.people[i] = p` — so slot 7 was Alice the haulier on Monday and
+/// Bob the shop worker on Tuesday, and nothing in the model could tell.
+///
+/// Nothing else holds a person's index across a day *yet*, which is the
+/// only reason it never bit. The moment anything does — a tenancy, a
+/// debt, a firm's payroll, the household pool that tracked gap 1 is
+/// about — it would hand Alice's savings to Bob, and **every
+/// conservation check in the model would still pass**, because the money
+/// went somewhere. That is the failure this is here to prevent: not a
+/// crash, a wrong answer that looks right.
+#[test]
+fn a_dead_person_does_not_become_whoever_takes_their_slot() {
+    let mut e = a_nation().economy;
+    let mut folk = Populace::seed(&e, 40, 20260828);
+
+    let before: Vec<_> = folk.people.ids().collect();
+    let named: Vec<(_, String)> = before
+        .iter()
+        .map(|&i| (i, folk.people[i].name.clone()))
+        .collect();
+
+    for day in 0..(DAYS_PER_YEAR as u64 * 6) {
+        folk.live_a_day(&mut e, day);
+    }
+
+    // The sample has not shrunk — that is what replacement is for.
+    assert_eq!(
+        folk.people.len(),
+        before.len(),
+        "the cohort changed size, so it is no longer a sample of a town \
+         the economy is counting in full"
+    );
+
+    // Somebody died, or this proves nothing.
+    let stale: Vec<_> = named
+        .iter()
+        .filter(|(i, _)| !folk.people.holds(*i))
+        .collect();
+    assert!(
+        !stale.is_empty(),
+        "nobody died in six years, so the replacement path never ran"
+    );
+
+    // **And not one stale handle resolves.** Every one of them shares a
+    // slot with somebody living; what stops it naming them is the
+    // generation.
+    for (i, was) in &stale {
+        assert!(
+            folk.people.get(*i).is_none(),
+            "a handle to {was}, who is dead, still resolves"
+        );
+        let occupant = folk
+            .people
+            .ids()
+            .find(|live| live.slot() == i.slot())
+            .expect("a freed slot that was never reused");
+        assert_ne!(*i, occupant, "the slot was reused without moving the generation");
+        assert_ne!(
+            &folk.people[occupant].name,
+            was,
+            "the replacement inherited the dead person's name"
+        );
+    }
 }
