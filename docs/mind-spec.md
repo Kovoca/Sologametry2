@@ -95,7 +95,7 @@ In slices that each land green, the same way Phase 1 is going.
 | 1 | Static mind: attributes, facets, values. Appraisal producing **several** emotions. Stress, mood and focus as three separate things | **built** |
 | 2 | Memory: provenance first — world event / perceived / trace / recollection; routine consolidation; recall producing a *new* appraisal | **built** |
 | 3 | Perception driven by the world: line of sight, acoustics, shared contexts, word of mouth | **built** |
-| 4 | Needs, semantic satisfaction, focus driven by them | |
+| 4 | Needs, semantic satisfaction, focus driven by them | **built** |
 | 5 | Relationships as asymmetric multidimensional records | |
 | 6 | Social opportunity, intention, tactic, interpretation, exchange | |
 | 7 | Personality and value change from core memories | |

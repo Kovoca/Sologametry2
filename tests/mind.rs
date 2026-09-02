@@ -738,7 +738,33 @@ fn old_accommodated_losses_go_quiet_without_going_away() {
             if k % 2 == 0 { ConcernKind::Bereavement } else { ConcernKind::Grievance },
             0.8,
         );
-        for _ in 0..600 {
+        for day in 0..600 {
+            // **An ordinary life, lived.** Before needs existed this loop
+            // was twenty years of a man doing literally nothing — no
+            // company, no family, no rest, no work — and once neglect
+            // took focus that quite correctly left him unable to
+            // concentrate. What the test is about is old *losses*, so the
+            // ordinary living has to be held still.
+            use scale_sim::needs::{Circumstances, Doing};
+            if let Some(n) = m.needs.as_mut() {
+                let known = Circumstances { with_somebody_known: true, ..Default::default() };
+                let kin = Circumstances { with_kin: true, ..Default::default() };
+                let taking_part = Circumstances { taking_part: true, ..Default::default() };
+                n.did(Doing::TalkWithAFriend, 1.0, known);
+                n.did(Doing::SitWithFamily, 2.0, kin);
+                n.did(Doing::WorkTheLoom, 8.0, Circumstances::default());
+                n.did(Doing::Sleep, 8.0, Circumstances::default());
+                n.did(Doing::WalkInTheFields, 0.5, Circumstances::default());
+                if day % 7 == 0 {
+                    n.did(Doing::AttendTheService, 1.0, taking_part);
+                }
+                if day % 30 == 0 {
+                    n.did(Doing::ReadABook, 2.0, Circumstances::default());
+                }
+                if day % 90 == 0 {
+                    n.did(Doing::Feast, 4.0, taking_part);
+                }
+            }
             m.a_day_passes(&mut rng);
         }
     }

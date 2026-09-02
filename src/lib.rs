@@ -19,6 +19,7 @@ pub mod logistics;
 pub mod memory;
 pub mod mind;
 pub mod money;
+pub mod needs;
 pub mod network;
 pub mod noise;
 pub mod person;

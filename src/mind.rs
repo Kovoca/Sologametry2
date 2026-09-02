@@ -915,6 +915,11 @@ pub struct Mind {
     /// another's pain perfectly and not care.
     pub willpower: f32,
     pub empathy: f32,
+    /// **What they want that is not dinner.** Filled in by `needs.rs`,
+    /// which is what finally makes the *content and unfocused* case
+    /// reachable: until this existed, nothing but agitation could take
+    /// anybody's attention.
+    pub needs: Option<crate::needs::Needs>,
 }
 
 impl Mind {
@@ -940,7 +945,7 @@ impl Mind {
             })
             .collect();
         let vuln = unit(person.z(Facet::StressVulnerability));
-        Mind {
+        let mut m = Mind {
             values,
             episodes: Vec::new(),
             concerns: Vec::new(),
@@ -954,8 +959,11 @@ impl Mind {
             focus: Focus { current: 0.85, capacity: 0.85 },
             willpower: gauss(rng),
             empathy: gauss(rng),
+            needs: None,
             person,
-        }
+        };
+        m.needs = Some(crate::needs::Needs::of(&m));
+        m
     }
 
     /// **Read a happening.** This is the perception/appraisal boundary,
@@ -1298,6 +1306,9 @@ impl Mind {
             self.feel(fresh);
         }
 
+        if let Some(n) = self.needs.as_mut() {
+            n.a_day_passes();
+        }
         self.mood.valence *= 0.93;
         self.mood.arousal *= 0.93;
         self.mood.irritability *= 0.90;
@@ -1336,8 +1347,13 @@ impl Mind {
             .min(1.0)
             * 0.15;
         let chronic = (self.stress.load / self.stress.tolerance.max(0.1)).min(1.5) * 0.12;
+        // **What somebody is going without.** The other half of the pair
+        // this separation exists for: a contented scholar kept from a
+        // book for a month cannot settle to anything, and no amount of
+        // calm fixes it.
+        let wanting = self.needs.as_ref().map(|n| n.debt()).unwrap_or(0.0) * 0.45;
         let willed = unit(self.willpower);
-        let cost = acute * (1.0 - 0.5 * willed) + intrusive + chronic;
+        let cost = acute * (1.0 - 0.5 * willed) + intrusive + chronic + wanting;
         self.focus.current = (self.focus.capacity - cost).clamp(0.0, 1.0);
     }
 

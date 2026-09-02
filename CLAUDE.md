@@ -3153,6 +3153,75 @@ mistake in a different coat: **not holding the geometry still.**
   Which is the real consequence rather than a defect: a stamping shop is
   a place you communicate by sight.
 
+## What somebody needs that is not food (`src/needs.rs`)
+
+Slice 4, and it closes a hole slice 1 deliberately left. **Stress, mood
+and focus were separated so that two cases could exist**, and only one of
+them was reachable: a grieving parent could be loaded and focused, but
+*content and unfocused* had no cause, because nothing but agitation could
+take anybody's attention. A person whose whole life was neglected was
+perfectly serene.
+
+**Physical drives and psychological needs are two lists.** Unmet, the
+first kill you and the second take your attention. Keeping them apart is
+the reason.
+
+### Satisfaction has to be semantic
+
+The rule the module turns on, and the easiest thing in it to get wrong by
+accident: **do not satisfy "socialise" because two people stood near each
+other.** An activity declares what it provides and on what condition.
+
+| | provides |
+|---|---|
+| passing a stranger | almost nothing |
+| talking with a friend | company **and** friendship |
+| arguing | excitement, and **not** friendship |
+| drinking among workmates | company, not friendship |
+| working a loom | craft practice, not creation |
+| designing something new | **both** |
+| standing in a temple | **nothing at all** |
+| attending the service, taking part | worship |
+
+- **Company and friendship are different needs**, which is what lets
+  somebody be surrounded all day and lonely.
+- **An argument is contact and it is not friendship.** It can even be
+  exciting. It does not make anybody less lonely, and a model scoring a
+  generic "sociality" cannot say so.
+- **A loom is practice; a design is creation.** Doing well what you
+  already know is a real satisfaction and a different one — collapse them
+  and a weaver of forty years has no reason to try anything.
+- **Being in the building is not the activity.** A model that counts
+  presence has a population whose spiritual needs are met by walking past
+  a church, and nobody has any reason to attend anything.
+
+### Calibrated on how people actually spend a day
+
+Time use is the anchor, because a need satisfied too fast makes everybody
+content and one satisfied too slowly makes everybody wretched *(American
+Time Use Survey, per person per day)*: sleep **8.8 h**, leisure 5.4 of
+which television 2.8, **socialising 0.6**, eating 1.1, reading 0.3,
+religious 0.1. Thirty-eight minutes a day of socialising is what the
+drain rates are set against — and it is an average over a population in
+which a fifth do almost none.
+
+- **A dozen small wants are not a catastrophe.** Summing them would make
+  a full life of minor dissatisfactions worse than one ruinous
+  deprivation, which is the wrong way round, so the debt saturates and
+  the *worst* need is weighted separately.
+- **Focus goes before unhappiness, which is the order it happens in.** A
+  grievance needs a **fortnight floor** on top of a multiple of the drain
+  rate: company empties in two days, and four days of solitude is a bad
+  patch rather than a formal complaint.
+
+**And it caught a slice-1 test that had been quietly cheating.** The
+long-life test ran twenty years of `a_day_passes` on a man doing
+*literally nothing* — no company, no family, no rest, no work — which was
+harmless while nothing measured it. Once neglect took focus he was
+correctly unable to concentrate, and the fix was to make the test live an
+ordinary life: work, family, a friend, a walk, a weekly service and a
+feast four times a year.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
