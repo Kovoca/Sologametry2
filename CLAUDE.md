@@ -2859,47 +2859,104 @@ nobody. Arrays that run alongside an arena follow the slot it chose.
 whole thing rests on: **a mind is an assembly**, and an event goes on
 affecting somebody after it is over.
 
-**Calibrated on the Big Five, not on a game's tables.** DF's personality
-system *is* a five-factor model, which is the hook that lets this keep the
-project's own rule. Real anchors: five factors with facets beneath them,
-approximately normal distribution, heritability **40-60%**, rank-order
-stability **r ≈ 0.6-0.7** across decades, and the *maturity principle* —
-conscientiousness and agreeableness rise with age while neuroticism
-falls. That last one is why facets are stored as something that can move
-at all.
+### A measured Big Five substrate, expressed through behavioural facets
 
-- **A facet is a weight, not a command.** High anger propensity is not
-  attacking people: it is a lower threshold, a stronger reaction, slower
-  de-escalation and a greater chance of choosing confrontation.
-- **A facet is not a value**, and collapsing them makes a hot-tempered
-  pacifist inexpressible. Two people with identical anger and opposite
-  convictions are equally angry and do entirely different things — one is
-  *outraged*, because a principle they actually hold has been broken.
-- **One event, several emotions, and they may disagree.** A friend
-  promoted over you makes an envious person envious, an ambitious one
-  frustrated, and one who is neither mildly glad — often all three in the
-  same head. A single number can only go down by ten.
-- **Stress, mood and focus are three different things**, and the
-  separation earns itself immediately: a grieving parent is heavily
-  loaded and completely focused, while somebody who has just had the best
-  news of their life cannot concentrate. What takes focus is *arousal*,
-  not load.
-- **Arousal is what fades.** Grief is low-arousal and lasts; rage is
-  high-arousal and does not — which is why somebody is still grieving a
-  year later and nobody is still furious. The decay half-life comes off
-  arousal, and that asymmetry is what makes the grieving-but-focused case
-  exist at all.
-- **An individual departs from their culture.** Culture sets the
-  baseline conviction and the person drifts from it, because everybody
-  agreeing exactly leaves no room for a heretic, a reformer, or a
-  criminal who thinks they are in the right.
+Not "the Big Five", and not a clone of a game's tables — the phrasing
+matters because it names what is calibrated against what.
 
-**A test that asserted a game's number instead of a measured one.** "Most
-people are 40-60" describes DF's own scale. Three averaged uniforms give
-SD ≈ 16.7, so that band is 0.6 SD wide and holds 45% of a normal — the
-test failed at 44% while the code was right. The real claim is
-distributional: about two thirds within one SD, and an extreme trait
-under 6%.
+- **Twenty-five independent sliders are not a five-factor model.** The
+  entire content of the model is that facets covary *through their parent
+  domain*: anger, anxiety, gloom and vulnerability to stress are not four
+  coin flips, they are four expressions of one thing. The first version
+  drew them independently and had five-factor names with none of the
+  structure. `facet z = loading x domain + sqrt(1 - loading^2) x residual`,
+  with real NEO-PI-R loadings of **0.5-0.75** — which leaves each facet
+  substantial variance of its own, so an anxious but even-tempered person
+  exists.
+- **A negative loading is the model working.** Cruelty, violence,
+  vengefulness and greed are *low agreeableness*; privacy is low
+  extraversion. They then run against altruism without anybody wiring it.
+- **Four things change and only one is the person.** `expressed =
+  developmental baseline + age trajectory + durable adaptation +
+  temporary state`. A core memory moves **adaptation**, bounded; it does
+  not rewrite who somebody grew up to be.
+
+### Reading a calibration figure correctly
+
+Four figures that are easy to state and easy to implement wrongly. Every
+one of these was stated loosely here first.
+
+- **Store the latent value, present the bounded one.** Personality is a
+  **z-score**; 0-100 is a display scale. Storing the bounded score is
+  what let a test assert a game's neutral band: three averaged uniforms
+  put **43.2%** inside 40-60 and a matched normal **45.1%**, so the test
+  failed at 44% while the code was right. It was checking a number nobody
+  had measured. In z the claims are unambiguous — 68.3% within 1σ, 95.4%
+  within 2σ — and **"extreme" is *defined* as |z| > 2**, because "under
+  6%" is not reproducible.
+- **Heritability is a population variance ratio, not a share of one
+  person.** Twin estimates of **41-61%** *(Jang et al.)* do not license
+  `personality = 0.5 x parents + 0.5 x environment`, which is a claim
+  about an individual and is meaningless. What they license is a
+  **breeding value**: mid-parent plus segregation noise, phenotype on
+  top, and the check is a *population correlation between relatives*.
+  Parent-offspring lands near h²/2 ≈ 0.22 against measured 0.15-0.20.
+- **r ≈ 0.6-0.7 is an observed coefficient over an interval, not an
+  annual retention rate.** Applying 0.65 a year destroys stability inside
+  a decade. And it carries **measurement error**: observed = true ×
+  reliability, so a latent model held against it makes people far less
+  stable than they are. At a reliability of **0.80**, a true stability of
+  ~0.85 shows up as the ~0.68 that is published. The test measures both
+  and requires observed < latent.
+- **The maturity principle is a tendency, not a script.** Conscientious-
+  ness and agreeableness rise and neuroticism falls *on average*, but
+  sixteen longitudinal samples analysed together *(Graham et al.)* found
+  substantial heterogeneity, flattening and late-life reversals. Every
+  person carries a slope of their own, and the test requires a solid
+  minority to move against the average.
+
+### Appraisal is the bridge between trait and value
+
+**The trait does not say what somebody is angry about; the value does not
+guarantee anger.** Neither layer decides anything alone:
+
+```text
+emotion = appraisal(event, values, relationships, beliefs)
+        x trait susceptibility
+        x current vulnerability      (load and mood already carried)
+        x regulation                 (willpower damps the expression)
+```
+
+Two people with identical anger and opposite convictions are *equally
+angry* and only one is outraged. And one event produces several emotions
+that stay separate when their valences fight: a promotion given to a
+friend can yield gladness, envy, frustration, resentment at a crooked
+process and shame at a confirmed fear, at once.
+
+### Acute activation fades; the concern that made it remains
+
+The deepest correction, and it replaced "arousal determines duration".
+Treating duration as a property of arousal makes grief one uninterrupted
+year of sadness, which is not what grief is.
+
+**A `Concern` is a standing thing — a bereavement, a grievance, a threat,
+a blocked goal — with an importance, an unresolvedness and a habituation.
+An `Episode` is one burst it throws off.** Emotion-duration research
+found that what lengthens an emotion is its **importance**, its initial
+intensity and the eliciting situation *reappearing*, in fact or in
+thought *(Verduyn et al.)* — arousal alone cannot carry it.
+
+- Rage's activation is gone within days; **the grievance produces fresh
+  rage for years**.
+- Bereavement is **recurrent waves**, with bearable days between them,
+  not a permanent emotion.
+- Habituation is real and partial: it hurts less, it does not go away.
+
+**Focus is taken by activation first, and by load a little.** Acute
+activation and intrusive recollection dominate; chronic load still exerts
+a smaller indirect penalty through vigilance, rumination and exhaustion,
+because carrying something indefinitely is not free. Both cases survive —
+grieving and functional, delighted and temporarily useless.
 
 ## Conventions
 

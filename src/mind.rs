@@ -1,112 +1,430 @@
 //! **A person is not one happiness number.**
 //!
-//! The whole argument of `docs/mind-spec.md` in one line, and the reason
-//! this module exists: a mind is an assembly of temperament, beliefs,
-//! tastes, needs, ambitions, relationships, immediate emotions,
-//! accumulated stress and memories, and **an event goes on affecting
-//! somebody after it is over**.
+//! Slice 1 of `docs/mind-spec.md`: the static mind, an appraisal that
+//! produces *several* emotions from one event, and the separation of
+//! stress, mood and focus.
 //!
-//! This is slice 1 of nine: the static mind, an appraisal that produces
-//! *several* emotions from one event, and the separation of stress, mood
-//! and focus. Memory, perception, needs, relationships and the social
-//! layer come after it.
+//! ## What this is, precisely
 //!
-//! ## Calibrated on the Big Five, not on a game's tables
+//! **A measured Big Five substrate expressed through behavioural
+//! facets.** Not "the Big Five", and not a clone of a game's tables. The
+//! distinction earns its keep immediately: thirty independently drawn
+//! sliders **are not** a five-factor model, because the whole content of
+//! the model is that facets *covary through their parent domain*. Anger,
+//! anxiety, gloom and vulnerability to stress are not four coin flips;
+//! they are four expressions of one thing.
 //!
-//! Dwarf Fortress's personality system **is** a five-factor model, which
-//! is the hook that lets this project keep its own rule — anchor on
-//! measured figures — while building what the specification asks for.
-//! The real anchors:
+//! ```text
+//! domain z ~ N(0, 1)
+//! facet z  = loading × domain + √(1 − loading²) × residual
+//! ```
 //!
-//! | | measured |
+//! Real NEO-PI-R facet loadings on their parent domain run **0.5–0.75**,
+//! which leaves each facet with substantial variance of its own — so a
+//! person can be an anxious *and* even-tempered neurotic, which is a real
+//! kind of person.
+//!
+//! ## Latent inside, 0–100 at the edges
+//!
+//! Personality is stored as a **z-score** and 0–100 is a presentation
+//! scale. Storing the bounded score was what let a test assert a game's
+//! neutral band instead of a measured statistic.
+//!
+//! | | |
 //! |---|---|
-//! | structure | five factors, facets grouped beneath them |
-//! | distribution | approximately normal; most people are middling |
-//! | heritability | **40-60%** |
-//! | rank-order stability | r ≈ **0.6-0.7** across decades |
-//! | mean-level drift | conscientiousness and agreeableness rise with age, neuroticism falls — the *maturity principle* |
+//! | within \|z\| ≤ 1 | **68.3%** |
+//! | within \|z\| ≤ 2 | **95.4%** |
+//! | **extreme**, defined as \|z\| > 2 | **4.6%** |
 //!
-//! That last row is why facets are stored as something that can move at
-//! all: personality is stable, not fixed, and the specification's slice 7
-//! needs somewhere for a core memory to push.
+//! "Extreme" is *defined*, not eyeballed; "under 6%" is not reproducible.
 //!
-//! **A facet is a weight, not a command.** High anger propensity does not
-//! mean attacking people; it means a lower threshold, a stronger
-//! reaction, slower de-escalation and a greater chance of choosing a
-//! confrontational response. Everything here obeys that.
+//! ## Four things that change, and only one of them is the person
+//!
+//! ```text
+//! expressed(t) = developmental baseline
+//!              + age trajectory(t)
+//!              + durable adaptation(t)
+//!              + temporary state
+//! ```
+//!
+//! A core memory moves **durable adaptation**. It does not rewrite the
+//! baseline — that is who somebody grew up to be, and it is not editable
+//! by one bad afternoon.
 
 use crate::rng::Rng;
 
-/// **Capability, not desire.** An attribute says what somebody *can* do,
-/// never what they want — a highly empathic person may be cruel, because
-/// they read another's pain accurately and do not care.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Attributes {
-    pub analytical: u8,
-    pub memory: u8,
-    pub willpower: u8,
-    pub creativity: u8,
-    pub intuition: u8,
-    pub patience: u8,
-    pub linguistic: u8,
-    pub spatial: u8,
-    /// Reading what somebody else feels. Distinct from caring about it,
-    /// which is `Facets::altruism`.
-    pub empathy: u8,
-    pub social_awareness: u8,
+// ---------------------------------------------------------------------
+// the five factors, and the facets that hang off them
+// ---------------------------------------------------------------------
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Domain {
+    Neuroticism,
+    Extraversion,
+    Agreeableness,
+    Conscientiousness,
+    Openness,
 }
 
-/// **How somebody tends to react**, 0-100, most people between 40 and 60.
-///
-/// Grouped under the five factors, because that is what the structure
-/// actually is. A world where everybody has three extreme traits is a
-/// collection of caricatures, so the distribution matters more than the
-/// list.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Facets {
-    // --- neuroticism ---
-    pub anger: u8,
-    pub anxiety: u8,
-    pub depression_propensity: u8,
-    /// How much a given load of stress hurts. Separate from how much
-    /// arrives, which is what the appraisal decides.
-    pub stress_vulnerability: u8,
-    pub envy: u8,
-    // --- extraversion ---
-    pub gregariousness: u8,
-    pub assertiveness: u8,
-    pub excitement_seeking: u8,
-    pub cheerfulness: u8,
-    // --- agreeableness ---
-    pub trust: u8,
-    pub altruism: u8,
-    pub cruelty: u8,
-    pub tolerance: u8,
-    pub gratitude: u8,
-    // --- conscientiousness ---
-    pub dutifulness: u8,
-    pub perseverance: u8,
-    pub orderliness: u8,
-    pub ambition: u8,
-    // --- openness ---
-    pub curiosity: u8,
-    pub creativity_love: u8,
-    // --- appetite and inhibition ---
-    pub greed: u8,
-    pub violence: u8,
-    pub pride: u8,
-    pub vengefulness: u8,
-    /// How much of themselves they will let anybody see. High privacy
-    /// refuses consolation, which is one of the ways grief goes wrong.
-    pub privacy: u8,
+impl Domain {
+    pub const ALL: [Domain; 5] = [
+        Domain::Neuroticism,
+        Domain::Extraversion,
+        Domain::Agreeableness,
+        Domain::Conscientiousness,
+        Domain::Openness,
+    ];
+    fn index(self) -> usize {
+        match self {
+            Domain::Neuroticism => 0,
+            Domain::Extraversion => 1,
+            Domain::Agreeableness => 2,
+            Domain::Conscientiousness => 3,
+            Domain::Openness => 4,
+        }
+    }
+
+    /// **The maturity principle, as a population tendency in z per
+    /// decade.** Conscientiousness and agreeableness rise across
+    /// adulthood, neuroticism falls.
+    ///
+    /// Deliberately weak, and deliberately not compulsory: a coordinated
+    /// analysis of sixteen longitudinal samples *(Graham et al.)* found
+    /// substantial heterogeneity, flattening, and in several traits
+    /// late-life reversals including **rising** neuroticism. Every person
+    /// also carries a slope of their own, so a good share move against
+    /// the average. A rule every actor obeys is not a tendency.
+    fn drift_per_decade(self) -> f32 {
+        match self {
+            Domain::Conscientiousness => 0.10,
+            Domain::Agreeableness => 0.08,
+            Domain::Neuroticism => -0.08,
+            Domain::Extraversion => -0.01,
+            Domain::Openness => -0.03,
+        }
+    }
 }
 
-/// **What somebody holds to be admirable or proper.** Distinct from a
-/// facet: a facet is how they react, a value is what they believe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Facet {
+    // neuroticism
+    Anxiety,
+    Anger,
+    Gloom,
+    StressVulnerability,
+    Envy,
+    // extraversion
+    Gregariousness,
+    Assertiveness,
+    ExcitementSeeking,
+    Cheerfulness,
+    Privacy,
+    Pride,
+    // agreeableness
+    Trust,
+    Altruism,
+    Tolerance,
+    Gratitude,
+    Cruelty,
+    Violence,
+    Vengefulness,
+    Greed,
+    // conscientiousness
+    Dutifulness,
+    Perseverance,
+    Orderliness,
+    Ambition,
+    // openness
+    Curiosity,
+    LoveOfMaking,
+}
+
+pub const FACETS: usize = 25;
+
+impl Facet {
+    pub const ALL: [Facet; FACETS] = [
+        Facet::Anxiety,
+        Facet::Anger,
+        Facet::Gloom,
+        Facet::StressVulnerability,
+        Facet::Envy,
+        Facet::Gregariousness,
+        Facet::Assertiveness,
+        Facet::ExcitementSeeking,
+        Facet::Cheerfulness,
+        Facet::Privacy,
+        Facet::Pride,
+        Facet::Trust,
+        Facet::Altruism,
+        Facet::Tolerance,
+        Facet::Gratitude,
+        Facet::Cruelty,
+        Facet::Violence,
+        Facet::Vengefulness,
+        Facet::Greed,
+        Facet::Dutifulness,
+        Facet::Perseverance,
+        Facet::Orderliness,
+        Facet::Ambition,
+        Facet::Curiosity,
+        Facet::LoveOfMaking,
+    ];
+
+    fn index(self) -> usize {
+        Facet::ALL.iter().position(|f| *f == self).unwrap()
+    }
+
+    /// **Which factor it is an expression of, and how strongly.**
+    ///
+    /// A negative loading is not a curiosity: cruelty, violence,
+    /// vengefulness and greed are all *low* agreeableness, and privacy is
+    /// low extraversion. That is what makes them covary the right way
+    /// round without anybody wiring it by hand.
+    pub fn parent(self) -> (Domain, f32) {
+        use Domain::*;
+        use Facet::*;
+        match self {
+            Anxiety => (Neuroticism, 0.75),
+            Anger => (Neuroticism, 0.60),
+            Gloom => (Neuroticism, 0.75),
+            StressVulnerability => (Neuroticism, 0.70),
+            Envy => (Neuroticism, 0.55),
+            Gregariousness => (Extraversion, 0.75),
+            Assertiveness => (Extraversion, 0.65),
+            ExcitementSeeking => (Extraversion, 0.60),
+            Cheerfulness => (Extraversion, 0.70),
+            Privacy => (Extraversion, -0.55),
+            Pride => (Extraversion, 0.45),
+            Trust => (Agreeableness, 0.65),
+            Altruism => (Agreeableness, 0.70),
+            Tolerance => (Agreeableness, 0.60),
+            Gratitude => (Agreeableness, 0.55),
+            Cruelty => (Agreeableness, -0.70),
+            Violence => (Agreeableness, -0.55),
+            Vengefulness => (Agreeableness, -0.60),
+            Greed => (Agreeableness, -0.45),
+            Dutifulness => (Conscientiousness, 0.70),
+            Perseverance => (Conscientiousness, 0.75),
+            Orderliness => (Conscientiousness, 0.65),
+            Ambition => (Conscientiousness, 0.60),
+            Curiosity => (Openness, 0.70),
+            LoveOfMaking => (Openness, 0.70),
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        use Facet::*;
+        match self {
+            Anxiety => "anxiety",
+            Anger => "anger",
+            Gloom => "gloom",
+            StressVulnerability => "vulnerability to stress",
+            Envy => "envy",
+            Gregariousness => "gregariousness",
+            Assertiveness => "assertiveness",
+            ExcitementSeeking => "excitement-seeking",
+            Cheerfulness => "cheerfulness",
+            Privacy => "privacy",
+            Pride => "pride",
+            Trust => "trust",
+            Altruism => "altruism",
+            Tolerance => "tolerance",
+            Gratitude => "gratitude",
+            Cruelty => "cruelty",
+            Violence => "violence",
+            Vengefulness => "vengefulness",
+            Greed => "greed",
+            Dutifulness => "dutifulness",
+            Perseverance => "perseverance",
+            Orderliness => "orderliness",
+            Ambition => "ambition",
+            Curiosity => "curiosity",
+            LoveOfMaking => "love of making things",
+        }
+    }
+}
+
+/// **What somebody grew up to be, plus what life has done since.**
 ///
-/// The distinction is the whole point. Two people with identical anger
-/// behave differently if one values peace and law and the other does not
-/// — the first shouts and threatens to report you, the second hits you.
+/// The four components are kept apart because they change on entirely
+/// different timescales and for entirely different reasons — and because
+/// a core memory is allowed to move exactly one of them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Personality {
+    /// Who they grew up to be, in z. Never edited after the person is
+    /// made.
+    baseline: [f32; FACETS],
+    /// **The genetic part of the baseline**, kept so offspring can
+    /// inherit a breeding value rather than a phenotype.
+    genetic: [f32; FACETS],
+    /// Each person's own slope, in z per decade, so some move against the
+    /// population tendency.
+    slope: [f32; 5],
+    /// What life has durably done. This is what a core memory moves.
+    pub adaptation: [f32; FACETS],
+    /// Years lived, for the age trajectory.
+    pub age_years: f32,
+}
+
+/// **Heritability is a population variance ratio, not a share of one
+/// person.**
+///
+/// Twin estimates for the five domains run about **41–61%** *(Jang et
+/// al.: 41, 53, 61, 41, 44)*, and estimates from measured common variants
+/// are lower. What that emphatically does not license is
+/// `personality = 0.5 × parents + 0.5 × environment`, which is a
+/// statement about an individual and is meaningless.
+///
+/// What it does license is a **breeding value**: an offspring's genetic
+/// value is the mid-parent value plus segregation noise, the phenotype is
+/// that plus a developmental residual, and the ratio of their variances
+/// is the heritability. The check is then a *population* correlation
+/// between relatives — parent-offspring should come out near h²/2, which
+/// for h² ≈ 0.45 is about **0.22**, and measured parent-offspring
+/// personality correlations run 0.15–0.20.
+const HERITABILITY: f32 = 0.45;
+
+/// **Accumulated durable change over a decade, in z.**
+///
+/// Set so that latent rank-order stability over twenty years lands near
+/// 0.85. That is *not* the 0.6–0.7 usually quoted: the quoted figures are
+/// **observed** test-retest correlations and carry measurement error with
+/// them. Observed = true × reliability, so 0.85 × 0.80 ≈ 0.68, which is
+/// where the literature sits. Modelling latent traits and then comparing
+/// them to an observed coefficient would make people far less stable than
+/// they are.
+const ADAPTATION_PER_DECADE: f32 = 0.44;
+
+/// **How well a personality can be measured at all.** Good inventories
+/// report internal consistency around 0.80, and that ceiling is why
+/// observed stability never reaches true stability.
+pub const RELIABILITY: f32 = 0.80;
+
+/// A standard normal, from the project's own generator — no `rand`.
+fn gauss(rng: &mut Rng) -> f32 {
+    // Box-Muller. The guard keeps the log finite.
+    let u1 = (rng.next_f32()).max(1e-7);
+    let u2 = rng.next_f32();
+    (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos()
+}
+
+impl Personality {
+    /// Draw somebody from the population.
+    pub fn draw(rng: &mut Rng) -> Self {
+        let domains: [f32; 5] = std::array::from_fn(|_| gauss(rng));
+        Self::from_domains(rng, domains)
+    }
+
+    fn from_domains(rng: &mut Rng, domains: [f32; 5]) -> Self {
+        let h = HERITABILITY.sqrt();
+        let mut baseline = [0.0f32; FACETS];
+        let mut genetic = [0.0f32; FACETS];
+        for f in Facet::ALL {
+            let (d, loading) = f.parent();
+            // **The covariance is the model.** A facet is its domain
+            // times its loading, plus what is specific to it — which is
+            // what makes anger and anxiety correlate without either being
+            // a copy of the other.
+            let specific = (1.0 - loading * loading).max(0.0).sqrt() * gauss(rng);
+            let z = loading * domains[d.index()] + specific;
+            baseline[f.index()] = z;
+            // Split that phenotype into the part that can be passed on
+            // and the part that cannot.
+            genetic[f.index()] = h * z;
+        }
+        Personality {
+            baseline,
+            genetic,
+            slope: std::array::from_fn(|_| gauss(rng) * 0.12),
+            adaptation: [0.0; FACETS],
+            age_years: 30.0,
+        }
+    }
+
+    /// **A child of two parents**, by breeding value.
+    ///
+    /// Mid-parent genetic value plus segregation noise, then a
+    /// developmental residual on top. Nothing here claims a percentage of
+    /// any individual came from anywhere; what it produces is a
+    /// population in which relatives correlate at about the right rate.
+    pub fn inherit(rng: &mut Rng, a: &Personality, b: &Personality) -> Self {
+        let h = HERITABILITY.sqrt();
+        let mut baseline = [0.0f32; FACETS];
+        let mut genetic = [0.0f32; FACETS];
+        for f in Facet::ALL {
+            let i = f.index();
+            // Half of each parent's breeding value. The remaining genetic
+            // variance is segregation — which is why siblings differ.
+            let mid = 0.5 * (a.genetic[i] + b.genetic[i]);
+            let seg = (0.5f32).sqrt() * h * gauss(rng);
+            genetic[i] = mid + seg;
+            // And everything that is not inherited.
+            let env = (1.0 - HERITABILITY).max(0.0).sqrt() * gauss(rng);
+            baseline[i] = genetic[i] + env;
+        }
+        Personality {
+            baseline,
+            genetic,
+            slope: std::array::from_fn(|_| gauss(rng) * 0.12),
+            adaptation: [0.0; FACETS],
+            age_years: 0.0,
+        }
+    }
+
+    /// **The facet as it is expressed now**, in z.
+    pub fn z(&self, f: Facet) -> f32 {
+        let i = f.index();
+        let (d, loading) = f.parent();
+        let decades = (self.age_years - 30.0) / 10.0;
+        // The population tendency reaches a facet through its domain and
+        // is scaled by how much of that facet the domain accounts for —
+        // so a facet only weakly tied to its factor drifts only weakly.
+        let maturity = d.drift_per_decade() * decades * loading;
+        let personal = self.slope[d.index()] * decades * loading;
+        self.baseline[i] + maturity + personal + self.adaptation[i]
+    }
+
+    /// **What a questionnaire would say**, which is not what is true.
+    ///
+    /// Measurement error, at the reliability real inventories achieve.
+    /// Without it, comparing this model's stability to a published
+    /// test-retest coefficient compares two different quantities.
+    pub fn observed(&self, f: Facet, rng: &mut Rng) -> f32 {
+        let error = (1.0 - RELIABILITY).sqrt() * gauss(rng);
+        self.z(f) + error
+    }
+
+    /// **0–100 for showing somebody**, never for storing. A z of 0 is 50.
+    pub fn score(&self, f: Facet) -> u8 {
+        (50.0 + self.z(f) * 16.67).round().clamp(0.0, 100.0) as u8
+    }
+
+    /// Push a facet durably, the way a core memory is allowed to.
+    /// **Bounded**: life bends people, it does not replace them.
+    pub fn adapt(&mut self, f: Facet, by: f32) {
+        let i = f.index();
+        self.adaptation[i] = (self.adaptation[i] + by).clamp(-1.5, 1.5);
+    }
+
+    /// Years pass. Only the trajectory moves; the baseline is who they
+    /// grew up to be.
+    pub fn a_year_passes(&mut self) {
+        self.age_years += 1.0;
+    }
+
+    /// Let a test build somebody specific without fighting the draw.
+    pub fn set_baseline(&mut self, f: Facet, z: f32) {
+        self.baseline[f.index()] = z;
+    }
+}
+
+// ---------------------------------------------------------------------
+// values
+// ---------------------------------------------------------------------
+
+/// **What somebody holds to be admirable or proper.** A facet is how they
+/// react; a value is what they believe. Collapse them and a hot-tempered
+/// pacifist cannot be expressed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Value {
     Law,
@@ -178,29 +496,26 @@ impl Value {
     }
 }
 
-/// Conviction runs from intense rejection to intense admiration, and
-/// carries **where it came from**: culture sets a baseline and an
-/// individual departs from it, which is what makes a heretic possible.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Conviction {
     pub topic: Value,
     /// -50 (contempt) to +50 (reverence).
     pub held: i8,
     /// What the culture around them holds, so the *distance* can be
-    /// measured. A person who values peace at +40 in a warlike culture is
-    /// a different person from one who does so in a peaceful one.
+    /// measured.
     pub cultural: i8,
 }
 
 impl Conviction {
-    /// How far this person stands from the people around them.
     pub fn heterodoxy(self) -> i16 {
         (self.held as i16 - self.cultural as i16).abs()
     }
 }
 
-/// **An emotion, not a happiness delta.** One event produces several of
-/// these, and they can disagree with each other.
+// ---------------------------------------------------------------------
+// emotion: episodes and the concerns that keep producing them
+// ---------------------------------------------------------------------
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Emotion {
     Joy,
@@ -216,6 +531,7 @@ pub enum Emotion {
     Anger,
     Resentment,
     Grief,
+    Yearning,
     Guilt,
     Shame,
     Envy,
@@ -228,110 +544,150 @@ pub enum Emotion {
 }
 
 impl Emotion {
-    /// **Pleasant or not**, +1 to -1. The one number an emotion is
-    /// allowed to be reduced to, and only for arithmetic on mood.
     pub fn valence(self) -> f64 {
+        use Emotion::*;
         match self {
-            Emotion::Joy | Emotion::Pride | Emotion::Satisfaction => 1.0,
-            Emotion::Gratitude | Emotion::Affection | Emotion::Relief => 0.8,
-            Emotion::Admiration | Emotion::Hope => 0.6,
-            Emotion::Boredom => -0.2,
-            Emotion::Frustration | Emotion::Discouragement => -0.5,
-            Emotion::Anxiety | Emotion::Loneliness | Emotion::Envy => -0.6,
-            Emotion::Fear | Emotion::Anger | Emotion::Guilt => -0.8,
-            Emotion::Resentment | Emotion::Outrage | Emotion::Shame => -0.8,
-            Emotion::Grief | Emotion::Humiliation => -1.0,
+            Joy | Pride | Satisfaction => 1.0,
+            Gratitude | Affection | Relief => 0.8,
+            Admiration | Hope => 0.6,
+            Boredom => -0.2,
+            Frustration | Discouragement | Yearning => -0.5,
+            Anxiety | Loneliness | Envy => -0.6,
+            Fear | Anger | Guilt => -0.8,
+            Resentment | Outrage | Shame => -0.8,
+            Grief | Humiliation => -1.0,
         }
     }
 
-    /// **How much it stirs somebody up**, which is not the same as
-    /// whether it is pleasant. Grief and boredom are both unpleasant and
-    /// only one of them makes anybody do something.
-    pub fn arousal(self) -> f64 {
+    /// **How much it stirs the body up.** This is now only about
+    /// activation — it no longer decides how long anything lasts.
+    pub fn activation(self) -> f64 {
+        use Emotion::*;
         match self {
-            Emotion::Anger | Emotion::Outrage | Emotion::Fear => 1.0,
-            Emotion::Humiliation | Emotion::Joy => 0.8,
-            Emotion::Anxiety | Emotion::Envy | Emotion::Frustration => 0.7,
-            Emotion::Pride | Emotion::Resentment | Emotion::Shame => 0.5,
-            Emotion::Gratitude | Emotion::Affection | Emotion::Admiration => 0.4,
-            Emotion::Hope | Emotion::Guilt | Emotion::Relief => 0.3,
-            Emotion::Satisfaction | Emotion::Loneliness => 0.2,
-            Emotion::Grief | Emotion::Discouragement => 0.2,
-            Emotion::Boredom => 0.0,
+            Anger | Outrage | Fear => 1.0,
+            Humiliation | Joy => 0.8,
+            Anxiety | Envy | Frustration => 0.7,
+            Pride | Resentment | Shame => 0.5,
+            Gratitude | Affection | Admiration => 0.4,
+            Hope | Guilt | Relief | Yearning => 0.3,
+            Satisfaction | Loneliness => 0.2,
+            Grief | Discouragement => 0.2,
+            Boredom => 0.0,
         }
     }
 
     pub fn name(self) -> &'static str {
+        use Emotion::*;
         match self {
-            Emotion::Joy => "joy",
-            Emotion::Pride => "pride",
-            Emotion::Satisfaction => "satisfaction",
-            Emotion::Gratitude => "gratitude",
-            Emotion::Affection => "affection",
-            Emotion::Relief => "relief",
-            Emotion::Admiration => "admiration",
-            Emotion::Hope => "hope",
-            Emotion::Fear => "fear",
-            Emotion::Anxiety => "anxiety",
-            Emotion::Anger => "anger",
-            Emotion::Resentment => "resentment",
-            Emotion::Grief => "grief",
-            Emotion::Guilt => "guilt",
-            Emotion::Shame => "shame",
-            Emotion::Envy => "envy",
-            Emotion::Outrage => "outrage",
-            Emotion::Frustration => "frustration",
-            Emotion::Discouragement => "discouragement",
-            Emotion::Humiliation => "humiliation",
-            Emotion::Loneliness => "loneliness",
-            Emotion::Boredom => "boredom",
+            Joy => "joy",
+            Pride => "pride",
+            Satisfaction => "satisfaction",
+            Gratitude => "gratitude",
+            Affection => "affection",
+            Relief => "relief",
+            Admiration => "admiration",
+            Hope => "hope",
+            Fear => "fear",
+            Anxiety => "anxiety",
+            Anger => "anger",
+            Resentment => "resentment",
+            Grief => "grief",
+            Yearning => "yearning",
+            Guilt => "guilt",
+            Shame => "shame",
+            Envy => "envy",
+            Outrage => "outrage",
+            Frustration => "frustration",
+            Discouragement => "discouragement",
+            Humiliation => "humiliation",
+            Loneliness => "loneliness",
+            Boredom => "boredom",
         }
     }
 }
 
-/// One felt emotion, with what caused it and how fast it fades.
+/// **What an emotion is about, and why it comes back.**
+///
+/// The correction that matters most in this module. Treating duration as
+/// a property of arousal made grief one uninterrupted year-long sadness,
+/// which is not what grief is. Grief is a *persistent concern* — an
+/// attachment, a future and a role all lost — that throws off repeated
+/// waves of sadness, yearning, anger, relief and guilt. Rage is the
+/// mirror image: the activation is gone within the hour and the
+/// **grievance** can sit unresolved for years and produce fresh rage
+/// every time it is touched.
+///
+/// Emotion-duration research bears this out: what lengthened an emotion
+/// was its **importance**, its initial intensity, and the eliciting
+/// situation *reappearing* — physically or in thought *(Verduyn et al.)*.
+/// Arousal alone is not enough to carry it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConcernKind {
+    Bereavement,
+    Grievance,
+    Threat,
+    BlockedGoal,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct Felt {
-    pub what: Emotion,
-    /// 0-1.
-    pub strength: f64,
-    /// Days since it began.
+pub struct Concern {
+    pub kind: ConcernKind,
+    /// How much it matters. The strongest predictor of how long an
+    /// emotion runs.
+    pub importance: f64,
+    /// How much of it is still open. A grievance that has been answered,
+    /// or a loss that has been made sense of, stops throwing off waves.
+    pub unresolvedness: f64,
+    /// Habituation: the same concern hurts less on the hundredth
+    /// occasion than the first, without ceasing to be there.
+    pub adaptation: f64,
     pub age_days: f64,
 }
 
-/// **What happened, as this person read it.**
-///
-/// Deliberately an appraisal input rather than a world event: slice 3
-/// splits `WorldEvent` from `PerceivedEvent` and this is the shape the
-/// second one collapses to. A person reacts to what they believe
-/// happened.
+impl Concern {
+    /// The force behind the next wave.
+    pub fn pressure(&self) -> f64 {
+        (self.importance * self.unresolvedness * (1.0 - self.adaptation)).max(0.0)
+    }
+}
+
+/// One burst of feeling: a valence, an activation, and what it is about.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Episode {
+    pub what: Emotion,
+    pub strength: f64,
+    /// Bodily stirring-up. **This** is what fades quickly, and what takes
+    /// attention while it lasts.
+    pub activation: f64,
+    pub age_days: f64,
+    /// Which standing concern threw it off, if any.
+    pub about: Option<usize>,
+}
+
+// ---------------------------------------------------------------------
+// appraisal
+// ---------------------------------------------------------------------
+
+/// **What happened, as this person read it.** Slice 3 splits the world
+/// event from the perceived one; this is the shape the second collapses
+/// to, because a person reacts to what they believe happened.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Appraisal {
-    /// How bad or good, before any of this person is taken into account.
-    /// -1 to +1.
     pub severity: f64,
-    /// Did it happen to *them*? 0-1.
     pub to_me: f64,
-    /// Did it happen to somebody they care about? 0-1.
     pub to_mine: f64,
-    /// Somebody did this on purpose. Blame needs an author.
     pub deliberate: bool,
-    /// Whether the author was this person themselves — which is the
-    /// difference between anger and guilt.
     pub my_doing: bool,
-    /// Could they have stopped it? Low control is what turns fear into
-    /// anxiety and anger into resentment.
     pub control: f64,
-    /// How much of a surprise. Novelty drives intensity.
     pub unexpected: f64,
-    /// A value this bears on, and whether it was upheld or broken.
     pub touches: Option<(Value, bool)>,
-    /// Somebody else got something this person wanted.
     pub someone_gained: bool,
-    /// It blocked something they were trying to do.
+    /// The process itself was crooked, which is a different complaint
+    /// from losing.
+    pub unfair: bool,
+    /// It confirms something they already feared about themselves.
+    pub confirms_a_fear: bool,
     pub blocks_a_goal: bool,
-    /// Nothing happened, for a long time. Boredom has to come from
-    /// somewhere and it is not an event.
     pub nothing_happening: bool,
 }
 
@@ -347,29 +703,22 @@ impl Default for Appraisal {
             unexpected: 0.3,
             touches: None,
             someone_gained: false,
+            unfair: false,
+            confirms_a_fear: false,
             blocks_a_goal: false,
             nothing_happening: false,
         }
     }
 }
 
-/// **Accumulated burden**, over months and years. Not mood and not focus.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Stress {
-    /// What they are carrying.
     pub load: f64,
-    /// Where they sit when nothing is happening — temperament, not
-    /// circumstance.
     pub baseline: f64,
-    /// How much they can carry before it shows.
     pub tolerance: f64,
-    /// How fast it drains on a good day.
     pub recovery: f64,
 }
 
-/// **A medium-term bias**, over hours and weeks. What it does is change
-/// how an *ambiguous* event is read: an irritable person hears an insult
-/// in a neutral remark, an anxious one hears a threat.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub struct Mood {
     pub valence: f64,
@@ -378,87 +727,30 @@ pub struct Mood {
     pub anxiety_bias: f64,
 }
 
-/// **Cognitive readiness.** Emphatically not stress: a grieving parent
-/// can be flatly focused on a sick child, and a contented scholar who has
-/// been kept from a book for a month cannot concentrate on anything.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Focus {
     pub current: f64,
     pub capacity: f64,
 }
 
-/// Everything that makes somebody react the way they do.
 #[derive(Clone, Debug)]
 pub struct Mind {
-    pub attributes: Attributes,
-    pub facets: Facets,
+    pub person: Personality,
     pub values: Vec<Conviction>,
-    pub feeling: Vec<Felt>,
+    pub episodes: Vec<Episode>,
+    pub concerns: Vec<Concern>,
     pub stress: Stress,
     pub mood: Mood,
     pub focus: Focus,
-}
-
-/// Draw 0-100 with most people in the middle.
-///
-/// Three uniforms averaged — the same shape this project already uses for
-/// aptitude and diligence — which puts about two thirds inside 40-60 and
-/// makes an extreme trait genuinely uncommon rather than merely less
-/// likely. A world where everybody has three of them is a collection of
-/// caricatures.
-fn facet(rng: &mut Rng) -> u8 {
-    let t = (rng.next_f32() + rng.next_f32() + rng.next_f32()) / 3.0;
-    (t * 100.0).round().clamp(0.0, 100.0) as u8
+    /// Cognitive capability, which is not disposition. Somebody can read
+    /// another's pain perfectly and not care.
+    pub willpower: f32,
+    pub empathy: f32,
 }
 
 impl Mind {
-    /// **A person, drawn.** Culture supplies the baseline convictions and
-    /// the individual departs from it.
     pub fn draw(rng: &mut Rng, culture: &[(Value, i8)]) -> Self {
-        let mut f = |r: &mut Rng| facet(r);
-        let facets = Facets {
-            anger: f(rng),
-            anxiety: f(rng),
-            depression_propensity: f(rng),
-            stress_vulnerability: f(rng),
-            envy: f(rng),
-            gregariousness: f(rng),
-            assertiveness: f(rng),
-            excitement_seeking: f(rng),
-            cheerfulness: f(rng),
-            trust: f(rng),
-            altruism: f(rng),
-            cruelty: f(rng),
-            tolerance: f(rng),
-            gratitude: f(rng),
-            dutifulness: f(rng),
-            perseverance: f(rng),
-            orderliness: f(rng),
-            ambition: f(rng),
-            curiosity: f(rng),
-            creativity_love: f(rng),
-            greed: f(rng),
-            violence: f(rng),
-            pride: f(rng),
-            vengefulness: f(rng),
-            privacy: f(rng),
-        };
-        let attributes = Attributes {
-            analytical: f(rng),
-            memory: f(rng),
-            willpower: f(rng),
-            creativity: f(rng),
-            intuition: f(rng),
-            patience: f(rng),
-            linguistic: f(rng),
-            spatial: f(rng),
-            empathy: f(rng),
-            social_awareness: f(rng),
-        };
-        // **An individual departs from their culture**, by a normal-ish
-        // amount. Everybody agreeing with the culture exactly leaves no
-        // room for a heretic, a reformer or a criminal who thinks they
-        // are in the right.
+        let person = Personality::draw(rng);
         let values = Value::ALL
             .iter()
             .map(|&topic| {
@@ -467,8 +759,10 @@ impl Mind {
                     .find(|(t, _)| *t == topic)
                     .map(|(_, v)| *v)
                     .unwrap_or(0);
-                let drift =
-                    ((rng.next_f32() + rng.next_f32() + rng.next_f32()) / 3.0 - 0.5) * 60.0;
+                // **An individual departs from their culture**, or there
+                // is no room for a heretic, a reformer, or a criminal who
+                // believes they are in the right.
+                let drift = gauss(rng) * 18.0;
                 Conviction {
                     topic,
                     held: (cultural as f32 + drift).clamp(-50.0, 50.0) as i8,
@@ -476,26 +770,25 @@ impl Mind {
                 }
             })
             .collect();
-        let vulnerability = facets.stress_vulnerability as f64 / 100.0;
+        let vuln = unit(person.z(Facet::StressVulnerability));
         Mind {
-            attributes,
-            facets,
             values,
-            feeling: Vec::new(),
+            episodes: Vec::new(),
+            concerns: Vec::new(),
             stress: Stress {
                 load: 0.0,
-                // A gloomy temperament sits higher when nothing at all is
-                // happening, which is what a propensity *is*.
-                baseline: facets.depression_propensity as f64 / 300.0,
-                tolerance: 1.0 - 0.5 * vulnerability,
-                recovery: 0.02 * (1.5 - vulnerability),
+                baseline: unit(person.z(Facet::Gloom)) / 3.0,
+                tolerance: 1.0 - 0.5 * vuln,
+                recovery: 0.02 * (1.5 - vuln),
             },
             mood: Mood::default(),
-            focus: Focus { current: 0.8, capacity: 0.8 },
+            focus: Focus { current: 0.85, capacity: 0.85 },
+            willpower: gauss(rng),
+            empathy: gauss(rng),
+            person,
         }
     }
 
-    /// What this person holds about a topic.
     pub fn conviction(&self, topic: Value) -> i8 {
         self.values
             .iter()
@@ -504,154 +797,159 @@ impl Mind {
             .unwrap_or(0)
     }
 
+    fn f(&self, f: Facet) -> f64 {
+        unit(self.person.z(f))
+    }
+
     /// **One event, several emotions, and they may disagree.**
     ///
-    /// The specification's central mechanism. The same promotion makes an
-    /// envious person envious, an ambitious one frustrated and an
-    /// affectionate one glad *for* their friend — often all three at
-    /// once, in the same head. That is a person with mixed feelings, not
-    /// a number that went down by ten.
+    /// The trait does not say what somebody is angry *about*; the value
+    /// does not guarantee anger. What produces the disposition is their
+    /// interaction:
     ///
-    /// Appraisal theory in the ordinary sense *(Lazarus, Scherer)*: the
-    /// emotion follows from what the event **means** to this person, and
-    /// the questions asked are the standard ones — was I harmed, by whom,
-    /// on purpose, could I have stopped it, does it break something I
-    /// believe in.
-    pub fn appraise(&self, ev: &Appraisal) -> Vec<Felt> {
-        let mut out: Vec<Felt> = Vec::new();
-        let f = &self.facets;
-        let pct = |v: u8| v as f64 / 100.0;
+    /// ```text
+    /// emotion = appraisal(event, values, relationships, beliefs)
+    ///         × trait susceptibility
+    ///         × current vulnerability
+    ///         × regulation
+    /// ```
+    ///
+    /// Appraisal is the bridge, which is why neither layer alone decides
+    /// anything.
+    pub fn appraise(&self, ev: &Appraisal) -> Vec<Episode> {
+        let mut out: Vec<Episode> = Vec::new();
+        let pct = |f: Facet| self.f(f);
 
-        // How much this lands at all. An event that touches nobody they
-        // care about and breaks nothing they believe is barely an event.
         let relevance = (ev.to_me + 0.6 * ev.to_mine).min(1.4);
-        let bite = ev.severity.abs()
-            * relevance
-            * (0.6 + 0.8 * ev.unexpected)
-            // **Mood colours an ambiguous event.** A mild event read by
-            // an irritable person is not a mild event.
-            * (1.0 + 0.4 * self.mood.irritability * (ev.severity < 0.0) as u8 as f64);
-        if bite < 0.02 && !ev.nothing_happening {
+        // **Current vulnerability**: the same remark lands differently on
+        // somebody already carrying a load, and an irritable mood makes
+        // an ambiguous event an unkind one.
+        let vulnerable = 1.0 + 0.4 * self.mood.irritability * (ev.severity < 0.0) as u8 as f64
+            + 0.3 * (self.stress.load / self.stress.tolerance.max(0.1)).min(1.0);
+        // **Regulation**: willpower does not stop somebody feeling it, it
+        // damps what comes out.
+        let regulation = 1.0 - 0.25 * unit(self.willpower);
+        let bite =
+            ev.severity.abs() * relevance * (0.6 + 0.8 * ev.unexpected) * vulnerable * regulation;
+        if bite < 0.02 && !ev.nothing_happening && !ev.someone_gained {
             return out;
         }
 
         let mut add = |what: Emotion, strength: f64| {
             if strength > 0.03 {
-                out.push(Felt { what, strength: strength.min(1.0), age_days: 0.0 });
+                out.push(Episode {
+                    what,
+                    strength: strength.min(1.0),
+                    activation: what.activation(),
+                    age_days: 0.0,
+                    about: None,
+                });
             }
         };
-
         let helpless = 1.0 - ev.control;
 
         if ev.severity > 0.0 {
-            add(Emotion::Joy, bite * (0.4 + 0.6 * pct(f.cheerfulness)));
+            add(Emotion::Joy, bite * (0.4 + 0.6 * pct(Facet::Cheerfulness)));
             if ev.to_me > 0.5 && !ev.deliberate {
-                add(Emotion::Pride, bite * (0.3 + 0.7 * pct(f.pride)));
+                add(Emotion::Pride, bite * (0.3 + 0.7 * pct(Facet::Pride)));
                 add(Emotion::Satisfaction, bite * 0.6);
             }
-            // **Somebody did you a kindness**, which is a different thing
-            // from a good day.
             if ev.deliberate && !ev.my_doing {
-                add(Emotion::Gratitude, bite * (0.3 + 0.7 * pct(f.gratitude)));
-                add(Emotion::Affection, bite * 0.5 * pct(f.trust));
+                add(Emotion::Gratitude, bite * (0.3 + 0.7 * pct(Facet::Gratitude)));
+                add(Emotion::Affection, bite * 0.5 * pct(Facet::Trust));
             }
         } else if ev.severity < 0.0 {
-            // Harm with an author is anger; harm without one is grief or
-            // fear depending on whether it is over.
             if ev.deliberate && !ev.my_doing {
-                add(Emotion::Anger, bite * (0.3 + 0.9 * pct(f.anger)));
-                // **Resentment is anger you could do nothing about**, and
-                // it is what a vengeful person keeps.
+                add(Emotion::Anger, bite * (0.3 + 0.9 * pct(Facet::Anger)));
                 add(
                     Emotion::Resentment,
-                    bite * helpless * (0.2 + 0.8 * pct(f.vengefulness)),
+                    bite * helpless * (0.2 + 0.8 * pct(Facet::Vengefulness)),
                 );
             }
             if ev.my_doing {
-                add(Emotion::Guilt, bite * (0.3 + 0.7 * pct(f.dutifulness)));
-                add(Emotion::Shame, bite * pct(f.pride) * 0.7);
+                add(Emotion::Guilt, bite * (0.3 + 0.7 * pct(Facet::Dutifulness)));
+                add(Emotion::Shame, bite * pct(Facet::Pride) * 0.7);
             }
             add(Emotion::Grief, bite * ev.to_mine * 0.9);
             add(
                 Emotion::Fear,
-                bite * helpless * (0.2 + 0.8 * pct(f.anxiety)) * ev.to_me,
+                bite * helpless * (0.2 + 0.8 * pct(Facet::Anxiety)) * ev.to_me,
             );
             add(
                 Emotion::Anxiety,
-                bite * helpless * (0.2 + 0.8 * pct(f.anxiety)) * 0.7,
+                bite * helpless * (0.2 + 0.8 * pct(Facet::Anxiety)) * 0.7,
             );
         }
 
-        // **A value broken is outrage, and it does not need to touch
-        // you.** This is what makes somebody care about a stranger's
-        // treatment, and it is the difference between a person and a
-        // utility function over their own outcomes.
         if let Some((topic, upheld)) = ev.touches {
             let held = self.conviction(topic) as f64 / 50.0;
             if held > 0.0 {
-                let force = held * ev.severity.abs().max(0.3) * (0.5 + 0.5 * pct(f.tolerance).recip().min(2.0));
+                let force = held * ev.severity.abs().max(0.3);
                 if upheld {
                     add(Emotion::Admiration, force * 0.6);
                 } else {
-                    add(Emotion::Outrage, force * 0.9);
+                    // **Intolerance sharpens outrage**, which is why the
+                    // loading on tolerance is negative here.
+                    add(Emotion::Outrage, force * (0.6 + 0.6 * (1.0 - pct(Facet::Tolerance))));
                 }
             }
         }
 
-        // **Somebody else got what you wanted.** Envy and frustration are
-        // different feelings about the same fact, and which one somebody
-        // has says a great deal about them.
         if ev.someone_gained {
-            add(Emotion::Envy, (0.2 + 0.9 * pct(f.envy)) * relevance.min(1.0));
-            add(
-                Emotion::Frustration,
-                (0.1 + 0.8 * pct(f.ambition)) * relevance.min(1.0),
-            );
-            add(Emotion::Discouragement, (0.5 - pct(f.pride)).max(0.0));
+            let r = relevance.max(0.4).min(1.0);
+            add(Emotion::Envy, (0.15 + 0.9 * pct(Facet::Envy)) * r);
+            add(Emotion::Frustration, (0.1 + 0.8 * pct(Facet::Ambition)) * r);
+            add(Emotion::Discouragement, (0.5 - pct(Facet::Pride)).max(0.0) * r);
+            // **Gladness for a friend, in the same head as the envy.**
+            add(Emotion::Joy, 0.5 * pct(Facet::Altruism) * ev.to_mine);
+        }
+        if ev.unfair {
+            add(Emotion::Outrage, 0.3 + 0.7 * (self.conviction(Value::Fairness) as f64 / 50.0).max(0.0));
+            add(Emotion::Resentment, 0.2 + 0.8 * pct(Facet::Vengefulness));
+        }
+        if ev.confirms_a_fear {
+            add(Emotion::Shame, 0.3 + 0.7 * pct(Facet::Gloom));
+            add(Emotion::Discouragement, 0.3 + 0.7 * pct(Facet::Gloom));
         }
         if ev.blocks_a_goal {
-            add(Emotion::Frustration, bite.max(0.3) * (0.3 + 0.7 * pct(f.ambition)));
-            add(
-                Emotion::Discouragement,
-                bite.max(0.2) * pct(f.depression_propensity),
-            );
+            add(Emotion::Frustration, bite.max(0.3) * (0.3 + 0.7 * pct(Facet::Ambition)));
+            add(Emotion::Discouragement, bite.max(0.2) * pct(Facet::Gloom));
         }
         if ev.nothing_happening {
             add(
                 Emotion::Boredom,
-                (0.2 + 0.8 * pct(f.excitement_seeking)) * (0.3 + 0.7 * pct(f.curiosity)),
+                (0.2 + 0.8 * pct(Facet::ExcitementSeeking)) * (0.3 + 0.7 * pct(Facet::Curiosity)),
             );
         }
 
-        // Deterministic: strongest first, then by name, so a seed
-        // reproduces the same head.
-        out.sort_by(|a, b| {
-            b.strength
-                .total_cmp(&a.strength)
-                .then(a.what.cmp(&b.what))
-        });
+        out.sort_by(|a, b| b.strength.total_cmp(&a.strength).then(a.what.cmp(&b.what)));
         out
     }
 
-    /// Feel something, and let it move stress and mood.
-    ///
-    /// **Three different things, updated three different ways** — the
-    /// specification is emphatic about it and it is the structural claim
-    /// that most separates this from a happiness bar.
-    pub fn feel(&mut self, felt: Vec<Felt>) {
-        for e in &felt {
-            // Stress takes the unpleasant ones, weighted by how much this
-            // person is hurt by them at all.
+    /// Take on a standing concern — a loss, a grievance, a threat, a
+    /// blocked goal. It is this, not the emotion, that lasts.
+    pub fn take_on(&mut self, kind: ConcernKind, importance: f64) -> usize {
+        self.concerns.push(Concern {
+            kind,
+            importance,
+            unresolvedness: 1.0,
+            adaptation: 0.0,
+            age_days: 0.0,
+        });
+        self.concerns.len() - 1
+    }
+
+    pub fn feel(&mut self, episodes: Vec<Episode>) {
+        for e in &episodes {
             let v = e.what.valence();
-            let vuln = self.facets.stress_vulnerability as f64 / 100.0;
+            let vuln = self.f(Facet::StressVulnerability);
             if v < 0.0 {
                 self.stress.load += -v * e.strength * (0.4 + 1.2 * vuln) * 0.15;
             } else {
                 self.stress.load -= v * e.strength * 0.08;
             }
-            // Mood is a slow average of what has been felt lately.
             self.mood.valence = 0.9 * self.mood.valence + 0.1 * v * e.strength;
-            self.mood.arousal = 0.9 * self.mood.arousal + 0.1 * e.what.arousal() * e.strength;
+            self.mood.arousal = 0.9 * self.mood.arousal + 0.1 * e.activation * e.strength;
             if matches!(e.what, Emotion::Anger | Emotion::Resentment | Emotion::Outrage) {
                 self.mood.irritability = (self.mood.irritability + 0.15 * e.strength).min(1.0);
             }
@@ -660,29 +958,75 @@ impl Mind {
             }
         }
         self.stress.load = self.stress.load.max(0.0);
-        self.feeling.extend(felt);
+        self.episodes.extend(episodes);
     }
 
-    /// A day passes: emotions fade, mood drifts back, stress drains
-    /// slowly, focus follows from what is left.
-    pub fn a_day_passes(&mut self) {
-        for e in self.feeling.iter_mut() {
+    /// A day passes.
+    ///
+    /// **Activation fades fast for everything.** What differs between
+    /// grief and rage is not the decay rate — it is whether there is a
+    /// standing concern still throwing off fresh episodes.
+    pub fn a_day_passes(&mut self, rng: &mut Rng) {
+        for e in self.episodes.iter_mut() {
             e.age_days += 1.0;
-            // **Arousal is what fades**, and it fades fast; grief is low
-            // arousal and lasts, rage is high arousal and does not. That
-            // is why somebody is still grieving a year later and nobody
-            // is still furious.
-            let half_life = 1.0 + 12.0 * (1.0 - e.what.arousal());
-            e.strength *= 0.5f64.powf(1.0 / half_life);
+            // Half-life of about two days, for anything. An emotion that
+            // is still there a week later is being re-made, not preserved.
+            e.strength *= 0.5f64.powf(0.5);
+            e.activation *= 0.5f64.powf(0.8);
         }
-        self.feeling.retain(|e| e.strength > 0.02);
+        self.episodes.retain(|e| e.strength > 0.02);
+
+        // **The concern re-emits.** This is what makes a bereavement last
+        // a year and a grievance last a decade, without either being one
+        // continuous feeling.
+        let mut fresh: Vec<Episode> = Vec::new();
+        for (i, c) in self.concerns.iter_mut().enumerate() {
+            c.age_days += 1.0;
+            // Habituation, slowly. It hurts less; it does not go away.
+            c.adaptation = (c.adaptation + 0.0015).min(0.75);
+            let pressure = c.pressure();
+            if pressure <= 0.02 {
+                continue;
+            }
+            // Waves, not a level. Whether one arrives today is a matter
+            // of what reminded them.
+            if (rng.next_f32() as f64) < 0.10 + 0.25 * pressure {
+                let what = match c.kind {
+                    ConcernKind::Bereavement => {
+                        if rng.next_f32() < 0.5 {
+                            Emotion::Grief
+                        } else {
+                            Emotion::Yearning
+                        }
+                    }
+                    ConcernKind::Grievance => {
+                        if rng.next_f32() < 0.5 {
+                            Emotion::Anger
+                        } else {
+                            Emotion::Resentment
+                        }
+                    }
+                    ConcernKind::Threat => Emotion::Anxiety,
+                    ConcernKind::BlockedGoal => Emotion::Frustration,
+                };
+                fresh.push(Episode {
+                    what,
+                    strength: pressure * (0.4 + 0.6 * rng.next_f32() as f64),
+                    activation: what.activation(),
+                    age_days: 0.0,
+                    about: Some(i),
+                });
+            }
+        }
+        if !fresh.is_empty() {
+            self.feel(fresh);
+        }
 
         self.mood.valence *= 0.93;
         self.mood.arousal *= 0.93;
         self.mood.irritability *= 0.90;
         self.mood.anxiety_bias *= 0.90;
 
-        // Stress drains toward temperament, never to nothing.
         let toward = self.stress.baseline;
         self.stress.load += (toward - self.stress.load) * self.stress.recovery;
         self.stress.load = self.stress.load.max(0.0);
@@ -690,40 +1034,51 @@ impl Mind {
         self.recompute_focus();
     }
 
-    /// **Focus is not the opposite of stress.**
+    /// **Focus is not the inverse of stress, and it is not untouched by
+    /// it either.**
     ///
-    /// What takes focus away is *arousal* — being stirred up — and
-    /// unmet need, which arrives in slice 4. Load on its own does not:
-    /// a grieving parent nursing a sick child is carrying an enormous
-    /// amount and concentrating completely, and that is the case this
-    /// separation exists to allow.
+    /// What takes attention first is *acute activation* and intrusive
+    /// recollection. But chronic load still exerts a smaller, indirect
+    /// penalty — through vigilance, rumination, exhaustion and bad sleep
+    /// — and leaving it out entirely would say a person can carry
+    /// anything indefinitely at no cost, which is not true either.
+    ///
+    /// Both cases survive: grieving and functional, delighted and
+    /// temporarily useless.
     fn recompute_focus(&mut self) {
-        let stirred: f64 = self
-            .feeling
+        let acute: f64 = self
+            .episodes
             .iter()
-            .map(|e| e.what.arousal() * e.strength)
+            .map(|e| e.activation * e.strength)
             .sum::<f64>()
             .min(1.0);
-        let willed = self.attributes.willpower as f64 / 100.0;
-        // Willpower buys back some of what agitation costs — which is
-        // what being able to work through something *is*.
-        let cost = stirred * (1.0 - 0.5 * willed);
+        let intrusive: f64 = self
+            .concerns
+            .iter()
+            .map(|c| c.pressure())
+            .sum::<f64>()
+            .min(1.0)
+            * 0.15;
+        let chronic = (self.stress.load / self.stress.tolerance.max(0.1)).min(1.5) * 0.12;
+        let willed = unit(self.willpower);
+        let cost = acute * (1.0 - 0.5 * willed) + intrusive + chronic;
         self.focus.current = (self.focus.capacity - cost).clamp(0.0, 1.0);
     }
 
-    /// How strongly they are feeling a given emotion right now.
     pub fn feeling_of(&self, what: Emotion) -> f64 {
-        self.feeling
+        self.episodes
             .iter()
             .filter(|e| e.what == what)
             .map(|e| e.strength)
             .fold(0.0, f64::max)
     }
 
-    /// Whether the load has gone past what they can carry. **Not a
-    /// tantrum trigger** — slice 8 decides what somebody does about it,
-    /// from their personality, and it will not be one table.
     pub fn overloaded(&self) -> bool {
         self.stress.load > self.stress.tolerance
     }
+}
+
+/// z to 0..1, for weighting. ±2.5 z covers essentially everybody.
+fn unit(z: f32) -> f64 {
+    ((z as f64 / 5.0) + 0.5).clamp(0.0, 1.0)
 }
