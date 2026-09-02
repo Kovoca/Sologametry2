@@ -3195,15 +3195,30 @@ other.** An activity declares what it provides and on what condition.
   presence has a population whose spiritual needs are met by walking past
   a church, and nobody has any reason to attend anything.
 
-### Calibrated on how people actually spend a day
+### Time use bounds the schedule; it does not prescribe the need
 
-Time use is the anchor, because a need satisfied too fast makes everybody
-content and one satisfied too slowly makes everybody wretched *(American
-Time Use Survey, per person per day)*: sleep **8.8 h**, leisure 5.4 of
-which television 2.8, **socialising 0.6**, eating 1.1, reading 0.3,
-religious 0.1. Thirty-eight minutes a day of socialising is what the
-drain rates are set against — and it is an average over a population in
-which a fifth do almost none.
+*(ATUS 2024, published 2025, BLS Table A-1, hours per day, 15+)*: sleep
+**8.8**, leisure 5.4 of which television 2.8, **socialising 0.58**,
+eating 1.1, reading 0.3, religious 0.1.
+
+**What that figure is, precisely.** ATUS records a *primary* activity, so
+conversation during work, over a meal or while minding a child is **not
+counted as socialising**. 0.58 h is explicit socialising time and
+emphatically not total human contact, which is far larger and is not
+measured there at all.
+
+So the survey is a **schedule-feasibility anchor** — it says whether a
+generated life fits inside twenty-four hours. It does not say how much
+company a person requires, and the averages for television or religious
+observance are certainly not psychological requirements; they are what a
+population happened to do. Reading them as need levels would be the same
+error as reading DF's neutral band as a measured statistic.
+
+What sets the supply is the **ordinary-life test**: work, a meal with
+family, an hour with a friend, a walk, a weekly service. If a life like
+that leaves somebody chronically starved the rates are wrong, and if it
+sates everybody they are wrong the other way. The calibration is a test,
+not a constant.
 
 - **A dozen small wants are not a catastrophe.** Summing them would make
   a full life of minor dissatisfactions worse than one ruinous
@@ -3221,6 +3236,71 @@ harmless while nothing measured it. Once neglect took focus he was
 correctly unable to concentrate, and the fix was to make the test live an
 ordinary life: work, family, a friend, a walk, a weekly service and a
 feast four times a year.
+
+## What one person expects and feels toward another (`src/relations.rs`)
+
+Slice 5. A relationship is a **directed, compressed belief about
+somebody** — not an objective fact, not a current emotion, not a
+substitute for memory. Alice's record of Bob and Bob's of Alice are two
+things that need not agree.
+
+**Eight dimensions, and the collapses are what flatten a model:**
+familiarity is not affection, affection is not trust, trust is not
+friendship, respect is not fear, and a durable grievance is not current
+anger. Knowing somebody for ten years and merely tolerating them, or
+loving a brother-in-law you would never lend money, are ordinary facts a
+single "opinion" number cannot state.
+
+- **A disposition produces a feeling and is not one.** `fear` plus a
+  threatening encounter makes a fear *episode*; between meetings nobody
+  is continuously terrified of a man they have not seen. The same
+  correction as slice 1's concerns, in a different place.
+- **Objective ties are kept apart.** `SocialFact` — parent, spouse,
+  commander, employer, creditor — is true whether or not they can stand
+  each other. That is what permits a hated parent, a trusted subordinate,
+  a beloved spouse who cannot be relied on for money, and a respected
+  enemy.
+- **Trust and respect have domains, and the seam is there from the
+  start.** Brave beside you, chronically late, hopeless with a secret and
+  perfectly honest with money is one person, not a contradiction. General
+  trust is a *summary* of what has actually been seen — and no general
+  impression is not a bad one, or somebody proven reliable in every
+  particular reads as middling.
+- **Labels are derived, plural and impermanent.** `friend = true` is
+  stored nowhere; friend, rival, creditor, feared and employer can all be
+  true at once, and a falling-out removes the friendship without
+  forgiving the debt or ending the employment.
+- **Resentment is derived from open grievances**, so being *cleared*
+  closes it without restoring affection or trust — which is exactly how
+  being exonerated works. And an apology repairs only if it is credible:
+  sincere, owning it, and costing something. A shrug settles nothing.
+- **Two different words that had to stop being one.** A *need* grievance
+  is going without something for a long time; an interpersonal grievance
+  is somebody having done you wrong. Only one of them has a defendant.
+
+### A trivial act cannot take you past what a trivial act is worth
+
+The bug the saturation test exists to catch, and I wrote it anyway.
+Approaching a target rather than accumulating is *most* of saturation and
+not all of it: aiming every piece of evidence at ±1 and varying only the
+rate is still accumulation, just slower. **Two thousand courtesies at a
+tenth of a point each produced 1.00 of devotion** — a man adored for
+passing the salt often enough. What an interaction pulls you toward is
+its own *magnitude*, so a nodding acquaintance of thirty years stays one.
+
+### The mind must not acquire the world's handle
+
+`Id<Person>` is right for a relationship's endpoints: it is never reused,
+survives unloading, and **outlives the person**, because you go on
+loving, fearing and owing the dead. But perceived identity is a different
+type — `PerceivedWho` is `Known`, `Believed { confidence }`, `Unknown(a
+description)`, a role or a group.
+
+That is what lets Alice do it, Bob sincerely remember Carol, and Bob's
+resentment land on **Carol** — real, actionable, and wrong. Correcting
+him later closes the grievance and changes the attribution while leaving
+what he originally saw untouched. A fabricated rumour can also name
+nobody at all, which no person handle could express.
 
 ## Conventions
 

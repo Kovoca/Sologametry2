@@ -26,6 +26,7 @@ pub mod person;
 pub mod polity;
 pub mod populace;
 pub mod region;
+pub mod relations;
 pub mod rng;
 pub mod services;
 pub mod settlement;

@@ -45,13 +45,68 @@
 
 use crate::id::{Arena, Id};
 use crate::mind::{Appraisal, Emotion, Episode, Facet, Happening, Mind, Value};
+use crate::person::Person;
 use crate::rng::Rng;
 
-/// Somebody, identified. **A placeholder for `Id<Person>`**: memory and
-/// people are separate slices and are joined later, and using a distinct
-/// type here keeps the seam visible rather than pretending it is closed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Who(pub u32);
+/// **What somebody looked like, when you could not say who they were.**
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Description(pub String);
+
+/// **Who a perceiver thinks was involved — which is not the same as who
+/// was.**
+///
+/// The world has a handle for every person in it. A mind must not acquire
+/// that handle merely because the simulation has one, or there is no
+/// mistaken identity, no rumour about a man who does not exist, and no
+/// investigation to conduct.
+///
+/// A happening may objectively involve Alice while Bob sincerely
+/// remembers that Carol did it — and his resentment then quite properly
+/// aims at Carol. Correcting him later changes the attribution without
+/// rewriting what he originally believed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum PerceivedWho {
+    /// Recognised. This is who it was.
+    Known(Id<Person>),
+    /// Named, with a doubt. **The dangerous one**, because it is
+    /// actionable and can be wrong.
+    Believed { person: Id<Person>, confidence: f32 },
+    /// A figure in a dark coat. No handle at all, and there may never be
+    /// one.
+    Unknown(Description),
+    /// "A guard." A role rather than a person.
+    Role(u32),
+    /// "Somebody from the north quarter."
+    Group(u32),
+}
+
+impl PerceivedWho {
+    /// The person this points at, where it points at one. **A `Believed`
+    /// identification resolves too**, which is exactly what makes false
+    /// blame able to damage the wrong relationship.
+    pub fn person(&self) -> Option<Id<Person>> {
+        match self {
+            PerceivedWho::Known(p) => Some(*p),
+            PerceivedWho::Believed { person, .. } => Some(*person),
+            _ => None,
+        }
+    }
+
+    /// How sure they are that this is who it was.
+    pub fn certainty(&self) -> f32 {
+        match self {
+            PerceivedWho::Known(_) => 1.0,
+            PerceivedWho::Believed { confidence, .. } => *confidence,
+            _ => 0.0,
+        }
+    }
+
+    /// Whether anybody real is named at all. **A fabricated rumour may
+    /// name nobody**, and memory has to be able to hold that.
+    pub fn is_anybody(&self) -> bool {
+        self.person().is_some()
+    }
+}
 
 /// Somewhere, identified. Becomes a real coordinate when the layers join.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -90,9 +145,9 @@ impl EventKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct WorldEvent {
     pub kind: EventKind,
-    pub who: Vec<Who>,
+    pub who: Vec<Id<Person>>,
     /// Who did it, where there is such a person.
-    pub actor: Option<Who>,
+    pub actor: Option<Id<Person>>,
     pub place: Place,
     pub day: u64,
     /// How bad or good it was, before anybody read it.
@@ -111,7 +166,10 @@ pub enum Source {
     /// Heard part of it — a scream, a crash — without seeing who.
     Overheard,
     /// Somebody said so.
-    Told { by: Who },
+    /// Somebody said so. **The teller is a person you were talking to**,
+    /// so they are known; what they *told* you may name anybody or
+    /// nobody.
+    Told { by: Id<Person> },
     /// It went through more than one mouth to get here.
     Rumour { hops: u8 },
     /// Read it in something official.
@@ -151,7 +209,7 @@ pub struct Perceived {
     pub source: Source,
     pub kind: EventKind,
     /// Who they think did it. Not necessarily who did.
-    pub believed_actor: Option<Who>,
+    pub believed_actor: Option<PerceivedWho>,
     pub place: Place,
     pub day: u64,
     /// How bad they took it to be.
@@ -196,7 +254,7 @@ pub struct Trace {
     /// **Blame, reattributed.** Learning years later that the collapse
     /// was preventable does not change what was seen; it changes what it
     /// is taken to mean.
-    pub blamed: Option<Who>,
+    pub blamed: Option<PerceivedWho>,
     pub recalls: u16,
     pub last_recalled: Option<u64>,
     /// Whether this is one of the few that made somebody who they are.
@@ -293,7 +351,7 @@ pub struct Routine {
     /// Running mean of how good they were.
     pub quality: f64,
     /// Who was usually there.
-    pub companions: Vec<(Who, u32)>,
+    pub companions: Vec<(Id<Person>, u32)>,
     /// The range it ever covered — so "generally pleasant, once awful"
     /// survives even when the awful day did not stay an episode.
     pub best: f64,
@@ -304,7 +362,7 @@ pub struct Routine {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Cue {
     Place(Place),
-    Person(Who),
+    Person(Id<Person>),
     /// A year to the day, or several.
     Anniversary { day: u64 },
     /// Something of the same sort happening again.
@@ -371,13 +429,19 @@ impl Memory {
         // that is where two honest accounts start to differ.
         let clarity = exposure.clamp(0.0, 1.0) * source.credence();
         let slip = (rng.next_f32() as f64 - 0.5) * 2.0 * (1.0 - clarity);
-        let believed_actor = if clarity > 0.45 {
-            ev.actor
-        } else {
-            // Not seen well enough to say who. Overhearing a scream tells
-            // you somebody was hurt and nothing about by whom.
-            None
-        };
+        // **How sure they are of the face is a third thing**, between
+        // knowing and not. A clear look names somebody; a poor one names
+        // somebody *and might be wrong*, which is where the wrong man
+        // gets blamed.
+        let believed_actor = ev.actor.and_then(|a| {
+            if clarity > 0.75 {
+                Some(PerceivedWho::Known(a))
+            } else if clarity > 0.45 {
+                Some(PerceivedWho::Believed { person: a, confidence: clarity as f32 })
+            } else {
+                None
+            }
+        });
         Some(Perceived {
             of: id,
             source,
@@ -423,12 +487,18 @@ impl Memory {
     /// The event behind it is `None` when the teller made it up — which
     /// is what a lie is, and why a lie creates a belief about the world
     /// and does not modify the world.
-    pub fn hear(kind: EventKind, blamed: Option<Who>, place: Place, day: u64, from: Source) -> Perceived {
+    pub fn hear(
+        kind: EventKind,
+        blamed: Option<PerceivedWho>,
+        place: Place,
+        day: u64,
+        from: Source,
+    ) -> Perceived {
         Perceived {
             of: None,
             source: from,
             kind,
-            believed_actor: blamed,
+            believed_actor: blamed.clone(),
             place,
             day,
             severity: -0.5,
@@ -483,7 +553,7 @@ impl Memory {
             encoded_on: day,
             accessibility: (0.4 + 0.6 * salience).min(1.0),
             confidence: p.confidence,
-            blamed: p.believed_actor,
+            blamed: p.believed_actor.clone(),
             recalls: 0,
             last_recalled: None,
             core: salience > 1.1,
@@ -528,8 +598,12 @@ impl Memory {
             .filter_map(|(id, t)| {
                 let matches = match cue {
                     Cue::Place(p) => t.snapshot.place == p,
+                    // **Whoever they think it was**, which may not be
+                    // who it was — a cue reaches the memory a person
+                    // actually holds.
                     Cue::Person(w) => {
-                        t.snapshot.believed_actor == Some(w) || t.blamed == Some(w)
+                        t.snapshot.believed_actor.as_ref().and_then(|p| p.person()) == Some(w)
+                            || t.blamed.as_ref().and_then(|p| p.person()) == Some(w)
                     }
                     Cue::Anniversary { day } => {
                         let since = today.saturating_sub(t.encoded_on);
@@ -570,10 +644,10 @@ impl Memory {
         // how reachable it was, and detail is what goes first.
         let mut content = t.snapshot.clone();
         if t.accessibility < 0.5 {
-            content.believed_actor = t.blamed.or(content.believed_actor);
+            content.believed_actor = t.blamed.clone().or(content.believed_actor);
             content.confidence *= t.accessibility * 2.0;
         }
-        if let Some(b) = t.blamed {
+        if let Some(b) = t.blamed.clone() {
             content.believed_actor = Some(b);
         }
         let then = t.felt.clone();
@@ -625,7 +699,7 @@ impl Memory {
     /// Reattributes blame while leaving the snapshot and the provenance
     /// exactly as they were — so a person can be wrong, be corrected, and
     /// still be able to say what they actually saw.
-    pub fn reattribute(&mut self, which: Id<Trace>, to: Who, confidence: f64) {
+    pub fn reattribute(&mut self, which: Id<Trace>, to: PerceivedWho, confidence: f64) {
         if let Some(t) = self.traces.get_mut(which) {
             t.blamed = Some(to);
             t.confidence = confidence.clamp(0.0, 1.0);
@@ -641,14 +715,20 @@ impl Memory {
 /// module exists to make possible: asking somebody what they know and
 /// getting an answer that carries where it came from.
 pub fn testimony(t: &Trace) -> String {
-    let who = match t.blamed.or(t.snapshot.believed_actor) {
-        Some(Who(n)) => format!("#{n}"),
+    let who = match t.blamed.as_ref().or(t.snapshot.believed_actor.as_ref()) {
+        Some(PerceivedWho::Known(p)) => format!("{p:?}"),
+        Some(PerceivedWho::Believed { person, confidence }) => {
+            format!("{person:?}, I think ({:.0}% sure)", confidence * 100.0)
+        }
+        Some(PerceivedWho::Unknown(Description(d))) => d.clone(),
+        Some(PerceivedWho::Role(r)) => format!("one of the #{r}s"),
+        Some(PerceivedWho::Group(g)) => format!("somebody from #{g}"),
         None => "somebody".into(),
     };
     match t.provenance {
         Source::Witnessed => format!("I saw {who} — {:?}", t.snapshot.kind),
         Source::Overheard => format!("I heard it — {:?} — I did not see who", t.snapshot.kind),
-        Source::Told { by: Who(n) } => format!("#{n} told me {who} did it"),
+        Source::Told { by } => format!("{by:?} told me {who} did it"),
         Source::Rumour { hops } => format!("it is going round that {who} did it ({hops} removed)"),
         Source::Document => format!("the report says {who}"),
         Source::Inferred => format!("it must have been {who}"),

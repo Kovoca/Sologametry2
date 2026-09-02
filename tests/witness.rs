@@ -9,9 +9,24 @@
 //! honest accounts of one event start to differ.
 
 use scale_sim::ground::{Ground, Tile};
-use scale_sim::memory::{EventKind, Memory, Place, Source, WorldEvent, Who};
+use scale_sim::memory::{EventKind, Memory, Place, Source, WorldEvent};
 use scale_sim::mind::{Facet, Happening, Mind, Value};
+use scale_sim::id::{Arena, Id};
+use scale_sim::person::{Person, Trade};
 use scale_sim::rng::Rng;
+
+/// **Real person handles**, now that a mind can hold one. A fresh arena
+/// each call is fine: `Id` is a slot and a generation, so the same index
+/// gives the same handle every time.
+fn who(n: u32) -> Id<Person> {
+    let mut folk: Arena<Person> = Arena::new();
+    let mut last = folk.add(Person::new("x", Trade::Labourer, 0, 0.0));
+    for _ in 0..n {
+        last = folk.add(Person::new("x", Trade::Labourer, 0, 0.0));
+    }
+    last
+}
+
 use scale_sim::townplan::{Lot, Plan, TILES_PER_PLOT};
 use scale_sim::witness::{
     from_the_ground, in_the_settlement, loudness_db, told, walls_between, Context,
@@ -45,8 +60,8 @@ fn a_shop() -> (u64, Plan, (i64, i64)) {
 fn a_scream(at_day: u64) -> WorldEvent {
     WorldEvent {
         kind: EventKind::Assault,
-        who: vec![Who(1), Who(2)],
-        actor: Some(Who(2)),
+        who: vec![who(1), who(2)],
+        actor: Some(who(2)),
         place: Place(1),
         day: at_day,
         severity: -0.8,
@@ -138,7 +153,17 @@ fn a_wall_makes_a_different_witness_and_not_an_ignorant_one() {
     let ev = a_scream(10);
     let close = mem.perceive_as(&ev, None, &in_the_room, &mut rng).unwrap();
     let far = mem.perceive_as(&ev, None, &outside_man, &mut rng).unwrap();
-    assert_eq!(close.believed_actor, Some(Who(2)));
+    // **He saw the man, and the record says how sure he is.** A clear
+    // look names somebody outright; a poor one names them with a doubt.
+    assert_eq!(
+        close.believed_actor.as_ref().and_then(|p| p.person()),
+        Some(who(2)),
+        "the man beside it could not name the attacker"
+    );
+    assert!(
+        close.believed_actor.as_ref().unwrap().certainty() > 0.6,
+        "he watched it happen and is not sure who it was"
+    );
     assert_eq!(far.believed_actor, None, "the man outside named a suspect");
     assert!(far.confidence < close.confidence);
     let _ = mind;
@@ -300,15 +325,15 @@ fn a_settlement_person_knows_what_happens_where_they_are() {
 #[test]
 fn word_of_mouth_carries_a_death_and_not_a_dinner() {
     assert!(
-        told(EventKind::Meal, 1, Who(4)).is_none(),
+        told(EventKind::Meal, 1, who(4)).is_none(),
         "somebody carried news of a stranger's dinner to the next town"
     );
-    let death = told(EventKind::Death, 1, Who(4)).expect("nobody passed on a death");
-    assert_eq!(death.source, Source::Told { by: Who(4) });
+    let death = told(EventKind::Death, 1, who(4)).expect("nobody passed on a death");
+    assert_eq!(death.source, Source::Told { by: who(4) });
     assert!(death.could_identify, "the man who told him could not say who died");
 
     // Third hand, and the identity is the first thing to go.
-    let secondhand = told(EventKind::Death, 3, Who(4)).unwrap();
+    let secondhand = told(EventKind::Death, 3, who(4)).unwrap();
     assert!(matches!(secondhand.source, Source::Rumour { hops: 3 }));
     assert!(
         !secondhand.could_identify,
@@ -334,7 +359,7 @@ fn all_three_tiers_produce_the_same_kind_of_answer() {
 
     let ground = from_the_ground(&g, spot, (spot.0 + 1, spot.1), EventKind::Assault, AMBIENT_INDOORS_DB);
     let settlement = in_the_settlement(&[Context::Household(1)], Context::Household(1), EventKind::Assault);
-    let distant = told(EventKind::Assault, 2, Who(8));
+    let distant = told(EventKind::Assault, 2, who(8));
 
     for w in [ground, settlement, distant].into_iter().flatten() {
         let p = mem

@@ -5,12 +5,27 @@
 //! the impossibility of being charged twice for the same bad day.
 
 use scale_sim::memory::{
-    holds, testimony, Cue, EventKind, Memory, Place, Source, WorldEvent, Who,
+    holds, testimony, Cue, EventKind, Memory, PerceivedWho, Place, Source, WorldEvent,
 };
 use scale_sim::mind::{
     Appraisal, ConcernKind, Emotion, Facet, Happening, Mind, Personality, Value,
 };
+use scale_sim::id::{Arena, Id};
+use scale_sim::person::{Person, Trade};
 use scale_sim::rng::Rng;
+
+/// **Real person handles**, now that a mind can hold one. A fresh arena
+/// each call is fine: `Id` is a slot and a generation, so the same index
+/// gives the same handle every time.
+fn who(n: u32) -> Id<Person> {
+    let mut folk: Arena<Person> = Arena::new();
+    let mut last = folk.add(Person::new("x", Trade::Labourer, 0, 0.0));
+    for _ in 0..n {
+        last = folk.add(Person::new("x", Trade::Labourer, 0, 0.0));
+    }
+    last
+}
+
 
 fn a_culture() -> Vec<(Value, i8)> {
     vec![(Value::Fairness, 25), (Value::Family, 30), (Value::Law, 20)]
@@ -36,8 +51,8 @@ fn plain(seed: u64, set: &[(Facet, f32)]) -> Mind {
 fn a_collapse(day: u64) -> WorldEvent {
     WorldEvent {
         kind: EventKind::Collapse,
-        who: vec![Who(1), Who(2)],
-        actor: Some(Who(9)), // the foreman who ordered work despite the warning
+        who: vec![who(1), who(2)],
+        actor: Some(who(9)), // the foreman who ordered work despite the warning
         place: Place(7),
         day,
         severity: -0.9,
@@ -93,17 +108,17 @@ fn hearsay_records_the_telling_and_not_the_fact() {
     let mut mem = Memory::new();
     let claim = Memory::hear(
         EventKind::Theft,
-        Some(Who(4)),
+        Some(PerceivedWho::Known(who(4))),
         Place(2),
         50,
-        Source::Told { by: Who(3) },
+        Source::Told { by: who(3) },
     );
     let felt = mind.appraise(&mind.read(&claim.facts));
     let id = mem.encode(claim, &mind, 50, &felt).expect("a claim was not kept");
 
     let t = &mem.traces[id];
     assert!(t.is_hearsay(), "being told something was recorded as seeing it");
-    assert_eq!(t.source(), Source::Told { by: Who(3) });
+    assert_eq!(t.source(), Source::Told { by: who(3) });
     assert!(
         t.what_was_perceived().of.is_none(),
         "a claim was filed as a perception of a real event"
@@ -136,7 +151,11 @@ fn two_witnesses_encode_different_versions() {
         .perceive(&ev, None, Source::Overheard, 0.35, &mut rng)
         .unwrap();
 
-    assert_eq!(close.believed_actor, Some(Who(9)), "the man on the spot saw nobody");
+    assert_eq!(
+        close.believed_actor.as_ref().and_then(|p| p.person()),
+        Some(who(9)),
+        "the man on the spot saw nobody"
+    );
     assert_eq!(
         far.believed_actor, None,
         "somebody who only heard it knew exactly who was responsible"
@@ -171,7 +190,7 @@ fn routine_days_consolidate_and_the_exceptional_one_does_not() {
     for day in 0..30u64 {
         let meal = WorldEvent {
             kind: EventKind::Meal,
-            who: vec![Who(1)],
+            who: vec![who(1)],
             actor: None,
             place: Place(1),
             day,
@@ -194,8 +213,8 @@ fn routine_days_consolidate_and_the_exceptional_one_does_not() {
     // The night somebody proposed over dinner stays its own memory.
     let proposal = WorldEvent {
         kind: EventKind::Meal,
-        who: vec![Who(1), Who(2)],
-        actor: Some(Who(2)),
+        who: vec![who(1), who(2)],
+        actor: Some(who(2)),
         place: Place(1),
         day: 30,
         severity: 0.95,
@@ -346,7 +365,7 @@ fn a_place_a_person_or_an_anniversary_cues_recall() {
     let id = mem.encode(p, &mind, 100, &felt).unwrap();
 
     assert_eq!(mem.cued_by(Cue::Place(Place(7)), 200), vec![id], "the mine itself");
-    assert_eq!(mem.cued_by(Cue::Person(Who(9)), 200), vec![id], "the foreman");
+    assert_eq!(mem.cued_by(Cue::Person(who(9)), 200), vec![id], "the foreman");
     assert_eq!(
         mem.cued_by(Cue::Similar(EventKind::Collapse), 200),
         vec![id],
@@ -409,8 +428,11 @@ fn recollection_reshapes_a_memory_without_rewriting_where_it_came_from() {
 
     // ...and learning later that a different man gave the order changes
     // who is blamed, not what was seen.
-    mem.reattribute(id, Who(12), 0.7);
-    assert_eq!(mem.traces[id].blamed, Some(Who(12)));
+    mem.reattribute(id, PerceivedWho::Believed { person: who(12), confidence: 0.7 }, 0.7);
+    assert_eq!(
+        mem.traces[id].blamed.as_ref().and_then(|p| p.person()),
+        Some(who(12))
+    );
     assert_eq!(
         mem.traces[id].source(),
         source_then,
@@ -511,7 +533,7 @@ fn a_lie_never_becomes_an_eyewitness_account() {
     // ...and was told another, by somebody with a reason to lie.
     let lie = Memory::hear(
         EventKind::Theft,
-        Some(Who(9)),
+        Some(PerceivedWho::Known(who(9))),
         Place(7),
         101,
         Source::Rumour { hops: 2 },

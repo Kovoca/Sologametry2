@@ -38,26 +38,40 @@
 //! the activity, and a model that counts presence will have a population
 //! whose spiritual needs are met by walking past a church.
 //!
-//! ## Calibrated on how people actually spend a day
+//! ## Time use bounds the schedule; it does not prescribe the need
 //!
-//! Time-use surveys are the anchor, because a need that is satisfied too
-//! fast makes everybody content and one satisfied too slowly makes
-//! everybody wretched. Per person per day, averaged over everybody
-//! *(American Time Use Survey)*:
+//! **American Time Use Survey, 2024 data published 2025** *(BLS, Table
+//! A-1, average hours per day, population 15+)*:
 //!
 //! | | hours |
 //! |---|---|
 //! | sleep | 8.8 |
 //! | leisure and sport | 5.4 |
 //! | of which television | 2.8 |
-//! | **socialising and communicating** | **0.6** |
+//! | **socialising and communicating** | **0.58** |
 //! | eating and drinking | 1.1 |
 //! | reading | 0.3 |
 //! | religious and spiritual | 0.1 |
 //!
-//! Thirty-eight minutes a day of socialising is the figure everything
-//! here is set against — and it is an *average* over a population in
-//! which a fifth do almost none.
+//! **What that figure is, precisely.** ATUS records a *primary* activity,
+//! so conversation during work, over a meal, while minding a child or in
+//! the course of anything else is **not counted as socialising**. 0.58
+//! hours is therefore explicit socialising time and emphatically not
+//! total human contact, which is far larger and is not measured here at
+//! all.
+//!
+//! So the survey is used as a **schedule-feasibility anchor**: it says
+//! whether a generated life fits inside twenty-four hours. It does not
+//! say how much company a person requires, and the averages for
+//! television or religious observance are certainly not psychological
+//! requirements — they are what a population happened to do.
+//!
+//! What sets the total supply of company and friendship is the
+//! **ordinary-life test**: a day of work, a meal with family, an hour
+//! with a friend, a walk, a weekly service. If a life like that leaves
+//! somebody chronically starved, the drain rates are wrong; if it leaves
+//! everybody sated, they are wrong the other way. That is the calibration
+//! that matters, and it is a test rather than a constant.
 
 use crate::mind::{Facet, Mind, Value};
 
@@ -128,10 +142,11 @@ impl Need {
 
     /// **How long it takes to go from satisfied to wanting**, in days.
     ///
-    /// Set against real time use: socialising is a daily business —
-    /// thirty-eight minutes of it, on average — while a festival is a
-    /// thing that comes round, and sitting and thinking is something
-    /// people go weeks without noticing they have not done.
+    /// Socialising is a daily business, a festival is a thing that comes
+    /// round, and sitting and thinking is something people go weeks
+    /// without noticing they have not done. **The rates are set by the
+    /// ordinary-life test rather than by a survey line**: what a survey
+    /// bounds is whether a day fits in a day.
     fn days_to_empty(self) -> f64 {
         match self {
             Need::Company => 2.0,

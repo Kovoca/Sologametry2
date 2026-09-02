@@ -43,7 +43,9 @@
 //! makes them a different sort of witness.
 
 use crate::ground::Ground;
-use crate::memory::{EventKind, Exposure, Source, Who};
+use crate::id::Id;
+use crate::memory::{EventKind, Exposure, Source};
+use crate::person::Person;
 
 /// **What a sound is, at a metre.** Real figures, in decibels:
 ///
@@ -269,7 +271,7 @@ pub fn in_the_settlement(
 /// nowhere at all. Beyond about **150 people** *(Dunbar's number: the
 /// group in which everybody knows everybody)* it stops being everybody's
 /// business and starts being news, which is a different mechanism.
-pub fn told(kind: EventKind, hops: u8, teller: Who) -> Option<Witnessing> {
+pub fn told(kind: EventKind, hops: u8, teller: Id<Person>) -> Option<Witnessing> {
     let worth_repeating = match kind {
         EventKind::Death | EventKind::Collapse | EventKind::Assault => 1.0,
         EventKind::Wedding | EventKind::Birth | EventKind::Theft => 0.8,
