@@ -3527,87 +3527,126 @@ somebody a bad year; nothing could give them a changed life.
 `Conviction::held` was drawn when the person was made and no argument,
 defeat, conversion or disillusion could ever move it.
 
-### Rare, cumulative, and mechanism-tagged
+### Read what the study measured, not what it is about
 
-The tag is not bookkeeping — **it is what decides whether the change
-lasts**, and the figures are not intuitive:
+The first version of this module calibrated **personality change against
+life-satisfaction results**, and that is the easiest error to make when
+reading a literature at speed. Lucas's findings — that people largely
+recover from being widowed and largely do not recover from losing work,
+even after being re-employed — are **subjective well-being**, not the Big
+Five. They are famous, they are real, and they say nothing about traits.
 
-| | one instance | what survives | |
-|---|---|---|---|
-| a role's daily demands | 0.0006 | 90% | it is still being made every day |
-| bereavement | **0.30** | **25%** | people substantially recover |
-| losing work | 0.20 | **85%** | and they do not recover from this |
-| trauma | 0.35 | 55% | |
-| lasting impairment | 0.30 | 90% | very little adaptation |
-| a week of trying to change | 0.016 | 80% | 24 of them is a course of treatment |
+**A mechanism tag preserves provenance; it cannot repair an outcome
+mismatch.** The meta-analytic split is explicit: Big Five traits are
+**core characteristics** and move little and specifically, while life
+satisfaction and self-esteem are **surface characteristics**, far more
+responsive to circumstance *(Bühler et al.)*.
 
-- **The larger blow leaves less behind.** Widowhood fades substantially
-  over about two years; unemployment does not, and is **not repaired by
-  getting another job** *(Lucas et al.)* — the strongest evidence there
-  is against one set-point everybody drifts back to. Nothing about that
-  ordering follows from how much each hurt at the time, which is exactly
-  why the mechanism has to be recorded rather than the magnitude alone.
-- Life events move personality **0.1–0.3 SD** *(Bleidorn et al.)*, and
-  clinical intervention about **0.37 SD on neuroticism over ~24 weeks**,
-  which persists *(Roberts et al., 207 studies)*.
-- **A role practised daily beats one dramatic day**, and by a long way
-  after five years — which is what "cumulative" means and why the
-  per-day figure has to be a five-hundredth of the effect it builds to.
-- **Growth writes through `adapt` and nowhere else**, so the ±1.5
-  ceiling still holds. It sends the *difference* each day rather than
-  the total, which is what lets a fading change actually fade — and a
-  negative delta is not a contradiction of the clamp but the reason the
-  clamp is a state bound rather than a lifetime budget.
-- **Record what was applied, not what was asked.** A working lifetime in
-  one role sums far past ±1.5; storing the sum meant the first day
-  anything faded subtracted a difference from a value that never got
-  there, walking the whole adaptation off the far side.
+| evidence | what was measured | where it goes |
+|---|---|---|
+| Lucas, unemployment | life satisfaction | `WellbeingBaseline` |
+| Lucas, widowhood | life satisfaction | `WellbeingBaseline` |
+| Bühler / Bleidorn | personality inventories | `Facet` |
+| Roberts et al., therapy | chiefly emotional stability | `Facet` |
+
+So they are **two enums with two entry points**, and there is no function
+that carries a well-being figure to a facet — the same discipline that
+keeps a speaker's motives out of a listener's ear. The layer this needed
+did not exist: `Mood::valence` is today and `Stress::load` is what is
+being carried, so `Mind::wellbeing_baseline` had to be added. **Its
+absence is *why* the numbers went into the wrong place.**
+
+- **"Not repaired by another job" is too absolute.** The finding is
+  incomplete recovery *on average*, with substantial individual
+  variation.
+- **A residual needs a horizon.** "25% survives" reads as an asymptote
+  and is nothing of the kind — a finite panel supports "this much of the
+  measured change remained after N years". `Persistence` carries
+  `calibration_horizon_days`, and an episodic can say whether a reading
+  is still inside what anybody actually followed or has run off the end
+  into extrapolation.
+- **Roberts's 0.37 SD is evidence traits move under sustained
+  intervention**, chiefly emotional stability over ~24 weeks. It is not a
+  transferable amount for every facet and every event.
+
+### Sum the raw contributions, then project once
+
+Recording how much of the shared ceiling each source *happened to
+receive* is order-dependent and cannot be saved. If A saturates a facet
+and B is entirely behind it, B records that it got nothing — and when A
+fades, the facet drops to zero until B pushes again.
+
+Every contribution is now recomputed from its own dates, summed raw, and
+clamped once. Order stops mattering, one 0.8 equals two 0.4s, opposing
+pushes cancel whichever arrives first, what was hidden reappears the
+moment the thing in front of it goes, and **there is no running total to
+save or reload**. `Personality::set_durable` exists for that owner;
+`adapt` remains the primitive for a caller with a single push and no
+ledger, and using both on one facet is two writers to one bounded space.
+
+### A career is not supposed to max out a trait
+
+A fixed daily increment gave about **0.2 z a year**, which drives an
+ordinary working life into the global ±1.5 clamp inside a decade — so
+saturation becomes the expected outcome of having a job, and the safety
+bound stops being an invariant and becomes the mechanism.
+
+A role is a **standing demand approaching its own target**, around
+0.1–0.3 z, which is what role effects measure. Held analytically from the
+dates: two years gets 63% of the way there, six years 95%, and forty
+years is still 0.25. Leave the work and what it built decays from there.
 
 ### Doubt comes before change
 
 An argument does not move a conviction. It makes somebody less sure, and
-doubt is a separate object with its own decay — without it, argument
-either converts on the spot or never works, and both are wrong.
-Convictions are among the most stable things measured about a person
-(test–retest 0.7–0.8 over years), so a crossing is worth four points out
-of a hundred.
+doubt is a separate object with its own decay.
 
-- **Preaching to the converted does nothing**, or every conversation
-  between people who agree is a persuasion event.
-- **A conviction held hard resists**, which is why argument works on the
-  undecided. Identity-protective cognition, and it falls out of the
-  strength of the holding rather than a special case.
-- **Credibility does more than the argument does.** Force is what the
-  *listener* made of it — slice 6's reading — never what the speaker
-  meant, which is section 17's rule arriving where it decides whether
-  anybody's mind changes.
-- **Backfire is the exception and not the rule.** Its fame far exceeds
-  the evidence: large replications find people updating *toward* the
-  argument in almost every condition tested *(Wood & Porter)*. It
-  survives here only where a firmly held conviction meets somebody taken
-  for a liar.
+- **Doubt is directional.** One bucket per conviction lets somebody
+  arguing for a thing and somebody arguing against it fill the same
+  reservoir, so whoever speaks when it brims decides which way the person
+  moves. Keyed by `(conviction, direction)`.
+- **Saying it again is not saying something new.** Repeating one sentence
+  weekly is not weekly independent evidence; it buys familiarity. A
+  friend with fresh reasons is a different thing, and `Framing::novelty`
+  is what separates them.
+- **A man you do not credit is dismissed, not resisted** — a separate
+  outcome from digging in, and much the commoner one.
+- **Backfire needs identity threat, not a disagreeable source.** Wood and
+  Porter found none across 52 issues and 10,000+ participants; later work
+  finds only limited conditional cases. It takes a firmly held conviction
+  that is *part of who somebody is*, pushed by an out-group speaker read
+  as hostile — and removing any single leg of that stops it.
+- **Four points is a designed transition size, not a derived one.**
+  Justifying it by test–retest correlations of 0.7–0.8 was the same
+  denominator error this file already records for personality stability:
+  rank-order stability is a *population* statistic about who stays
+  comparatively high. Mean-level change, rank-order stability and
+  individual profile change are three different quantities, and none of
+  them says how far one person moves on one occasion.
 - **A convert becomes a heretic** with nothing having to say so, because
   `heterodoxy` is already distance from the culture.
 
-**The bug worth recording, because both constants read perfectly
-sensibly on their own.** A decay rate and a threshold together imply a
-ceiling on how far anybody can ever be persuaded:
+**The bug worth recording, because both constants read perfectly sensibly
+on their own.** A decay rate and a threshold together imply a ceiling on
+how far repeated argument can ever push:
 
 ```text
-most doubt ever reached = added / (1 - ½^(interval / half-life))
+just after an argument:  added / (1 - ½^(interval / half-life))
+just before the next:    the same, times the decay
 ```
 
 At a three-week half-life, weekly argument from somebody wholly credible
 converges on **0.55 against a bar of 0.75** — so the model silently
 asserted that nobody is ever talked round by anybody they see every week.
-Neither number looks wrong; only the fixed point does. `Doubts::
-ceiling_at` is public so a new kind of influence can be asked whether it
-is *capable* of persuading anybody before somebody wonders why nobody is
-being persuaded.
+Neither number looks wrong; only the fixed point does. There are **two**
+fixed points, and a diagnostic that does not name its phase is ambiguous,
+so `stationary_post_exposure_ceiling` says which it reports. It is a
+calibration diagnostic, **not** a rule that every kind of influence must
+independently be able to cross the bar — most should not.
 
-And a matching test lesson: the hardening branch was never reached by the
-test that claimed hardening is rare, so it was passing on nothing. **A
-test that never enters the branch is not evidence the branch is rare.**
+And two test lessons: **a test that never enters the branch is not
+evidence the branch is rare**, and reading doubt *after* it has cashed
+out finds zero, because crossing spends it.
 
 ## Conventions
 

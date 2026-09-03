@@ -499,6 +499,25 @@ impl Personality {
             (self.adaptation[i] + by).clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT);
     }
 
+    /// **Set the durable term outright**, for whoever owns the sum of
+    /// what life has done — which is `growth::Growth`.
+    ///
+    /// Accumulating deltas cannot express the thing that matters when
+    /// several mechanisms share one bounded facet: each source has to
+    /// record how much of the ceiling it happened to receive, and when
+    /// the effect in front of it fades, the one hidden behind it does not
+    /// reappear until it pushes again. Summing the raw contributions
+    /// first and projecting once makes it order-independent, idempotent,
+    /// and free of any running total to save or reload.
+    ///
+    /// `adapt` remains the primitive for a caller with a single push and
+    /// no ledger of its own. **Do not use both on one facet**: they are
+    /// two writers to one bounded space, and `Growth` will win, because
+    /// it sets rather than nudges.
+    pub fn set_durable(&mut self, f: Facet, z: f32) {
+        self.adaptation[f.index()] = z.clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT);
+    }
+
     /// Years pass. Only the trajectory moves; the baseline is who they
     /// grew up to be.
     pub fn a_year_passes(&mut self) {
@@ -940,6 +959,18 @@ pub struct Mind {
     /// another's pain perfectly and not care.
     pub willpower: f32,
     pub empathy: f32,
+    /// **The durable set-point of how somebody feels about their life**,
+    /// in SD, owned by `growth::Growth`.
+    ///
+    /// A layer this model did not have, and its absence is what made the
+    /// first version of slice 7 route life-satisfaction findings into
+    /// personality facets. `Mood::valence` is today, `Stress::load` is
+    /// what is being carried, and this is the level they return toward —
+    /// which is the thing nearly every published adaptation curve
+    /// actually measured. Big Five traits are **core characteristics**
+    /// and move little; life satisfaction is a **surface characteristic**
+    /// and is far more responsive to circumstance *(Bühler et al.)*.
+    pub wellbeing_baseline: f64,
     /// **What they want that is not dinner.** Filled in by `needs.rs`,
     /// which is what finally makes the *content and unfocused* case
     /// reachable: until this existed, nothing but agitation could take
@@ -984,6 +1015,9 @@ impl Mind {
             focus: Focus { current: 0.85, capacity: 0.85 },
             willpower: gauss(rng),
             empathy: gauss(rng),
+            // Somebody starts at their own set-point; what moves it is
+            // what happens to them, which `growth::Growth` owns.
+            wellbeing_baseline: 0.0,
             needs: None,
             person,
         };
