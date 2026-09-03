@@ -4233,6 +4233,42 @@ blow.
   perception boundary again, and it follows from what was already built
   rather than being added.
 
+### The ground makes the custom
+
+`custom.rs` began with three **hand-written** cultures — an old country, a
+city, a market town — which is the fault this project rejects everywhere
+else: assuming wheat everywhere, or every nation growing 125% of what it
+eats. **Nobody decides what is done here.** It follows from how many
+people there are, how close together, in what climate, how far from
+anywhere, and what they do for a living.
+
+- **Whether you greet a stranger is a question about size.** In a village
+  a stranger is remarkable; in a city of eight million, greeting
+  everybody is not a choice anybody has. The line is drawn where the real
+  one is — about **150** people is the most anybody keeps relationships
+  with *(Dunbar)*, and by **50,000** it is certainly gone. Dividing the
+  logarithm by a convenient four instead put the line at ten thousand and
+  came out saying a village of four hundred keeps to itself, which is the
+  opposite of what a village is.
+- **Guest-right comes from being a long way from anywhere.** Strongest
+  where travel is dangerous and there is no inn — deserts, mountains, the
+  far edge of anywhere — and it is a fact about remoteness rather than
+  about anybody's generosity.
+- **Personal space is larger where it is cold**, measured across
+  forty-two countries and tracking temperature rather than character
+  *(Sorokowska et al.)*.
+- **Pace follows size and cold** — walking speed, clock accuracy and how
+  long it takes to buy a stamp, across thirty-one countries *(Levine &
+  Norenzayan)* — and punctuality follows the pace.
+- **Haggling is what happens where the price is not posted.** Fixed
+  prices are an invention of scale retail — the Bon Marché in 1852,
+  Wanamaker in 1876 — and they end it wherever they arrive. Grow the
+  market town into a city and the haggling goes.
+- **Rules are held harder where the ground is thin and people are close
+  together.** Across thirty-three nations, societies under more
+  ecological and historical threat hold their norms tighter and tolerate
+  deviance less *(Gelfand et al.)* — ecology, not preference.
+
 ### Ethics is a disposition, not a switch
 
 What varies between people is how much a rule weighs against what

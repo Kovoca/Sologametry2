@@ -243,50 +243,231 @@ pub fn judged_without_excuse(here: &Custom, n: Norm, did: f64) -> Judged {
     judged_here(here, n, did)
 }
 
-/// A few places, so a test and a demo have somewhere to stand. Real
-/// variation is larger than this and in the same directions.
+// ---------------------------------------------------------------------
+// where people live is what makes the custom
+// ---------------------------------------------------------------------
+
+/// **What a place is like to live in**, as facts the world already
+/// generates.
+///
+/// This module used to carry three hand-written cultures — an old
+/// country, a city, a market town — which is precisely the fault this
+/// project rejects everywhere else: assuming wheat everywhere, or every
+/// nation growing 125% of what it eats. **Nobody decides what is done
+/// here.** It follows from how many people there are, how close together,
+/// in what climate, how far from anywhere, and what they do for a living.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Conditions {
+    pub population: f64,
+    /// People per square kilometre.
+    pub density: f64,
+    pub mean_temp_c: f64,
+    /// How hard the ground is to live off, 0..1. One of the standing
+    /// threats that make a society hold its rules tightly.
+    pub scarcity: f64,
+    /// How far from anywhere else, 0..1.
+    pub remoteness: f64,
+    /// Somewhere the price is arrived at rather than posted.
+    pub is_market: bool,
+    pub coastal: bool,
+    /// Share of the people who work the land.
+    pub farming_share: f64,
+}
+
+impl Default for Conditions {
+    fn default() -> Self {
+        Conditions {
+            population: 5_000.0,
+            density: 500.0,
+            mean_temp_c: 10.0,
+            scarcity: 0.3,
+            remoteness: 0.4,
+            is_market: false,
+            coastal: false,
+            farming_share: 0.4,
+        }
+    }
+}
+
+impl Conditions {
+    /// **How tightly the rules are held here**, 0..1.
+    ///
+    /// The best-supported single dimension of cultural variation there
+    /// is: across thirty-three nations, societies under more ecological
+    /// and historical threat — crowding, scarce resources, disease,
+    /// invasion — hold their norms harder and tolerate deviance less
+    /// *(Gelfand et al.)*. Nothing about that is a preference; it is what
+    /// living close together on thin ground does to a rule.
+    pub fn tightness(&self) -> f64 {
+        let crowding = (self.density / 4_000.0).clamp(0.0, 1.0);
+        let thin_ground = self.scarcity.clamp(0.0, 1.0);
+        // And a place everybody can leave holds its rules loosely.
+        let nowhere_to_go = self.remoteness.clamp(0.0, 1.0);
+        (0.2 + 0.35 * crowding + 0.30 * thin_ground + 0.25 * nowhere_to_go).clamp(0.0, 1.0)
+    }
+
+    /// **How fast life goes here.** Pace rises with size, wealth and
+    /// cold — measured across thirty-one countries by walking speed,
+    /// clock accuracy and how long it takes to buy a stamp *(Levine &
+    /// Norenzayan)*.
+    pub fn pace(&self) -> f64 {
+        let size = (self.population.max(1.0).log10() / 7.0).clamp(0.0, 1.0);
+        let cold = ((15.0 - self.mean_temp_c) / 30.0).clamp(0.0, 1.0);
+        (0.15 + 0.6 * size + 0.35 * cold).clamp(0.0, 1.0)
+    }
+
+    /// **Whether anybody could know everybody.**
+    ///
+    /// A village of three hundred is a place where a stranger is
+    /// remarkable. A city of eight million is one where greeting
+    /// everybody is not a choice anybody has — which is the overload
+    /// account of urban reserve, and it shows up in real helping-
+    /// behaviour studies as a fall with size and density rather than a
+    /// difference in character.
+    /// Anchored on two real figures rather than a convenient divisor:
+    /// **about a hundred and fifty** people is the most anybody keeps
+    /// real relationships with *(Dunbar)*, and by **fifty thousand** it
+    /// is certainly gone. In between it decays. Dividing the logarithm by
+    /// four instead put the line at ten thousand and came out saying a
+    /// village of four hundred does not greet strangers, which is the
+    /// opposite of what a village is.
+    pub fn everybody_knows_everybody(&self) -> f64 {
+        let lo = 150.0f64.log10();
+        let hi = 50_000.0f64.log10();
+        (1.0 - (self.population.max(1.0).log10() - lo) / (hi - lo)).clamp(0.0, 1.0)
+    }
+}
+
+/// **Derive what is done here from where here is.**
+pub fn norms_of(c: &Conditions) -> Custom {
+    let known = c.everybody_knows_everybody();
+    let tight = c.tightness();
+    let pace = c.pace();
+
+    // Speaking to a stranger: ordinary where a stranger is a rarity,
+    // not done where they are the whole street.
+    let greet = (1.6 * known - 0.7).clamp(-1.0, 1.0);
+
+    // **A courtesy is answered nearly everywhere**, and said out loud
+    // less where reciprocity is simply assumed.
+    let thank = (0.85 - 0.3 * known).clamp(0.0, 1.0);
+
+    // **Personal space is larger where it is cold** — measured across
+    // forty-two countries, and it tracks temperature more than anything
+    // about the people *(Sorokowska et al.)* — and larger again where
+    // there are too many people to stand near.
+    let distance = ((15.0 - c.mean_temp_c) / 25.0 + 0.4 * (c.density / 4_000.0)).clamp(-1.0, 1.0);
+
+    // **Indirectness is what a place where everybody will meet again can
+    // afford.** Say the blunt thing in a village and you live with it;
+    // a mobile, crowded place has no such memory.
+    let direct = (1.0 - 1.6 * known).clamp(-1.0, 1.0);
+
+    // **Guest-right is strongest where travel is dangerous and there is
+    // no inn** — deserts, mountains, the far edges of anywhere.
+    let hospitality = (0.25 + 0.6 * c.remoteness + 0.35 * c.scarcity - 0.4 * (c.population.max(1.0).log10() / 6.0))
+        .clamp(-1.0, 1.0);
+
+    // Punctuality follows the pace of the place and the clock the work
+    // is kept by.
+    let punctual = (1.2 * pace - 0.5 - 0.4 * c.farming_share).clamp(-1.0, 1.0);
+
+    // **Age is deferred to where what an old person knows is still worth
+    // knowing**, which is farming and craft rather than a mobile
+    // industrial town.
+    let elders = (0.7 * c.farming_share + 0.4 * tight - 0.5 * (c.population.max(1.0).log10() / 6.0))
+        .clamp(-1.0, 1.0);
+
+    // **Haggling is what happens where the price is not posted.** Fixed
+    // prices are an invention of scale retail — the Bon Marché in 1852,
+    // Wanamaker in 1876 — and they end it wherever they arrive.
+    let scale_retail = (c.population.max(1.0).log10() / 6.0).clamp(0.0, 1.0);
+    let haggle = if c.is_market {
+        (0.9 - 0.5 * scale_retail).clamp(-1.0, 1.0)
+    } else {
+        (0.2 - 1.1 * scale_retail).clamp(-1.0, 1.0)
+    };
+
+    Custom::new(&[
+        (Norm::GreetStrangers, greet),
+        (Norm::ThankForCourtesy, thank),
+        (Norm::KeepDistance, distance),
+        (Norm::Directness, direct),
+        (Norm::AcceptHospitality, hospitality),
+        (Norm::Punctuality, punctual),
+        (Norm::DeferToElders, elders),
+        (Norm::Haggle, haggle),
+    ])
+}
+
+/// Places, **derived rather than declared**. Each is a set of conditions
+/// the world could produce; what is done there follows from them.
 pub mod places {
-    use super::{Custom, Norm};
+    use super::{norms_of, Conditions, Custom};
 
-    /// Formal, indirect, and you greet people.
+    /// A farming village at the end of a long road.
+    pub fn a_village() -> Conditions {
+        Conditions {
+            population: 400.0,
+            density: 60.0,
+            mean_temp_c: 9.0,
+            scarcity: 0.35,
+            remoteness: 0.8,
+            is_market: false,
+            coastal: false,
+            farming_share: 0.8,
+        }
+    }
+
+    /// Eight million people in the cold.
+    pub fn a_metropolis() -> Conditions {
+        Conditions {
+            population: 8_000_000.0,
+            density: 6_000.0,
+            mean_temp_c: 9.0,
+            scarcity: 0.1,
+            remoteness: 0.0,
+            is_market: false,
+            coastal: true,
+            farming_share: 0.01,
+        }
+    }
+
+    /// A hot market town where the price is a conversation.
+    pub fn a_market_town() -> Conditions {
+        Conditions {
+            population: 14_000.0,
+            density: 900.0,
+            mean_temp_c: 24.0,
+            scarcity: 0.45,
+            remoteness: 0.45,
+            is_market: true,
+            coastal: false,
+            farming_share: 0.5,
+        }
+    }
+
+    /// A settlement on thin ground a long way from help.
+    pub fn a_desert_outpost() -> Conditions {
+        Conditions {
+            population: 900.0,
+            density: 40.0,
+            mean_temp_c: 28.0,
+            scarcity: 0.9,
+            remoteness: 0.95,
+            is_market: true,
+            coastal: false,
+            farming_share: 0.3,
+        }
+    }
+
     pub fn old_country() -> Custom {
-        Custom::new(&[
-            (Norm::GreetStrangers, 0.8),
-            (Norm::ThankForCourtesy, 0.9),
-            (Norm::Directness, -0.6),
-            (Norm::DeferToElders, 0.8),
-            (Norm::AcceptHospitality, 0.7),
-            (Norm::Haggle, -0.5),
-            (Norm::Punctuality, 0.3),
-            (Norm::KeepDistance, -0.3),
-        ])
+        norms_of(&a_village())
     }
-
-    /// Blunt, informal, and nobody speaks to strangers.
     pub fn the_city() -> Custom {
-        Custom::new(&[
-            (Norm::GreetStrangers, -0.7),
-            (Norm::ThankForCourtesy, 0.6),
-            (Norm::Directness, 0.8),
-            (Norm::DeferToElders, -0.2),
-            (Norm::AcceptHospitality, 0.0),
-            (Norm::Haggle, -0.7),
-            (Norm::Punctuality, 0.8),
-            (Norm::KeepDistance, 0.7),
-        ])
+        norms_of(&a_metropolis())
     }
-
-    /// A market town where the price is a conversation.
     pub fn the_market() -> Custom {
-        Custom::new(&[
-            (Norm::GreetStrangers, 0.6),
-            (Norm::ThankForCourtesy, 0.5),
-            (Norm::Directness, 0.2),
-            (Norm::Haggle, 0.9),
-            (Norm::Punctuality, -0.4),
-            (Norm::AcceptHospitality, 0.5),
-            (Norm::KeepDistance, -0.5),
-            (Norm::DeferToElders, 0.3),
-        ])
+        norms_of(&a_market_town())
     }
 }

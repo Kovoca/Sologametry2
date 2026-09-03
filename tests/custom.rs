@@ -6,7 +6,8 @@
 
 use scale_sim::coping::{regulatory_capacity, Strain};
 use scale_sim::custom::{
-    did_they_know, judged_here, places, will_bend, would_keep, Custom, Norm,
+    did_they_know, judged_here, norms_of, places, will_bend, would_keep, Conditions, Custom,
+    Norm,
 };
 use scale_sim::mind::{Facet, Mind, Value};
 use scale_sim::rng::Rng;
@@ -259,4 +260,149 @@ fn a_watchman_changes_the_mind_of_the_undecided() {
 #[test]
 fn there_has_to_be_something_in_it() {
     assert_eq!(will_bend(-50, -2.0, 0.0, 0.0), 0.0);
+}
+
+// =====================================================================
+// nobody decides what is done here
+// =====================================================================
+
+/// **The custom follows the settlement.** Nothing is typed in: change
+/// how many people live somewhere and what is done there changes with
+/// it.
+#[test]
+fn how_many_people_there_are_decides_whether_you_greet_them() {
+    let village = norms_of(&places::a_village());
+    let city = norms_of(&places::a_metropolis());
+
+    assert!(village.holds(Norm::GreetStrangers) > 0.3, "a village of four hundred kept to itself");
+    assert!(city.holds(Norm::GreetStrangers) < -0.3, "eight million people all said good morning");
+
+    // And it is the size doing it, not anything else about the place:
+    // hold everything still and move only the population.
+    let base = Conditions { population: 300.0, ..places::a_village() };
+    let grown = Conditions { population: 900_000.0, ..base };
+    assert!(norms_of(&base).holds(Norm::GreetStrangers) > norms_of(&grown).holds(Norm::GreetStrangers));
+}
+
+/// **A stranger is remarkable where anybody could know everybody**, and
+/// the line is where the real one is: a hundred and fifty people is
+/// about the most anybody keeps up with, and by fifty thousand it is
+/// certainly gone.
+#[test]
+fn the_line_is_drawn_where_relationships_actually_stop() {
+    let at = |pop: f64| {
+        Conditions { population: pop, ..places::a_village() }.everybody_knows_everybody()
+    };
+    assert!(at(150.0) > 0.95, "a hamlet where nobody knew anybody");
+    assert!(at(400.0) > 0.7);
+    assert!(at(50_000.0) < 0.05);
+    assert!(at(2_000_000.0) < 1e-9);
+    // Monotone, which a divisor picked for convenience need not be.
+    assert!(at(500.0) > at(5_000.0) && at(5_000.0) > at(40_000.0));
+}
+
+/// **Guest-right is strongest where travel is dangerous and there is no
+/// inn** — which is a fact about remoteness and thin ground, not about
+/// anybody's generosity.
+#[test]
+fn hospitality_comes_from_being_a_long_way_from_anywhere() {
+    let outpost = norms_of(&places::a_desert_outpost());
+    let city = norms_of(&places::a_metropolis());
+    assert!(
+        outpost.holds(Norm::AcceptHospitality) > city.holds(Norm::AcceptHospitality) + 0.5,
+        "a desert outpost was no more hospitable than a metropolis"
+    );
+
+    // Hold the place still and move it closer to everything.
+    let far = places::a_desert_outpost();
+    let near = Conditions { remoteness: 0.0, ..far };
+    assert!(norms_of(&far).holds(Norm::AcceptHospitality) > norms_of(&near).holds(Norm::AcceptHospitality));
+}
+
+/// **Personal space is larger where it is cold**, which is measured
+/// across forty-two countries and tracks temperature rather than
+/// character.
+#[test]
+fn the_climate_decides_how_close_anybody_stands() {
+    let cold = Conditions { mean_temp_c: -5.0, ..places::a_market_town() };
+    let hot = Conditions { mean_temp_c: 30.0, ..places::a_market_town() };
+    assert!(norms_of(&cold).holds(Norm::KeepDistance) > norms_of(&hot).holds(Norm::KeepDistance));
+}
+
+/// **Haggling is what happens where the price is not posted**, and fixed
+/// prices are an invention of scale retail that ends it wherever they
+/// arrive.
+#[test]
+fn the_price_is_a_conversation_until_somebody_prints_it() {
+    let market = norms_of(&places::a_market_town());
+    let city = norms_of(&places::a_metropolis());
+    assert!(market.holds(Norm::Haggle) > 0.3);
+    assert!(city.holds(Norm::Haggle) < -0.3);
+
+    // The same market town, grown into a city with department stores.
+    let grown = Conditions { population: 3_000_000.0, ..places::a_market_town() };
+    assert!(
+        norms_of(&grown).holds(Norm::Haggle) < market.holds(Norm::Haggle),
+        "haggling survived the arrival of a posted price"
+    );
+}
+
+/// **Rules are held harder where the ground is thin and the people are
+/// close together** — the tightness–looseness finding across thirty-three
+/// nations, and it is ecology rather than preference.
+#[test]
+fn threat_and_crowding_tighten_the_rules() {
+    let easy = Conditions { density: 100.0, scarcity: 0.05, remoteness: 0.1, ..Default::default() };
+    let hard = Conditions { density: 5_000.0, scarcity: 0.9, remoteness: 0.9, ..Default::default() };
+    assert!(hard.tightness() > easy.tightness() * 1.8);
+
+    // Each of the three pulls on its own.
+    let crowded = Conditions { density: 5_000.0, ..easy };
+    let barren = Conditions { scarcity: 0.9, ..easy };
+    let cut_off = Conditions { remoteness: 0.9, ..easy };
+    for tighter in [crowded, barren, cut_off] {
+        assert!(tighter.tightness() > easy.tightness());
+    }
+}
+
+/// **Pace follows size and cold**, measured by walking speed, clock
+/// accuracy and how long it takes to buy a stamp across thirty-one
+/// countries.
+#[test]
+fn a_big_cold_place_runs_faster_than_a_small_warm_one() {
+    let big_cold = Conditions { population: 5_000_000.0, mean_temp_c: 2.0, ..Default::default() };
+    let small_warm = Conditions { population: 800.0, mean_temp_c: 28.0, ..Default::default() };
+    assert!(big_cold.pace() > small_warm.pace() * 2.0);
+    assert!(
+        norms_of(&big_cold).holds(Norm::Punctuality) > norms_of(&small_warm).holds(Norm::Punctuality)
+    );
+}
+
+/// **Age is deferred to where what an old person knows is still worth
+/// knowing** — which is farming and craft, not a mobile industrial city.
+#[test]
+fn elders_are_deferred_to_where_their_knowledge_still_works() {
+    let farming = norms_of(&places::a_village());
+    let industrial = norms_of(&places::a_metropolis());
+    assert!(farming.holds(Norm::DeferToElders) > industrial.holds(Norm::DeferToElders));
+}
+
+/// **And no two derived places are the same place**, which is the whole
+/// point of deriving them.
+#[test]
+fn different_ground_produces_different_custom() {
+    let all = [
+        norms_of(&places::a_village()),
+        norms_of(&places::a_metropolis()),
+        norms_of(&places::a_market_town()),
+        norms_of(&places::a_desert_outpost()),
+    ];
+    for i in 0..all.len() {
+        for j in (i + 1)..all.len() {
+            assert!(
+                !all[i].differs_from(&all[j]).is_empty(),
+                "two quite different places came out with identical custom"
+            );
+        }
+    }
 }
