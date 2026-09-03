@@ -56,4 +56,8 @@ fn main() {
     }
 
     println!("\nmedian {}", pops[pops.len() / 2]);
+    println!(
+        "stored settlements hold {:.0}% of the world; the rest live in villages and on the land",
+        100.0 * total / 8.0e9
+    );
 }

@@ -66,13 +66,131 @@ pub struct Settlements {
 
 pub const NO_SETTLEMENT: u32 = u32::MAX;
 
+impl Settlement {
+    /// How big it is, which is not the same question as what it is.
+    pub fn band(&self) -> Band {
+        Band::of(self.population)
+    }
+}
+
+impl Settlements {
+    /// Everybody on the planet, stored or not.
+    pub fn world_population() -> f64 {
+        WORLD_POPULATION
+    }
+
+    /// What the stored places hold between them.
+    pub fn stored_population(&self) -> f64 {
+        self.list.iter().map(|s| s.population as f64).sum()
+    }
+
+    /// **Everybody else**, who live in villages and hamlets and out on
+    /// the land — and who are not in this list because there are
+    /// millions of such places. They are generated where they stand.
+    pub fn countryside_population(&self) -> f64 {
+        (WORLD_POPULATION - self.stored_population()).max(0.0)
+    }
+}
+
 /// World population, spread across the land by what it can feed. Earth at
 /// the Information Age baseline is about 8 billion.
 const WORLD_POPULATION: f64 = 8.0e9;
 
-/// Share of people living in a named settlement rather than dispersed
-/// across the countryside. Roughly Earth's current urban fraction.
-const URBAN_SHARE: f64 = 0.57;
+/// **How big the nth-largest place on Earth actually is.**
+///
+/// Not a law, because no single power law fits: Zipf holds tolerably
+/// within one country and the world's top is far flatter than it
+/// predicts — strict Zipf off Tokyo's 37 million would put the hundredth
+/// city at 370,000 when it is nearer six million. So these are the real
+/// figures at real ranks, interpolated between in log-log space, and the
+/// curve says what it is rather than pretending to be an equation.
+///
+/// The previous model gave every stored settlement a share of the whole
+/// urban population by weight, which came out with an implied exponent
+/// near **0.51** against a real one near 1: far too flat, so the median
+/// settlement on the planet was a city of 360,000 and there were two
+/// small towns and no villages at all.
+const RANK_SIZE: [(f64, f64); 10] = [
+    (1.0, 37.0e6),
+    (10.0, 20.0e6),
+    (50.0, 9.0e6),
+    (100.0, 6.0e6),
+    (500.0, 1.5e6),
+    (1_000.0, 800.0e3),
+    (2_000.0, 400.0e3),
+    (5_000.0, 140.0e3),
+    (10_000.0, 60.0e3),
+    (50_000.0, 10.0e3),
+];
+
+/// What the nth-largest settlement holds, interpolated between the real
+/// anchors above.
+pub fn population_at_rank(rank: usize) -> f64 {
+    let r = (rank.max(1)) as f64;
+    if r <= RANK_SIZE[0].0 {
+        return RANK_SIZE[0].1;
+    }
+    for pair in RANK_SIZE.windows(2) {
+        let ((r0, p0), (r1, p1)) = (pair[0], pair[1]);
+        if r <= r1 {
+            let t = (r.ln() - r0.ln()) / (r1.ln() - r0.ln());
+            return (p0.ln() + t * (p1.ln() - p0.ln())).exp();
+        }
+    }
+    // Past the last anchor, continue the final slope rather than
+    // stopping dead.
+    let ((r0, p0), (r1, p1)) = (RANK_SIZE[8], RANK_SIZE[9]);
+    let slope = (p1.ln() - p0.ln()) / (r1.ln() - r0.ln());
+    (p1.ln() + slope * (r.ln() - r1.ln())).exp()
+}
+
+/// **The size bands, which are not the same thing as status.**
+///
+/// A "city" in Britain is a rank granted by charter, not a headcount:
+/// St Davids has 1,600 people and is a city, and Reading has 175,000 and
+/// is not. So `Kind` carries what a place *is to its country* and this
+/// carries how big it is, and the two are allowed to disagree.
+///
+/// The bands are the ordinary English ones. Statistical thresholds
+/// disagree wildly and are worth knowing about: the line for "urban" is
+/// 200 in Norway and Sweden, 2,000 in France and Germany, 2,500 in the
+/// United States, 5,000 in India and **50,000 in Japan**.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Band {
+    Hamlet,
+    Village,
+    LargeVillage,
+    SmallTown,
+    Town,
+    LargeTown,
+    City,
+}
+
+impl Band {
+    pub fn of(population: u32) -> Band {
+        match population {
+            0..=99 => Band::Hamlet,
+            100..=999 => Band::Village,
+            1_000..=2_499 => Band::LargeVillage,
+            2_500..=9_999 => Band::SmallTown,
+            10_000..=49_999 => Band::Town,
+            50_000..=99_999 => Band::LargeTown,
+            _ => Band::City,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Band::Hamlet => "hamlet",
+            Band::Village => "village",
+            Band::LargeVillage => "large village",
+            Band::SmallTown => "small town",
+            Band::Town => "town",
+            Band::LargeTown => "large town",
+            Band::City => "city",
+        }
+    }
+}
 
 #[derive(Clone, Copy, PartialEq)]
 struct Cost(f32);
@@ -389,10 +507,31 @@ impl Settlements {
             weight[idx] = weight[idx].powf(1.6) * m;
         }
 
-        let total_weight: f64 = weight.iter().sum::<f64>().max(1e-9);
-        let urban = WORLD_POPULATION * URBAN_SHARE;
-        for (idx, s) in list.iter_mut().enumerate() {
-            s.population = ((weight[idx] / total_weight) * urban).round() as u32;
+        // **The land decides which places are big; the curve decides how
+        // big.** Weight — catchment, water, coast, being a capital — is a
+        // good mechanism for ranking sites and a poor one for sizing
+        // them: normalising it over a total gave every place roughly the
+        // mean and produced a planet of identical cities.
+        let mut order: Vec<usize> = (0..list.len()).collect();
+        order.sort_by(|&a, &b| {
+            weight[b].total_cmp(&weight[a]).then(list[a].cell.cmp(&list[b].cell))
+        });
+        for (rank, &idx) in order.iter().enumerate() {
+            list[idx].population = population_at_rank(rank + 1).round() as u32;
+        }
+
+        // **And the stored places are not the whole world.** They hold
+        // what the curve gives them; everybody else lives in villages and
+        // hamlets and out on the land, which are generated where they
+        // stand rather than kept in a list — there are millions of them,
+        // and a list of millions is the unbounded state this project has
+        // had to remove three times already.
+        let stored: f64 = list.iter().map(|s| s.population as f64).sum();
+        if stored > WORLD_POPULATION * 0.6 {
+            let scale = WORLD_POPULATION * 0.6 / stored;
+            for s in list.iter_mut() {
+                s.population = (s.population as f64 * scale).round() as u32;
+            }
         }
 
         // Promote the genuinely large places. An absolute headcount, so a

@@ -352,3 +352,99 @@ fn glyph(b: Biome) -> char {
         Biome::Snowcap => 'A',
     }
 }
+
+// ---------------------------------------------------------------------
+// the villages, which are not in any list
+// ---------------------------------------------------------------------
+
+/// **A place too small to be worth storing.**
+///
+/// There are millions of them — geographic databases hold something like
+/// four million populated places on Earth against fewer than ten thousand
+/// urban areas over seventy thousand people — so keeping a list of them
+/// is precisely the unbounded state this project has had to remove three
+/// times. They are a pure function of where they are, like the ground
+/// they stand on.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Village {
+    /// Which locality of the cell, 0..LOCALITIES_PER_CELL².
+    pub locality: usize,
+    pub population: u32,
+}
+
+/// **One settlement per thirteen square kilometres** is about what
+/// long-settled farming country carries: England has upwards of ten
+/// thousand villages in a hundred and thirty thousand square kilometres.
+/// A region cell is 16.384 km on a side, so 268 km², so about twenty
+/// places — and most of them are hamlets.
+pub const KM2_PER_SETTLED_PLACE: f64 = 13.0;
+
+fn hash3(a: u64, b: u64, c: u64) -> u64 {
+    let mut h = a
+        .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ b.wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ c.wrapping_mul(0x94D0_49BB_1331_11EB);
+    h ^= h >> 30;
+    h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    h ^= h >> 27;
+    h.wrapping_mul(0x94D0_49BB_1331_11EB) ^ (h >> 31)
+}
+
+fn unit(h: u64) -> f64 {
+    (h >> 11) as f64 / (1u64 << 53) as f64
+}
+
+/// **The villages of one region cell**, generated and never stored.
+///
+/// `people` is what the countryside of this cell holds — the caller
+/// works that out from the land, because carrying capacity is a
+/// question about soil and water and this is a question about where
+/// somebody put a house.
+///
+/// The sizes come out in the real proportions: mostly hamlets, some
+/// villages, occasionally something with a church and a shop. Nothing is
+/// placed by hand and nothing is remembered.
+pub fn villages_in(seed: u64, cell: usize, people: f64) -> Vec<Village> {
+    if people < 20.0 {
+        return Vec::new();
+    }
+    let cell_km2 = 16.384f64 * 16.384;
+    let want = (cell_km2 / KM2_PER_SETTLED_PLACE).round().max(1.0) as usize;
+    let slots = LOCALITIES_PER_CELL * LOCALITIES_PER_CELL;
+
+    // Which localities are settled at all. Deterministic, so walking away
+    // and back finds the same hamlets in the same fields.
+    let mut chosen: Vec<(usize, f64)> = Vec::new();
+    for i in 0..slots {
+        let h = hash3(seed, cell as u64, i as u64);
+        chosen.push((i, unit(h)));
+    }
+    chosen.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+    chosen.truncate(want.min(slots));
+
+    // **Small places are the rule and the big one is the exception.** A
+    // steep share so that one place in the cell is the village with the
+    // church and the rest are farmsteads and hamlets, which is what
+    // country like this actually looks like.
+    let mut share: Vec<f64> = chosen
+        .iter()
+        .enumerate()
+        .map(|(rank, _)| 1.0 / ((rank + 1) as f64).powf(1.15))
+        .collect();
+    let total: f64 = share.iter().sum::<f64>().max(1e-9);
+    for v in share.iter_mut() {
+        *v /= total;
+    }
+
+    let mut out: Vec<Village> = chosen
+        .iter()
+        .zip(share)
+        .map(|((locality, _), s)| Village {
+            locality: *locality,
+            population: (people * s).round().max(1.0) as u32,
+        })
+        .filter(|v| v.population >= 5)
+        .collect();
+    out.sort_by_key(|v| v.locality);
+    out
+}

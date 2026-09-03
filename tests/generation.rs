@@ -7,7 +7,7 @@
 use scale_sim::geology::Rock;
 use scale_sim::network::{Network, Road};
 use scale_sim::polity::{Polities, UNCLAIMED};
-use scale_sim::settlement::{Kind, Settlements};
+use scale_sim::settlement::{population_at_rank, Kind, Settlements};
 use scale_sim::world::{Biome, World};
 
 const OCEAN: usize = Biome::Ocean as usize;
@@ -307,21 +307,39 @@ fn city_sizes_span_orders_of_magnitude() {
 }
 
 #[test]
-fn urban_population_is_conserved() {
-    // Every person must land in exactly one settlement — the total is
-    // shared out, never invented.
+fn population_is_shared_out_and_never_invented() {
+    // **This used to assert that the stored settlements held 57% of the
+    // world exactly**, which was the old design's premise and the reason
+    // the median settlement on the planet was a city of 360,000. The
+    // stored list is now the largest few thousand places and nothing
+    // else; everybody else lives in villages and out on the land, which
+    // are generated where they stand.
+    //
+    // What is still guaranteed is the thing that mattered: the total is
+    // shared out from a fixed world population, never invented.
     let w = World::generate(256, 144, 20260828);
     let p = Polities::partition(&w, 24);
     let s = Settlements::place(&w, &p, 2000);
 
-    let total = s.total_population() as f64;
-    let expected = 8.0e9 * 0.57;
-    let drift = (total - expected).abs() / expected;
+    let stored = s.stored_population();
+    let country = s.countryside_population();
+    let world = Settlements::world_population();
+
+    assert!((stored + country - world).abs() < 1.0, "people appeared or vanished");
+    assert!(stored > 0.0 && country > 0.0);
+
+    // A realistic split: the largest two thousand places on a planet
+    // hold a large minority of it, not all of it.
+    let share = stored / world;
     assert!(
-        drift < 0.01,
-        "urban population {total:.0} drifted {:.1}% from {expected:.0}",
-        drift * 100.0
+        (0.2..=0.6).contains(&share),
+        "the top two thousand settlements hold {:.0}% of the world",
+        share * 100.0
     );
+
+    // And nobody is bigger than the biggest city there is.
+    let largest = s.list.iter().map(|x| x.population).max().unwrap_or(0);
+    assert!(largest as f64 <= population_at_rank(1) + 1.0);
 }
 
 #[test]

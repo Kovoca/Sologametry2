@@ -4386,6 +4386,64 @@ him in, the relationship he holds and how he was approached — colder to a
 stranger who stops him in the street than to a friend who asks, and the
 same man both times.
 
+## There are villages now (`settlement.rs`, `locality.rs`)
+
+`cargo run --release --bin sizes` measures it. Before this, the generator
+gave every stored settlement a share of the **whole urban population** by
+weight, and the result was a planet whose **median settlement was a city
+of 360,000**, with two small towns on it and no villages at all — 92% of
+everywhere was over 100k.
+
+Two separate faults, and only one of them was the numbers.
+
+### The land decides which places are big; a curve decides how big
+
+Weight — catchment, water, coast, being a capital — ranks sites well and
+sizes them badly: normalising it over a total gives every place roughly
+the mean. The implied exponent came out near **0.51** against a real one
+near 1.
+
+**No single power law fits, so the model does not pretend one does.**
+Strict Zipf off Tokyo's 37 million puts the hundredth city at 370,000
+when it is nearer six million. `RANK_SIZE` is therefore the real figures
+at real ranks — 37M, 6M at 100, 800k at 1,000, 400k at 2,000 —
+interpolated between in log-log space. The land still decides *which*
+site is rank one.
+
+### And the stored places are not the whole world
+
+The list is the largest few thousand places, and that is all it should
+ever be. Earth has something like **four million** populated places
+against fewer than ten thousand urban areas over 70,000; keeping a list
+of millions is the unbounded state this project has had to remove three
+times.
+
+So `locality::villages_in` generates them where they stand, like the
+ground: **one settled place per thirteen square kilometres** — England
+carries upwards of ten thousand villages in 130,000 km² — which is about
+twenty to a region cell, mostly hamlets with one bigger place that has
+the church. Deterministic, so walking away and back finds the same
+hamlets in the same fields.
+
+### Size is not status
+
+**A city in Britain is a rank granted by charter, not a headcount**: St
+Davids has 1,600 people and is one, and Reading has 175,000 and is not.
+`Kind` carries what a place is to its country; `Band` carries how big it
+is; and they are allowed to disagree.
+
+The bands are the ordinary English ones — hamlet under 100, village to
+1,000, large village to 2,500, small town to 10,000, town to 50,000,
+large town to 100,000, city above. Statistical thresholds disagree wildly
+and it is worth knowing: the line for "urban" is 200 in Norway and
+Sweden, 2,000 in France and Germany, 2,500 in the United States, 5,000 in
+India and **50,000 in Japan**.
+
+**A test that asserted the old premise had to go**, not be patched: it
+required the stored settlements to hold exactly 57% of the world. What is
+guaranteed now is the thing that actually mattered — the total is shared
+out from a fixed world population and never invented.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
