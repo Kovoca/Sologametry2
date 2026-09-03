@@ -166,6 +166,83 @@ pub fn did_they_know(theirs: &Custom, n: Norm) -> bool {
     theirs.holds(n).abs() >= 0.15
 }
 
+// ---------------------------------------------------------------------
+// what somebody actually does
+// ---------------------------------------------------------------------
+
+/// **What this person actually does about a norm**, on the same −1..+1
+/// scale the norm is held on.
+///
+/// A norm says what is expected; it does not say what anybody does. What
+/// closes that gap is disposition **modulated by state**, and the state
+/// half is the interesting one: *a normally polite man in a foul mood is
+/// not polite*, and he has not become a different person.
+///
+/// **Keeping a norm is an act of self-control**, so it runs on the same
+/// depletable capacity as holding back a blow — `coping::regulatory_
+/// capacity`, which strain and exhaustion spend. That is not a
+/// convenience: it is the claim that manners fail for the same reason
+/// tempers do, which is why somebody a year into a bad stretch is
+/// short with people who have done nothing to them.
+///
+/// - `holds_it` is what *they* believe, from their own upbringing.
+/// - `mood` is today, from `Mind::mood`.
+/// - `capacity` is what they have left to spend.
+pub fn would_keep(holds_it: f64, dutifulness: f64, mood: f64, capacity: f64) -> f64 {
+    let disposition = (holds_it.clamp(-1.0, 1.0) + 0.25 * dutifulness.clamp(-2.0, 2.0)).clamp(-1.0, 1.0);
+    if disposition <= 0.0 {
+        // They do not hold it. A good mood does not invent a custom.
+        return disposition;
+    }
+    // **A bad day costs, and a spent man costs more.** Neither reverses
+    // anybody: what erodes is the *margin* they were keeping it by.
+    let held_together = (0.45 + 0.55 * capacity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+    let today = (1.0 + 0.35 * mood.clamp(-1.0, 1.0)).clamp(0.4, 1.35);
+    (disposition * held_together * today).clamp(-1.0, 1.0)
+}
+
+/// **Whether somebody will bend a rule.**
+///
+/// Ethics as a disposition rather than a switch: what varies between
+/// people is how much a rule weighs against what breaking it is worth.
+///
+/// - `regard_for_law` is their `Value::Law` conviction, −50..+50.
+/// - `gain` is what is in it for them, 0..1.
+/// - `chance_seen` is what they think the odds of being caught are.
+///
+/// **Certainty matters more than severity**, which is one of the more
+/// robust findings in criminology: raising the odds of being caught
+/// deters, and raising the punishment mostly does not. So the penalty is
+/// not a term here at all, and that is deliberate.
+///
+/// A designed model, and labelled as one: the shape is defensible and
+/// the coefficients are not measured.
+pub fn will_bend(regard_for_law: i8, dutifulness: f64, gain: f64, chance_seen: f64) -> f64 {
+    let scruple = (regard_for_law as f64 / 50.0).clamp(-1.0, 1.0)
+        + 0.3 * dutifulness.clamp(-2.0, 2.0) / 2.0;
+    // **The gain gates it, and does not merely add to it.** Subtracting
+    // scruple gave an unscrupulous man a standing appetite for breaking
+    // rules with nothing whatever in it — which is not wickedness, it is
+    // arithmetic. Nobody bends a rule for nothing.
+    let appetite = ((1.0 - scruple) / 2.0).clamp(0.0, 1.0);
+    let worth_it = gain.clamp(0.0, 1.0);
+    // Being seen is what deters, and it deters the scrupulous least
+    // because they were not going to anyway.
+    let deterred = 1.0 - 0.7 * chance_seen.clamp(0.0, 1.0);
+    (worth_it * appetite * deterred).clamp(0.0, 1.0)
+}
+
+/// **A bad day and a bad character look the same from outside.**
+///
+/// The perception boundary once more: a witness reads the act, and the
+/// act is all there is. Somebody who was curt because he had just been
+/// told something terrible is judged exactly as somebody who is simply
+/// curt — which is true to life and follows from what was already built
+/// rather than being added here.
+pub fn judged_without_excuse(here: &Custom, n: Norm, did: f64) -> Judged {
+    judged_here(here, n, did)
+}
+
 /// A few places, so a test and a demo have somewhere to stand. Real
 /// variation is larger than this and in the same directions.
 pub mod places {

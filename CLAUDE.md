@@ -4210,6 +4210,47 @@ transaction in a market and an insult in a shop.
   made being *especially* courteous a breach of courtesy, which is
   nonsense — overshooting a norm in its own direction is not breaking it.
 
+### A norm says what is expected; a person decides what they do
+
+**Manners fail for the same reason tempers do.** Keeping a norm is an act
+of self-control, so `would_keep` runs on the very capacity
+`coping::regulatory_capacity` already models — the one strain and
+exhaustion spend. That is not a convenience: it is the claim that a man a
+year into a bad stretch is short with people who have done nothing to
+him, for the same reason a man at the end of himself cannot hold back a
+blow.
+
+- **A bad day and a bad year are two costs and they compound.** Which is
+  larger depends on how bad and how long, and the model needs no opinion
+  about that — only that both are real.
+- **Neither reverses anybody.** What erodes is the margin they were
+  keeping it by. A courteous man having an awful time is curt, not a
+  boor.
+- **A good mood does not invent a custom.** Somebody who does not hold a
+  norm is not made to keep it by cheerfulness.
+- **And the witness cannot tell.** A man curt because he has just heard
+  something terrible is judged exactly as a man who is simply curt. The
+  perception boundary again, and it follows from what was already built
+  rather than being added.
+
+### Ethics is a disposition, not a switch
+
+What varies between people is how much a rule weighs against what
+breaking it is worth. `will_bend` takes their regard for law, their
+dutifulness, the gain, and what they think the odds of being seen are.
+
+- **Certainty deters; severity mostly does not.** One of the more robust
+  findings in criminology, and the reason there is no penalty term in
+  this at all. Being watched is what stops people — and it changes the
+  mind of whoever was wavering, not of the scrupulous, who were not going
+  to anyway.
+- **Nobody bends a rule for nothing.** Subtracting scruple gave an
+  unscrupulous man a standing appetite for rule-breaking with no gain
+  whatever — which is not wickedness, it is arithmetic. The gain gates
+  it multiplicatively.
+- Labelled a **designed model**: the shape is defensible and the
+  coefficients are not measured.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

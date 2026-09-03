@@ -4,7 +4,23 @@
 //! interesting cases live in the gap, and the sharpest of them is that
 //! **a witness cannot see that you did not know.**
 
-use scale_sim::custom::{did_they_know, judged_here, places, Custom, Norm};
+use scale_sim::coping::{regulatory_capacity, Strain};
+use scale_sim::custom::{
+    did_they_know, judged_here, places, will_bend, would_keep, Custom, Norm,
+};
+use scale_sim::mind::{Facet, Mind, Value};
+use scale_sim::rng::Rng;
+
+fn a_polite_man(seed: u64) -> Mind {
+    let mut m = Mind::draw(&mut Rng::new(seed), &[(Value::Law, 30)]);
+    for f in Facet::ALL {
+        m.person.set_baseline(f, 0.0);
+    }
+    m.person.set_baseline(Facet::Dutifulness, 1.2);
+    m.willpower = 0.5;
+    m.mood.valence = 0.0;
+    m
+}
 
 /// **The same act is a breach in one place and correct in another.**
 #[test]
@@ -96,4 +112,151 @@ fn being_slightly_wrong_is_not_an_insult() {
     assert!(!slightly_off.worth_mentioning);
     assert!(openly_rude.worth_mentioning);
     assert!(openly_rude.against_them > slightly_off.against_them);
+}
+
+// =====================================================================
+// a norm says what is expected; a person decides what they do
+// =====================================================================
+
+/// **A normally polite man in a foul mood is not polite**, and he has
+/// not become a different person.
+#[test]
+fn a_bad_day_costs_somebody_their_manners() {
+    let m = a_polite_man(1);
+    let cap = regulatory_capacity(&m, 0.0);
+    let d = m.person.z(Facet::Dutifulness) as f64;
+
+    let ordinary = would_keep(0.9, d, 0.0, cap);
+    let foul = would_keep(0.9, d, -1.0, cap);
+    let cheerful = would_keep(0.9, d, 1.0, cap);
+
+    assert!(foul < ordinary, "a terrible mood cost him nothing");
+    assert!(cheerful > ordinary);
+    // But it does not turn him rude. What erodes is the margin.
+    assert!(foul > 0.3, "one bad day made a courteous man discourteous: {foul:.2}");
+}
+
+/// **Manners fail for the same reason tempers do.** Keeping a norm is an
+/// act of self-control, so it runs on the capacity strain spends — which
+/// is why somebody a year into a bad stretch is short with people who
+/// have done nothing to them.
+///
+/// Two separate costs, and they compound. Which is the larger depends on
+/// how bad the day and how long the year, and the model does not need an
+/// opinion about that — only that both are real.
+#[test]
+fn strain_and_mood_both_cost_manners_and_they_compound() {
+    let m = a_polite_man(3);
+    let d = m.person.z(Facet::Dutifulness) as f64;
+
+    let mut worn = Strain::default();
+    worn.advance(1500, 0.9, 0.15);
+    let fresh_cap = regulatory_capacity(&m, 0.0);
+    let worn_cap = regulatory_capacity(&m, worn.debt);
+    assert!(worn_cap < fresh_cap, "a wrecking year left his self-command untouched");
+
+    let ordinary = would_keep(0.9, d, 0.0, fresh_cap);
+    let bad_day = would_keep(0.9, d, -1.0, fresh_cap);
+    let bad_year = would_keep(0.9, d, 0.0, worn_cap);
+    let both = would_keep(0.9, d, -1.0, worn_cap);
+
+    assert!(bad_day < ordinary, "a terrible day cost him nothing");
+    assert!(bad_year < ordinary, "a wrecking year cost him nothing");
+    assert!(
+        both < bad_day && both < bad_year,
+        "the two did not compound: {both:.2} against {bad_day:.2} and {bad_year:.2}"
+    );
+    // And still not rudeness. He is a courteous man having an awful time.
+    assert!(both > 0.15, "he became a boor: {both:.2}");
+}
+
+/// **A good mood does not invent a custom.** Somebody who does not hold
+/// a norm is not made to keep it by cheerfulness.
+#[test]
+fn cheerfulness_does_not_produce_manners_nobody_has() {
+    let m = a_polite_man(5);
+    let d = m.person.z(Facet::Dutifulness) as f64;
+    assert!(would_keep(-0.8, d, 1.0, 1.0) <= 0.0);
+}
+
+/// **And the witness cannot tell the difference.** A man curt because he
+/// had just heard something terrible is judged exactly as a man who is
+/// simply curt.
+#[test]
+fn a_bad_day_and_a_bad_character_look_the_same() {
+    let here = places::old_country();
+    let m = a_polite_man(7);
+    let d = m.person.z(Facet::Dutifulness) as f64;
+    let cap = regulatory_capacity(&m, 0.0);
+
+    // A courteous man having the worst day of his life.
+    let curt_today = would_keep(0.9, d, -1.0, 0.15);
+    // Somebody who simply does not bother.
+    let just_rude = would_keep(-0.2, d, 0.0, cap);
+
+    let a = judged_here(&here, Norm::ThankForCourtesy, curt_today);
+    let b = judged_here(&here, Norm::ThankForCourtesy, just_rude);
+    // They need not be equal — he was ruder or less so — but neither
+    // carries any note about why, and the good man is still marked down.
+    assert!(a.against_them > 0.0, "having a terrible day was a free pass");
+    assert!(b.against_them > 0.0);
+}
+
+// =====================================================================
+// ethics is a disposition, not a switch
+// =====================================================================
+
+/// **Somebody with less regard for the law bends more rules**, other
+/// things equal.
+#[test]
+fn scruple_is_what_varies_between_people() {
+    let straight = will_bend(45, 1.0, 0.6, 0.3);
+    let loose = will_bend(-30, -1.0, 0.6, 0.3);
+    assert!(loose > straight, "conviction made no difference at all");
+    assert!(straight < 0.15, "a man of firm principle bent a rule for very little");
+}
+
+/// **What it is worth matters**, which is why almost nobody is honest
+/// about everything and almost everybody is honest about most things.
+#[test]
+fn the_gain_is_part_of_it() {
+    let trifle = will_bend(10, 0.0, 0.1, 0.3);
+    let fortune = will_bend(10, 0.0, 1.0, 0.3);
+    assert!(fortune > trifle);
+}
+
+/// **Certainty deters; severity mostly does not.**
+///
+/// One of the more robust findings in criminology, and the reason the
+/// penalty is not a term in this at all. Being watched is what stops
+/// people.
+#[test]
+fn being_seen_is_what_deters() {
+    let unseen = will_bend(0, 0.0, 0.7, 0.0);
+    let watched = will_bend(0, 0.0, 0.7, 1.0);
+    assert!(
+        unseen > watched * 3.0,
+        "whether anybody was looking barely mattered: {unseen:.2} vs {watched:.2}"
+    );
+    // There is no penalty argument to pass, which is the point.
+}
+
+/// **The scrupulous are deterred least**, because they were not going to
+/// anyway — so a watchman changes the behaviour of the people who were
+/// wavering.
+#[test]
+fn a_watchman_changes_the_mind_of_the_undecided() {
+    let scrupulous_change = will_bend(45, 1.0, 0.7, 0.0) - will_bend(45, 1.0, 0.7, 1.0);
+    let wavering_change = will_bend(0, 0.0, 0.7, 0.0) - will_bend(0, 0.0, 0.7, 1.0);
+    assert!(
+        wavering_change > scrupulous_change,
+        "watching had the same effect on a saint as on somebody in two minds"
+    );
+}
+
+/// **Nobody is bent by nothing.** With no gain there is nothing to bend
+/// a rule for, whatever somebody is like.
+#[test]
+fn there_has_to_be_something_in_it() {
+    assert_eq!(will_bend(-50, -2.0, 0.0, 0.0), 0.0);
 }
