@@ -1040,6 +1040,16 @@ impl Strain {
         }
     }
 
+    /// Put a remembered appraisal back, for a reload. **Not a way to
+    /// appraise**: it records what was already decided rather than
+    /// deciding it, which is what makes a reload not re-apply relapse
+    /// sensitivity to a trouble somebody is already living with.
+    pub fn remember_appraisal(&mut self, event: u64, felt: f64) {
+        let i = self.appraised_next as usize % self.appraised.len();
+        self.appraised[i] = Some((event, felt));
+        self.appraised_next = self.appraised_next.wrapping_add(1);
+    }
+
     /// Something happened. **Not routed through the debt** — a crisis is
     /// its own mechanism, and this leaves the chronic state untouched.
     pub fn crisis_strikes(&mut self, kind: Acute, activation: f64, day: u64, because_of: u64) {

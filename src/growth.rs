@@ -368,7 +368,7 @@ impl Episodic {
 /// recorded how much of the shared ceiling each source happened to
 /// receive, which is exactly the bookkeeping that goes wrong when one
 /// effect is hidden behind another and the one in front then fades.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Growth {
     pub episodics: Vec<Episodic>,
     pub roles: Vec<Role>,

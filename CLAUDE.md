@@ -3929,6 +3929,65 @@ derives separately from their id and the event; and once resolved it is a
 world fact written to the delta journal and never sampled again. The
 implementation waits on that journal, which is Phase 1's remaining work.
 
+## Writing a world down (`src/save.rs`)
+
+Phase 1, slices 3 and 4. Hand-rolled — no `serde`, per the
+minimal-dependency rule, and because a save format is a thing worth
+being deliberate about rather than derived.
+
+**A snapshot and a journal are different things.** The snapshot is state
+that cannot be derived: what a life has done to somebody, where their
+strain stands, what they have come to reach for. The journal is the
+append-only record of what *happened*, and its whole purpose is that
+those things are never worked out a second time.
+
+That distinction is what closes the contract slice 9 named:
+
+| | derived from | written down |
+|---|---|---|
+| unresolved objective outcome | `world_seed` + a stable event id | no |
+| **resolved** objective outcome | nothing — it is history | **yes** |
+| one person's perception of it | that person's id + the event id | no |
+
+**Never from a person's own seed**, which is the trap: two witnesses
+would generate two incompatible versions of one accident. Recomputing a
+resolved outcome after a rebalance or an RNG change could alter something
+a witness already remembers, so once taken it is history. A perception is
+*not* recorded, because it is not a world fact and a journal that stored
+every witness's view of every event would grow with attention rather than
+with history.
+
+Rules the format follows, each of which is a way saves usually rot:
+
+- **A variant's position is not its encoding.** Every enum has an
+  explicit code, so inserting a variant tomorrow cannot silently
+  reinterpret every save made today. A `Facet` goes further and is
+  written **by name** — self-describing in a hex dump, and immune to
+  insertion rather than merely to appending.
+- **Floats are stored as bits.** Exact, and identical state gives
+  identical bytes, which is what makes a save comparable at all. A
+  `HashMap` anywhere in the format would break that, which is why the
+  journal is a `BTreeMap`.
+- **The header identifies the file before it is trusted**: magic,
+  format, generation schema, checksum, length. Rubbish, a truncated
+  file, a future format and a single flipped byte are each rejected with
+  a distinct error, and an unknown code says *which table* it came from.
+- **The generator's version is read and kept, not enforced.** A save made
+  by an older generator still loads — precisely because the baseline is
+  written down rather than re-derived.
+
+The gate is `two_hundred_days_a_save_and_two_hundred_more`: two hundred
+days, to bytes, back, two hundred more, against four hundred straight
+through. If those differ, a save is not a save. A second gate reloads the
+person and compares all twenty-five facets and the well-being baseline,
+because the record agreeing is not the same as the person agreeing.
+
+One consequence worth having: **a reload does not re-appraise a trouble
+somebody is already living with.** The appraisal ring travels with the
+record, so relapse sensitivity is not applied a second time to the same
+event — which is the persistence half of the identity rule the gate
+review asked for.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

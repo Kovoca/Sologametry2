@@ -152,6 +152,11 @@ impl Habits {
         }
     }
 
+    /// Put a weight back, for a reload.
+    pub fn set(&mut self, c: Coping, w: f32) {
+        self.weight[index_of(c)] = w;
+    }
+
     pub fn strongest(&self) -> Coping {
         let mut best = (Coping::ALL[0], f32::MIN);
         for c in Coping::ALL {
@@ -168,7 +173,7 @@ impl Habits {
 ///
 /// The list is short on purpose: what is here is what a promotion needs
 /// in order not to invent anybody.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Coarse {
     pub who: Id<Person>,
     /// Where the person came from. **A seed is not sufficient save
