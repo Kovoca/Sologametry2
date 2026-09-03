@@ -4144,6 +4144,72 @@ how they *function* is a separate question with a different answer per
 person, and the answer is what they reached for. One number could not
 have said that.
 
+## Walking up to somebody (`src/converse.rs`, `src/custom.rs`)
+
+Every part of this existed and nothing had put it together. That is the
+whole of `converse.rs`: it invents no rule, it **assembles**. What comes
+back when you ask somebody something is built from what they saw
+(`memory`), whether they could have (`witness`), what they make of you
+(`relations`), what they are carrying (`coping`), what they believe
+(`growth`) and what they need (`needs`).
+
+- **Somebody who was not there cannot be made to know.** There is no
+  route from the world's record into a mouth: the search is of *their*
+  traces, and a man with none says so.
+- **How they came by it shows in what they say.** An eyewitness and a
+  rumour at two removes answer differently, and rehearsal never promotes
+  one into the other.
+- **Distrust withholds what it does not erase.** A man who does not
+  credit you tells you less and still knows it perfectly well — which is
+  discretion, not deception.
+- **The player gets no privileged channel.** What comes back is a
+  `SocialAct`, read by the same `read_act` any other listener uses, so it
+  can be misread the same way. No answer is truer for having been asked
+  by a person.
+
+### Most talking is not a conversation
+
+The module began by modelling somebody walking up to somebody else, and
+that is **not what most talking is**. A man holds a door, hears "thank
+you", says "you are welcome", and the whole thing is over in two seconds
+and was complete. Nobody decided to have a conversation.
+
+The consequence worth having: **an occasioned exchange is not awkward.**
+The act supplies the reason to be speaking, which is exactly what a
+deliberate approach to a stranger lacks. Same street, same stranger, same
+busy man — holding a door for him costs about a third of what stopping
+him to ask something does.
+
+And **walking up to a stranger going about their business is awkward for
+reasons about neither person**: no standing reason to be talking, they
+were doing something else, and the place is not one where this is done.
+Which is what a counter *is for* — a shopkeeper is civil to a stranger
+because of where he is standing, not because of what he is like. Being
+private compounds it; being busy is a real cost and a smaller one than
+being unknown.
+
+### What is done here is not what somebody believes
+
+A **value** is a fact about a person, drawn against their culture and
+free to depart from it. A **norm** is a fact about a *place*. The
+interesting cases live in the gap: breaching one you hold is weakness,
+keeping one you do not is prudence, and breaching one you have never
+heard of is what being a foreigner is.
+
+**A witness cannot see that you did not know.** The perception boundary
+arriving at manners: a foreigner's innocent breach and a local's
+deliberate rudeness are the same act, judged identically, and the person
+who took offence has no way to tell them apart. Greeting a stranger is
+expected in one place and not done in another; haggling is the whole
+transaction in a market and an insult in a shop.
+
+- **Zero is a real answer.** Most places have no opinion about most
+  things, and a model where every norm is live everywhere makes travel
+  unbearable rather than interesting.
+- **Only a shortfall counts.** Measuring distance from the expectation
+  made being *especially* courteous a breach of courtesy, which is
+  nonsense — overshooting a norm in its own direction is not breaking it.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

@@ -4,9 +4,12 @@
 //! fields, and biomes that emerge from how those fields interact. Nothing
 //! past biome classification lives here yet.
 
+pub mod befall;
 pub mod biota;
 pub mod building;
+pub mod converse;
 pub mod coping;
+pub mod custom;
 pub mod econ;
 pub mod field;
 pub mod geology;

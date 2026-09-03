@@ -294,6 +294,26 @@ impl Trace {
         !self.provenance.firsthand()
     }
 
+    /// **Which happening this is a memory of**, where there is one.
+    ///
+    /// `None` is not a gap: it means there was no such event, which is
+    /// what being lied to leaves behind.
+    pub fn of_event(&self) -> Option<Id<WorldEvent>> {
+        self.snapshot.of
+    }
+
+    /// How they came by it. **Never editable**, which is what stops a
+    /// rumour becoming an eyewitness account by being gone over often
+    /// enough.
+    pub fn provenance(&self) -> Source {
+        self.provenance
+    }
+
+    /// What kind of thing they take it to have been.
+    pub fn kind(&self) -> EventKind {
+        self.snapshot.kind
+    }
+
     /// **What a core memory asks of a personality**, bounded, as a
     /// request rather than a write.
     ///

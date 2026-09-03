@@ -273,6 +273,70 @@ fn main() {
         );
     }
 
+    // === one man, three towns =========================================
+    //
+    // The same person, the same misfortune, and the only things that
+    // vary are whether there is other work to be had and whether there
+    // is drink to be had. Nothing about him changes at all.
+    println!("\n=== the same man, three towns ===========================\n");
+    println!("  {:<33} {:<16} {:<10} {}", "town", "settles on", "after 3 yrs", "debt");
+    let towns: [(&str, f64, bool); 3] = [
+        ("work to be had", 0.85, true),
+        ("nothing to be had", 0.05, true),
+        ("nothing to be had, and no drink", 0.05, false),
+    ];
+    for (name, work, drink) in towns {
+        let mut c = Coarse::new(folk(1), seed ^ 0x5EED, 0);
+        c.perceived_control =
+            ControlAppraisal { source: work, consequences: 0.5, own_response: 0.5 };
+        c.support_expected = 0.25 + 0.5 * work;
+        c.drink_at_hand = drink;
+        c.standing.push(Standing {
+            severity: 0.45,
+            since: 0,
+            worsens_if_ignored: 0.7,
+            actual: scale_sim::coping::ActualControl {
+                source: work,
+                consequences: 0.4,
+                exit: 0.15,
+                means: 0.35,
+            },
+        });
+        // **One man, held still.** Somebody for whom the question is
+        // live: inclined to the bottle and not to the chapel, and
+        // without much resolve. Drawing him at random mostly produces
+        // people the question does not arise for.
+        let mut me = promote(&c, &culture, 0);
+        for f in Facet::ALL {
+            me.mind.person.set_baseline(f, 0.0);
+        }
+        // Inclined to the bottle, and not without resources: an
+        // orderly man who would plan his way out if there were a way.
+        // Making him *only* gloomy proves nothing — nothing competes.
+        me.mind.person.set_baseline(Facet::Gloom, 1.2);
+        me.mind.person.set_baseline(Facet::ExcitementSeeking, 1.2);
+        me.mind.person.set_baseline(Facet::Orderliness, 1.4);
+        me.mind.person.set_baseline(Facet::Dutifulness, -1.0);
+        me.mind.willpower = 0.0;
+
+        let tol = 0.30;
+        c.advance_to(last_day, &me.mind, tol);
+        println!(
+            "  {name:<33} {:<16?} {:<10} {:.2}",
+            c.habits.strongest(),
+            state_word(c.strain.state),
+            c.strain.debt
+        );
+    }
+    println!(
+        "\n  What put him there was having nothing else. With work to be had he\n  \
+         plans and holds; with none, the drink overtakes planning once the\n  \
+         strain has built — and with no drink either, the habit he already had\n  \
+         holds the line, because his next way out was weaker than it.\n\n  \
+         So taking the bottle away helped *this* man. It would not help one\n  \
+         whose second choice was as strong as his first."
+    );
+
     println!(
         "\n{years} years, one adversity, no scripts.\n\
          Everybody carries the same permanent loss of life satisfaction, because that is\n\

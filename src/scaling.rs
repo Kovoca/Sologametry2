@@ -40,7 +40,7 @@ use crate::coping::{
     attempt, propensities, resolve, Acute, ActualControl, Circumstances, ControlAppraisal,
     ControlEvidence, Coping, FunctionalState, Strain, SupportGiven, ENTER, LEAVE,
 };
-use crate::growth::Growth;
+use crate::growth::{Growth, ShapesWellbeing};
 use crate::id::Id;
 use crate::mind::{Facet, Mind, Value};
 use crate::person::Person;
@@ -232,6 +232,10 @@ pub struct Coarse {
     /// they began. Unbounded by the ring, because it is bounded by how
     /// many things are actually going on.
     pub active: Vec<ActiveAppraisal>,
+    /// **Whether there is drink to be had.** A fact about the place, not
+    /// about the person — and a hard gate: what is not available is not
+    /// scored at all.
+    pub drink_at_hand: bool,
 }
 
 impl Coarse {
@@ -258,6 +262,7 @@ impl Coarse {
             support_expected: 0.5,
             last_update: day,
             active: Vec::new(),
+            drink_at_hand: true,
         }
     }
 
@@ -424,6 +429,7 @@ impl Coarse {
         let c = Circumstances {
             severity: self.pressure(),
             company: self.support_expected > 0.2,
+            substance_available: self.drink_at_hand,
             ..Default::default()
         };
         let mut ranked = propensities(mind, &self.perceived_control, &c, self.strain.debt);
@@ -584,6 +590,9 @@ pub enum What {
     /// Something catastrophic, which is not chronic strain arriving
     /// early and does not touch the ladder.
     Crisis { kind: Acute, activation: f64, because_of: u64 },
+    /// **A blow to how somebody feels about their life**, which is a
+    /// different layer from their traits and lands there.
+    Wellbeing { by: ShapesWellbeing, strength: f32, toward: f32 },
 }
 
 impl What {
@@ -610,6 +619,10 @@ impl What {
                 let day = c.last_update;
                 c.strain.crisis_strikes(kind, activation, day, because_of);
             }
+            What::Wellbeing { by, strength, toward } => {
+                let day = c.last_update;
+                c.growth.shaped_wellbeing(by, strength, toward, day);
+            }
         }
     }
 }
@@ -623,6 +636,7 @@ pub struct Detailed {
     /// Troubles still being lived with, carried through a promotion so a
     /// reload never meets an old one as though it were new.
     pub active: Vec<ActiveAppraisal>,
+    pub drink_at_hand: bool,
     pub mind: Mind,
     pub growth: Growth,
     pub strain: Strain,
@@ -657,6 +671,7 @@ pub fn promote(c: &Coarse, culture: Culture<'_>, day: u64) -> Detailed {
         seed: c.origin.seed,
         origin: c.origin,
         active: c.active.clone(),
+        drink_at_hand: c.drink_at_hand,
         mind,
         growth: c.growth.clone(),
         strain: c.strain,
@@ -689,6 +704,7 @@ pub fn demote(d: &Detailed) -> Coarse {
         support_expected: d.support_expected,
         last_update: d.day,
         active: d.active.clone(),
+        drink_at_hand: d.drink_at_hand,
     }
 }
 
