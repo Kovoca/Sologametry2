@@ -169,6 +169,26 @@ impl Habits {
     }
 }
 
+/// **An appraisal that is still going on.**
+///
+/// The ring in `Strain` is a short-term cache and **a bounded cache is
+/// not an identity**: a long-running trouble eventually falls out of it
+/// and is then met as though it were new, with relapse sensitivity
+/// applied a second time. Ongoing identity belongs with the episode.
+///
+/// A continuing event keeps its `revision`. A genuinely new consequence
+/// — a discovered debt, a second diagnosis, a recurrence after remission
+/// — raises it, and that is what makes something count again.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ActiveAppraisal {
+    pub event: u64,
+    pub revision: u32,
+    pub opened_at: u64,
+    pub last_material_change: u64,
+    /// What it was felt as when it opened, held for the whole episode.
+    pub felt: f64,
+}
+
 /// **Everything a person out of sight must carry**, and nothing else.
 ///
 /// The list is short on purpose: what is here is what a promotion needs
@@ -208,6 +228,10 @@ pub struct Coarse {
     /// **When this record was last brought up to date.** Without it a
     /// coarse advance has no interval to advance over.
     pub last_update: u64,
+    /// Troubles still being lived with, and what they were felt as when
+    /// they began. Unbounded by the ring, because it is bounded by how
+    /// many things are actually going on.
+    pub active: Vec<ActiveAppraisal>,
 }
 
 impl Coarse {
@@ -233,7 +257,44 @@ impl Coarse {
             attempts_outstanding: 0,
             support_expected: 0.5,
             last_update: day,
+            active: Vec::new(),
         }
+    }
+
+    /// **Appraise something, once per episode and not once per look.**
+    ///
+    /// Authoritative over `Strain`'s ring, which is only a cache: this
+    /// holds the vulnerability computed when the episode opened for the
+    /// whole of the episode, so a trouble somebody has been living with
+    /// for three years is not met freshly on the day it happens to be
+    /// evicted.
+    ///
+    /// A raised `revision` is a *material change* — something new
+    /// discovered about it — and is appraised again.
+    pub fn appraise(&mut self, event: u64, revision: u32, raw: f64, day: u64) -> f64 {
+        if let Some(a) = self
+            .active
+            .iter()
+            .find(|a| a.event == event && a.revision == revision)
+        {
+            return a.felt;
+        }
+        let felt = self.strain.felt_severity(raw);
+        self.active.retain(|a| a.event != event);
+        self.active.push(ActiveAppraisal {
+            event,
+            revision,
+            opened_at: day,
+            last_material_change: day,
+            felt,
+        });
+        self.strain.remember_appraisal(event, felt);
+        felt
+    }
+
+    /// It is over. Only then can the same event be met as new again.
+    pub fn closed(&mut self, event: u64) {
+        self.active.retain(|a| a.event != event);
     }
 
     /// What is pressing on them, summed and capped.
@@ -513,6 +574,9 @@ pub struct Detailed {
     pub who: Id<Person>,
     pub seed: u64,
     pub origin: PersonOrigin,
+    /// Troubles still being lived with, carried through a promotion so a
+    /// reload never meets an old one as though it were new.
+    pub active: Vec<ActiveAppraisal>,
     pub mind: Mind,
     pub growth: Growth,
     pub strain: Strain,
@@ -546,6 +610,7 @@ pub fn promote(c: &Coarse, culture: Culture<'_>, day: u64) -> Detailed {
         who: c.who,
         seed: c.origin.seed,
         origin: c.origin,
+        active: c.active.clone(),
         mind,
         growth: c.growth.clone(),
         strain: c.strain,
@@ -577,6 +642,7 @@ pub fn demote(d: &Detailed) -> Coarse {
         attempts_outstanding: d.attempts_outstanding,
         support_expected: d.support_expected,
         last_update: d.day,
+        active: d.active.clone(),
     }
 }
 

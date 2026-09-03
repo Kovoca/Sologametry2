@@ -3988,6 +3988,86 @@ record, so relapse sensitivity is not applied a second time to the same
 event — which is the persistence half of the identity rule the gate
 review asked for.
 
+### Four stores, not two
+
+A snapshot and a journal was close and mixed three jobs. They are kept
+apart now, because collapsing them is how a journal becomes the
+unbounded state this project has already had to fix twice elsewhere:
+
+| store | what for | kept how long |
+|---|---|---|
+| checkpoint | authoritative state at a known sequence | until the next one |
+| journal | committed changes since that checkpoint | folded into the next |
+| archive | events later systems may still refer to | selectively |
+| pending | scheduled and unresolved | until resolved or cancelled |
+
+- **Canonical bytes are not causal order.** A map keyed by event id
+  writes the same file every time and says nothing about what happened
+  before what, which is exactly what a replay needs. `JournalKey` is
+  `(time, phase, sequence, event)`.
+- **Committed is not applied**, and the gap is where a crash lives. A
+  deterministic draw stops a crash producing a *different* answer and
+  does nothing about the same answer being applied *twice*. `resolve`
+  commits as unapplied; `apply_once` answers exactly once. Tested at
+  five crash points: before resolving, after the draw, after the commit,
+  after application, and during a checkpoint fold.
+- **Duplicate rules are stated.** Same event and same contents is an
+  idempotent no-op, because a replay must be able to re-offer what it
+  already has. Same event, *different* contents is a conflict — a file
+  claiming one thing happened two ways is broken, not newer.
+- **Named draws, never a stream.** An "injury severity" draw is
+  independent of a "which way the cart went" draw, so adding one
+  tomorrow cannot shift every later outcome. A shared cursor would.
+
+### A perception is not two integers
+
+The table said a perception derives from a person id and an event id.
+Too strong, and the sort of error that quietly rewrites history. Two
+integers give **noise**; a perception depends on whether somebody was
+there at all, how far off, what stood between, what they were attending
+to, how tired or frightened they were, how they came to hear of it, and
+what they already believed — every one of them **historical**. Deriving
+it later either uses today's state or drops those inputs.
+
+So `perceptual_noise` is keyed by an **`ExposureId`**, because hearing
+about an accident tomorrow is not witnessing it today; and what is
+durable lives in the person's own record, in the immutable half of a
+`memory::Trace`, which is private precisely so nothing later can reach
+it. Being corrected changes who is blamed and leaves an eyewitness
+account an eyewitness account.
+
+### A bounded cache is not an identity
+
+Carrying the appraisal ring through a reload fixed same-day duplication
+and not the real thing: a trouble somebody has lived with for years
+eventually falls out of a fixed ring and is then met as new, with
+relapse sensitivity applied a second time. Ongoing identity belongs with
+the episode — `ActiveAppraisal { event, revision, opened_at,
+last_material_change }` on the record, bounded by how many things are
+actually going on rather than by an array. A raised `revision` is a
+material change and is felt again; closing it lets the same event count
+as new later.
+
+### What a hand-written format has to defend against
+
+Storing floats as bits preserves *state*; it says nothing about
+cross-platform arithmetic, and that claim stays limited to
+serialisation. Added: counts checked against a sane maximum **and**
+against the bytes actually left, NaN and infinity rejected where a
+quantity belongs, duplicate keys rejected, trailing bytes detected, and
+**three version numbers** — format, world generation, and simulation
+rules — because a rebalance changes no bytes and a new facet changes no
+rule.
+
+**Terrain persistence is deliberately not attempted yet.** It is not a
+code table and an iterator: an overlay saying *remove the wall at (x,y,z)*
+means something different once the generator puts a road there, so every
+modified chunk needs a base identity, the patch has to be layered and
+typed with a real `Remove` state, boundaries need canonical coordinates
+so a floor is not written twice from either side, and stairs, networks
+and vehicles need stable ids rather than adjacency inferred after
+loading.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

@@ -20,14 +20,31 @@
 //! happened, and a witness who was there would remember it differently.
 //! So:
 //!
-//! | | derived from | written down |
+//! | state | source | persisted |
 //! |---|---|---|
-//! | unresolved objective outcome | `world_seed` + a stable event id | no |
-//! | **resolved** objective outcome | nothing — it is history | **yes** |
-//! | one person's perception of it | that person's id + the event id | no |
+//! | objective outcome, unresolved | world seed + a stable event id | no |
+//! | objective outcome, **resolved** | nothing — it is history | **yes** |
+//! | perceptual *noise* | person + **exposure** + a named draw | no |
+//! | a perceived event, in flight | historical exposure and the person as they were | only while it is being consumed |
+//! | **an encoded memory** | the immutable half of a `memory::Trace` | **yes** |
+//! | what somebody makes of it now | reconstructed from the trace and the mind of today | yes, where durable |
 //!
 //! **Never from a person's own seed**, which is the trap: two witnesses
 //! would generate two incompatible versions of one accident.
+//!
+//! **And a perception is not derivable from two identifiers.** The table
+//! said so and it was wrong. Two integers can produce *noise*; they
+//! cannot produce a perception, which depends on whether somebody was
+//! there at all, how far off, what stood between, what they were
+//! attending to, how tired or frightened they were, how they came to
+//! hear of it, and what they already believed. Every one of those is
+//! **historical**, so recomputing later either uses today's state or
+//! drops them — and either way rewrites what somebody originally saw.
+//! The durable part therefore lives in that person's own record, in the
+//! immutable half of a trace, and is not re-derived at all.
+//!
+//! Exposure is addressed separately from the event because **hearing
+//! about an accident tomorrow is not witnessing it today**.
 //!
 //! # Two rules the format follows
 //!
@@ -49,9 +66,27 @@ use crate::mind::Facet;
 use crate::scaling::{Coarse, Habits, PersonOrigin, Standing};
 
 pub const MAGIC: &[u8; 8] = b"SCALESIM";
+/// **Three versions, because three different things can change.**
+///
+/// The byte layout, the generator that draws a world, and the rules the
+/// simulation runs by are independent: a rebalance changes none of the
+/// bytes, and a new facet changes no rule. One number for all three
+/// either rejects saves it could read or accepts saves it cannot.
+///
 /// Bumped whenever the byte layout changes in a way an older reader
 /// could misread.
 pub const FORMAT: u32 = 1;
+
+/// The simulation's own rules — constants, calibrations, thresholds.
+/// Recorded so a save can say what it was played under; **not**
+/// enforced, because a resolved outcome is history and does not care
+/// what the rules are now.
+pub const RULES: u32 = 1;
+
+/// Nothing sane needs more than this many of anything in one list, and
+/// a corrupt length must not be allowed to ask for a terabyte before it
+/// fails.
+pub const MAX_COUNT: usize = 8_000_000;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SaveError {
@@ -63,6 +98,17 @@ pub enum SaveError {
     /// table failed rather than "invalid input".
     UnknownCode(&'static str, u32),
     Checksum,
+    /// A length no sane file contains, caught before anything is
+    /// allocated for it.
+    AbsurdLength(usize),
+    /// A float that cannot mean anything: a NaN or an infinity where a
+    /// quantity belongs.
+    NotANumber,
+    /// The same event recorded twice, or twice differently. A file
+    /// claiming one thing happened two ways is broken, not newer.
+    Conflict(u64),
+    /// Bytes after the end of what the format says is there.
+    TrailingBytes(usize),
 }
 
 // ---------------------------------------------------------------------
@@ -161,6 +207,44 @@ impl<'a> Reader<'a> {
     }
     pub fn len(&mut self) -> Result<usize, SaveError> {
         Ok(self.u32()? as usize)
+    }
+
+    /// **A length that is going to be allocated against.**
+    ///
+    /// Checked twice: against a sane maximum, and against the bytes
+    /// actually left — a count of four billion in a two-hundred-byte
+    /// file is a corrupt file and must say so rather than trying.
+    pub fn count(&mut self) -> Result<usize, SaveError> {
+        let n = self.u32()? as usize;
+        if n > MAX_COUNT || n > self.bytes.len().saturating_sub(self.at).saturating_add(1) {
+            return Err(SaveError::AbsurdLength(n));
+        }
+        Ok(n)
+    }
+
+    /// A float that has to be a quantity. **Rejects NaN and infinities**,
+    /// which are how a corrupt file turns into a world that behaves
+    /// strangely rather than one that fails to load.
+    pub fn finite_f64(&mut self) -> Result<f64, SaveError> {
+        let v = self.f64()?;
+        if v.is_finite() {
+            Ok(v)
+        } else {
+            Err(SaveError::NotANumber)
+        }
+    }
+
+    pub fn finite_f32(&mut self) -> Result<f32, SaveError> {
+        let v = self.f32()?;
+        if v.is_finite() {
+            Ok(v)
+        } else {
+            Err(SaveError::NotANumber)
+        }
+    }
+
+    pub fn left(&self) -> usize {
+        self.bytes.len().saturating_sub(self.at)
     }
     pub fn done(&self) -> bool {
         self.at >= self.bytes.len()
@@ -375,11 +459,11 @@ impl Store for Growth {
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let mut g = Growth::new();
-        let n = r.len()?;
+        let n = r.count()?;
         for _ in 0..n {
             g.episodics.push(Episodic::load(r)?);
         }
-        let n = r.len()?;
+        let n = r.count()?;
         for _ in 0..n {
             g.roles.push(Role::load(r)?);
         }
@@ -456,7 +540,7 @@ impl Store for Strain {
         s.days_in_state = r.u32()?;
         s.history = ImpairmentHistory::load(r)?;
         s.crisis = if r.bool()? { Some(CrisisEpisode::load(r)?) } else { None };
-        let n = r.len()?;
+        let n = r.count()?;
         for _ in 0..n {
             let (e, v) = (r.u64()?, r.f64()?);
             s.remember_appraisal(e, v);
@@ -493,7 +577,7 @@ impl Store for Habits {
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let mut h = Habits::default();
-        let n = r.len()?;
+        let n = r.count()?;
         for _ in 0..n {
             let c = Coping::load(r)?;
             h.set(c, r.f32()?);
@@ -557,32 +641,58 @@ impl Store for Coarse {
         w.u16(self.attempts_outstanding);
         w.f64(self.support_expected);
         w.u64(self.last_update);
+        w.len(self.active.len());
+        for a in &self.active {
+            w.u64(a.event);
+            w.u32(a.revision);
+            w.u64(a.opened_at);
+            w.u64(a.last_material_change);
+            w.f64(a.felt);
+        }
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let who = crate::id::Id::from_bits(r.u64()?);
         let origin = PersonOrigin::load(r)?;
         let mut c = Coarse::new(who, origin.seed, 0);
         c.origin = origin;
-        let n = r.len()?;
+        let n = r.count()?;
         c.baseline = (0..n).map(|_| r.f32()).collect::<Result<_, _>>()?;
         c.growth = Growth::load(r)?;
         c.strain = Strain::load(r)?;
         c.perceived_control = ControlAppraisal::load(r)?;
         c.habits = Habits::load(r)?;
-        let n = r.len()?;
+        let n = r.count()?;
         c.standing = (0..n).map(|_| Standing::load(r)).collect::<Result<_, _>>()?;
         c.attempts_outstanding = r.u16()?;
-        c.support_expected = r.f64()?;
+        c.support_expected = r.finite_f64()?;
         c.last_update = r.u64()?;
+        let n = r.count()?;
+        for _ in 0..n {
+            c.active.push(crate::scaling::ActiveAppraisal {
+                event: r.u64()?,
+                revision: r.u32()?,
+                opened_at: r.u64()?,
+                last_material_change: r.u64()?,
+                felt: r.finite_f64()?,
+            });
+        }
         Ok(c)
     }
 }
 
 // ---------------------------------------------------------------------
-// the journal: what happened, and is never worked out twice
+// the four stores, which are four different jobs
 // ---------------------------------------------------------------------
 
+/// An event in the world.
 pub type EventId = u64;
+
+/// **One person's exposure to one event**, which is not the event.
+///
+/// Hearing about an accident tomorrow is a different exposure from
+/// watching it today, and the two must be addressable apart or a
+/// perception cannot be tied to how it was come by.
+pub type ExposureId = u64;
 
 /// A mixing function of the project's own, so nothing here needs `rand`.
 fn mix(a: u64, b: u64) -> u64 {
@@ -594,17 +704,92 @@ fn mix(a: u64, b: u64) -> u64 {
     h ^ (h >> 31)
 }
 
-/// **What has actually happened**, as distinct from what could be worked
-/// out again.
+/// **A named draw, never a sequential stream.**
 ///
-/// The rule this type exists to enforce: an objective outcome may be
-/// *derived* while it is still unresolved, and the moment it is resolved
-/// it becomes history and is written down. Recomputing it later — after
-/// a balance change, an RNG change, a new version — could alter an event
-/// that a witness already remembers.
+/// `(world seed, event, "injury severity")` and
+/// `(world seed, event, "which way the cart went")` are independent, so
+/// **adding a draw to a resolver tomorrow cannot shift every later
+/// outcome**. A shared cursor through one stream would, which is the
+/// commonest way a saved world quietly stops matching itself.
+pub fn channel(seed: u64, event: u64, name: &str) -> u64 {
+    let mut h = 0xcbf2_9ce4_8422_2325u64;
+    for &b in name.as_bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    mix(mix(seed, event), h)
+}
+
+/// **Where a journal entry sits in the order of things.**
+///
+/// Canonical bytes are not causal order. A map keyed by event id writes
+/// the same file every time and says nothing about what happened before
+/// what, which is exactly what a replay needs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct JournalKey {
+    pub time: u64,
+    /// Which pass of the day — so two things at the same instant in
+    /// different phases have a defined order without inventing one.
+    pub phase: u16,
+    /// Breaks ties between dependent events at one instant. Independent
+    /// ones may be given the same sequence and must then commute.
+    pub sequence: u64,
+    pub event: EventId,
+}
+
+/// What was decided, and whether its effects have been put into the
+/// world yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Entry {
+    pub key: JournalKey,
+    pub outcome: u64,
+    /// **Committed is not applied.** A crash between the two must replay;
+    /// a crash after it must not apply twice.
+    pub applied: bool,
+}
+
+/// **Something scheduled that has not happened yet.**
+///
+/// Carries the inputs its resolver will need, because those must be the
+/// inputs as they were when it was scheduled — not as they are when it
+/// finally fires.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Pending {
+    pub event: EventId,
+    pub scheduled_at: u64,
+    pub resolver: u32,
+    pub resolver_version: u32,
+    /// Named, for the same reason draws are named.
+    pub inputs: Vec<(String, u64)>,
+}
+
+/// **What happened, in order, and what is still to happen.**
+///
+/// Four jobs kept apart, because collapsing them is how a journal
+/// becomes the unbounded state this project has already had to fix twice
+/// elsewhere:
+///
+/// | store | what for | how long it is kept |
+/// |---|---|---|
+/// | checkpoint | authoritative state at a known sequence | until the next one |
+/// | this journal | committed changes since that checkpoint | folded into the next checkpoint |
+/// | archive | events later systems may still refer to | selectively |
+/// | pending | scheduled and unresolved | until resolved or cancelled |
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Journal {
-    resolved: BTreeMap<EventId, u64>,
+    entries: BTreeMap<JournalKey, Entry>,
+    by_event: BTreeMap<EventId, JournalKey>,
+    pending: Vec<Pending>,
+    next_sequence: u64,
+}
+
+/// Where a checkpoint stands, so a journal can be replayed onto exactly
+/// the state it was written against.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Checkpoint {
+    pub world_id: u64,
+    pub checkpoint_id: u64,
+    pub last_applied_sequence: u64,
 }
 
 impl Journal {
@@ -612,61 +797,250 @@ impl Journal {
         Journal::default()
     }
 
-    /// **The objective outcome, resolved once.**
+    /// **Resolve once, and commit it in the same breath.**
     ///
-    /// Derived from the **world's** seed and a stable event id, never
-    /// from any person's — two witnesses must not be able to generate
-    /// incompatible versions of the same accident. Once taken it is
-    /// recorded, and every later call returns what happened rather than
-    /// what would happen.
-    pub fn objective(&mut self, world_seed: u64, event: EventId) -> u64 {
-        if let Some(v) = self.resolved.get(&event) {
-            return *v;
+    /// A deterministic draw stops a crash producing a *different* answer;
+    /// it does nothing about the same answer being *applied* twice. So
+    /// resolving records the outcome as unapplied, and `apply_once` is
+    /// the only thing that marks it done — which is what makes replay
+    /// exactly-once rather than at-least-once.
+    pub fn resolve(&mut self, world_seed: u64, key: JournalKey, draw: &str) -> u64 {
+        if let Some(k) = self.by_event.get(&key.event) {
+            return self.entries[k].outcome;
         }
-        let v = mix(world_seed, event);
-        self.resolved.insert(event, v);
-        v
+        let outcome = channel(world_seed, key.event, draw);
+        self.commit(Entry { key, outcome, applied: false })
+            .expect("a fresh event cannot conflict with itself");
+        outcome
     }
 
-    /// Whether this has already happened.
+    /// **Duplicate rules, stated rather than assumed.**
+    ///
+    /// The same event with the same contents is an idempotent no-op — a
+    /// replay must be able to re-offer what it already has. The same
+    /// event with *different* contents is a conflict, not a later
+    /// version: it means two runs disagreed about history.
+    pub fn commit(&mut self, e: Entry) -> Result<(), SaveError> {
+        if let Some(k) = self.by_event.get(&e.event()) {
+            let existing = self.entries[k];
+            if existing.outcome == e.outcome {
+                return Ok(());
+            }
+            return Err(SaveError::Conflict(e.event()));
+        }
+        self.next_sequence = self.next_sequence.max(e.key.sequence + 1);
+        self.by_event.insert(e.event(), e.key);
+        self.entries.insert(e.key, e);
+        Ok(())
+    }
+
+    /// **Put the effects in, and only the first time.** Returns the
+    /// outcome on the pass that should actually apply it, and nothing on
+    /// every pass after — which is the whole of exactly-once.
+    pub fn apply_once(&mut self, event: EventId) -> Option<u64> {
+        let k = *self.by_event.get(&event)?;
+        let e = self.entries.get_mut(&k)?;
+        if e.applied {
+            return None;
+        }
+        e.applied = true;
+        Some(e.outcome)
+    }
+
+    /// What a replay after a crash still has to do, in causal order.
+    pub fn unapplied(&self) -> Vec<Entry> {
+        self.entries.values().filter(|e| !e.applied).copied().collect()
+    }
+
+    /// Everything since a checkpoint, in causal order.
+    pub fn since(&self, c: &Checkpoint) -> Vec<Entry> {
+        self.entries
+            .values()
+            .filter(|e| e.key.sequence > c.last_applied_sequence)
+            .copied()
+            .collect()
+    }
+
+    /// **Fold into a checkpoint.** What has been applied is now part of
+    /// the state and stops being a change to it — which is what keeps a
+    /// journal from growing with the length of a game rather than with
+    /// its history.
+    pub fn fold_into(&mut self, c: &mut Checkpoint) {
+        let mut high = c.last_applied_sequence;
+        self.entries.retain(|_, e| {
+            if e.applied {
+                high = high.max(e.key.sequence);
+                false
+            } else {
+                true
+            }
+        });
+        let live: BTreeMap<EventId, JournalKey> =
+            self.entries.values().map(|e| (e.key.event, e.key)).collect();
+        self.by_event = live;
+        c.last_applied_sequence = high;
+        c.checkpoint_id += 1;
+    }
+
     pub fn already(&self, event: EventId) -> Option<u64> {
-        self.resolved.get(&event).copied()
+        self.by_event.get(&event).map(|k| self.entries[k].outcome)
+    }
+    pub fn entry(&self, event: EventId) -> Option<Entry> {
+        self.by_event.get(&event).map(|k| self.entries[k])
+    }
+    pub fn in_order(&self) -> Vec<Entry> {
+        self.entries.values().copied().collect()
+    }
+    pub fn next_sequence(&mut self) -> u64 {
+        let n = self.next_sequence;
+        self.next_sequence += 1;
+        n
+    }
+    pub fn schedule(&mut self, p: Pending) {
+        self.pending.push(p);
+        self.pending.sort_by(|a, b| {
+            a.scheduled_at.cmp(&b.scheduled_at).then(a.event.cmp(&b.event))
+        });
+    }
+    pub fn pending(&self) -> &[Pending] {
+        &self.pending
+    }
+    pub fn take_due(&mut self, day: u64) -> Vec<Pending> {
+        let due: Vec<Pending> =
+            self.pending.iter().filter(|p| p.scheduled_at <= day).cloned().collect();
+        self.pending.retain(|p| p.scheduled_at > day);
+        due
     }
 
-    /// **One person's reading of it**, which is a different question and
-    /// is derived separately. Not recorded, because a perception is not a
-    /// world fact — and not a function of the outcome, because two people
-    /// must be able to be wrong about it differently.
-    pub fn perception(person: u64, event: EventId) -> u64 {
-        mix(person.wrapping_mul(0xD6E8_FEB8_6659_FD93), event)
+    /// **Perceptual noise only**, and the name matters.
+    ///
+    /// This is *not* a perception. What somebody perceived depends on
+    /// whether they were there at all, how far off, what was between
+    /// them, what they were attending to, how tired or frightened they
+    /// were, and what they already believed — none of which two integers
+    /// can carry, and all of which are *historical*. Recomputing from ids
+    /// alone would either use today's state or drop those inputs, and
+    /// either way rewrites what somebody originally saw.
+    ///
+    /// The boundary is: objective outcome → historical exposure →
+    /// perceived event → appraisal → durable consequence. This supplies
+    /// the *jitter* at the third step, keyed by the exposure rather than
+    /// the event so that hearing about it tomorrow is a different draw
+    /// from watching it today. What is durable is kept in the person's
+    /// own record, in the immutable half of a `memory::Trace`.
+    pub fn perceptual_noise(person: u64, exposure: ExposureId, draw: &str) -> u64 {
+        channel(person.wrapping_mul(0xD6E8_FEB8_6659_FD93), exposure, draw)
     }
 
     pub fn len(&self) -> usize {
-        self.resolved.len()
+        self.entries.len()
     }
     pub fn is_empty(&self) -> bool {
-        self.resolved.is_empty()
+        self.entries.is_empty()
+    }
+}
+
+impl Entry {
+    pub fn event(&self) -> EventId {
+        self.key.event
+    }
+}
+
+impl Store for JournalKey {
+    fn store(&self, w: &mut Writer) {
+        w.u64(self.time);
+        w.u16(self.phase);
+        w.u64(self.sequence);
+        w.u64(self.event);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(JournalKey {
+            time: r.u64()?,
+            phase: r.u16()?,
+            sequence: r.u64()?,
+            event: r.u64()?,
+        })
+    }
+}
+
+impl Store for Pending {
+    fn store(&self, w: &mut Writer) {
+        w.u64(self.event);
+        w.u64(self.scheduled_at);
+        w.u32(self.resolver);
+        w.u32(self.resolver_version);
+        w.len(self.inputs.len());
+        for (k, v) in &self.inputs {
+            w.str(k);
+            w.u64(*v);
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let event = r.u64()?;
+        let scheduled_at = r.u64()?;
+        let resolver = r.u32()?;
+        let resolver_version = r.u32()?;
+        let n = r.count()?;
+        let mut inputs = Vec::with_capacity(n);
+        for _ in 0..n {
+            inputs.push((r.str()?, r.u64()?));
+        }
+        Ok(Pending { event, scheduled_at, resolver, resolver_version, inputs })
     }
 }
 
 impl Store for Journal {
     fn store(&self, w: &mut Writer) {
-        // A `BTreeMap`, so the same history writes the same bytes every
-        // time — the reason it is not a `HashMap`.
-        w.len(self.resolved.len());
-        for (k, v) in &self.resolved {
-            w.u64(*k);
-            w.u64(*v);
+        // A `BTreeMap` keyed causally, so the same history writes the
+        // same bytes *and* replays in the same order.
+        w.len(self.entries.len());
+        for e in self.entries.values() {
+            e.key.store(w);
+            w.u64(e.outcome);
+            w.bool(e.applied);
         }
+        w.len(self.pending.len());
+        for p in &self.pending {
+            p.store(w);
+        }
+        w.u64(self.next_sequence);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let mut j = Journal::new();
-        let n = r.len()?;
+        let n = r.count()?;
         for _ in 0..n {
-            let (k, v) = (r.u64()?, r.u64()?);
-            j.resolved.insert(k, v);
+            let key = JournalKey::load(r)?;
+            let outcome = r.u64()?;
+            let applied = r.bool()?;
+            // **Duplicate keys are rejected**, not last-one-wins: a file
+            // claiming one event happened twice is a broken file.
+            if j.by_event.contains_key(&key.event) {
+                return Err(SaveError::Conflict(key.event));
+            }
+            j.by_event.insert(key.event, key);
+            j.entries.insert(key, Entry { key, outcome, applied });
         }
+        let n = r.count()?;
+        for _ in 0..n {
+            j.pending.push(Pending::load(r)?);
+        }
+        j.next_sequence = r.u64()?;
         Ok(j)
+    }
+}
+
+impl Store for Checkpoint {
+    fn store(&self, w: &mut Writer) {
+        w.u64(self.world_id);
+        w.u64(self.checkpoint_id);
+        w.u64(self.last_applied_sequence);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(Checkpoint {
+            world_id: r.u64()?,
+            checkpoint_id: r.u64()?,
+            last_applied_sequence: r.u64()?,
+        })
     }
 }
 
@@ -682,6 +1056,12 @@ pub struct Save {
     pub day: u64,
     pub people: Vec<Coarse>,
     pub journal: Journal,
+    /// Where the journal is to be replayed from.
+    pub checkpoint: Checkpoint,
+    /// What made this world, and what rules it was played under. Read
+    /// and kept; neither is enforced.
+    pub schema: u32,
+    pub rules: u32,
 }
 
 /// A cheap checksum over the body, so a truncated or corrupted file says
@@ -705,11 +1085,13 @@ impl Save {
             p.store(&mut body);
         }
         self.journal.store(&mut body);
+        self.checkpoint.store(&mut body);
 
         let mut out = Writer::new();
         out.bytes.extend_from_slice(MAGIC);
         out.u32(FORMAT);
         out.u32(crate::scaling::GENERATION_SCHEMA);
+        out.u32(RULES);
         out.u64(checksum(&body.bytes));
         out.len(body.bytes.len());
         out.bytes.extend_from_slice(&body.bytes);
@@ -728,12 +1110,21 @@ impl Save {
         // **The generator's version is read and kept, not enforced.** A
         // save made by an older generator is still readable precisely
         // because the baseline is written down rather than re-derived.
-        let _schema = r.u32()?;
+        // The rules version likewise: a resolved outcome is history and
+        // does not care what the rules are today.
+        let schema = r.u32()?;
+        let rules = r.u32()?;
         let sum = r.u64()?;
-        let n = r.len()?;
+        let n = r.count()?;
         let body = r.take(n)?;
         if checksum(body) != sum {
             return Err(SaveError::Checksum);
+        }
+        // **Nothing after the end.** Trailing bytes mean the file is not
+        // what it says it is, and reading the prefix anyway is how a
+        // truncated-and-appended file loads as a plausible world.
+        if !r.done() {
+            return Err(SaveError::TrailingBytes(r.left()));
         }
 
         let mut b = Reader::new(body);
@@ -742,6 +1133,10 @@ impl Save {
         let n = b.len()?;
         let people = (0..n).map(|_| Coarse::load(&mut b)).collect::<Result<_, _>>()?;
         let journal = Journal::load(&mut b)?;
-        Ok(Save { world_seed, day, people, journal })
+        let checkpoint = Checkpoint::load(&mut b)?;
+        if !b.done() {
+            return Err(SaveError::TrailingBytes(b.left()));
+        }
+        Ok(Save { world_seed, day, people, journal, checkpoint, schema, rules })
     }
 }
