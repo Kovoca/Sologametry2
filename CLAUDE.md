@@ -4425,6 +4425,54 @@ twenty to a region cell, mostly hamlets with one bigger place that has
 the church. Deterministic, so walking away and back finds the same
 hamlets in the same fields.
 
+### Water is the condition, not a consideration
+
+Sites were scored by fertility, water, coast and minerals **added
+together**, so a fertile mineral-rich coast with no fresh water came out
+a fine site. It is not a worse site; it is not a site.
+
+Before piped supply and treatment — which is to say for all but the last
+century and a half — a settlement had to sit on water it could reach,
+and that is why nearly every old city is on a river. **The world is
+modern and the towns are still where water put them**, which is the
+point: cities are where they are for reasons that stopped applying.
+
+- **Reachable is not the same as visible.** A hand-dug well goes **10 to
+  30 metres** — the figure this project already recorded — so ordinary
+  well country counts, which is where most of the world's villages are.
+  Past that you need drilling, a nineteenth-century arrival and far too
+  late to have founded anywhere. `world.water_table` had been generated
+  since it was written and nothing in `settlement.rs` had ever asked it.
+- **A mine is worked wherever the ore is.** Potosí sits at 4,090 metres,
+  Kalgoorlie in desert, Kiruna inside the Arctic Circle — bad country,
+  all settled, because what was under the ground was worth the trouble.
+  So extraction pays a softened penalty for rough ground where farming
+  pays the full one.
+
+**Five green tests broke, and every one of them was a consequence rather
+than a fault** — the same thing the sedimentary-rock change did. Towns
+moved onto rivers and valleys, so: a maintained country now keeps its
+fabric fully up, because a nation whose sites all have water has its clay
+and coal in reach; hauliers no longer improve hospital supply on that
+nation, because the towns are close enough for `distribute` to reach
+between them; there are almost no mountain crossings left to tunnel,
+because **a river valley is the low way through a range**, which is why
+real roads follow them; and the terrain under a town is flatter.
+
+One of them was hiding a genuine fault. `people_share_a_roof` compared
+people living alone against **everybody else**, and `Couple` is "with or
+without children" — so it was measuring childcare, not rent. It passed
+for years only because a third of the people living alone were homeless
+and paying no rent at all, which dragged their average down far enough
+to conceal it. Take the homelessness away and the comparison inverted.
+It compares against `Shared` now, which is unrelated adults splitting a
+cost and nothing else.
+
+**Open: the gate cuts about 60% of candidate sites**, so a 9,000-target
+world places 3,500. Some of that is right — the Sahara, the Empty
+Quarter and the Australian interior really are empty — and whether it is
+*all* right is not yet established.
+
 ### Size is not status
 
 **A city in Britain is a rank granted by charter, not a headcount**: St

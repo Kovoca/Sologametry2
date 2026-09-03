@@ -72,15 +72,28 @@ fn a_generated_world_has_the_sizes_earth_has() {
     // The largest is a real largest city, not a continent's worth.
     assert!(pops[0] > 20_000_000 && pops[0] <= 40_000_000, "largest {}", pops[0]);
 
-    // **The median stored settlement is not a city of a third of a
-    // million**, which is what it used to be.
-    let median = pops[pops.len() / 2];
-    assert!(median < 300_000, "the median stored settlement holds {median}");
+    // **The median is wherever the curve says the middle rank is**, and
+    // that is the invariant worth asserting: the absolute figure depends
+    // on how many sites the land will support, which is exactly what
+    // should differ between worlds. Asserting a number instead only
+    // tested how big this particular world happened to be.
+    let median = pops[pops.len() / 2] as f64;
+    let expected = population_at_rank(pops.len() / 2);
+    assert!(
+        (median - expected).abs() < expected * 0.05,
+        "median {median:.0} against the curve's {expected:.0} at that rank"
+    );
 
-    // And the stored tier is cities and towns, because that is what the
-    // top few thousand places on a planet are.
-    let smallest = *pops.last().unwrap();
-    assert!(smallest < 300_000, "the smallest place on the planet holds {smallest}");
+    // And every place falls on the curve, not merely the middle one.
+    for r in [1usize, pops.len() / 4, pops.len() / 2, pops.len() - 1] {
+        let want = population_at_rank(r + 1);
+        assert!(
+            (pops[r] as f64 - want).abs() < want * 0.05,
+            "rank {} holds {} against the curve's {want:.0}",
+            r + 1,
+            pops[r]
+        );
+    }
 }
 
 /// **The stored places are not the whole world.** Most people do not

@@ -96,6 +96,15 @@ impl Settlements {
 /// the Information Age baseline is about 8 billion.
 const WORLD_POPULATION: f64 = 8.0e9;
 
+/// **What a hand-dug well reaches without trouble**, in metres. Below
+/// this the water is simply there for the digging.
+const HAND_DUG_EASILY_M: f32 = 10.0;
+
+/// **And what it reaches at all.** Real hand-dug wells run 10 to 30
+/// metres; past that the water needs drilling, which arrived in the
+/// nineteenth century and is far too late to have founded anywhere.
+const HAND_DUG_LIMIT_M: f32 = 30.0;
+
 /// **How big the nth-largest place on Earth actually is.**
 ///
 /// Not a law, because no single power law fits: Zipf holds tolerably
@@ -254,6 +263,40 @@ fn site_score(world: &World) -> Vec<f32> {
             coast = 1.0;
         }
 
+        // **Water is not one consideration among four. It is the
+        // condition.**
+        //
+        // Before piped supply and treatment — which is to say for all but
+        // the last century and a half — a settlement had to sit on water
+        // it could reach, and that is why nearly every old city is on a
+        // river. Scored additively, a fertile mineral-rich coast with no
+        // fresh water came out a fine site, which it is not: it is not a
+        // site at all.
+        //
+        // And the reachable water is not only what is on the surface.
+        // **A hand-dug well goes 10 to 30 metres** — the figure this
+        // project already records — so ordinary well country, which is
+        // where most of the world's villages are, counts too. Past that
+        // depth you need drilling, which is a nineteenth-century arrival
+        // and far too late to have founded anywhere.
+        //
+        // `world.water_table` has been generated since it was written and
+        // nothing in here had ever asked it.
+        let depth = world.depth_to_water_m(i) as f32;
+        let well = if depth <= HAND_DUG_EASILY_M {
+            1.0
+        } else if depth >= HAND_DUG_LIMIT_M {
+            0.0
+        } else {
+            1.0 - (depth - HAND_DUG_EASILY_M) / (HAND_DUG_LIMIT_M - HAND_DUG_EASILY_M)
+        };
+        let reachable = water.max(0.85 * well);
+        if reachable < 0.12 {
+            // No water anybody could have dug for. Nobody founded a town
+            // here, whatever else the ground is worth.
+            continue;
+        }
+
         let minerals = g.ore.data[i].max(g.coal.data[i]).max(g.petroleum.data[i]);
         let rough = match world.biomes[i] {
             Biome::Mountain => 0.25,
@@ -264,11 +307,20 @@ fn site_score(world: &World) -> Vec<f32> {
         };
         let cold = (world.temperature.data[i] / 0.20).clamp(0.15, 1.0);
 
-        score[i] = (0.34 * g.fertility.data[i]
-            + 0.28 * water
-            + 0.22 * coast
-            + 0.16 * minerals)
-            * rough
+        // **A mine is worked wherever the ore is**, which is the other
+        // half of why places are where they are. Potosí sits at 4,090
+        // metres, Kalgoorlie in desert, Kiruna inside the Arctic Circle —
+        // none of them good country, all of them settled, because what
+        // is under the ground was worth the trouble. So extraction pays
+        // only a softened penalty for rough ground where farming pays
+        // the full one.
+        let softened = rough + (1.0 - rough) * 0.65;
+
+        let farming = g.fertility.data[i] * rough;
+        let trade = coast;
+        let extraction = minerals * softened;
+
+        score[i] = (0.30 * farming + 0.22 * trade + 0.24 * extraction + 0.24 * reachable)
             * cold;
     }
     score

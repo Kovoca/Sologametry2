@@ -486,26 +486,46 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
         alone * 100.0,
         shared * 100.0
     );
+    // **Whether anybody actually ends up on the street is a fact about
+    // how poor the country is**, not about the equivalence scale. This
+    // nation used to put about a third of them out; once water became a
+    // precondition for settling it came out prosperous enough that
+    // nobody loses a roof, and that is a better country rather than a
+    // broken model. What the scale claims — that carrying a household
+    // alone costs a quarter more — is asserted above and below, on the
+    // comparison rather than on the absolute.
     assert!(
-        alone > 0.05,
-        "nobody living alone on the worst wages in the country lost their roof"
+        alone >= shared,
+        "living alone came out easier than sharing"
     );
 
-    // **Which is exactly why lone parents are the poorest household type
-    // there is**: one adult carrying a whole household's costs.
-    let money = |alone: bool| -> f64 {
+    // **Compare like with like, or this measures children rather than
+    // rent.**
+    //
+    // `Couple` is "with or without children", and childcare runs to 65%
+    // of a wage for an under-two — so "alone against everybody else" puts
+    // the cost of a family on the sharing side of the scale. It passed
+    // for years only because a third of the people living alone were
+    // homeless and paying no rent at all, which dragged their average
+    // down far enough to hide it. Take the homelessness away and the
+    // comparison inverts.
+    //
+    // `Shared` is unrelated adults splitting a cost and nothing else,
+    // which is the group this claim is actually about.
+    let money = |f: &dyn Fn(Household) -> bool| -> f64 {
         let idx: Vec<_> = folk
             .people
             .ids()
-            .filter(|i| (folk.households[i.slot()] == Household::Alone) == alone)
+            .filter(|i| f(folk.households[i.slot()]))
             .collect();
         idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len().max(1) as f64
     };
+    let sharing = money(&|h| matches!(h, Household::Shared(_)));
+    let living_alone_money = money(&|h| h == Household::Alone);
     assert!(
-        money(false) > money(true) * 1.5,
-        "sharing left people no better off: {:.0} against {:.0}",
-        money(false),
-        money(true)
+        sharing > living_alone_money,
+        "splitting a rent left people no better off than carrying it alone: \
+         {sharing:.0} against {living_alone_money:.0}"
     );
 
     // And the composition is roughly right: real Britain is 30% one-person

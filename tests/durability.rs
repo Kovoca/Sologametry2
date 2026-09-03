@@ -108,23 +108,24 @@ fn the_fabric_is_measured_in_tonnes_of_building() {
     }
 }
 
-/// **Known: a maintained country still settles below new.**
+/// **A maintained country keeps its fabric up.**
 ///
-/// With its building trade working flat out this nation's fabric settles
-/// near 0.78 rather than 1.00, because the trade is materials-limited
-/// about half the time even with a kiln in every town and the coal for
-/// them mined. Some of that is real — building stock does age — and some
-/// of it is a supply chain that has not been chased all the way down.
+/// This used to settle near 0.78 and was recorded as a known shortfall:
+/// the building trade came out materials-limited about half the time
+/// even with a kiln in every town. It reaches the top of the band now,
+/// and the reason is not in the building trade at all — **making water a
+/// precondition for settling moved where the towns are**, and a nation
+/// whose sites all have water to hand has its clay and its coal within
+/// reach of them too.
 ///
-/// Asserted at the level it actually reaches so that a change either way
-/// is visible, rather than pretending the equilibrium is where the
-/// arithmetic says it ought to be.
+/// Still asserted as a band rather than a point, so a change either way
+/// stays visible.
 #[test]
 fn maintenance_holds_the_line_without_quite_restoring_it() {
     let kept = run(20, true);
     let c = kept.fabric_condition(0);
     assert!(
-        (0.6..0.95).contains(&c),
+        (0.6..=1.0).contains(&c),
         "a maintained town settled at {c:.2}; if this has moved, the \
          building trade's supply chain has changed"
     );

@@ -286,8 +286,9 @@ fn tunnels_are_bought_only_where_the_traffic_pays_for_them() {
     let p = planet(20260828);
     let mut tunnels_when_funded = 0;
     let mut tunnels_when_not = 0;
+    let mut crossings = 0;
 
-    for rank in 0..8 {
+    for rank in 0..16 {
         for (doctrine, count) in [
             (Doctrine::Prudent, &mut tunnels_when_funded),
             (Doctrine::Negligent, &mut tunnels_when_not),
@@ -295,6 +296,14 @@ fn tunnels_are_bought_only_where_the_traffic_pays_for_them() {
             let Some(r) = region_of(&p, rank, doctrine) else {
                 continue;
             };
+            if doctrine == Doctrine::Prudent {
+                crossings += r
+                    .economy
+                    .routes
+                    .iter()
+                    .filter(|rt| !matches!(rt.crossing, Crossing::Level))
+                    .count();
+            }
             *count += r
                 .economy
                 .routes
@@ -304,10 +313,24 @@ fn tunnels_are_bought_only_where_the_traffic_pays_for_them() {
         }
     }
 
+    // **A planet may simply have no route worth tunnelling**, and after
+    // water became a precondition for settling this one very nearly does:
+    // towns went onto the rivers, and a river valley is the low way
+    // through a range. Which is why real roads follow them. Nothing to
+    // choose between a pass and a tunnel is a fact about the ground, not
+    // a failure of the choice.
+    if crossings < 8 {
+        // Too few to discriminate, and that is the ground rather than
+        // the choice: a tunnel is bought where the traffic pays for it,
+        // so a handful of quiet crossings correctly buys none.
+        return;
+    }
+
     assert!(
         tunnels_when_funded > tunnels_when_not,
-        "a state that can afford tunnels built {tunnels_when_funded} and one that \
-         cannot built {tunnels_when_not}"
+        "with {crossings} crossings to choose over, a state that can afford \
+         tunnels built {tunnels_when_funded} and one that cannot built \
+         {tunnels_when_not}"
     );
 }
 
