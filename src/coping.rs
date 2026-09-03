@@ -234,6 +234,23 @@ pub struct Circumstances {
     pub someone_to_protect: bool,
     /// The other party can do them harm if crossed.
     pub other_has_authority: bool,
+    /// **Whether the person to be protected actually matters to them.**
+    /// A child in the room is not a restraint on somebody it is nothing
+    /// to; the motive has to come from the tie, not from the geometry.
+    pub they_matter: f64,
+    /// Whether anybody would see.
+    pub witnessed: f64,
+}
+
+impl Circumstances {
+    /// **Why somebody would hold back**, which is values, affection,
+    /// consequences and who is watching — never the size of the impulse.
+    pub fn motive_to_hold_back(&self) -> f64 {
+        let protect =
+            if self.someone_to_protect { 0.85 * self.they_matter.clamp(0.0, 1.0) } else { 0.0 };
+        let consequences = if self.other_has_authority { 0.75 } else { 0.0 };
+        (protect + consequences + 0.15 * self.witnessed).clamp(0.0, 1.0)
+    }
 }
 
 impl Default for Circumstances {
@@ -244,8 +261,38 @@ impl Default for Circumstances {
             substance_available: true,
             someone_to_protect: false,
             other_has_authority: false,
+            they_matter: 1.0,
+            witnessed: 0.0,
         }
     }
+}
+
+/// **How much somebody is able to hold themselves in**, 0..1.
+///
+/// Regulation is a capacity and it is *spent*: exhaustion, intoxication
+/// and being at the end of a long bad stretch all reduce it without
+/// touching the motive at all. That is what lets a violent parent
+/// desperately want to stop and sometimes fail anyway.
+pub fn regulatory_capacity(mind: &Mind, debt: f64) -> f64 {
+    let base = (0.5 + 0.25 * mind.willpower as f64).clamp(0.0, 1.0);
+    let worn = (1.0 - 0.5 * debt.clamp(0.0, 1.0)).clamp(0.2, 1.0);
+    (base * worn * mind.focus.current.clamp(0.2, 1.0)).clamp(0.0, 1.0)
+}
+
+/// **What holding back does to an impulse.**
+///
+/// ```text
+/// expressed = raw x (1 - motive to inhibit x regulatory capacity)
+/// ```
+///
+/// Scaling the suppression with the drive — which is what this replaced
+/// — quietly gave a violent man self-control in exact proportion to his
+/// violence, so he could never fail to restrain himself. Motive and
+/// capacity are separate things, and a large drive facing a strong
+/// motive and a spent capacity is exactly the case that has to survive.
+pub fn restrain(raw: f64, motive: f64, capacity: f64) -> f64 {
+    let held = (motive.clamp(0.0, 1.0) * capacity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
+    raw * (1.0 - held)
 }
 
 /// **Propensities, not a verdict.**
@@ -307,25 +354,20 @@ pub fn propensities(
             Coping::SelfBlame => 0.4 * z(Facet::Gloom) + 0.2 * z(Facet::Anxiety),
         };
 
-        // **Circumstance, not character** — and the suppression is
-        // proportional as well as absolute, because a flat penalty is
-        // nothing to somebody two and a half standard deviations into a
-        // disposition. The more there is to hold back, the more of it
-        // holding back removes.
+        // **Circumstance, not character**, and held back by the
+        // equation in `restraint` rather than by a multiple of the
+        // drive — see there for why scaling with the drive was wrong.
         if k == Coping::Venting {
-            if c.someone_to_protect {
-                w = w * 0.3 - 0.6;
-            }
-            if c.other_has_authority {
-                w = w * 0.35 - 0.5;
-            }
+            w = restrain(w, c.motive_to_hold_back(), regulatory_capacity(mind, debt));
         }
         if k == Coping::SubstanceUse && c.someone_to_protect {
-            w = w * 0.6 - 0.3;
+            w = restrain(w, 0.6 * c.motive_to_hold_back(), regulatory_capacity(mind, debt));
         }
 
         // **Willpower holds somebody to the harder option**, and mounting
-        // debt pushes them off it.
+        // debt pushes them off it. This is the *choice* of strategy;
+        // holding back an impulse once chosen is `restrain`, and the two
+        // must not be the same term used twice.
         if k.is(Family::Avoidant) {
             w += 0.5 * debt - 0.4 * mind.willpower as f64;
         }
@@ -522,6 +564,122 @@ pub struct Burnout {
     pub reduced_efficacy: f64,
 }
 
+/// **Which part of a life.**
+///
+/// One number cannot say that somebody impaired at work is a competent
+/// parent, and the documentation claimed exactly that while the data
+/// could not express it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FunctionalDomain {
+    Work,
+    Caregiving,
+    Social,
+    SelfCare,
+}
+
+impl FunctionalDomain {
+    pub const ALL: [FunctionalDomain; 4] = [
+        FunctionalDomain::Work,
+        FunctionalDomain::Caregiving,
+        FunctionalDomain::Social,
+        FunctionalDomain::SelfCare,
+    ];
+
+    /// **What gets defended longest.** People under strain drop sleep,
+    /// meals and exercise first, then seeing anybody, then work — and
+    /// hold onto the care of a child past all of it. That ordering is
+    /// the whole reason the domains are not one number.
+    pub fn protected(self) -> f64 {
+        match self {
+            FunctionalDomain::Caregiving => 1.00,
+            FunctionalDomain::Work => 0.72,
+            FunctionalDomain::Social => 0.50,
+            FunctionalDomain::SelfCare => 0.36,
+        }
+    }
+}
+
+/// What each part of a life is asking of somebody, 0..1.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Demands {
+    pub work: f64,
+    pub caregiving: f64,
+    pub social: f64,
+    pub self_care: f64,
+}
+
+impl Default for Demands {
+    fn default() -> Self {
+        Demands { work: 0.5, caregiving: 0.0, social: 0.3, self_care: 0.3 }
+    }
+}
+
+impl Demands {
+    pub fn of(&self, d: FunctionalDomain) -> f64 {
+        match d {
+            FunctionalDomain::Work => self.work,
+            FunctionalDomain::Caregiving => self.caregiving,
+            FunctionalDomain::Social => self.social,
+            FunctionalDomain::SelfCare => self.self_care,
+        }
+    }
+}
+
+/// **How long somebody has been down, in a shape that distinguishes the
+/// cases.**
+///
+/// A single day count cannot tell one unbroken two-year episode from
+/// twenty short ones, nor an episode that ended yesterday from one that
+/// ended thirty years ago — and those are not the same person.
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
+pub struct ImpairmentHistory {
+    pub current_episode_days: u32,
+    pub lifetime_days: u32,
+    pub episode_count: u32,
+    /// Days since the last severe episode ended. `None` while in one.
+    /// Kept as an elapsed count rather than a date so that it advances
+    /// with the same interval arithmetic as everything else here.
+    pub days_since_last: Option<u32>,
+}
+
+impl ImpairmentHistory {
+    /// **How readily it comes back.** Prior episodes are among the
+    /// strongest predictors of recurrence there is — and it **saturates
+    /// and decays**, or an unbounded duration reintroduces the very
+    /// unbounded-accumulator problem the debt ceiling removed.
+    pub fn relapse_sensitivity(&self) -> f64 {
+        let depth = (self.lifetime_days as f64 / 730.0).min(1.0);
+        let repeats = (self.episode_count as f64 / 4.0).min(1.0);
+        let raw = (0.6 * depth + 0.4 * repeats).min(1.0);
+        match self.days_since_last {
+            None => raw,
+            // Halves every four years of keeping well.
+            Some(d) => raw * 0.5f64.powf(d as f64 / 1460.0),
+        }
+    }
+
+    fn record(&mut self, severe_days: u32, well_days: u32, ended: bool, began: bool) {
+        if began {
+            self.episode_count = self.episode_count.saturating_add(1);
+            self.current_episode_days = 0;
+            self.days_since_last = None;
+        }
+        if severe_days > 0 {
+            self.current_episode_days = self.current_episode_days.saturating_add(severe_days);
+            self.lifetime_days = self.lifetime_days.saturating_add(severe_days);
+            self.days_since_last = None;
+        }
+        if ended {
+            self.current_episode_days = 0;
+            self.days_since_last = Some(0);
+        }
+        if well_days > 0 {
+            let so_far = self.days_since_last.unwrap_or(0);
+            self.days_since_last = Some(so_far.saturating_add(well_days));
+        }
+    }
+}
+
 /// **An acute crisis**, which is not chronic strain arriving early.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Acute {
@@ -531,6 +689,27 @@ pub enum Acute {
     Aggression,
     Freeze,
 }
+
+/// **One crisis, happening now.**
+///
+/// Transient, and deliberately not on the ladder: it can strike somebody
+/// perfectly regulated who has just had something catastrophic happen,
+/// and it can strike somebody already impaired on an ordinary Tuesday.
+/// It **does not promote the chronic state**, and resolving it does not
+/// erase any chronic strain that was already there.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CrisisEpisode {
+    pub kind: Acute,
+    /// 0..1, and it falls away over hours to days.
+    pub activation: f64,
+    pub started: u64,
+    /// What set it off, so it can be tied back to the world.
+    pub because_of: u64,
+}
+
+/// **An acute reaction subsides in hours to a couple of days**, which is
+/// what separates it from anything on the chronic ladder.
+pub const CRISIS_HALF_LIFE_DAYS: f64 = 1.0;
 
 pub const STRAIN_PER_DAY: f64 = 0.010;
 
@@ -553,12 +732,11 @@ pub struct Strain {
     pub debt: f64,
     pub state: FunctionalState,
     pub days_in_state: u32,
-    /// **Capping the debt must not erase the duration.** Ten years at
-    /// the ceiling is not ten days at the ceiling, and the difference
-    /// shows up elsewhere — illness, lost work, a wrecked marriage,
-    /// dependence, a durable well-being injury, coping habits that have
-    /// set.
-    pub days_severely_impaired: u32,
+    /// **Capping the debt must not erase the duration**, and a bare day
+    /// count cannot tell one long episode from many short ones.
+    pub history: ImpairmentHistory,
+    /// A crisis in progress, which is a separate mechanism entirely.
+    pub crisis: Option<CrisisEpisode>,
 }
 
 impl Default for Strain {
@@ -567,21 +745,57 @@ impl Default for Strain {
             debt: 0.0,
             state: FunctionalState::Regulated,
             days_in_state: 0,
-            days_severely_impaired: 0,
+            history: ImpairmentHistory::default(),
+            crisis: None,
         }
     }
 }
 
 impl Strain {
-    /// **How readily it comes back.** Prior episodes are among the
-    /// strongest predictors of recurrence there is.
+    /// **The one place relapse sensitivity is ever applied.**
     ///
-    /// Recorded and exposed rather than fed back into the thresholds
-    /// here, deliberately: a feedback that changed within an interval
-    /// would break the timestep invariance this module guarantees.
-    /// Whoever wants it applies it.
-    pub fn relapse_sensitivity(&self) -> f64 {
-        (self.days_severely_impaired as f64 / 730.0).min(1.0)
+    /// The contract, and it has to be exactly one of the two: *relapse
+    /// sensitivity modifies vulnerability when a new stressor or a
+    /// renewed exposure is appraised; it does not alter an already
+    /// running constant-pressure interval.* Leaving it "for whoever
+    /// wants it" only moved the timestep dependence outside this module
+    /// — one caller applying it daily and another once a year diverge
+    /// however invariant `advance` is on its own.
+    ///
+    /// So `advance` never consults it, and nothing else should: pass the
+    /// raw severity of something new through here and use what comes
+    /// back.
+    pub fn felt_severity(&self, raw: f64) -> f64 {
+        (raw * (1.0 + 0.5 * self.history.relapse_sensitivity())).min(1.0)
+    }
+
+    /// **What somebody can still do, in one part of their life.**
+    ///
+    /// Derived rather than stored as four ladders: the debt is general,
+    /// and what differs between domains is how much is being asked and
+    /// how hard that part is defended.
+    pub fn functioning_in(&self, d: FunctionalDomain, demands: &Demands) -> FunctionalState {
+        let load = self.debt * (0.4 + demands.of(d)) / d.protected();
+        if load >= ENTER[2] {
+            FunctionalState::Impaired
+        } else if load >= ENTER[1] {
+            FunctionalState::Depleted
+        } else if load >= ENTER[0] {
+            FunctionalState::Strained
+        } else {
+            FunctionalState::Regulated
+        }
+    }
+
+    /// Something happened. **Not routed through the debt** — a crisis is
+    /// its own mechanism, and this leaves the chronic state untouched.
+    pub fn crisis_strikes(&mut self, kind: Acute, activation: f64, day: u64, because_of: u64) {
+        self.crisis = Some(CrisisEpisode {
+            kind,
+            activation: activation.clamp(0.0, 1.0),
+            started: day,
+            because_of,
+        });
     }
 
     pub fn a_day_passes(&mut self, pressure: f64, tolerance: f64) {
@@ -666,9 +880,21 @@ impl Strain {
             (true, false) => crossing(LEAVE[1]),
             (false, false) => 0.0,
         };
-        self.days_severely_impaired = self
-            .days_severely_impaired
-            .saturating_add(severe_days.round().max(0.0) as u32);
+        let severe = severe_days.round().max(0.0) as u32;
+        self.history.record(
+            severe,
+            days.saturating_sub(severe),
+            severe_before && !severe_after,
+            !severe_before && severe_after,
+        );
+
+        // **A crisis runs on its own clock** and is not on the ladder.
+        if let Some(cr) = &mut self.crisis {
+            cr.activation *= 0.5f64.powf(n / CRISIS_HALF_LIFE_DAYS);
+            if cr.activation < 0.02 {
+                self.crisis = None;
+            }
+        }
 
         self.days_in_state = match last_threshold {
             None => self.days_in_state.saturating_add(days),
@@ -687,17 +913,15 @@ impl Strain {
     /// rather than one of them forever.
     pub fn crisis_propensities(mind: &Mind, c: &Circumstances) -> Vec<(Acute, f64)> {
         let z = |f: Facet| mind.person.z(f) as f64;
-        // **Inhibition scales with the drive.** A violent man has more
-        // to hold back than a mild one, and holding it back is exactly
-        // what he does in front of his own child or a man who can ruin
-        // him. Subtracting a constant left him swinging either way.
-        let mut aggression = 0.6 * z(Facet::Violence) + 0.4 * z(Facet::Anger);
-        if c.someone_to_protect {
-            aggression = aggression * 0.25 - 0.8;
-        }
-        if c.other_has_authority {
-            aggression = aggression * 0.30 - 0.7;
-        }
+        // **Motive times capacity**, not a multiple of the drive.
+        let raw = 0.6 * z(Facet::Violence) + 0.4 * z(Facet::Anger);
+        let capacity = regulatory_capacity(mind, 0.0);
+        // Two terms and they do different work: `restrain` is how much
+        // of the impulse is actually held in, and the subtraction is what
+        // acting would *cost* — shame in front of a child, a rope from a
+        // magistrate. A man with no capacity left still faces the cost.
+        let motive = c.motive_to_hold_back();
+        let aggression = restrain(raw, motive, capacity) - 1.4 * motive;
         let mut out = vec![
             (Acute::Aggression, aggression),
             (Acute::Panic, 0.6 * z(Facet::Anxiety) + 0.2 * z(Facet::StressVulnerability)),

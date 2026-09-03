@@ -3764,6 +3764,90 @@ not what severe exhaustion generally takes — the evidence is
 heterogeneous and one clinical cohort still had substantial residual
 symptoms seven years on.
 
+### The follow-ups the gate review asked for
+
+Four of them changed the model rather than the prose.
+
+- **Relapse sensitivity has exactly one consumer.** Exposing it "for
+  whoever wants it" only moved the timestep dependence outside the
+  module: one caller applying it daily and another once a year diverge
+  however invariant `advance` is. The contract is now that it *modifies
+  vulnerability when something new is appraised* — `felt_severity` — and
+  never alters a running interval. A test asserts the ladder itself
+  cannot tell a veteran from a newcomer.
+- **Impairment is measured against a domain.** The claim that somebody
+  impaired at work may be a competent parent was prose over data a single
+  field could not express. `functioning_in(domain, demands)` derives it
+  from one debt, and what differs is how much is being asked and **how
+  hard that part of a life is defended**: self-care goes first, then
+  seeing anybody, then work, and the care of a child last of all.
+- **Acute crisis is a separate mechanism.** It strikes from any state,
+  does not promote the chronic one, runs on a half-life of about a day,
+  and leaves whatever chronic strain was there exactly where it was.
+- **Duration needs episode structure.** One unbroken two-year stretch is
+  not twenty short ones, and an episode that ended yesterday is not one
+  that ended thirty years ago. `ImpairmentHistory` carries the current
+  episode, the lifetime, the count and the time since — and the
+  sensitivity derived from it **saturates and decays**, or an unbounded
+  duration reintroduces the unbounded accumulator by another road.
+
+**And the inhibition equation was wrong in a way worth recording.**
+Scaling suppression with the drive fixed the flat-penalty failure and
+created a worse one: it gave a violent man self-control in exact
+proportion to his violence, so he could never fail to hold back. It is
+now
+
+```text
+expressed = raw x (1 - motive to inhibit x regulatory capacity)
+```
+
+where motive comes from the tie, the consequences and who is watching —
+**a child in the room is no restraint on somebody it is nothing to** —
+and capacity is *spent* by exhaustion and by being at the end of a long
+bad stretch. Which is what lets a man want to stop and fail: rested, he
+holds on; worn out, with the same motive and the same drive, he does not.
+
+## What a person is when nobody is looking (`src/scaling.rs`)
+
+Mind slice 9, spec sections 25 and 26. The design doc's rule for the
+whole project — populations stay statistical until attention or
+consequence promotes them — made to mean something specific.
+
+**Changing fidelity must not change the person.** Two years lived day by
+day and two years advanced in one step come out in the same place, or a
+man's mind depends on whether the engine happened to be looking at him.
+
+- **Constant-pressure invariance is necessary and not sufficient.** An
+  analytic step is only valid while nothing changes, so the interval is
+  split at every discontinuity — a stressor beginning or ending, support
+  arriving, control revised, a crisis. Given the same schedule this
+  satisfies the semigroup property, and both are tested against a life
+  lived a day at a time with events in it.
+- **A personality is redrawn from its seed, not saved.** Generated,
+  never stored — the project's oldest rule arriving at the mind, and what
+  makes a distant person cheap. What *is* kept is only what life did,
+  which `growth` already holds as dated entries that evaluate at any
+  date.
+- **Coalesce, do not discard.** A persistence residual is a floor, so
+  nothing ever decays to nothing and "drop what is negligible" drops
+  precisely zero entries however long the life. What bounds the record is
+  that everything past its horizon has already reached its residual and
+  will never move again, so any number of them is one number — merged at
+  a date that preserves the present value and every future one.
+- **Demotion is lossy and honestly so.** Particular afternoons go; what
+  shaped somebody stays, because a core memory is already a growth entry.
+- **An event on the day counts.** Filtering strictly after the last
+  update silently dropped anything happening on the day the record
+  already stood at — which is every event, for a caller stepping daily.
+
+**The one divergence that cannot be removed is named and its direction
+asserted.** A coarse record holds one pressure for an interval, and
+strain accumulates faster than it recovers — so a man whose pressure
+swung either side of his tolerance is worse off than the same average
+steadily applied, and the coarse path always *understates* the damage.
+The direction never varies, which is what makes it safe to record rather
+than a bug waiting to be found.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

@@ -8,9 +8,10 @@
 //! detail, which would make slice 9 meaningless.
 
 use scale_sim::coping::{
-    attempt, choose, propensities, resolve, ActualControl, Acute, Attempt, AvoidanceKind,
-    Burnout, Circumstances, ControlAppraisal, Coping, Family, FunctionalState, Strain,
-    SupportGiven, ENTER, LEAVE, RECOVERY_PER_DAY, STRAIN_CEILING, STRAIN_PER_DAY,
+    attempt, choose, propensities, regulatory_capacity, resolve, restrain, ActualControl,
+    Acute, Attempt, AvoidanceKind, Burnout, Circumstances, ControlAppraisal, Coping, Demands,
+    Family, FunctionalDomain, FunctionalState, Strain, SupportGiven, ENTER, LEAVE,
+    RECOVERY_PER_DAY, STRAIN_CEILING, STRAIN_PER_DAY,
 };
 use scale_sim::mind::{Facet, Mind, Value};
 use scale_sim::rng::Rng;
@@ -63,11 +64,11 @@ fn a_coarse_advance_matches_a_run_of_days() {
         assert_eq!(coarse.state, daily.state, "descent diverged at {days} days");
         assert!((coarse.debt - daily.debt).abs() < 1e-9);
         assert!(
-            (coarse.days_severely_impaired as i64 - daily.days_severely_impaired as i64).abs()
+            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs()
                 <= 1,
             "severe-duration diverged: {} against {}",
-            coarse.days_severely_impaired,
-            daily.days_severely_impaired
+            coarse.history.lifetime_days,
+            daily.history.lifetime_days
         );
         assert!((coarse.days_in_state as i64 - daily.days_in_state as i64).abs() <= 1);
     }
@@ -92,7 +93,7 @@ fn a_coarse_advance_matches_a_run_of_days_recovering() {
         assert_eq!(coarse.state, daily.state, "recovery diverged over {days} days");
         assert!((coarse.debt - daily.debt).abs() < 1e-9);
         assert!(
-            (coarse.days_severely_impaired as i64 - daily.days_severely_impaired as i64).abs()
+            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs()
                 <= 1
         );
     }
@@ -110,7 +111,7 @@ fn a_coarse_advance_matches_a_run_of_days_at_the_bottom() {
     }
     coarse.advance(1000, 1.0, 0.0);
     assert_eq!(coarse.state, daily.state);
-    assert_eq!(coarse.days_severely_impaired, daily.days_severely_impaired);
+    assert_eq!(coarse.history.lifetime_days, daily.history.lifetime_days);
     assert!((coarse.debt - daily.debt).abs() < 1e-9);
 }
 
@@ -504,12 +505,16 @@ fn the_debt_saturates_and_the_duration_does_not() {
     assert!((brief.debt - long.debt).abs() < 1e-9, "the debt kept deepening");
     assert!(brief.debt <= STRAIN_CEILING + 1e-9);
     assert!(
-        long.days_severely_impaired > brief.days_severely_impaired * 2,
+        long.history.lifetime_days > brief.history.lifetime_days * 2,
         "ten extra years at the bottom left no trace at all"
     );
+    // **And the sensitivity saturates**, which is the point of it: ten
+    // further years at the bottom do not make somebody arbitrarily more
+    // fragile, or the unbounded accumulator is back by another road.
+    assert!(long.history.relapse_sensitivity() <= 1.0);
     assert!(
-        long.relapse_sensitivity() > brief.relapse_sensitivity()
-            || brief.relapse_sensitivity() >= 1.0
+        (long.history.relapse_sensitivity() - brief.history.relapse_sensitivity()).abs() < 1e-9,
+        "sensitivity was still climbing after ten extra years"
     );
 }
 
@@ -550,9 +555,15 @@ fn burnout_is_three_axes_and_not_a_rung() {
 /// and holds himself together in front of a child.
 #[test]
 fn the_same_man_does_different_things_in_different_rooms() {
-    let violent = a_person(10, &[(Facet::Violence, 2.5), (Facet::Anger, 2.0)]);
+    let mut violent = a_person(10, &[(Facet::Violence, 2.5), (Facet::Anger, 2.0)]);
+    // Rested and sober, so the capacity to hold back is there to spend.
+    violent.willpower = 1.0;
     let plain = Circumstances::default();
-    let before_a_child = Circumstances { someone_to_protect: true, ..Default::default() };
+    let before_a_child = Circumstances {
+        someone_to_protect: true,
+        they_matter: 1.0,
+        ..Default::default()
+    };
     let before_a_magistrate =
         Circumstances { other_has_authority: true, ..Default::default() };
 
@@ -628,4 +639,183 @@ fn a_strategy_raises_an_attempt_and_does_not_pay_out_by_itself() {
         0.5,
     );
     assert!(nothing.relief < 0.01, "asking for help worked with nobody answering");
+}
+
+// =====================================================================
+// the gate-review follow-ups
+// =====================================================================
+
+/// **Restraint is motive times capacity, not a share of the drive.**
+///
+/// Scaling the suppression with the impulse gave a violent man
+/// self-control in exact proportion to his violence, so he could never
+/// fail to hold back. The two have to be able to come apart.
+#[test]
+fn a_man_can_want_to_stop_and_fail() {
+    // Same motive, same drive, different capacity.
+    let strong = restrain(2.5, 0.9, 0.9);
+    let spent = restrain(2.5, 0.9, 0.15);
+    assert!(spent > strong, "being worn out made him more restrained");
+
+    // And a bigger drive is bigger after restraint, which is the error
+    // the proportional form hid.
+    assert!(restrain(3.0, 0.8, 0.8) > restrain(1.0, 0.8, 0.8));
+}
+
+/// **Capacity is spent.** Exhaustion and mounting debt take it without
+/// touching the motive at all.
+#[test]
+fn holding_back_gets_harder_as_somebody_comes_apart() {
+    let m = a_person(50, &[]);
+    let fresh = regulatory_capacity(&m, 0.0);
+    let worn = regulatory_capacity(&m, 1.2);
+    assert!(fresh > worn * 1.5, "a man at the end of himself held on as well as ever");
+}
+
+/// **A child in the room is not a restraint on somebody it is nothing
+/// to.** The motive comes from the tie, not the geometry.
+#[test]
+fn the_person_to_be_protected_has_to_matter() {
+    let mut m = a_person(51, &[(Facet::Violence, 2.0), (Facet::Anger, 2.0)]);
+    m.willpower = 1.0;
+    let his_own = Circumstances { someone_to_protect: true, they_matter: 1.0, ..Default::default() };
+    let a_stranger =
+        Circumstances { someone_to_protect: true, they_matter: 0.0, ..Default::default() };
+    assert!(his_own.motive_to_hold_back() > a_stranger.motive_to_hold_back());
+    assert_eq!(
+        Strain::crisis_propensities(&m, &a_stranger)[0].0,
+        Acute::Aggression,
+        "somebody else's child in the room stopped him"
+    );
+}
+
+/// **Impairment is measured against a domain**, or the claim that a man
+/// impaired at work may be a competent parent is only prose.
+#[test]
+fn somebody_impaired_at_work_can_still_be_a_parent() {
+    // **Read where there is something to see.** At the ceiling every
+    // part of a life is impaired and correctly so, which tells you
+    // nothing about whether the domain is doing any work.
+    let mut st = Strain::default();
+    st.advance(350, 0.35, 0.15);
+    let d = Demands { work: 0.9, caregiving: 0.5, social: 0.4, self_care: 0.4 };
+
+    let work = st.functioning_in(FunctionalDomain::Work, &d);
+    let care = st.functioning_in(FunctionalDomain::Caregiving, &d);
+    assert!(
+        work > care,
+        "work and caregiving came out the same, so the domain does nothing"
+    );
+    assert!(work >= FunctionalState::Depleted);
+}
+
+/// **Self-care goes first**, which is what people actually drop.
+#[test]
+fn what_gets_dropped_first_is_the_person_themselves() {
+    let mut st = Strain::default();
+    st.advance(250, 0.35, 0.15);
+    let d = Demands { work: 0.5, caregiving: 0.5, social: 0.5, self_care: 0.5 };
+    let order: Vec<FunctionalState> = FunctionalDomain::ALL
+        .iter()
+        .map(|&x| st.functioning_in(x, &d))
+        .collect();
+    let care = st.functioning_in(FunctionalDomain::Caregiving, &d);
+    let self_care = st.functioning_in(FunctionalDomain::SelfCare, &d);
+    assert!(self_care >= care, "he stopped minding the children before he stopped sleeping");
+    assert!(order.iter().any(|s| *s != order[0]), "every part of his life went at once");
+}
+
+/// **Relapse sensitivity has exactly one consumer.** `advance` must not
+/// consult it, or one caller applying it daily and another once a year
+/// diverge however invariant the interval arithmetic is.
+#[test]
+fn relapse_sensitivity_is_applied_at_appraisal_and_nowhere_else() {
+    let mut veteran = Strain::default();
+    veteran.advance(1500, 1.0, 0.1);
+    veteran.advance(3000, 0.0, 0.5);
+    assert!(veteran.history.relapse_sensitivity() > 0.0);
+
+    // Two people, one with a history and one without, under identical
+    // pressure: the ladder itself does not know the difference.
+    let fresh = Strain::default();
+    let mut a = veteran;
+    let mut b = fresh;
+    a.debt = 0.0;
+    a.state = FunctionalState::Regulated;
+    a.advance(300, 0.6, 0.2);
+    b.advance(300, 0.6, 0.2);
+    assert!(
+        (a.debt - b.debt).abs() < 1e-12,
+        "a history changed a running interval, which is the timestep leak"
+    );
+
+    // It bites where it should: on something new.
+    assert!(
+        veteran.felt_severity(0.5) > fresh.felt_severity(0.5),
+        "a man with four bad years behind him felt a fresh blow no harder"
+    );
+}
+
+/// **Sensitivity saturates and decays**, or an unbounded duration
+/// reintroduces the unbounded accumulator through the back door.
+#[test]
+fn relapse_sensitivity_does_not_grow_for_ever() {
+    let mut long = Strain::default();
+    long.advance(20_000, 1.0, 0.0);
+    assert!(long.history.relapse_sensitivity() <= 1.0);
+
+    let at_the_time = long.history.relapse_sensitivity();
+    long.advance(20_000, 0.0, 0.5);
+    assert!(
+        long.history.relapse_sensitivity() < at_the_time * 0.5,
+        "fifty years of keeping well left him as fragile as the day he stopped"
+    );
+}
+
+/// **Duration has episode structure.** One unbroken stretch is not
+/// twenty short ones.
+#[test]
+fn one_long_episode_is_not_many_short_ones() {
+    let mut once = Strain::default();
+    once.advance(900, 0.9, 0.15);
+
+    let mut often = Strain::default();
+    for _ in 0..6 {
+        often.advance(260, 0.9, 0.15);
+        often.advance(900, 0.0, 0.5);
+    }
+    assert!(often.history.episode_count > once.history.episode_count);
+    assert!(
+        once.history.current_episode_days > 0,
+        "an unbroken episode was not being counted as one"
+    );
+}
+
+/// **A crisis is a separate mechanism.** It can strike anybody, does not
+/// promote the chronic state, and resolving it leaves the chronic strain
+/// exactly where it was.
+#[test]
+fn a_crisis_does_not_touch_the_chronic_state() {
+    let mut calm = Strain::default();
+    assert_eq!(calm.state, FunctionalState::Regulated);
+    calm.crisis_strikes(Acute::Panic, 0.9, 10, 77);
+    assert_eq!(calm.state, FunctionalState::Regulated, "one bad hour broke a settled man");
+    assert!(calm.crisis.is_some());
+    assert!(calm.debt < 1e-9);
+
+    // It fades on its own clock, in days.
+    calm.advance(7, 0.1, 0.5);
+    assert!(calm.crisis.is_none(), "a panic was still running a week later");
+    assert_eq!(calm.state, FunctionalState::Regulated);
+
+    // And on somebody already down, it leaves the chronic state alone.
+    let mut sunk = Strain::default();
+    sunk.advance(1500, 1.0, 0.1);
+    let (was, debt) = (sunk.state, sunk.debt);
+    sunk.crisis_strikes(Acute::Freeze, 0.8, 20, 78);
+    assert_eq!(sunk.state, was);
+    assert!((sunk.debt - debt).abs() < 1e-12);
+    sunk.advance(10, 1.0, 0.1);
+    assert!(sunk.crisis.is_none());
+    assert!(sunk.debt >= debt, "a crisis passing undid four years of it");
 }

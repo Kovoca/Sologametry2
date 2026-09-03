@@ -100,7 +100,7 @@ In slices that each land green, the same way Phase 1 is going.
 | 6 | Social opportunity, intention, tactic, interpretation, exchange | **built** |
 | 7 | Personality and value change from core memories | **built** |
 | 8 | Coping and staged breakdown | **built** |
-| 9 | Scaling: what a distant person retains | |
+| 9 | Scaling: what a distant person retains | **built** |
 
 ## A note on calibration
 
