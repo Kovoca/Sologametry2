@@ -6,14 +6,16 @@
 //! asserted, and it is bounded.
 
 use scale_sim::coping::{
-    Acute, ActualControl, ControlAppraisal, Coping, Demands, FunctionalDomain, FunctionalState,
+    Acute, ActualControl, ControlAppraisal, Coping, Defence, Demands, FunctionalDomain,
+    FunctionalState,
 };
 use scale_sim::growth::{ShapesPersonality, ShapesWellbeing};
 use scale_sim::id::{Arena, Id};
-use scale_sim::mind::{Facet, Value};
+use scale_sim::mind::{Facet, Value, ADAPTATION_LIMIT};
 use scale_sim::person::{Person, Trade};
 use scale_sim::scaling::{
-    demote, promote, Change, Coarse, Fidelity, Habits, Standing, What,
+    demote, promote, Change, Coarse, Fidelity, Habits, PersonOrigin, Standing, What,
+    GENERATION_SCHEMA,
 };
 
 fn who(n: u32) -> Id<Person> {
@@ -151,7 +153,7 @@ fn demoting_a_promotion_gives_the_record_back() {
 
     let there_and_back = demote(&promote(&c, &cult, 500));
     assert_eq!(there_and_back.strain, c.strain);
-    assert_eq!(there_and_back.seed, c.seed);
+    assert_eq!(there_and_back.origin, c.origin);
     assert_eq!(there_and_back.standing.len(), c.standing.len());
     assert_eq!(there_and_back.growth.episodics.len(), c.growth.episodics.len());
     assert_eq!(there_and_back.growth.roles.len(), c.growth.roles.len());
@@ -284,8 +286,10 @@ fn the_coarse_record_carries_the_named_list() {
     let _: ControlAppraisal = c.perceived_control;
     let _: f64 = c.support_expected;
     let _: u64 = c.last_update;
-    // And a seed rather than a personality.
-    let _: u64 = c.seed;
+    // The origin, and the saved baseline the seed cannot be trusted
+    // to reproduce.
+    let _: PersonOrigin = c.origin;
+    let _: &Vec<f32> = &c.baseline;
 }
 
 /// **A save grows with what mattered in a life, not with its length.**
@@ -551,8 +555,256 @@ fn a_record_can_still_say_which_part_of_a_life_is_failing() {
     c.advance_to(350, &reference.mind, 0.15);
     let d = Demands { work: 0.9, caregiving: 0.5, social: 0.4, self_care: 0.4 };
     assert!(
-        c.strain.functioning_in(FunctionalDomain::Work, &d)
-            > c.strain.functioning_in(FunctionalDomain::Caregiving, &d),
+        c.strain.functioning_in(FunctionalDomain::Work, &d, &Defence::default())
+            > c.strain.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default()),
         "out of sight, every part of his life failed together"
     );
+}
+
+// =====================================================================
+// the second gate review
+// =====================================================================
+
+/// **Compaction must preserve the future, not only today.**
+///
+/// A sum of decays with different half-lives is not one decay, so an
+/// entry that agrees now can disagree tomorrow. What is exact is
+/// splitting each contribution into the part that will never move again
+/// and the part still fading, and aggregating them separately.
+#[test]
+fn compacting_preserves_every_future_value() {
+    let cult = culture();
+    let mut c = a_life(201, 0.2);
+    // Mixed causes, mixed signs, mixed half-lives and residuals.
+    for (i, &m) in [
+        ShapesPersonality::Trauma,
+        ShapesPersonality::CoreMemory,
+        ShapesPersonality::SustainedTreatment,
+    ]
+    .iter()
+    .enumerate()
+    {
+        for k in 0..6u64 {
+            c.growth.shaped_personality(
+                Facet::Anxiety,
+                m,
+                0.6,
+                if (i as u64 + k) % 2 == 0 { 1.0 } else { -1.0 },
+                k * 400 + i as u64 * 90,
+            );
+        }
+    }
+    c.growth.shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 300);
+    c.growth.shaped_wellbeing(ShapesWellbeing::Bereavement, 1.0, -1.0, 900);
+
+    let today = 365 * 12;
+    let before: Vec<(u64, f32, f32)> = [0u64, 1, 365, 365 * 20, 365 * 60]
+        .iter()
+        .map(|&d| {
+            let t = today + d;
+            (t, c.growth.raw_for(Facet::Anxiety, t), c.growth.wellbeing(t))
+        })
+        .collect();
+
+    let n_before = c.growth.episodics.len();
+    c.compact(today);
+    assert!(c.growth.episodics.len() < n_before, "nothing was coalesced at all");
+
+    for (t, anx, well) in before {
+        assert!(
+            (c.growth.raw_for(Facet::Anxiety, t) - anx).abs() < 1e-4,
+            "the trait diverged at day {t}: {} against {anx}",
+            c.growth.raw_for(Facet::Anxiety, t)
+        );
+        assert!(
+            (c.growth.wellbeing(t) - well).abs() < 1e-4,
+            "well-being diverged at day {t}"
+        );
+    }
+    let _ = cult;
+}
+
+/// **Compacting twice is compacting once**, and it does not creep.
+#[test]
+fn repeated_compaction_is_stable() {
+    let mut c = a_life(203, 0.2);
+    for k in 0..10u64 {
+        c.growth
+            .shaped_personality(Facet::Gloom, ShapesPersonality::Trauma, 0.5, 1.0, k * 300);
+    }
+    let today = 365 * 10;
+    c.compact(today);
+    let once: Vec<f32> = (0..5).map(|i| c.growth.raw_for(Facet::Gloom, today + i * 700)).collect();
+    let n = c.growth.episodics.len();
+    for _ in 0..5 {
+        c.compact(today);
+    }
+    assert_eq!(c.growth.episodics.len(), n, "compaction kept growing the record");
+    for (i, v) in once.iter().enumerate() {
+        assert!((c.growth.raw_for(Facet::Gloom, today + i as u64 * 700) - v).abs() < 1e-5);
+    }
+}
+
+/// **What is hidden behind the ceiling survives compaction**, or the
+/// saturation-reveal bug comes back through the back door.
+#[test]
+fn compaction_keeps_what_the_clamp_is_hiding() {
+    let mut c = a_life(205, 0.2);
+    c.growth.took_a_role(Facet::Dutifulness, 2.5, 0);
+    for k in 0..8u64 {
+        c.growth
+            .shaped_personality(Facet::Dutifulness, ShapesPersonality::Trauma, 1.0, 1.0, k * 200);
+    }
+    let today = 365 * 12;
+    let raw_before = c.growth.raw_for(Facet::Dutifulness, today);
+    assert!(raw_before > ADAPTATION_LIMIT, "nothing was hidden to begin with");
+    c.compact(today);
+    assert!(
+        (c.growth.raw_for(Facet::Dutifulness, today) - raw_before).abs() < 1e-4,
+        "compaction threw away what the clamp was hiding"
+    );
+}
+
+/// **An ordinary life does not end pinned against the bound.**
+///
+/// Every durable change leaves a permanent residue, so without
+/// diminishing plasticity an ordinary century eventually presses almost
+/// everybody to ±1.5 — and the safety clamp becomes the mechanism again.
+#[test]
+fn an_ordinary_life_does_not_saturate_a_trait() {
+    let mut pinned = 0;
+    let people = 40;
+    for seed in 0..people as u64 {
+        let mut c = a_life(300 + seed, 0.2);
+        // Sixty adult years, a few durable things per decade, mostly in
+        // one direction because life is not symmetrical.
+        for year in 0..60u64 {
+            if year % 3 == 0 {
+                let up = (seed + year) % 4 != 0;
+                c.growth.shaped_personality(
+                    Facet::Anxiety,
+                    ShapesPersonality::CoreMemory,
+                    0.8,
+                    if up { 1.0 } else { -1.0 },
+                    year * 365,
+                );
+            }
+        }
+        let end = 60 * 365;
+        if c.growth.expressed_for(Facet::Anxiety, end).abs() > ADAPTATION_LIMIT - 0.05 {
+            pinned += 1;
+        }
+    }
+    assert!(
+        pinned * 4 < people,
+        "{pinned} of {people} ordinary lives ended pinned at the personality bound"
+    );
+}
+
+/// **A seed is not sufficient save state.** The baseline is saved, so a
+/// record reloads the same person even if the generator that first drew
+/// them would now draw somebody else.
+#[test]
+fn a_saved_baseline_survives_a_changed_generator() {
+    let cult = culture();
+    let mut c = a_life(207, 0.2);
+    // What the world drew for him, kept.
+    let drawn = promote(&c, &cult, 0);
+    let baseline: Vec<f32> = Facet::ALL.iter().map(|&f| drawn.mind.person.baseline_of(f)).collect();
+    c.baseline = baseline.clone();
+
+    // The generator changes under us: a different seed is a different
+    // draw, which stands in for a new facet or a changed loading.
+    c.origin = PersonOrigin { seed: 999_999, schema: GENERATION_SCHEMA + 1, born: 0 };
+    let reloaded = promote(&c, &cult, 0);
+    for (i, &f) in Facet::ALL.iter().enumerate() {
+        assert!(
+            (reloaded.mind.person.baseline_of(f) - baseline[i]).abs() < 1e-9,
+            "{f:?} changed when the generator did"
+        );
+    }
+}
+
+/// **And the record says which generator made somebody**, so a save can
+/// tell whether its seed still means anything.
+#[test]
+fn a_record_knows_which_generator_made_it() {
+    let c = a_life(209, 0.2);
+    assert_eq!(c.origin.schema, GENERATION_SCHEMA);
+    assert_eq!(c.origin.seed, 209);
+}
+
+/// **A demotion carries the baseline out with it**, so a round trip
+/// never re-derives who somebody was.
+#[test]
+fn demotion_saves_the_baseline() {
+    let cult = culture();
+    let c = a_life(211, 0.3);
+    let d = promote(&c, &cult, 0);
+    let back = demote(&d);
+    assert_eq!(back.baseline.len(), Facet::ALL.len());
+    for (i, &f) in Facet::ALL.iter().enumerate() {
+        assert!((back.baseline[i] - d.mind.person.baseline_of(f)).abs() < 1e-9);
+    }
+}
+
+/// **Same-time events must not depend on storage order.**
+#[test]
+fn two_things_happening_at_once_are_order_invariant() {
+    let cult = culture();
+    let start = a_life(213, 0.4);
+    let reference = promote(&start, &cult, 0);
+    let a = Change { day: 200, what: What::SupportChanges(0.9) };
+    let b = Change {
+        day: 200,
+        what: What::ControlChanges(ControlAppraisal {
+            source: 0.7,
+            consequences: 0.7,
+            own_response: 0.5,
+        }),
+    };
+
+    let mut one = start.clone();
+    one.advance_through(&reference.mind, 0.2, &[a, b]);
+    one.advance_to(600, &reference.mind, 0.2);
+    let mut other = start.clone();
+    other.advance_through(&reference.mind, 0.2, &[b, a]);
+    other.advance_to(600, &reference.mind, 0.2);
+
+    assert!((one.strain.debt - other.strain.debt).abs() < 1e-12);
+    assert!((one.support_expected - other.support_expected).abs() < 1e-12);
+    assert_eq!(one.perceived_control, other.perceived_control);
+}
+
+/// **An event at the very start, at the very end, and no time at all.**
+#[test]
+fn the_boundaries_of_an_interval_behave() {
+    let cult = culture();
+    let start = a_life(215, 0.4);
+    let reference = promote(&start, &cult, 0);
+
+    // At the starting instant.
+    let mut at_start = start.clone();
+    at_start.advance_through(
+        &reference.mind,
+        0.2,
+        &[Change { day: 0, what: What::SupportChanges(0.11) }],
+    );
+    assert!((at_start.support_expected - 0.11).abs() < 1e-12, "an event on day zero was lost");
+
+    // Zero days.
+    let mut still = start.clone();
+    let before = still.strain;
+    still.advance_to(still.last_update, &reference.mind, 0.2);
+    assert_eq!(still.strain, before, "advancing by nothing changed something");
+
+    // At the ending instant, then no further.
+    let mut at_end = start.clone();
+    at_end.advance_through(
+        &reference.mind,
+        0.2,
+        &[Change { day: 300, what: What::SupportChanges(0.22) }],
+    );
+    assert_eq!(at_end.last_update, 300);
+    assert!((at_end.support_expected - 0.22).abs() < 1e-12);
 }

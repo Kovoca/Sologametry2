@@ -3848,6 +3848,87 @@ steadily applied, and the coarse path always *understates* the damage.
 The direction never varies, which is what makes it safe to record rather
 than a bug waiting to be found.
 
+### The second gate review
+
+Two items were reopened and both were right.
+
+**A seed is not sufficient save state.** "Generated, never stored" is
+correct for terrain, which is a pure function of coordinates that nothing
+has a stake in. It is wrong for a person: the same seed produces a
+*different human being* if the RNG, the draw order, the facet count, the
+loadings, the culture or the inheritance arithmetic ever change — and
+inheritance is the worst of it, since a baseline recomputed from parents
+who have since aged and adapted is not the baseline anybody was born
+with. **The baseline vector is now saved outright.** Twenty-five numbers
+against an entire class of version fragility. `PersonOrigin` keeps the
+seed, the birth day and a `GENERATION_SCHEMA`, so a record can say
+whether the generator that made it still exists.
+
+**Compaction has to preserve the future, not today.** A sum of decays
+with different half-lives is not one decay, so a merged entry that agrees
+now can disagree tomorrow. What is exact is splitting every contribution
+into **the part that will never move again and the part still fading**,
+aggregating them separately, and grouping by cause — which is also
+grouping by dynamics, since the residual and half-life come from it. A
+sum of identical decays really is one decay of the summed amount. Tested
+at five dates out to sixty years, with mixed signs, mixed half-lives,
+repeated compaction, and against what the clamp is hiding.
+
+**And diminishing plasticity must live in the expression, not the
+insertion.** Every durable change leaves a permanent residue, so without
+it an ordinary century presses almost everybody flat against ±1.5 and the
+safety clamp becomes the mechanism again. Scaling each push by the room
+left *at the time it happened* is the obvious fix and is wrong — it makes
+the result depend on the order things happened in, which is the exact
+property the aggregation was rebuilt to have. Saturating the **sum**
+keeps A-then-B equal to B-then-A, keeps one 0.8 equal to two 0.4s, and
+approaches the bound without ever reaching it.
+
+Five smaller ones, each a claim that was stronger than the evidence:
+
+- **What somebody defends is theirs.** Self-care → social → work →
+  caregiving is a *population prior*, not a law: a work-identified man
+  stays immaculate professionally while his home falls apart, and a
+  devoted parent gives up sleep and hygiene first. `Defence` is built
+  from identity, obligation, attachment, consequence and habit, and can
+  reverse the ordering outright.
+- **Relapse sensitivity needs episode identity.** Applying it at
+  appraisal fixes the timestep problem only if "something new" is
+  defined: otherwise a caller polling the same continuing trouble daily
+  magnifies it every day. `Strain::appraise` is idempotent in the event
+  id — a recurrence, a discovered consequence or a fresh cue arrives as a
+  *different id*, and that is what makes it count again.
+- **A one-day crisis half-life is a designed default, not a human
+  constant.** Rage is spent in hours, dissociation can hold for days, so
+  the decay is per kind. And the rule is that *resolving* a crisis does
+  not alter chronic debt — not that nothing which happens during one can:
+  an outburst can still cost a marriage, through ordinary events.
+- **Suppressing a bigger impulse costs more.** `inhibition_effort` is
+  proportional to how much was actually held in, and is spent from the
+  same capacity, so the second decision of a bad evening is harder than
+  the first without the first having to fail. The two `willpower`
+  pathways — which strategy is *chosen*, and whether an impulse already
+  under way is *held in* — are now documented as deliberately separate.
+- **A failed attempt teaches something.** Perceived control chose and
+  actual control settled, and nobody learned from the gap, so a distant
+  man could repeat a demonstrably futile strategy for ever.
+  `Outcome::as_evidence` produces a `ControlEvidence` with an
+  attribution — chance, too little skill, opposition, too little effort,
+  or genuine uncontrollability — and `ControlAppraisal::revise` folds it
+  in by weight. **One failure is not helplessness; twenty-five credible
+  ones are**, and only `Uncontrollable` teaches it at full weight.
+  Failure is also informative in its own right, which is why it is not
+  simply a cost.
+
+**Still open, and named rather than done:** deterministic resolution of
+events that happen while somebody is unloaded. The contract is settled —
+an unresolved objective outcome derives from `world_seed` + a stable
+event id, **never from a person's seed**, so two witnesses cannot
+generate incompatible versions of one accident; a person's perception
+derives separately from their id and the event; and once resolved it is a
+world fact written to the delta journal and never sampled again. The
+implementation waits on that journal, which is Phase 1's remaining work.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

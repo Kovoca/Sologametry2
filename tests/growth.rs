@@ -180,7 +180,10 @@ fn removing_what_saturated_reveals_what_was_behind_it() {
 
     let day = 4000;
     assert!(g.raw_for(Facet::Dutifulness, day) > ADAPTATION_LIMIT);
-    assert!((g.expressed_for(Facet::Dutifulness, day) - ADAPTATION_LIMIT).abs() < 1e-4);
+    // Near the bound and never at it: expression saturates smoothly, so
+    // the clamp stays a limit rather than becoming the answer.
+    let pressed = g.expressed_for(Facet::Dutifulness, day);
+    assert!(pressed > ADAPTATION_LIMIT * 0.9 && pressed < ADAPTATION_LIMIT);
 
     // A ends. B is still standing and must show immediately.
     let mut without_a = Growth::new();

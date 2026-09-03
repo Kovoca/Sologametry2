@@ -273,10 +273,30 @@ impl Default for Circumstances {
 /// and being at the end of a long bad stretch all reduce it without
 /// touching the motive at all. That is what lets a violent parent
 /// desperately want to stop and sometimes fail anyway.
-pub fn regulatory_capacity(mind: &Mind, debt: f64) -> f64 {
+/// **Two pathways, one facet, and they are not the same thing.**
+///
+/// `willpower` appears here and again in `propensities`, deliberately
+/// and documented rather than by accident:
+///
+/// - in `propensities` it decides **which strategy is chosen** — whether
+///   somebody reaches for the harder option at all;
+/// - here it decides **whether an impulse already under way is held in**.
+///
+/// A man can choose to face a thing and still hit somebody, and choose
+/// to avoid it and never raise his voice. Collapsing the two would make
+/// resolve a single stat that governs everything.
+///
+/// `spent` is effort already paid this day, from `inhibition_effort`,
+/// which is what makes later decisions harder than earlier ones.
+pub fn regulatory_capacity_after(mind: &Mind, debt: f64, spent: f64) -> f64 {
     let base = (0.5 + 0.25 * mind.willpower as f64).clamp(0.0, 1.0);
     let worn = (1.0 - 0.5 * debt.clamp(0.0, 1.0)).clamp(0.2, 1.0);
-    (base * worn * mind.focus.current.clamp(0.2, 1.0)).clamp(0.0, 1.0)
+    let tired = (1.0 - spent.clamp(0.0, 1.0)).clamp(0.15, 1.0);
+    (base * worn * tired * mind.focus.current.clamp(0.2, 1.0)).clamp(0.0, 1.0)
+}
+
+pub fn regulatory_capacity(mind: &Mind, debt: f64) -> f64 {
+    regulatory_capacity_after(mind, debt, 0.0)
 }
 
 /// **What holding back does to an impulse.**
@@ -293,6 +313,19 @@ pub fn regulatory_capacity(mind: &Mind, debt: f64) -> f64 {
 pub fn restrain(raw: f64, motive: f64, capacity: f64) -> f64 {
     let held = (motive.clamp(0.0, 1.0) * capacity.clamp(0.0, 1.0)).clamp(0.0, 1.0);
     raw * (1.0 - held)
+}
+
+/// **What holding it in cost.**
+///
+/// Proportional to how much was actually suppressed, not to the fraction
+/// — otherwise restraining a towering impulse is as cheap as restraining
+/// a mild one, and somebody can hold themselves in indefinitely at no
+/// price. It is spent from the same capacity, so **the second decision
+/// of a bad evening is harder than the first** without the first ever
+/// having to fail.
+pub fn inhibition_effort(raw: f64, motive: f64, capacity: f64) -> f64 {
+    let suppressed = raw.abs() - restrain(raw, motive, capacity).abs();
+    (suppressed * 0.25).max(0.0)
 }
 
 /// **Propensities, not a verdict.**
@@ -438,6 +471,103 @@ pub struct Outcome {
     pub the_problem_moved: f64,
     /// Whether they came away believing they could not affect it.
     pub helplessness: f64,
+    /// **What the attempt was worth as knowledge**, whatever it achieved.
+    pub information_gained: f64,
+    /// What it took out of them.
+    pub effort_cost: f64,
+}
+
+/// **Why an attempt failed**, as the actor read it. Attribution is what
+/// decides whether failure teaches anything about the world or only
+/// about the day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Attributed {
+    /// Bad luck. Says almost nothing.
+    Chance,
+    /// I did not do it well enough — a reason to try again differently.
+    NotEnoughSkill,
+    /// Somebody stopped me.
+    Opposition,
+    /// I did not really try.
+    NotEnoughEffort,
+    /// **It cannot be moved.** The only one that should ever teach
+    /// helplessness, and only when it keeps coming back.
+    Uncontrollable,
+}
+
+/// **What an attempt taught**, which is the half that was missing.
+///
+/// Without it, perceived control chooses the attempt and actual control
+/// settles it and the person never learns from the gap — so a distant
+/// man repeats a demonstrably futile strategy for ever.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ControlEvidence {
+    /// About the source, the consequences, or neither.
+    pub about_source: f64,
+    pub about_consequences: f64,
+    /// **How diagnostic it was.** A half-hearted attempt in bad
+    /// conditions says very little about what is possible.
+    pub confidence: f64,
+    /// Which way it pointed.
+    pub encouraging: bool,
+    pub attributed: Attributed,
+}
+
+impl ControlAppraisal {
+    /// **Revise a belief about what can be done.**
+    ///
+    /// A weighted step, so one failure moves somebody a little and a
+    /// run of credible failures moves them a long way. That is the
+    /// difference between a bad afternoon and learned helplessness, and
+    /// only `Uncontrollable` teaches the second at full weight.
+    pub fn revise(&mut self, e: &ControlEvidence) {
+        let weight = (e.confidence.clamp(0.0, 1.0)
+            * match e.attributed {
+                Attributed::Uncontrollable => 1.0,
+                Attributed::Opposition => 0.5,
+                Attributed::NotEnoughSkill => 0.35,
+                Attributed::NotEnoughEffort => 0.15,
+                Attributed::Chance => 0.10,
+            })
+            .clamp(0.0, 1.0)
+            * 0.35;
+        let toward = if e.encouraging { 1.0 } else { 0.0 };
+        self.source += (toward - self.source) * weight * e.about_source.clamp(0.0, 1.0);
+        self.consequences +=
+            (toward - self.consequences) * weight * e.about_consequences.clamp(0.0, 1.0);
+        self.source = self.source.clamp(0.0, 1.0);
+        self.consequences = self.consequences.clamp(0.0, 1.0);
+    }
+}
+
+impl Outcome {
+    /// Read an outcome as evidence about what this person can affect.
+    ///
+    /// **Failure is not always harmful beyond the effort** — sometimes it
+    /// buys the knowledge that a different method is needed, and that is
+    /// what `information_gained` is.
+    pub fn as_evidence(&self, actual: &ActualControl) -> ControlEvidence {
+        let moved = self.the_problem_moved;
+        let attributed = if moved > 0.4 {
+            Attributed::Chance
+        } else if actual.means < 0.3 {
+            Attributed::NotEnoughSkill
+        } else if actual.source < 0.15 && actual.consequences < 0.15 {
+            Attributed::Uncontrollable
+        } else {
+            Attributed::Opposition
+        };
+        ControlEvidence {
+            about_source: 1.0,
+            about_consequences: 0.5,
+            // A real try in fair conditions is diagnostic; a token one
+            // is not, which is why time alone never taught anybody
+            // anything in `relations.rs` either.
+            confidence: (0.4 + 0.6 * self.effort_cost.min(1.0)).min(1.0),
+            encouraging: moved > 0.4,
+            attributed,
+        }
+    }
 }
 
 /// **Settle an attempt against the world.**
@@ -457,6 +587,8 @@ pub fn resolve(
         deferred: 0.0,
         the_problem_moved: 0.0,
         helplessness: 0.0,
+        information_gained: 0.0,
+        effort_cost: 0.0,
     };
 
     if let Some(kind) = a.strategy.avoidance() {
@@ -504,7 +636,15 @@ pub fn resolve(
         o.relief = 0.28 * got * severity;
         let wasted = 1.0 - got;
         o.deferred = 0.10 * wasted * severity;
-        // Trying and failing is where helplessness is actually learned.
+        o.effort_cost = 0.6 * severity;
+        // **Failing is informative.** Finding out that a thing will not
+        // move, or that it needs a method you do not have, is worth
+        // something — which is why a failed attempt is not simply a
+        // cost.
+        o.information_gained = 0.3 + 0.5 * wasted;
+        // And helplessness is what *one* failure suggests, not what it
+        // establishes: `ControlAppraisal::revise` is what turns repeated
+        // credible evidence into a settled belief.
         o.helplessness = wasted * 0.5;
     } else {
         // Aimed at the feeling. It does not move the situation and does
@@ -585,17 +725,78 @@ impl FunctionalDomain {
         FunctionalDomain::SelfCare,
     ];
 
-    /// **What gets defended longest.** People under strain drop sleep,
-    /// meals and exercise first, then seeing anybody, then work — and
-    /// hold onto the care of a child past all of it. That ordering is
-    /// the whole reason the domains are not one number.
-    pub fn protected(self) -> f64 {
+    /// **The population prior, and nothing more.** Most people under
+    /// strain drop sleep, meals and exercise first, then seeing anybody,
+    /// then work — and hold onto the care of a child past all of it.
+    ///
+    /// It is a prior because it is not universal and stating it as a law
+    /// was too strong: what somebody defends comes from their identity
+    /// and values, who depends on them, what failure would cost, what
+    /// they are practised at and what support they have. A
+    /// work-identified man stays immaculate professionally while his home
+    /// falls apart; a devoted parent gives up sleep and hygiene first.
+    /// `Defence` is where an individual overrides this.
+    pub fn prior(self) -> f64 {
         match self {
             FunctionalDomain::Caregiving => 1.00,
             FunctionalDomain::Work => 0.72,
             FunctionalDomain::Social => 0.50,
             FunctionalDomain::SelfCare => 0.36,
         }
+    }
+}
+
+/// **What this person holds onto**, which must be able to reverse the
+/// population ordering entirely.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Defence {
+    pub work: f64,
+    pub caregiving: f64,
+    pub social: f64,
+    pub self_care: f64,
+}
+
+impl Default for Defence {
+    /// The prior, for somebody nothing is known about.
+    fn default() -> Self {
+        Defence {
+            work: FunctionalDomain::Work.prior(),
+            caregiving: FunctionalDomain::Caregiving.prior(),
+            social: FunctionalDomain::Social.prior(),
+            self_care: FunctionalDomain::SelfCare.prior(),
+        }
+    }
+}
+
+impl Defence {
+    pub fn of(&self, d: FunctionalDomain) -> f64 {
+        match d {
+            FunctionalDomain::Work => self.work,
+            FunctionalDomain::Caregiving => self.caregiving,
+            FunctionalDomain::Social => self.social,
+            FunctionalDomain::SelfCare => self.self_care,
+        }
+        .max(0.05)
+    }
+
+    /// **Built from the person**, which is what makes the ordering
+    /// theirs: what they take themselves to be, who depends on them,
+    /// what failing would cost, and what they are practised at.
+    pub fn from(
+        identity: f64,
+        obligation: f64,
+        attachment: f64,
+        consequence: f64,
+        habit: f64,
+        prior: f64,
+    ) -> f64 {
+        (0.35 * prior
+            + 0.30 * identity
+            + 0.20 * obligation
+            + 0.20 * attachment
+            + 0.15 * consequence
+            + 0.10 * habit)
+            .clamp(0.05, 2.0)
     }
 }
 
@@ -707,9 +908,25 @@ pub struct CrisisEpisode {
     pub because_of: u64,
 }
 
-/// **An acute reaction subsides in hours to a couple of days**, which is
-/// what separates it from anything on the chronic ladder.
+/// **A designed default for daily integration**, not a measured human
+/// constant — and only a fallback, since the kinds do not behave alike.
 pub const CRISIS_HALF_LIFE_DAYS: f64 = 1.0;
+
+impl Acute {
+    /// **Different reactions fade differently.** Rage is spent within
+    /// hours; panic subsides fast and leaves a fear of the next one;
+    /// freezing and dissociation can hold on for days. These are
+    /// designed profiles at a daily resolution, not measured constants.
+    pub fn half_life_days(self) -> f64 {
+        match self {
+            Acute::Aggression => 0.4,
+            Acute::Panic => 0.7,
+            Acute::Flight => 0.6,
+            Acute::Freeze => 1.5,
+            Acute::Dissociation => 2.5,
+        }
+    }
+}
 
 pub const STRAIN_PER_DAY: f64 = 0.010;
 
@@ -737,6 +954,12 @@ pub struct Strain {
     pub history: ImpairmentHistory,
     /// A crisis in progress, which is a separate mechanism entirely.
     pub crisis: Option<CrisisEpisode>,
+    /// What has already been appraised, so relapse sensitivity is
+    /// applied once per episode rather than once per look. A small fixed
+    /// ring: only recent appraisals can be re-read, and a record that
+    /// grew with a life would defeat the point of a coarse one.
+    pub appraised: [Option<(u64, f64)>; 8],
+    appraised_next: u8,
 }
 
 impl Default for Strain {
@@ -747,6 +970,8 @@ impl Default for Strain {
             days_in_state: 0,
             history: ImpairmentHistory::default(),
             crisis: None,
+            appraised: [None; 8],
+            appraised_next: 0,
         }
     }
 }
@@ -762,11 +987,34 @@ impl Strain {
     /// — one caller applying it daily and another once a year diverge
     /// however invariant `advance` is on its own.
     ///
-    /// So `advance` never consults it, and nothing else should: pass the
-    /// raw severity of something new through here and use what comes
-    /// back.
+    /// So `advance` never consults it, and nothing else should.
+    ///
+    /// **And "something new" needs an identity rule**, or a caller
+    /// polling the same continuing trouble daily magnifies it every day.
+    /// The vulnerability is computed **once, when an episode opens**, and
+    /// held for the whole of it: `appraise` is idempotent in the event
+    /// id, and the raw form below is only for something that has no id
+    /// yet.
     pub fn felt_severity(&self, raw: f64) -> f64 {
         (raw * (1.0 + 0.5 * self.history.relapse_sensitivity())).min(1.0)
+    }
+
+    /// **Appraise something, once.** Reading the same event again gives
+    /// the same answer and changes nothing.
+    ///
+    /// A genuinely new event, a recurrence after remission, a discovered
+    /// consequence or a cue that wakes a dormant concern all arrive as
+    /// *different ids* — which is what makes them count again and mere
+    /// re-reading not.
+    pub fn appraise(&mut self, event: u64, raw: f64) -> f64 {
+        if let Some(Some((_, felt))) = self.appraised.iter().find(|s| matches!(s, Some((e, _)) if *e == event)) {
+            return *felt;
+        }
+        let felt = self.felt_severity(raw);
+        let i = self.appraised_next as usize % self.appraised.len();
+        self.appraised[i] = Some((event, felt));
+        self.appraised_next = self.appraised_next.wrapping_add(1);
+        felt
     }
 
     /// **What somebody can still do, in one part of their life.**
@@ -774,8 +1022,13 @@ impl Strain {
     /// Derived rather than stored as four ladders: the debt is general,
     /// and what differs between domains is how much is being asked and
     /// how hard that part is defended.
-    pub fn functioning_in(&self, d: FunctionalDomain, demands: &Demands) -> FunctionalState {
-        let load = self.debt * (0.4 + demands.of(d)) / d.protected();
+    pub fn functioning_in(
+        &self,
+        d: FunctionalDomain,
+        demands: &Demands,
+        defence: &Defence,
+    ) -> FunctionalState {
+        let load = self.debt * (0.4 + demands.of(d)) / defence.of(d);
         if load >= ENTER[2] {
             FunctionalState::Impaired
         } else if load >= ENTER[1] {
@@ -890,7 +1143,7 @@ impl Strain {
 
         // **A crisis runs on its own clock** and is not on the ladder.
         if let Some(cr) = &mut self.crisis {
-            cr.activation *= 0.5f64.powf(n / CRISIS_HALF_LIFE_DAYS);
+            cr.activation *= 0.5f64.powf(n / cr.kind.half_life_days());
             if cr.activation < 0.02 {
                 self.crisis = None;
             }

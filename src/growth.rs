@@ -312,22 +312,40 @@ impl Cause {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Episodic {
     pub target: DurableTarget,
+    /// Where the figure came from. **Provenance only** — the dynamics
+    /// are the field below, so a synthesised entry can carry an exact
+    /// decay that no single mechanism has.
     pub cause: Cause,
+    pub persistence: Persistence,
     /// Signed, in the units of its target.
     pub initial: f32,
     pub day: u64,
 }
 
 impl Episodic {
+    pub fn new(target: DurableTarget, cause: Cause, initial: f32, day: u64) -> Self {
+        Episodic { target, cause, persistence: cause.persistence(), initial, day }
+    }
+
     pub fn worth_now(&self, today: u64) -> f32 {
         let elapsed = today.saturating_sub(self.day) as f32;
-        self.cause.persistence().worth(self.initial, elapsed)
+        self.persistence.worth(self.initial, elapsed)
+    }
+
+    /// **The part that will never move again**, and the part that is
+    /// still going. Compaction needs them apart, because a sum of decays
+    /// with different half-lives is not one decay.
+    pub fn settled_and_fading(&self, today: u64) -> (f32, f32) {
+        let elapsed = today.saturating_sub(self.day) as f32;
+        let r = self.persistence.residual_fraction;
+        let faded = 0.5f32.powf(elapsed / self.persistence.recovery_half_life_days);
+        (self.initial * r, self.initial * (1.0 - r) * faded)
     }
 
     /// Whether this reading is still inside the followed period, or has
     /// run off the end of what anybody measured.
     pub fn within_evidence(&self, today: u64) -> bool {
-        self.cause.persistence().measured_at(today.saturating_sub(self.day) as f32)
+        self.persistence.measured_at(today.saturating_sub(self.day) as f32)
     }
 }
 
@@ -382,12 +400,12 @@ impl Growth {
         if size.abs() < 1e-6 {
             return;
         }
-        self.episodics.push(Episodic {
-            target: DurableTarget::Facet(facet),
-            cause: Cause::Personality(by),
-            initial: size,
+        self.episodics.push(Episodic::new(
+            DurableTarget::Facet(facet),
+            Cause::Personality(by),
+            size,
             day,
-        });
+        ));
     }
 
     /// **Something happened that changed how somebody feels about their
@@ -399,12 +417,12 @@ impl Growth {
         if size.abs() < 1e-6 {
             return;
         }
-        self.episodics.push(Episodic {
-            target: DurableTarget::WellbeingBaseline,
-            cause: Cause::Wellbeing(by),
-            initial: size,
+        self.episodics.push(Episodic::new(
+            DurableTarget::WellbeingBaseline,
+            Cause::Wellbeing(by),
+            size,
             day,
-        });
+        ));
     }
 
     /// Somebody took up work that demands something of them.
@@ -442,9 +460,28 @@ impl Growth {
         episodic + roles
     }
 
-    /// What is actually expressed: the raw sum projected into the band.
+    /// **What is actually expressed**: the raw sum put through a
+    /// saturating map rather than sheared off at the bound.
+    ///
+    /// **Diminishing plasticity, and it has to happen here rather than
+    /// when a change is recorded.** Every durable change leaves a
+    /// permanent residue, so without it an ordinary century of ordinary
+    /// events presses almost everybody flat against ±1.5 and the safety
+    /// clamp becomes the mechanism again.
+    ///
+    /// Scaling each push by the room left *at the time it happened* was
+    /// the obvious fix and is wrong: it makes the result depend on the
+    /// order things happened in, which is exactly the property the
+    /// aggregation was rebuilt to have. Saturating the **sum** keeps A
+    /// then B equal to B then A, keeps one 0.8 equal to two 0.4s, and
+    /// still means a trait already far from where it started is hard to
+    /// move further and easy to move back.
+    ///
+    /// It also approaches the bound rather than reaching it, so the
+    /// clamp stays a bound that is never actually the answer.
     pub fn expressed_for(&self, facet: Facet, today: u64) -> f32 {
-        self.raw_for(facet, today).clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT)
+        let raw = self.raw_for(facet, today);
+        ADAPTATION_LIMIT * (raw / ADAPTATION_LIMIT).tanh()
     }
 
     /// **The durable part of how somebody feels about their life**, in SD.

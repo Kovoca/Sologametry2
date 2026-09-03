@@ -524,6 +524,13 @@ impl Personality {
         self.age_years += 1.0;
     }
 
+    /// **The immutable baseline**, which is what a save must carry: it
+    /// is who somebody grew up to be and no seed can be trusted to
+    /// reproduce it across a change of generator.
+    pub fn baseline_of(&self, f: Facet) -> f32 {
+        self.baseline[f.index()]
+    }
+
     /// Let a test build somebody specific without fighting the draw.
     pub fn set_baseline(&mut self, f: Facet, z: f32) {
         self.baseline[f.index()] = z;

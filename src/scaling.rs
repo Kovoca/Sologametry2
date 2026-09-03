@@ -46,6 +46,26 @@ use crate::mind::{Facet, Mind, Value};
 use crate::person::Person;
 use crate::rng::Rng;
 
+/// **The version of the generator that made somebody.**
+///
+/// Bumped whenever the draw could produce a different person: a new
+/// facet, a changed loading, a different RNG or draw order. A record
+/// carrying an older schema is one whose seed can no longer be trusted
+/// to reproduce anybody — which is exactly why the baseline is saved
+/// rather than re-derived.
+pub const GENERATION_SCHEMA: u32 = 1;
+
+/// What a person was made from, kept so a save can say whether the
+/// generator that made them still exists.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PersonOrigin {
+    pub seed: u64,
+    pub schema: u32,
+    /// The day they were born, which is an input to who they are and
+    /// must never be recomputed from anything current.
+    pub born: u64,
+}
+
 /// **How closely somebody is being simulated.**
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Fidelity {
@@ -151,10 +171,24 @@ impl Habits {
 #[derive(Clone, Debug)]
 pub struct Coarse {
     pub who: Id<Person>,
-    /// **The personality is not stored, it is redrawn.** Generated, never
-    /// stored — the oldest rule in the project, and it is what makes a
-    /// distant person cheap.
-    pub seed: u64,
+    /// Where the person came from. **A seed is not sufficient save
+    /// state** — see `PersonOrigin`.
+    pub origin: PersonOrigin,
+    /// **The immutable baseline, saved outright.**
+    ///
+    /// "Generated, never stored" is right for terrain, which is a pure
+    /// function of coordinates that nothing has a stake in. It is wrong
+    /// for a person: the same seed produces a *different* human being if
+    /// the RNG, the draw order, the facet count, the loadings, the
+    /// culture or the inheritance arithmetic ever change — and
+    /// inheritance is the worst of it, since a baseline recomputed from
+    /// parents who have since aged and adapted is not the baseline
+    /// anybody was born with.
+    ///
+    /// Twenty-five numbers are nothing. Saving them removes an entire
+    /// class of version fragility, and the seed stays for everything
+    /// that is genuinely regenerable.
+    pub baseline: Vec<f32>,
     /// What life did to that drawn personality, dated and analytic.
     pub growth: Growth,
     pub strain: Strain,
@@ -172,10 +206,20 @@ pub struct Coarse {
 }
 
 impl Coarse {
+    /// Build a record for somebody, taking the baseline the world drew
+    /// for them so it is never derived twice.
+    pub fn of(who: Id<Person>, origin: PersonOrigin, mind: &Mind, day: u64) -> Self {
+        let mut c = Coarse::new(who, origin.seed, day);
+        c.origin = origin;
+        c.baseline = Facet::ALL.iter().map(|&f| mind.person.baseline_of(f)).collect();
+        c
+    }
+
     pub fn new(who: Id<Person>, seed: u64, day: u64) -> Self {
         Coarse {
             who,
-            seed,
+            origin: PersonOrigin { seed, schema: GENERATION_SCHEMA, born: 0 },
+            baseline: Vec::new(),
             growth: Growth::new(),
             strain: Strain::default(),
             perceived_control: ControlAppraisal::default(),
@@ -310,47 +354,88 @@ impl Coarse {
         }
     }
 
-    /// **Coalesced, not discarded** — which took a failing test to
-    /// notice. A persistence residual is a floor, so nothing ever decays
-    /// to nothing and a "drop what is negligible" rule drops precisely
-    /// zero entries however long the life. What actually bounds the
-    /// record is that everything past its horizon has *already reached*
-    /// its residual and will never move again, so any number of them is
-    /// one number.
+    /// **Coalesced exactly, in two parts.**
     ///
-    /// The merged entry is dated far enough back to sit at its own
-    /// residual, so the present value is preserved and so is every
-    /// future value. It reports itself as outside the measured window,
-    /// which it is.
+    /// A persistence residual is a floor, so nothing ever decays to
+    /// nothing and a "drop what is negligible" rule drops precisely zero
+    /// entries however long the life. But **matching today's total is
+    /// not enough** — a sum of decays with different half-lives is not
+    /// one decay, so a merged entry that agrees now can disagree
+    /// tomorrow.
+    ///
+    /// What is exact is splitting each contribution into the part that
+    /// will never move again and the part still fading, aggregating them
+    /// **separately**, and grouping by cause — which is also grouping by
+    /// dynamics, since the residual and the half-life come from it. A
+    /// sum of identical decays really is one decay of the summed amount.
+    /// Both pieces then reproduce every future value and not merely this
+    /// one.
+    ///
+    /// Contributions hidden behind the adaptation clamp survive, because
+    /// this works on the raw list and the clamp is applied after summing.
     pub fn compact(&mut self, today: u64) {
-        use crate::growth::{Cause, DurableTarget, Episodic};
-        let mut settled: Vec<(DurableTarget, Cause, f32)> = Vec::new();
+        use crate::growth::{Cause, DurableTarget, Episodic, Persistence};
+        // Everything past its horizon, grouped by where it landed and
+        // what caused it — which is also grouped by its dynamics, since
+        // the residual and half-life come from the cause.
+        let mut settled: Vec<(DurableTarget, Cause, f32, f32)> = Vec::new();
         let mut keep: Vec<Episodic> = Vec::new();
         for e in self.growth.episodics.drain(..) {
             if e.within_evidence(today) {
                 keep.push(e);
                 continue;
             }
-            let v = e.worth_now(today);
-            match settled.iter_mut().find(|(t, c, _)| *t == e.target && *c == e.cause) {
-                Some(slot) => slot.2 += v,
-                None => settled.push((e.target, e.cause, v)),
+            let (perm, fading) = e.settled_and_fading(today);
+            match settled.iter_mut().find(|(t, c, _, _)| *t == e.target && *c == e.cause) {
+                Some(slot) => {
+                    slot.2 += perm;
+                    slot.3 += fading;
+                }
+                None => settled.push((e.target, e.cause, perm, fading)),
             }
         }
-        for (target, cause, worth) in settled {
+        for (target, cause, perm, fading) in settled {
             let p = cause.persistence();
-            if worth.abs() < 1e-6 || p.residual_fraction <= 0.0 {
-                continue;
+            // **The permanent part**, which never moves again, so one
+            // entry with a residual of 1 reproduces it for ever.
+            if perm.abs() > 1e-7 {
+                keep.push(Episodic {
+                    target,
+                    cause,
+                    persistence: Persistence {
+                        residual_fraction: 1.0,
+                        calibration_horizon_days: 0.0,
+                        recovery_half_life_days: p.recovery_half_life_days,
+                    },
+                    initial: perm,
+                    day: today,
+                });
             }
-            let long_ago = (p.calibration_horizon_days as u64) * 4;
-            keep.push(Episodic {
-                target,
-                cause,
-                initial: worth / p.residual_fraction,
-                day: today.saturating_sub(long_ago),
-            });
+            // **The part still fading**, which is exact because
+            // everything in the group shares a half-life: a sum of
+            // identical decays is one decay of the summed amount, dated
+            // now.
+            if fading.abs() > 1e-7 {
+                keep.push(Episodic {
+                    target,
+                    cause,
+                    persistence: Persistence {
+                        residual_fraction: 0.0,
+                        calibration_horizon_days: 0.0,
+                        recovery_half_life_days: p.recovery_half_life_days,
+                    },
+                    initial: fading,
+                    day: today,
+                });
+            }
         }
-        keep.sort_by(|a, b| a.day.cmp(&b.day).then(a.target.cmp(&b.target)));
+        keep.sort_by(|a, b| {
+            a.day
+                .cmp(&b.day)
+                .then(a.target.cmp(&b.target))
+                .then(a.cause.cmp(&b.cause))
+                .then(a.persistence.residual_fraction.total_cmp(&b.persistence.residual_fraction))
+        });
         self.growth.episodics = keep;
         self.growth
             .roles
@@ -422,6 +507,7 @@ impl What {
 pub struct Detailed {
     pub who: Id<Person>,
     pub seed: u64,
+    pub origin: PersonOrigin,
     pub mind: Mind,
     pub growth: Growth,
     pub strain: Strain,
@@ -441,11 +527,20 @@ pub type Culture<'a> = &'a [(Value, i8)];
 /// to them. Nothing here is invented: the same seed and the same growth
 /// record give the same man every time.
 pub fn promote(c: &Coarse, culture: Culture<'_>, day: u64) -> Detailed {
-    let mut mind = Mind::draw(&mut Rng::new(c.seed), culture);
+    let mut mind = Mind::draw(&mut Rng::new(c.origin.seed), culture);
+    // **The saved baseline wins.** The draw supplies everything a record
+    // does not carry — values, willpower, empathy — and then the one
+    // thing that must never drift is put back exactly as it was.
+    if c.baseline.len() == Facet::ALL.len() {
+        for (i, &f) in Facet::ALL.iter().enumerate() {
+            mind.person.set_baseline(f, c.baseline[i]);
+        }
+    }
     c.growth.settle_into(&mut mind, day);
     Detailed {
         who: c.who,
-        seed: c.seed,
+        seed: c.origin.seed,
+        origin: c.origin,
         mind,
         growth: c.growth.clone(),
         strain: c.strain,
@@ -467,7 +562,8 @@ pub fn promote(c: &Coarse, culture: Culture<'_>, day: u64) -> Detailed {
 pub fn demote(d: &Detailed) -> Coarse {
     Coarse {
         who: d.who,
-        seed: d.seed,
+        origin: d.origin,
+        baseline: Facet::ALL.iter().map(|&f| d.mind.person.baseline_of(f)).collect(),
         growth: d.growth.clone(),
         strain: d.strain,
         perceived_control: d.perceived_control,

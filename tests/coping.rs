@@ -8,10 +8,11 @@
 //! detail, which would make slice 9 meaningless.
 
 use scale_sim::coping::{
-    attempt, choose, propensities, regulatory_capacity, resolve, restrain, ActualControl,
-    Acute, Attempt, AvoidanceKind, Burnout, Circumstances, ControlAppraisal, Coping, Demands,
-    Family, FunctionalDomain, FunctionalState, Strain, SupportGiven, ENTER, LEAVE,
-    RECOVERY_PER_DAY, STRAIN_CEILING, STRAIN_PER_DAY,
+    attempt, choose, inhibition_effort, propensities, regulatory_capacity,
+    regulatory_capacity_after, resolve, restrain, ActualControl, Acute, Attempt, Attributed,
+    AvoidanceKind, Burnout, Circumstances, ControlAppraisal, Coping, Defence, Demands, Family,
+    FunctionalDomain, FunctionalState, Strain, SupportGiven, ENTER, LEAVE, RECOVERY_PER_DAY,
+    STRAIN_CEILING, STRAIN_PER_DAY,
 };
 use scale_sim::mind::{Facet, Mind, Value};
 use scale_sim::rng::Rng;
@@ -700,8 +701,8 @@ fn somebody_impaired_at_work_can_still_be_a_parent() {
     st.advance(350, 0.35, 0.15);
     let d = Demands { work: 0.9, caregiving: 0.5, social: 0.4, self_care: 0.4 };
 
-    let work = st.functioning_in(FunctionalDomain::Work, &d);
-    let care = st.functioning_in(FunctionalDomain::Caregiving, &d);
+    let work = st.functioning_in(FunctionalDomain::Work, &d, &Defence::default());
+    let care = st.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default());
     assert!(
         work > care,
         "work and caregiving came out the same, so the domain does nothing"
@@ -717,10 +718,10 @@ fn what_gets_dropped_first_is_the_person_themselves() {
     let d = Demands { work: 0.5, caregiving: 0.5, social: 0.5, self_care: 0.5 };
     let order: Vec<FunctionalState> = FunctionalDomain::ALL
         .iter()
-        .map(|&x| st.functioning_in(x, &d))
+        .map(|&x| st.functioning_in(x, &d, &Defence::default()))
         .collect();
-    let care = st.functioning_in(FunctionalDomain::Caregiving, &d);
-    let self_care = st.functioning_in(FunctionalDomain::SelfCare, &d);
+    let care = st.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default());
+    let self_care = st.functioning_in(FunctionalDomain::SelfCare, &d, &Defence::default());
     assert!(self_care >= care, "he stopped minding the children before he stopped sleeping");
     assert!(order.iter().any(|s| *s != order[0]), "every part of his life went at once");
 }
@@ -818,4 +819,195 @@ fn a_crisis_does_not_touch_the_chronic_state() {
     sunk.advance(10, 1.0, 0.1);
     assert!(sunk.crisis.is_none());
     assert!(sunk.debt >= debt, "a crisis passing undid four years of it");
+}
+
+// =====================================================================
+// the second gate review
+// =====================================================================
+
+/// **What somebody defends is theirs, not the species'.**
+///
+/// The ordering self-care → social → work → caregiving is a population
+/// prior and stating it as a law was too strong. At identical debt and
+/// identical objective demands, three different people must be able to
+/// preserve three different parts of their lives.
+#[test]
+fn different_people_hold_onto_different_things() {
+    let mut st = Strain::default();
+    st.advance(350, 0.35, 0.15);
+    let d = Demands { work: 0.6, caregiving: 0.6, social: 0.6, self_care: 0.6 };
+
+    // A man who is what he does.
+    let work_first = Defence { work: 1.2, caregiving: 0.5, social: 0.4, self_care: 0.3 };
+    // A parent who will give up anything else.
+    let child_first = Defence { work: 0.4, caregiving: 1.3, social: 0.35, self_care: 0.3 };
+    // Somebody who guards their own footing above all, which is neither
+    // selfish nor unusual after a bad enough stretch.
+    let self_first = Defence { work: 0.4, caregiving: 0.45, social: 0.4, self_care: 1.2 };
+
+    let best = |dfc: &Defence| {
+        let mut ranked: Vec<(FunctionalDomain, FunctionalState)> = FunctionalDomain::ALL
+            .iter()
+            .map(|&x| (x, st.functioning_in(x, &d, dfc)))
+            .collect();
+        ranked.sort_by_key(|(x, s)| (*s, *x));
+        ranked[0].0
+    };
+
+    assert_eq!(best(&work_first), FunctionalDomain::Work);
+    assert_eq!(best(&child_first), FunctionalDomain::Caregiving);
+    assert_eq!(
+        best(&self_first),
+        FunctionalDomain::SelfCare,
+        "the population ordering could not be reversed by an individual"
+    );
+}
+
+/// **The prior is still there for somebody nothing is known about.**
+#[test]
+fn the_default_defence_is_the_population_ordering() {
+    let d = Defence::default();
+    assert!(d.caregiving > d.work);
+    assert!(d.work > d.social);
+    assert!(d.social > d.self_care);
+}
+
+/// **Reading the same trouble twice is not two troubles.**
+///
+/// Applying relapse sensitivity at appraisal fixes the timestep problem
+/// only if "something new" has an identity rule — otherwise a caller
+/// polling the same continuing problem daily magnifies it every day.
+#[test]
+fn appraising_one_event_twice_is_idempotent() {
+    let mut veteran = Strain::default();
+    veteran.advance(1500, 1.0, 0.1);
+    veteran.advance(2000, 0.0, 0.5);
+
+    let first = veteran.appraise(42, 0.5);
+    for _ in 0..365 {
+        assert_eq!(veteran.appraise(42, 0.5), first, "daily polling reapplied it");
+    }
+    // A genuinely different event counts again.
+    assert!(veteran.appraise(43, 0.5) > 0.5 - 1e-9);
+    assert!(veteran.appraise(43, 0.5) >= first - 1e-9);
+}
+
+/// **And it bites, once**, on somebody with a history.
+#[test]
+fn a_history_makes_a_new_blow_land_harder() {
+    let mut veteran = Strain::default();
+    veteran.advance(1500, 1.0, 0.1);
+    veteran.advance(2000, 0.0, 0.5);
+    let mut newcomer = Strain::default();
+    assert!(veteran.appraise(1, 0.5) > newcomer.appraise(1, 0.5));
+}
+
+/// **A crisis fades by kind.** One universal half-life said a rage and a
+/// dissociative episode behave alike, which they do not.
+#[test]
+fn different_crises_fade_differently() {
+    assert!(Acute::Dissociation.half_life_days() > Acute::Aggression.half_life_days() * 3.0);
+    let gone_after = |k: Acute| {
+        let mut st = Strain::default();
+        st.crisis_strikes(k, 0.9, 0, 1);
+        let mut d = 0;
+        while st.crisis.is_some() && d < 60 {
+            st.advance(1, 0.1, 0.5);
+            d += 1;
+        }
+        d
+    };
+    assert!(gone_after(Acute::Dissociation) > gone_after(Acute::Aggression));
+}
+
+/// **Suppressing a bigger impulse costs more.** Otherwise somebody can
+/// hold themselves in indefinitely at no price.
+#[test]
+fn holding_in_a_larger_impulse_costs_more() {
+    let big = inhibition_effort(3.0, 0.8, 0.8);
+    let small = inhibition_effort(0.5, 0.8, 0.8);
+    assert!(big > small * 3.0, "restraining a rage cost what restraining a twinge did");
+
+    // And it is spent from the same capacity, so the second decision of
+    // a bad evening is harder than the first.
+    let m = a_person(70, &[]);
+    let fresh = regulatory_capacity_after(&m, 0.0, 0.0);
+    let after = regulatory_capacity_after(&m, 0.0, big.min(1.0));
+    assert!(after < fresh, "holding on once cost nothing toward holding on again");
+}
+
+/// **A failed attempt teaches something.** Without this, perceived
+/// control chooses and actual control settles and nobody ever learns
+/// from the gap — so a distant man repeats a futile strategy for ever.
+#[test]
+fn failing_at_something_is_informative() {
+    let hopeless = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.6 };
+    let out = resolve(
+        attempt(Coping::Active),
+        &hopeless,
+        &SupportGiven::default(),
+        0.7,
+        0.3,
+    );
+    assert!(out.information_gained > 0.0, "finding out taught him nothing");
+    assert!(out.effort_cost > 0.0);
+
+    let e = out.as_evidence(&hopeless);
+    assert_eq!(e.attributed, Attributed::Uncontrollable);
+    assert!(!e.encouraging);
+}
+
+/// **One failure is not helplessness; a run of them is.**
+#[test]
+fn learned_helplessness_takes_more_than_a_bad_afternoon() {
+    let hopeless = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.6 };
+    let out = resolve(attempt(Coping::Active), &hopeless, &SupportGiven::default(), 0.7, 0.3);
+    let e = out.as_evidence(&hopeless);
+
+    let mut once = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    once.revise(&e);
+    assert!(once.source > 0.6, "one failure convinced him nothing could ever be done");
+
+    let mut many = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    for _ in 0..25 {
+        many.revise(&e);
+    }
+    assert!(many.source < 0.2, "twenty-five futile years taught him nothing");
+    assert!(many.source < once.source);
+}
+
+/// **What the failure is put down to decides what it teaches.** Bad luck
+/// says almost nothing; an immovable object says a great deal.
+#[test]
+fn attribution_decides_what_a_failure_is_worth() {
+    let mk = |a: Attributed| {
+        let mut c = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+        let e = scale_sim::coping::ControlEvidence {
+            about_source: 1.0,
+            about_consequences: 0.5,
+            confidence: 1.0,
+            encouraging: false,
+            attributed: a,
+        };
+        for _ in 0..10 {
+            c.revise(&e);
+        }
+        c.source
+    };
+    assert!(mk(Attributed::Chance) > mk(Attributed::Uncontrollable));
+    assert!(mk(Attributed::NotEnoughEffort) > mk(Attributed::Opposition));
+}
+
+/// **And success revises the other way**, or belief could only ever fall.
+#[test]
+fn succeeding_teaches_somebody_they_can() {
+    let can = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.95 };
+    let out = resolve(attempt(Coping::Active), &can, &SupportGiven::default(), 0.7, 0.3);
+    let e = out.as_evidence(&can);
+    assert!(e.encouraging);
+    let mut low = ControlAppraisal { source: 0.05, consequences: 0.05, own_response: 0.5 };
+    for _ in 0..20 {
+        low.revise(&e);
+    }
+    assert!(low.source > 0.3, "twenty plain successes did not shift his view at all");
 }
