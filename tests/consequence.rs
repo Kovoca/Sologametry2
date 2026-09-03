@@ -10,14 +10,15 @@
 
 use scale_sim::befall::befell;
 use scale_sim::consequence::{
-    learns, runway_days, Consequences, Employer, Fact, Reemployment, Standing,
+    as_world_event, learns, runway_days, runway_of, Consequences, Employer, Fact, Happened,
+    Reemployment, Standing,
 };
 use scale_sim::converse::{ask, Approach, Asked};
 use scale_sim::coping::FunctionalState;
 use scale_sim::growth::ShapesWellbeing;
 use scale_sim::id::{Arena, Id};
 use scale_sim::labour::Workforce;
-use scale_sim::memory::{Memory, Source};
+use scale_sim::memory::{Memory, PerceivedWho, Place, Source};
 use scale_sim::mind::Value;
 use scale_sim::person::{Person, Trade};
 use scale_sim::save::{Journal, Save};
@@ -499,4 +500,152 @@ fn a_worker_nobody_watched_is_the_same_worker() {
     assert_eq!(watched.growth, ignored.growth);
     // And putting him down and picking him up changes nothing.
     assert_eq!(demote(&promote(&ignored, &cult, 730)).strain, ignored.strain);
+}
+
+// =====================================================================
+// gate 7: the household ledger is the real one
+// =====================================================================
+
+/// **Runway comes off the same account that buys food.**
+///
+/// Not a psychological savings figure passed along by hand: what a man
+/// can do about being out of work is read from the household pool the
+/// economy already debits at every counter. Which is what stops the mind
+/// inventing an abstract poverty of its own.
+#[test]
+fn what_he_can_fall_back_on_is_read_off_the_ledger() {
+    use scale_sim::econ::{Doctrine, DAYS_PER_YEAR};
+    use scale_sim::money::{Account, Why};
+    use scale_sim::network::Network;
+    use scale_sim::polity::Polities;
+    use scale_sim::region::Region;
+    use scale_sim::settlement::Settlements;
+    use scale_sim::world::World;
+
+    let world = World::generate(384, 216, 20260828);
+    let pol = Polities::partition(&world, 30);
+    let set = Settlements::place(&world, &pol, 5000);
+    let net = Network::build(&world, &set, 1000);
+    let id = pol.ranked()[2].0;
+    let mut e = Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
+        .expect("a nation")
+        .economy;
+
+    for _ in 0..(DAYS_PER_YEAR / 2) {
+        e.step();
+    }
+
+    let households = 2.36;
+    let town = 0usize;
+    let pool = e.treasury.balance(Account::Households(town));
+    assert!(pool > 0.0, "a town whose households hold nothing");
+
+    let runway = runway_of(&e, town, households);
+    assert!(runway.is_finite() && runway > 0.0, "runway came out at {runway}");
+
+    // **The same account, and it is the one the counters draw on.**
+    e.step();
+    let bought = e
+        .treasury
+        .today
+        .iter()
+        .any(|t| t.why == Why::Purchase);
+    assert!(bought, "a day in which nobody bought anything");
+    let after = e.treasury.balance(Account::Households(town));
+    assert_ne!(
+        after, pool,
+        "a day of trade left the household pool exactly where it was"
+    );
+
+    // And what the mind consumes moves with it, rather than being told.
+    let now = runway_of(&e, town, households);
+    assert!(now.is_finite());
+    assert!(
+        (now - runway).abs() > f64::EPSILON || (after - pool).abs() < f64::EPSILON,
+        "the pool moved and the runway did not"
+    );
+
+    // A household with more mouths has less runway on the same pool,
+    // which is why dependants matter without this knowing about them.
+    assert!(runway_of(&e, town, households * 2.0) < runway_of(&e, town, households));
+}
+
+// =====================================================================
+// gate 5: he can be wrong about why, and be corrected
+// =====================================================================
+
+/// **He blames the man who told him.**
+///
+/// A transformer in a substation he has never seen is not available to
+/// him. What is available is the manager who said the words — so that is
+/// who it was, until somebody tells him otherwise.
+#[test]
+fn he_blames_whoever_told_him_and_can_be_put_right() {
+    use scale_sim::mind::Mind;
+    use scale_sim::rng::Rng;
+
+    let mut seq = 0u64;
+    let facts = a_mill_with_no_spare().decides(200.0, 10, &mut seq);
+    let sacking: Happened = *facts
+        .iter()
+        .find(|f| f.what == Fact::EmploymentEnded)
+        .expect("nobody was let go");
+
+    let worker = who(2);
+    let manager = who(5);
+    let ev = as_world_event(&sacking, Place(3), worker, Some(manager));
+    assert_eq!(ev.actor, Some(manager));
+    assert!(ev.facts.deliberate, "being sacked did not read as somebody's doing");
+
+    let mind = Mind::draw(&mut Rng::new(11), &culture());
+    let mut mem = Memory::new();
+    let mut rng = Rng::new(11);
+    let mut happened = Arena::new();
+    let of = happened.add(ev.clone());
+    let p = mem
+        .perceive(&ev, Some(of), Source::Told { by: manager }, 0.95, &mut rng)
+        .expect("he did not take it in");
+    let felt = mind.appraise(&mind.read(&p.facts));
+    let trace = mem.encode(p, &mind, sacking.day, &felt).expect("nothing was encoded");
+
+    // He blames the man who told him.
+    assert_eq!(
+        mem.traces[trace].blamed.as_ref().and_then(|w| w.person()),
+        Some(manager)
+    );
+    let said_before = scale_sim::memory::testimony(&mem.traces[trace]);
+
+    // **Months later he learns what actually happened.** The blame moves;
+    // what he was told does not.
+    mem.reattribute(trace, PerceivedWho::Unknown(scale_sim::memory::Description(
+        "a transformer nobody had a spare for".into(),
+    )), 0.7);
+
+    let said_after = scale_sim::memory::testimony(&mem.traces[trace]);
+    assert_ne!(said_after, said_before, "being put right changed nothing");
+    assert_eq!(
+        mem.traces[trace].provenance(),
+        Source::Told { by: manager },
+        "learning the real cause turned hearsay into something he witnessed"
+    );
+    assert!(
+        mem.traces[trace].blamed.as_ref().and_then(|w| w.person()).is_none(),
+        "he still blames the manager"
+    );
+}
+
+/// **And a workmate who only overheard it is a different witness**, with
+/// the same event and a different record of it.
+#[test]
+fn two_men_at_the_same_mill_remember_it_differently() {
+    let mut seq = 0u64;
+    let facts = a_mill_with_no_spare().decides(200.0, 10, &mut seq);
+    let sacking = *facts.iter().find(|f| f.what == Fact::EmploymentEnded).unwrap();
+    let teller = who(5);
+
+    let his = learns(Standing::TheWorker, sacking.what, teller);
+    let theirs = learns(Standing::Workmate, sacking.what, teller);
+    assert_eq!(his, Some(Source::Told { by: teller }));
+    assert_eq!(theirs, Some(Source::Overheard));
+    assert_ne!(his, theirs, "the man it happened to and a bystander recall it alike");
 }

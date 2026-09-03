@@ -4318,6 +4318,30 @@ Both men who lost work carry the same well-being injury, because that is
 what losing work is measured to do; **what differs is what it did to
 their functioning**, which is a separate layer with a separate answer.
 
+### The money is the real money
+
+**Runway is read off the ledger**, not passed along by hand:
+`runway_of` takes the household pool the economy already debits at every
+counter and the `food_anchor` `labour.rs` already keeps, and divides. So
+wages that do not arrive show up in what a man can do about being out of
+work **without the mind inventing a poverty of its own** — and a
+household with more mouths has less runway on the same pool, which is why
+dependants matter without this knowing they exist.
+
+### He blames whoever told him
+
+A transformer in a substation he has never seen is not available to him.
+What is available is the manager who said the words, so that is who it
+was — the event reads as **deliberate**, because as far as he can tell
+somebody decided it, which is exactly the appraisal that makes it feel
+unfair and exactly the one that turns out to be wrong.
+
+Months later he learns what actually happened. The blame moves; **what he
+was told does not**. The trace still says he was told, by that man, on
+that day, because provenance is immutable and reattribution touches only
+what it is taken to mean. And the workmate who overheard it has a
+different record of the same event.
+
 ### And it becomes somebody you can meet
 
 No unemployment dialogue. Approaching him afterwards runs the ordinary

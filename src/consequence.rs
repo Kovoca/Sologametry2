@@ -40,7 +40,11 @@
 
 use crate::befall::Circumstance;
 use crate::coping::ActualControl;
+use crate::econ::Economy;
 use crate::labour::Workforce;
+use crate::memory::{EventKind, Place, WorldEvent};
+use crate::mind::Happening;
+use crate::money::Account;
 use crate::id::Id;
 use crate::memory::Source;
 use crate::person::Person;
@@ -272,6 +276,70 @@ pub fn runway_days(liquid: f64, essential_per_day: f64) -> f64 {
         return f64::INFINITY;
     }
     (liquid / essential_per_day).max(0.0)
+}
+
+/// **Runway read off the real ledger.**
+///
+/// Not a psychological "savings" figure invented for the mind to consume:
+/// the household account here is **the same one purchases are debited
+/// from** when somebody buys food, so wages that do not arrive show up in
+/// what a man can do about being out of work without anything having to
+/// pass a number along by hand.
+///
+/// `food_anchor` is what `labour.rs` already keeps — a slow average of
+/// what a day costs, which is also what wages are set against.
+pub fn runway_of(econ: &Economy, market: usize, households: f64) -> f64 {
+    let pool = econ.treasury.balance(Account::Households(market));
+    let per_household = if households > 1.0 { pool / households } else { pool };
+    let a_day = econ
+        .workforce
+        .get(market)
+        .map(|w| w.food_anchor)
+        .filter(|c| *c > 1e-9)
+        .unwrap_or(1.0);
+    runway_days(per_household, a_day)
+}
+
+// ---------------------------------------------------------------------
+// what it leaves in somebody's memory
+// ---------------------------------------------------------------------
+
+/// **A fact, as something that can be remembered.**
+///
+/// `blamed_on` is who the worker takes to be responsible **at the time**,
+/// which is frequently not who is. A man told on Friday that he is
+/// finished blames the man who told him; that the fault was a
+/// transformer in a substation he has never seen is not available to
+/// him, and may never be.
+pub fn as_world_event(
+    h: &Happened,
+    place: Place,
+    who_it_happened_to: Id<Person>,
+    blamed_on: Option<Id<Person>>,
+) -> WorldEvent {
+    WorldEvent {
+        kind: EventKind::Shift,
+        who: vec![who_it_happened_to],
+        actor: blamed_on,
+        place,
+        day: h.day,
+        severity: -h.what.weight(),
+        facts: Happening {
+            severity: -h.what.weight(),
+            to_me: 1.0,
+            // **Somebody decided this**, as far as he can tell — which is
+            // exactly the appraisal that makes it feel unfair, and
+            // exactly the one that later turns out to be wrong.
+            deliberate: blamed_on.is_some(),
+            control: 0.15,
+            unexpected: match h.what {
+                Fact::WorkStopped => 0.5,
+                Fact::EmploymentEnded => 0.75,
+                _ => 0.4,
+            },
+            ..Default::default()
+        },
+    }
 }
 
 // ---------------------------------------------------------------------
