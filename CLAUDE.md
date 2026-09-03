@@ -4105,6 +4105,45 @@ regenerate exactly the identified base, apply the overlay once, and get
 the same complete local state — with the overlay having been through
 bytes in between.
 
+## Watching them (`cargo run --release --bin minds`)
+
+One adversity, six people drawn from seeds, three years. Everybody loses
+their work on day 200 and it does not come back; nothing else is
+arranged, so the differences are theirs.
+
+**Running it found a hole nothing had read.** The coarse advance *chose*
+a coping strategy every chunk and never settled it against the world, so
+coping was decorative: six very different people met the same bad year
+and all six ended at the ceiling, identical in every figure. The whole of
+slice 8 — attempt, resolve, outcome, evidence — sat unused behind slice
+9's loop. Wiring it in is what makes the run say anything:
+
+```text
+person 2  Anger +1.6      vents      Work impaired,  debt 0.81, 176 days severe
+person 4  Gloom +2.3      drinks     Work strained,  debt 0.24
+person 5  Orderliness +2.6 plans     Work regulated, debt 0.00
+```
+
+Two things it needed that were not obvious from reading the code:
+
+- **Coping has to change the pressure**, not merely be recorded. Relief
+  comes off today and what was deferred goes back on, which is how
+  avoidance leaves somebody worse off while feeling better on the day.
+- **Tolerance is a person's own.** Handing everybody the same one put the
+  entire cast at the ceiling and hid the thing being asked about — which
+  also caught the first version of the gate test.
+
+And what it teaches is applied **analytically over the interval**, so a
+man advanced once a year comes to believe exactly what the same man
+simulated daily believes.
+
+**The result worth having is the two layers doing different work.**
+Everybody carries the same permanent −0.39 SD of life satisfaction,
+because that is what losing work is measured to do. Whether it also broke
+how they *function* is a separate question with a different answer per
+person, and the answer is what they reached for. One number could not
+have said that.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never

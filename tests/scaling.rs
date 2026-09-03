@@ -808,3 +808,76 @@ fn the_boundaries_of_an_interval_behave() {
     assert_eq!(at_end.last_update, 300);
     assert!((at_end.support_expected - 0.22).abs() < 1e-12);
 }
+
+/// **Coping has to actually do something.**
+///
+/// Found by running the thing rather than by reading it: the coarse
+/// advance chose a strategy every chunk and never settled it, so coping
+/// was decorative — six very different people met one bad year and all
+/// six ended at the ceiling, identical. The whole of slice 8 sat unused
+/// behind slice 9's loop.
+#[test]
+fn what_somebody_reaches_for_changes_where_they_end_up() {
+    let cult = culture();
+    // One trouble, real but not fixable by force: what differs is the
+    // person meeting it.
+    let trouble = Standing {
+        severity: 0.8,
+        since: 0,
+        worsens_if_ignored: 0.8,
+        actual: ActualControl { source: 0.1, consequences: 0.5, exit: 0.1, means: 0.4 },
+    };
+
+    let mut ends: Vec<f64> = Vec::new();
+    for seed in 0..12u64 {
+        let mut c = Coarse::new(who(3), 700 + seed, 0);
+        c.standing.push(trouble);
+        c.perceived_control =
+            ControlAppraisal { source: 0.5, consequences: 0.5, own_response: 0.5 };
+        let me = promote(&c, &cult, 0);
+        // **Their own tolerance**, which is drawn from who they are. A
+        // fixed one for everybody puts the whole cast at the ceiling and
+        // hides exactly what this is asking about.
+        let tol = me.mind.stress.tolerance;
+        c.advance_to(365 * 3, &me.mind, tol);
+        ends.push(c.strain.debt);
+    }
+    let worst = ends.iter().cloned().fold(f64::MIN, f64::max);
+    let best = ends.iter().cloned().fold(f64::MAX, f64::min);
+    assert!(
+        worst - best > 0.3,
+        "twelve different people met one bad year and came out within {:.2} of each other",
+        worst - best
+    );
+}
+
+/// **And what it did teaches them something**, at a rate that does not
+/// depend on how often anybody looked.
+#[test]
+fn what_coping_taught_does_not_depend_on_the_camera() {
+    let cult = culture();
+    let mut c = Coarse::new(who(3), 4242, 0);
+    c.standing.push(Standing {
+        severity: 0.8,
+        since: 0,
+        worsens_if_ignored: 0.6,
+        actual: ActualControl { source: 0.0, consequences: 0.05, exit: 0.0, means: 0.5 },
+    });
+    c.perceived_control = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    let me = promote(&c, &cult, 0);
+
+    let mut daily = c.clone();
+    for day in 1..=730u64 {
+        daily.advance_to(day, &me.mind, 0.3);
+    }
+    let mut coarse = c.clone();
+    coarse.advance_to(730, &me.mind, 0.3);
+
+    assert!(
+        (daily.perceived_control.source - coarse.perceived_control.source).abs() < 1e-9,
+        "belief drifted apart: {} against {}",
+        daily.perceived_control.source,
+        coarse.perceived_control.source
+    );
+    assert!((daily.strain.debt - coarse.strain.debt).abs() < 1e-9);
+}

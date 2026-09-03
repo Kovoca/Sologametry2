@@ -520,6 +520,37 @@ impl ControlAppraisal {
     /// run of credible failures moves them a long way. That is the
     /// difference between a bad afternoon and learned helplessness, and
     /// only `Uncontrollable` teaches the second at full weight.
+    /// **The same revision over `n` days**, in one step.
+    ///
+    /// A weighted step applied `n` times is `t + (x - t)(1 - w)^n`, so
+    /// this is exact rather than an approximation — which it has to be,
+    /// or a man simulated daily would learn helplessness faster than the
+    /// same man advanced once a year.
+    pub fn revise_over(&mut self, e: &ControlEvidence, days: u32) {
+        if days == 0 {
+            return;
+        }
+        let w = self.step_for(e);
+        let toward = if e.encouraging { 1.0 } else { 0.0 };
+        let keep_s = (1.0 - w * e.about_source.clamp(0.0, 1.0)).powi(days as i32);
+        let keep_c = (1.0 - w * e.about_consequences.clamp(0.0, 1.0)).powi(days as i32);
+        self.source = (toward + (self.source - toward) * keep_s).clamp(0.0, 1.0);
+        self.consequences = (toward + (self.consequences - toward) * keep_c).clamp(0.0, 1.0);
+    }
+
+    fn step_for(&self, e: &ControlEvidence) -> f64 {
+        (e.confidence.clamp(0.0, 1.0)
+            * match e.attributed {
+                Attributed::Uncontrollable => 1.0,
+                Attributed::Opposition => 0.5,
+                Attributed::NotEnoughSkill => 0.35,
+                Attributed::NotEnoughEffort => 0.15,
+                Attributed::Chance => 0.10,
+            })
+        .clamp(0.0, 1.0)
+            * 0.35
+    }
+
     pub fn revise(&mut self, e: &ControlEvidence) {
         let weight = (e.confidence.clamp(0.0, 1.0)
             * match e.attributed {

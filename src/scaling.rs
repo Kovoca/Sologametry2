@@ -37,8 +37,8 @@
 //! memories are already recorded as growth.
 
 use crate::coping::{
-    propensities, Acute, ActualControl, Circumstances, ControlAppraisal, Coping,
-    FunctionalState, Strain, ENTER, LEAVE,
+    attempt, propensities, resolve, Acute, ActualControl, Circumstances, ControlAppraisal,
+    ControlEvidence, Coping, FunctionalState, Strain, SupportGiven, ENTER, LEAVE,
 };
 use crate::growth::Growth;
 use crate::id::Id;
@@ -318,10 +318,16 @@ impl Coarse {
             return;
         }
         let mut remaining = (day - self.last_update) as u32;
-        let pressure = self.pressure();
+        let raw = self.pressure();
         let mut guard = 0;
         while remaining > 0 {
             let chose = self.reach_for(mind);
+            // **What the coping actually did.** Choosing a strategy and
+            // never settling it made coping decorative: everybody
+            // accumulated at the same rate whatever they reached for, and
+            // six very different people all ended at the ceiling. The
+            // whole of slice 8 sat unused behind slice 9's loop.
+            let (pressure, evidence) = self.after_coping(chose, raw);
             // A guard against a boundary that never arrives; past it the
             // rest of the interval is one chunk, which is what a settled
             // person's life is anyway.
@@ -332,10 +338,50 @@ impl Coarse {
             };
             guard += 1;
             self.habits.used(chose, step);
+            // **And what it taught them.** Applied over the whole chunk
+            // analytically, so a man advanced once a year comes to
+            // believe exactly what the same man simulated daily does.
+            if let Some(e) = evidence {
+                self.perceived_control.revise_over(&e, step);
+            }
             self.strain.advance(step, pressure, tolerance);
             remaining -= step;
         }
         self.last_update = day;
+    }
+
+    /// **Settle a day's coping against the world**, and hand back the
+    /// pressure that is actually left plus what the attempt taught.
+    ///
+    /// Relief comes off today; what was deferred goes back on, which is
+    /// why avoidance can leave somebody worse off than doing nothing
+    /// while feeling better on the day.
+    pub fn after_coping(&self, chose: Coping, raw: f64) -> (f64, Option<ControlEvidence>) {
+        let Some(worst) = self
+            .standing
+            .iter()
+            .copied()
+            .max_by(|a, b| a.severity.total_cmp(&b.severity))
+        else {
+            return (raw, None);
+        };
+        let se = self.support_expected.clamp(0.0, 1.0);
+        let support = SupportGiven {
+            practical: 0.45 * se,
+            emotional: 0.85 * se,
+            read_as_helpful: se,
+            obligation: 0.25 * se,
+        };
+        let out = resolve(attempt(chose), &worst.actual, &support, raw, worst.worsens_if_ignored);
+        let left = (raw - out.relief + out.deferred).clamp(0.0, 1.0);
+        // Only an attempt on the world says anything about what can be
+        // affected; comforting yourself teaches nothing about the roof.
+        let evidence = if attempt(chose).aims_at_the_world {
+            Some(out.as_evidence(&worst.actual))
+        } else {
+            None
+        };
+        (left, evidence)
     }
 
     /// How long until the ladder would move, at this pressure.
@@ -651,7 +697,10 @@ impl Detailed {
     pub fn a_day_passes(&mut self, tolerance: f64) {
         let chose = self.reach_for();
         self.habits.used(chose, 1);
-        let pressure = self.pressure();
+        let (pressure, evidence) = self.after_coping(chose, self.pressure());
+        if let Some(e) = evidence {
+            self.perceived_control.revise_over(&e, 1);
+        }
         self.strain.a_day_passes(pressure, tolerance);
         self.day += 1;
         self.growth.settle_into(&mut self.mind, self.day);
@@ -659,6 +708,14 @@ impl Detailed {
 
     pub fn pressure(&self) -> f64 {
         self.standing.iter().map(|s| s.severity).sum::<f64>().min(1.0)
+    }
+
+    /// The same settlement the coarse path uses, so the two agree.
+    pub fn after_coping(&self, chose: Coping, raw: f64) -> (f64, Option<ControlEvidence>) {
+        let mut as_record = Coarse::new(self.who, self.origin.seed, self.day);
+        as_record.standing = self.standing.clone();
+        as_record.support_expected = self.support_expected;
+        as_record.after_coping(chose, raw)
     }
 
     pub fn reach_for(&self) -> Coping {
