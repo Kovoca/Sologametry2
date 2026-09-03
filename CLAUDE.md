@@ -4251,6 +4251,81 @@ dutifulness, the gain, and what they think the odds of being seen are.
 - Labelled a **designed model**: the shape is defensible and the
   coefficients are not measured.
 
+## One world fact, travelling the whole way (`src/consequence.rs`)
+
+The seam between the simulation and the mind, and the reason it is a
+module rather than a call: **`labour.rs` must not reach into a mind.** It
+reports what is objectively so; `consequence` commits that to history;
+and only then does anything get appraised.
+
+```text
+transformer fails
+  → power unavailable          (infrastructure decides this, and only this)
+  → production reduced
+  → the employer decides       (stock, liquidity, expected repair, demand)
+  → household income changes
+  → the worker learns of it    (and not everybody does)
+  → befall translates what they learned
+  → appraisal, coping, memory, well-being
+  → and a conversation exposes the person that made
+```
+
+### Nobody appraises the causal chain
+
+The simulator knows a transformer failed and that it will cost a man his
+job. **He does not.** What reaches him is a sequence of separate facts,
+each with its own day, source and weight — the mill has stopped;
+tomorrow's shift is off; this week's pay is short; you are finished here;
+the rent cannot be paid. Handing him the chain would be telepathy of the
+kind `social.rs` exists to make impossible, and would let him despair on
+Monday about something that has not happened by Friday.
+
+### The transformer does not fire anybody
+
+Infrastructure decides how long the power is off. **Whether anybody
+loses work is the firm's decision**, and it turns on stock in the yard,
+money in the bank, what the repair is *expected* to take, and whether
+the output is wanted. A firm with a year of stock lays nobody off in a
+stoppage; one living hand to mouth empties. A mill with its own
+generator notices nothing at all.
+
+### Opportunity is not control
+
+`Workforce::chance_of_work` says how much work there is *here*. Whether
+this person can get any of it is a further question — transport,
+qualification, time to look, somebody to mind the children, freedom to
+move — so `Reemployment` takes the market half from the labour model and
+leaves the rest where it belongs. Two men in the same busy town differ by
+three times in what they can actually reach.
+
+**And savings are runway, not a balance.** What matters is how many days
+the money lasts, which is why dependants, debt and the price of bread
+matter without anything here knowing about them: they are already in the
+two numbers.
+
+### Three lives from one fault
+
+The gate is deliberately *not* "the third man breaks". What is asserted
+is the causal difference:
+
+| | outage | what follows |
+|---|---|---|
+| spare in store | 4 days against 12 of stock | **nothing happens to anybody** |
+| no spare, busy town | months | work lost, and something he can do about it |
+| no spare, dying town | months | work lost, little reach, little runway |
+
+Both men who lost work carry the same well-being injury, because that is
+what losing work is measured to do; **what differs is what it did to
+their functioning**, which is a separate layer with a separate answer.
+
+### And it becomes somebody you can meet
+
+No unemployment dialogue. Approaching him afterwards runs the ordinary
+`converse` path, and what he says comes out of the state that year left
+him in, the relationship he holds and how he was approached — colder to a
+stranger who stops him in the street than to a friend who asks, and the
+same man both times.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
