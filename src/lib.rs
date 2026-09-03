@@ -6,6 +6,7 @@
 
 pub mod biota;
 pub mod building;
+pub mod coping;
 pub mod econ;
 pub mod field;
 pub mod geology;

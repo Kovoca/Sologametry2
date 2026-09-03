@@ -3648,6 +3648,72 @@ And two test lessons: **a test that never enters the branch is not
 evidence the branch is rare**, and reading doubt *after* it has cashed
 out finds zero, because crossing spends it.
 
+## The tantrum table, replaced (`src/coping.rs`)
+
+Mind slice 8, spec section 10 — *coping and breakdown, **staged** rather
+than a tantrum table*. A tantrum table is a roll at a threshold: cross a
+stress number, draw a card, get a rage or a melancholy. It is the most
+imitated thing about DF's minds and it fails three ways — there is no
+coping in it, no order to it, and no way back out of it.
+
+### What somebody does about it
+
+Lazarus and Folkman's families, and the fourteen strategies the Brief
+COPE actually measures rather than a list invented for a game.
+
+- **Controllability decides which family helps**, which is about the
+  best-replicated result there is. Problem-focused coping works where
+  there is control and *is itself harmful* where there is none: planning
+  your way out of a bereavement does not work, and the effort is spent
+  anyway. A mismatch is a cost, not a nil return.
+- **Avoidance works, and that is exactly why it is a trap.** It gives the
+  most relief *today* — more than facing the thing — and puts more than
+  it relieved onto the debt. A model in which avoidance simply fails
+  cannot explain why anybody avoids anything, and people avoid
+  constantly.
+- **Support buffers most where it is needed most.** The stress-buffering
+  hypothesis is specifically that company matters at high stress and does
+  little at low, so the benefit scales with severity instead of being a
+  flat bonus.
+- **Willpower is what holds somebody to the harder option**, and rising
+  strain pushes them off it — which is the feedback that turns a bad
+  patch into a spiral.
+
+### Staged, and the stages are real
+
+| | |
+|---|---|
+| Coping | managing; most people, most of the time |
+| Strained | holding it together and paying for it |
+| Exhausted | Maslach's order — the tiredness comes first, the cynicism follows |
+| Broken | months, not days |
+
+- **Nobody skips a stage**, in either direction. Fine does not become
+  berserk and broken does not become fine.
+- **A bad afternoon is not a breakdown and a bad year is**, which is why
+  the debt accumulates rather than being read off today's stress. That is
+  allostatic load.
+- **Coming back is far slower than going under** — severe burnout runs
+  one to three years — and there is **hysteresis**: the load you leave a
+  stage at is below the load you entered it at, so burnout does not lift
+  the week the workload does.
+- **The hole has a bottom.** Unbounded, a decade under it builds a debt
+  that takes a century to clear, so a man who had a very bad ten years
+  could never recover in a lifetime. Being broken is a state, not a
+  running total.
+
+### Breaking in character
+
+The actual replacement for the die: **how somebody breaks is read off who
+they are.** A violent man lashes out, a private one stops speaking, an
+angry sociable one makes a scene, a dissolute one drinks — and a dutiful
+one **keeps working, perfectly, until he falls over**, which is the one
+that gets missed, because from the outside nothing is wrong. A tantrum
+table cannot express that at all.
+
+Same person, same answer, every time. Different people, different
+answers. That is the property a roll cannot have.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
