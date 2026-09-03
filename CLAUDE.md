@@ -4059,14 +4059,51 @@ quantity belongs, duplicate keys rejected, trailing bytes detected, and
 rules — because a rebalance changes no bytes and a new facet changes no
 rule.
 
-**Terrain persistence is deliberately not attempted yet.** It is not a
-code table and an iterator: an overlay saying *remove the wall at (x,y,z)*
-means something different once the generator puts a road there, so every
-modified chunk needs a base identity, the patch has to be layered and
-typed with a real `Remove` state, boundaries need canonical coordinates
-so a floor is not written twice from either side, and stairs, networks
-and vehicles need stable ids rather than adjacency inferred after
-loading.
+## What was done to the ground (`src/patch.rs`)
+
+The last piece of Phase 1, and it is **not** a code table and an
+iterator — which is what I called it before being corrected.
+
+**An overlay means nothing without the base it was cut against.** A save
+recording *remove the brick wall at (x, y, z)* is a sentence about a
+wall; once a newer generator puts a road there, applying the deletion no
+longer means what it meant. And **keeping the generator's version number
+does not fix that unless something reads it** — the version can be
+unchanged while the world is not. So every modified chunk carries a
+`BaseChunk`: where it is, which generator drew it, and a **hash of what
+that generator produced**. On load the base is regenerated and hashed
+again, and a mismatch comes back as `Rebase::BaseChanged` rather than
+being applied to ground that has moved.
+
+**A stored change is per layer, and `ground::Tile` is the wrong thing to
+store.** It is a union convenient for rendering — the materialised view —
+and "wall" says nothing about whether the wall is brick or the rock under
+it is granite, so an edit to one layer cannot be recorded without
+overwriting the others. Terrain, material, construction, boundary, fluid,
+vegetation and object are separate, which is this file's own rule about
+terrain and material arriving at persistence.
+
+**Each layer has three states, and the third is the point.** `Remove` is
+not `Set(nothing)`: doors, walls, floors, pipes and trees all exist in
+the generated base, and taking one away has to be expressible as taking
+it away rather than as replacing it with something.
+
+- **A boundary belongs to one tile.** A floor is the boundary between two
+  levels; written from both sides it is stored twice and can disagree
+  with itself, so by convention it is always the **lower** tile's
+  ceiling.
+- **Anything spanning tiles keeps an id.** Inferring a staircase back
+  from adjacency after a load is how two halves of one stair become two
+  stairs.
+- **A change with nothing in it is not stored.** Otherwise a save grows
+  with what was *looked at*, which is the whole thing "generated, never
+  stored" exists to prevent — and reverting an edit removes it rather
+  than recording the reversion.
+
+The gate is `the_identified_base_plus_the_overlay_is_the_same_world`:
+regenerate exactly the identified base, apply the overlay once, and get
+the same complete local state — with the overlay having been through
+bytes in between.
 
 ## Conventions
 

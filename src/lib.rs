@@ -24,6 +24,7 @@ pub mod money;
 pub mod needs;
 pub mod network;
 pub mod noise;
+pub mod patch;
 pub mod person;
 pub mod polity;
 pub mod populace;

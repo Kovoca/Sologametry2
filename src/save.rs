@@ -1045,6 +1045,218 @@ impl Store for Checkpoint {
 }
 
 // ---------------------------------------------------------------------
+// the ground, and the base it was cut against
+// ---------------------------------------------------------------------
+
+use crate::patch::{
+    BaseChunk, Boundary, ChunkAt, Construction, Field, Fluid, Material, Materialised, ObjectId,
+    Overlay, Terrain, TileChange, Vegetation,
+};
+
+coded!(Terrain, "Terrain",
+    Terrain::Solid => 1,
+    Terrain::Floor => 2,
+    Terrain::Open => 3,
+    Terrain::Ramp => 4,
+);
+
+coded!(Material, "Material",
+    Material::Soil => 1,
+    Material::Sand => 2,
+    Material::Sedimentary => 3,
+    Material::Igneous => 4,
+    Material::Metamorphic => 5,
+    Material::Brick => 6,
+    Material::Concrete => 7,
+    Material::Timber => 8,
+    Material::Steel => 9,
+    Material::Glass => 10,
+    Material::Tarmac => 11,
+);
+
+coded!(Construction, "Construction",
+    Construction::Wall => 1,
+    Construction::Door => 2,
+    Construction::Window => 3,
+    Construction::Partition => 4,
+    Construction::Fitting => 5,
+);
+
+coded!(Boundary, "Boundary",
+    Boundary::Solid => 1,
+    Boundary::Open => 2,
+    Boundary::Grate => 3,
+    Boundary::Hatch => 4,
+);
+
+coded!(Fluid, "Fluid",
+    Fluid::Water => 1,
+    Fluid::Sewage => 2,
+);
+
+coded!(Vegetation, "Vegetation",
+    Vegetation::Grass => 1,
+    Vegetation::Scrub => 2,
+    Vegetation::Crop => 3,
+    Vegetation::Tree => 4,
+);
+
+impl Store for ObjectId {
+    fn store(&self, w: &mut Writer) {
+        w.u64(self.0);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(ObjectId(r.u64()?))
+    }
+}
+
+/// **Three states, and the third is the point.** `Remove` is not
+/// `Set(nothing)`: a door the generator put there has to be removable.
+impl<T: Store + Copy> Store for Field<T> {
+    fn store(&self, w: &mut Writer) {
+        match self {
+            Field::Unchanged => w.u8(0),
+            Field::Set(v) => {
+                w.u8(1);
+                v.store(w);
+            }
+            Field::Remove => w.u8(2),
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        match r.u8()? {
+            0 => Ok(Field::Unchanged),
+            1 => Ok(Field::Set(T::load(r)?)),
+            2 => Ok(Field::Remove),
+            other => Err(SaveError::UnknownCode("Field", other as u32)),
+        }
+    }
+}
+
+impl Store for TileChange {
+    fn store(&self, w: &mut Writer) {
+        self.terrain.store(w);
+        self.material.store(w);
+        self.construction.store(w);
+        self.ceiling.store(w);
+        self.fluid.store(w);
+        self.vegetation.store(w);
+        self.object.store(w);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(TileChange {
+            terrain: Field::load(r)?,
+            material: Field::load(r)?,
+            construction: Field::load(r)?,
+            ceiling: Field::load(r)?,
+            fluid: Field::load(r)?,
+            vegetation: Field::load(r)?,
+            object: Field::load(r)?,
+        })
+    }
+}
+
+impl Store for ChunkAt {
+    fn store(&self, w: &mut Writer) {
+        w.i64(self.cx);
+        w.i64(self.cy);
+        w.i64(self.cz);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(ChunkAt { cx: r.i64()?, cy: r.i64()?, cz: r.i64()? })
+    }
+}
+
+impl Store for BaseChunk {
+    fn store(&self, w: &mut Writer) {
+        self.at.store(w);
+        w.u32(self.worldgen_version);
+        w.u64(self.base_hash);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(BaseChunk {
+            at: ChunkAt::load(r)?,
+            worldgen_version: r.u32()?,
+            base_hash: r.u64()?,
+        })
+    }
+}
+
+impl Store for Overlay {
+    fn store(&self, w: &mut Writer) {
+        w.len(self.base.len());
+        for b in self.base.values() {
+            b.store(w);
+        }
+        w.len(self.tiles.len());
+        for (at, c) in &self.tiles {
+            w.i64(at.0);
+            w.i64(at.1);
+            w.i64(at.2);
+            c.store(w);
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let mut o = Overlay::new();
+        let n = r.count()?;
+        for _ in 0..n {
+            let b = BaseChunk::load(r)?;
+            if o.base.insert(b.at, b).is_some() {
+                return Err(SaveError::Conflict(b.at.cx as u64));
+            }
+        }
+        let n = r.count()?;
+        for _ in 0..n {
+            let at = (r.i64()?, r.i64()?, r.i64()?);
+            let c = TileChange::load(r)?;
+            if o.tiles.insert(at, c).is_some() {
+                return Err(SaveError::Conflict(at.2 as u64));
+            }
+        }
+        Ok(o)
+    }
+}
+
+impl Store for Materialised {
+    fn store(&self, w: &mut Writer) {
+        fn opt<T: Store>(w: &mut Writer, v: &Option<T>) {
+            match v {
+                None => w.u8(0),
+                Some(x) => {
+                    w.u8(1);
+                    x.store(w);
+                }
+            }
+        }
+        opt(w, &self.terrain);
+        opt(w, &self.material);
+        opt(w, &self.construction);
+        opt(w, &self.ceiling);
+        opt(w, &self.fluid);
+        opt(w, &self.vegetation);
+        opt(w, &self.object);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        fn opt<T: Store>(r: &mut Reader) -> Result<Option<T>, SaveError> {
+            match r.u8()? {
+                0 => Ok(None),
+                1 => Ok(Some(T::load(r)?)),
+                other => Err(SaveError::UnknownCode("Option", other as u32)),
+            }
+        }
+        Ok(Materialised {
+            terrain: opt(r)?,
+            material: opt(r)?,
+            construction: opt(r)?,
+            ceiling: opt(r)?,
+            fluid: opt(r)?,
+            vegetation: opt(r)?,
+            object: opt(r)?,
+        })
+    }
+}
+
+// ---------------------------------------------------------------------
 // a whole save
 // ---------------------------------------------------------------------
 
@@ -1062,6 +1274,9 @@ pub struct Save {
     /// and kept; neither is enforced.
     pub schema: u32,
     pub rules: u32,
+    /// **What was done to the ground**, and the base each change was cut
+    /// against.
+    pub overlay: Overlay,
 }
 
 /// A cheap checksum over the body, so a truncated or corrupted file says
@@ -1086,6 +1301,7 @@ impl Save {
         }
         self.journal.store(&mut body);
         self.checkpoint.store(&mut body);
+        self.overlay.store(&mut body);
 
         let mut out = Writer::new();
         out.bytes.extend_from_slice(MAGIC);
@@ -1134,9 +1350,10 @@ impl Save {
         let people = (0..n).map(|_| Coarse::load(&mut b)).collect::<Result<_, _>>()?;
         let journal = Journal::load(&mut b)?;
         let checkpoint = Checkpoint::load(&mut b)?;
+        let overlay = Overlay::load(&mut b)?;
         if !b.done() {
             return Err(SaveError::TrailingBytes(b.left()));
         }
-        Ok(Save { world_seed, day, people, journal, checkpoint, schema, rules })
+        Ok(Save { world_seed, day, people, journal, checkpoint, schema, rules, overlay })
     }
 }

@@ -102,6 +102,10 @@ In slices that each land green, the same way Phase 1 is going.
 | 8 | Coping and staged breakdown | **built** |
 | 9 | Scaling: what a distant person retains | **built** |
 
+All nine built. Phase 1 persistence (identity, estates, snapshot and
+delta journal, save/load round trip, terrain overlay) is built alongside
+them.
+
 ## A note on calibration
 
 This project anchors on measured real-world figures rather than on DF's
