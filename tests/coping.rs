@@ -1,12 +1,16 @@
 //! **Coping and breakdown, staged rather than a tantrum table.**
 //!
-//! Slice 8 of `docs/mind-spec.md`, section 10. Every test here is aimed
-//! at one of the four things a roll-on-a-table cannot do: cope at all,
-//! arrive in order, come back, or break *in character*.
+//! Slice 8 of `docs/mind-spec.md`, section 10.
+//!
+//! The most important test in the file is
+//! `a_coarse_advance_matches_a_run_of_days`: without it a person's
+//! mental state depends on whether they happened to be simulated in
+//! detail, which would make slice 9 meaningless.
 
 use scale_sim::coping::{
-    choose, cope, fit, Breaks, Coping, Focus, Situation, Stage, Strain, ENTER, LEAVE,
-    RECOVERY_PER_DAY, STRAIN_CEILING, STRAIN_PER_DAY,
+    attempt, choose, propensities, resolve, ActualControl, Acute, Attempt, AvoidanceKind,
+    Burnout, Circumstances, ControlAppraisal, Coping, Family, FunctionalState, Strain,
+    SupportGiven, ENTER, LEAVE, RECOVERY_PER_DAY, STRAIN_CEILING, STRAIN_PER_DAY,
 };
 use scale_sim::mind::{Facet, Mind, Value};
 use scale_sim::rng::Rng;
@@ -23,404 +27,605 @@ fn a_person(seed: u64, traits: &[(Facet, f32)]) -> Mind {
     m
 }
 
-/// Something that can be done about, and something that cannot.
-fn controllable() -> Situation {
-    Situation { severity: 0.7, control: 0.9, ..Default::default() }
+fn thinks_they_can() -> ControlAppraisal {
+    ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 }
 }
-fn hopeless() -> Situation {
-    Situation { severity: 0.7, control: 0.05, ..Default::default() }
+fn thinks_they_cannot() -> ControlAppraisal {
+    ControlAppraisal { source: 0.05, consequences: 0.05, own_response: 0.5 }
 }
 
 // =====================================================================
-// coping exists at all
+// timestep invariance — the slice 9 gate
 // =====================================================================
 
-/// **Controllability decides which family helps.** The best-replicated
-/// result in the coping literature, and the reason `Situation` carries
-/// `control` at all: planning your way out of a bereavement does not
-/// work, and doing nothing about a leaking roof does not either.
-#[test]
-fn what_helps_depends_on_whether_anything_can_be_done() {
-    assert!(fit(Coping::Active, &controllable()) > fit(Coping::Active, &hopeless()));
-    assert!(fit(Coping::Acceptance, &hopeless()) > fit(Coping::Acceptance, &controllable()));
-    assert!(fit(Coping::Planning, &controllable()) > fit(Coping::Acceptance, &controllable()));
-    assert!(fit(Coping::Reframing, &hopeless()) > fit(Coping::Planning, &hopeless()));
-}
-
-/// **A mismatch costs the trying.** It is not merely a nil return: the
-/// effort is spent either way, which is why hammering at something you
-/// cannot change wears people out.
-#[test]
-fn the_wrong_kind_of_coping_is_worse_than_a_nil_return() {
-    let doer = a_person(1, &[(Facet::Perseverance, 2.0), (Facet::Assertiveness, 1.5)]);
-    let matched = cope(&doer, &controllable(), 0.0);
-    let mismatched = cope(&doer, &hopeless(), 0.0);
-
-    assert_eq!(matched.chose.focus(), Focus::Problem);
-    assert!(
-        matched.relief > mismatched.relief * 2.0,
-        "trying to fix the unfixable worked nearly as well as fixing something"
-    );
-    if mismatched.chose.is_approach() {
-        assert!(
-            mismatched.deferred > 0.0,
-            "the effort of trying to fix an unfixable thing cost nothing at all"
-        );
-    }
-}
-
-/// **The person decides what they reach for, and it is not a roll.**
-/// The same man in the same trouble reaches for the same thing twice.
-#[test]
-fn coping_is_chosen_by_the_person_and_not_drawn() {
-    let m = a_person(2, &[(Facet::Orderliness, 2.0)]);
-    let s = controllable();
-    let first = choose(&m, &s, 0.0);
-    for _ in 0..20 {
-        assert_eq!(choose(&m, &s, 0.0), first, "the same man coped differently twice");
-    }
-}
-
-/// **And different people reach for different things.** A planner plans,
-/// an angry man vents, a sociable one asks for help, a gloomy one blames
-/// himself — out of the same trouble.
-#[test]
-fn two_people_in_one_predicament_do_different_things() {
-    let s = hopeless();
-    let planner = a_person(3, &[(Facet::Orderliness, 2.5), (Facet::Tolerance, 1.0)]);
-    let angry = a_person(3, &[(Facet::Anger, 2.5)]);
-    let sociable = a_person(3, &[(Facet::Gregariousness, 2.5), (Facet::Trust, 1.5)]);
-    let gloomy = a_person(3, &[(Facet::Gloom, 2.5), (Facet::Anxiety, 1.5)]);
-
-    let picks = [
-        choose(&planner, &s, 0.3),
-        choose(&angry, &s, 0.3),
-        choose(&sociable, &s, 0.3),
-        choose(&gloomy, &s, 0.3),
-    ];
-    let mut distinct = picks.to_vec();
-    distinct.sort();
-    distinct.dedup();
-    assert!(
-        distinct.len() >= 3,
-        "four very different people coped almost identically: {picks:?}"
-    );
-    assert_eq!(choose(&angry, &s, 0.3), Coping::Venting);
-    assert_eq!(choose(&gloomy, &s, 0.3), Coping::SelfBlame);
-}
-
-/// **Avoidance works, and that is exactly why it is a trap.**
+/// **One stage at a time means chronologically, not one per call.**
 ///
-/// A model where avoidance simply fails cannot explain why anybody
-/// avoids anything, and people avoid constantly. It gives the most
-/// relief today and puts more than it relieved onto the debt.
+/// A person simulated day by day and the same person advanced once over
+/// the same span must end in the same place. Otherwise a detailed
+/// character traverses several stages while a distant one updated after
+/// two years moves only one, and somebody's mind depends on whether the
+/// engine happened to be looking at them.
 #[test]
-fn avoidance_gives_the_most_relief_today_and_costs_more_tomorrow() {
-    let drinker = a_person(4, &[(Facet::ExcitementSeeking, 2.5), (Facet::Gloom, 2.0)]);
-    let steady = a_person(4, &[(Facet::Tolerance, 2.0), (Facet::Cheerfulness, 1.5)]);
-    let s = hopeless();
+fn a_coarse_advance_matches_a_run_of_days() {
+    for (days, pressure, tolerance) in [
+        (730u32, 0.9, 0.2),   // a long descent
+        (400, 0.55, 0.2),     // a slow one
+        (1500, 1.0, 0.1),     // all the way to the bottom
+        (90, 0.3, 0.2),       // barely anything
+    ] {
+        let mut daily = Strain::default();
+        for _ in 0..days {
+            daily.a_day_passes(pressure, tolerance);
+        }
+        let mut coarse = Strain::default();
+        coarse.advance(days, pressure, tolerance);
 
-    let avoided = cope(&drinker, &s, 0.5);
-    let faced = cope(&steady, &s, 0.5);
-    assert!(!avoided.chose.is_approach());
-    assert!(faced.chose.is_approach());
-
-    assert!(
-        avoided.relief > faced.relief,
-        "avoiding it felt worse on the day, which is not why people do it"
-    );
-    assert!(
-        avoided.deferred > avoided.relief,
-        "avoidance came out free, so nothing about it is a trap"
-    );
-    assert!(faced.deferred < avoided.deferred);
-}
-
-/// **Support buffers most where it is needed most.** The
-/// stress-buffering hypothesis is specifically that company matters at
-/// high stress and does little at low — not a flat bonus.
-#[test]
-fn company_matters_most_when_things_are_worst() {
-    let sociable = a_person(5, &[(Facet::Gregariousness, 2.5), (Facet::Trust, 2.0)]);
-    let gain_at = |severity: f64| {
-        let mut with = Situation { severity, control: 0.2, ..Default::default() };
-        with.company = true;
-        let mut alone = with;
-        alone.company = false;
-        cope(&sociable, &with, 0.2).relief - cope(&sociable, &alone, 0.2).relief
-    };
-    assert!(
-        gain_at(0.9) > gain_at(0.2) * 2.0,
-        "having somebody to turn to helped as much on a good day as a bad one"
-    );
-}
-
-/// **Alone, the strategies that need somebody are simply unavailable.**
-#[test]
-fn you_cannot_ask_for_help_when_there_is_nobody_there() {
-    let sociable = a_person(6, &[(Facet::Gregariousness, 2.5)]);
-    let alone = Situation { severity: 0.7, control: 0.2, company: false, drink_available: false };
-    let chose = choose(&sociable, &alone, 0.4);
-    assert!(!chose.needs_company(), "he asked somebody who was not there: {chose:?}");
-    assert_ne!(chose, Coping::Drink, "he drank what there was none of");
-}
-
-/// **Willpower is what holds somebody to the harder option**, which is
-/// most of what it is for.
-#[test]
-fn resolve_keeps_people_off_the_easy_way_out() {
-    let mut weak = a_person(7, &[(Facet::ExcitementSeeking, 1.2), (Facet::Gloom, 1.0)]);
-    weak.willpower = -1.5;
-    let mut firm = weak.clone();
-    firm.willpower = 2.0;
-
-    let s = hopeless();
-    assert!(!choose(&weak, &s, 0.8).is_approach());
-    assert!(
-        choose(&firm, &s, 0.8).is_approach(),
-        "a man of real resolve took the easy way out under pressure"
-    );
-}
-
-/// **And strain itself pushes people toward avoidance**, which is the
-/// feedback that makes a bad patch into a spiral.
-#[test]
-fn the_worse_it_gets_the_more_people_avoid_it() {
-    let m = a_person(8, &[(Facet::ExcitementSeeking, 0.8)]);
-    let s = hopeless();
-    let calm = choose(&m, &s, 0.0);
-    let desperate = choose(&m, &s, 1.5);
-    if calm.is_approach() {
+        assert_eq!(coarse.state, daily.state, "descent diverged at {days} days");
+        assert!((coarse.debt - daily.debt).abs() < 1e-9);
         assert!(
-            !desperate.is_approach(),
-            "nothing changed about how he coped as he came apart"
+            (coarse.days_severely_impaired as i64 - daily.days_severely_impaired as i64).abs()
+                <= 1,
+            "severe-duration diverged: {} against {}",
+            coarse.days_severely_impaired,
+            daily.days_severely_impaired
+        );
+        assert!((coarse.days_in_state as i64 - daily.days_in_state as i64).abs() <= 1);
+    }
+}
+
+/// **And on the way back up, too**, which is the case a descent-only
+/// test would miss entirely.
+#[test]
+fn a_coarse_advance_matches_a_run_of_days_recovering() {
+    let sunk = |mut s: Strain| {
+        s.advance(1500, 1.0, 0.1);
+        s
+    };
+    for days in [200u32, 800, 2000] {
+        let mut daily = sunk(Strain::default());
+        for _ in 0..days {
+            daily.a_day_passes(0.0, 0.3);
+        }
+        let mut coarse = sunk(Strain::default());
+        coarse.advance(days, 0.0, 0.3);
+
+        assert_eq!(coarse.state, daily.state, "recovery diverged over {days} days");
+        assert!((coarse.debt - daily.debt).abs() < 1e-9);
+        assert!(
+            (coarse.days_severely_impaired as i64 - daily.days_severely_impaired as i64).abs()
+                <= 1
         );
     }
 }
 
+/// **And under continued exposure at the ceiling**, where nothing moves
+/// but the clock.
+#[test]
+fn a_coarse_advance_matches_a_run_of_days_at_the_bottom() {
+    let mut daily = Strain::default();
+    daily.advance(2000, 1.0, 0.0);
+    let mut coarse = daily;
+    for _ in 0..1000 {
+        daily.a_day_passes(1.0, 0.0);
+    }
+    coarse.advance(1000, 1.0, 0.0);
+    assert_eq!(coarse.state, daily.state);
+    assert_eq!(coarse.days_severely_impaired, daily.days_severely_impaired);
+    assert!((coarse.debt - daily.debt).abs() < 1e-9);
+}
+
+/// **Splitting an advance anywhere gives the same answer.**
+#[test]
+fn an_advance_can_be_split_at_any_point() {
+    for cut in [1u32, 137, 400, 729] {
+        let mut whole = Strain::default();
+        whole.advance(730, 0.8, 0.2);
+        let mut split = Strain::default();
+        split.advance(cut, 0.8, 0.2);
+        split.advance(730 - cut, 0.8, 0.2);
+        assert_eq!(split.state, whole.state, "splitting at {cut} changed the outcome");
+        assert!((split.debt - whole.debt).abs() < 1e-9);
+    }
+}
+
 // =====================================================================
-// staged, not a threshold
+// control, twice
 // =====================================================================
 
-/// **Nobody goes from fine to broken.** The stages arrive in order and
-/// each is visible before the next, which is the whole difference from
-/// rolling on a table when a number is crossed.
+/// **Selection reads what they believe; resolution reads what is so.**
+/// Both important errors follow from the gap.
 #[test]
-fn the_stages_arrive_in_order_and_none_is_skipped() {
+fn believing_you_can_fix_it_is_not_being_able_to() {
+    let doer = a_person(1, &[(Facet::Perseverance, 2.0), (Facet::Assertiveness, 1.5)]);
+    let c = Circumstances { severity: 0.7, ..Default::default() };
+
+    // He is certain he can sort it out. He cannot.
+    let chose = choose(&doer, &thinks_they_can(), &c, 0.0);
+    assert_eq!(chose, Coping::Active, "a determined man did not try");
+    let nothing_to_be_done = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.2 };
+    let out = resolve(
+        attempt(chose),
+        &nothing_to_be_done,
+        &SupportGiven::default(),
+        0.7,
+        0.0,
+    );
+    assert!(out.the_problem_moved < 0.05, "the unfixable got fixed");
+    assert!(out.deferred > 0.0, "the wasted effort cost nothing");
+    assert!(
+        out.helplessness > 0.3,
+        "trying hard and failing taught him nothing about his own reach"
+    );
+}
+
+/// **The other error: nothing was tried, and something could have been.**
+#[test]
+fn believing_nothing_can_be_done_forgoes_what_could() {
+    let m = a_person(2, &[(Facet::Tolerance, 1.5)]);
+    let c = Circumstances { severity: 0.7, ..Default::default() };
+    let chose = choose(&m, &thinks_they_cannot(), &c, 0.0);
+    assert!(!chose.is(Family::Problem), "he tried anyway: {chose:?}");
+
+    // Had he tried, it would have worked.
+    let could_have = ActualControl { source: 0.9, consequences: 0.9, exit: 0.5, means: 0.9 };
+    let taken = resolve(attempt(chose), &could_have, &SupportGiven::default(), 0.7, 0.6);
+    let forgone = resolve(
+        attempt(Coping::Active),
+        &could_have,
+        &SupportGiven::default(),
+        0.7,
+        0.6,
+    );
+    assert!(
+        forgone.the_problem_moved > taken.the_problem_moved + 0.5,
+        "giving it up cost him nothing he could have had"
+    );
+}
+
+/// **Effort costs because the attempt failed, not because its family
+/// carries a penalty.** The same strategy against real control is not
+/// punished at all.
+#[test]
+fn the_cost_is_the_failure_and_not_the_family() {
+    let a = attempt(Coping::Active);
+    let can = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.95 };
+    let cannot = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.1 };
+    let won = resolve(a, &can, &SupportGiven::default(), 0.7, 0.0);
+    let lost = resolve(a, &cannot, &SupportGiven::default(), 0.7, 0.0);
+
+    assert!(won.deferred < 0.02, "succeeding at something still cost him");
+    assert!(lost.deferred > won.deferred);
+    assert!(won.relief > lost.relief * 3.0);
+}
+
+/// **Control is not one number.** A man who cannot stop the thing can
+/// still change what it does to him, and coping should see that.
+#[test]
+fn control_over_the_source_and_over_the_consequences_are_different() {
+    let terminal = ControlAppraisal { source: 0.0, consequences: 0.8, own_response: 0.6 };
+    assert!(terminal.instrumental() > 0.7, "nothing at all could be done about anything");
+    let m = a_person(3, &[(Facet::Orderliness, 1.5)]);
+    let chose = choose(&m, &terminal, &Circumstances::default(), 0.0);
+    assert!(
+        chose.is(Family::Problem),
+        "a man who could arrange his affairs sat and did nothing: {chose:?}"
+    );
+}
+
+// =====================================================================
+// strategies and families
+// =====================================================================
+
+/// **A family is a tag and they overlap**, which is the honest reading
+/// of an instrument whose author says it has no overall score.
+#[test]
+fn families_are_overlapping_tags_and_not_a_partition() {
+    let multi: Vec<Coping> =
+        Coping::ALL.into_iter().filter(|c| c.families().len() > 1).collect();
+    assert!(
+        multi.len() >= 4,
+        "every strategy fell in exactly one family, which is a partition and not a tag"
+    );
+    // Faith is the clearest case: meaning, or a way of not looking.
+    assert!(Coping::Faith.is(Family::Emotion) && Coping::Faith.is(Family::Avoidant));
+    // Asking for help can do both jobs at once.
+    assert!(
+        Coping::InstrumentalSupport.is(Family::Problem)
+            && Coping::InstrumentalSupport.is(Family::Emotion)
+    );
+}
+
+/// **All fourteen are first class**, and each is reachable by somebody.
+#[test]
+fn every_strategy_is_somebody_s() {
+    assert_eq!(Coping::ALL.len(), 14);
+    let mut ever = std::collections::BTreeSet::new();
+    for seed in 0..40u64 {
+        for control in [thinks_they_can(), thinks_they_cannot()] {
+            for company in [true, false] {
+                for debt in [0.0, 1.0] {
+                    let m = a_person(
+                        seed,
+                        &[
+                            (Facet::ALL[(seed % 25) as usize], 2.2),
+                            (Facet::ALL[((seed + 7) % 25) as usize], 1.4),
+                        ],
+                    );
+                    let c = Circumstances { company, ..Default::default() };
+                    ever.insert(choose(&m, &control, &c, debt));
+                }
+            }
+        }
+    }
+    assert!(ever.len() >= 8, "only {} strategies were ever reached", ever.len());
+}
+
+// =====================================================================
+// avoidance: respite and entrenchment
+// =====================================================================
+
+/// **Avoidance relieves most today, or nobody would do it.**
+#[test]
+fn avoidance_gives_the_most_relief_today() {
+    let s = 0.7;
+    let a = ActualControl::default();
+    let avoided = resolve(attempt(Coping::Denial), &a, &SupportGiven::default(), s, 0.8);
+    let faced = resolve(attempt(Coping::Acceptance), &a, &SupportGiven::default(), s, 0.8);
+    assert!(avoided.relief > faced.relief, "avoiding it felt worse on the day");
+}
+
+/// **But it is not uniformly a trap**, and saying so was too strong.
+/// A night off from something that was not going to get worse anyway
+/// costs almost nothing; drinking about an approaching eviction costs a
+/// great deal.
+#[test]
+fn respite_is_cheap_and_escape_from_a_worsening_thing_is_not() {
+    let a = ActualControl::default();
+    let s = SupportGiven::default();
+    let rest_from_the_unfixable =
+        resolve(attempt(Coping::Distraction), &a, &s, 0.7, 0.0);
+    let drink_about_the_eviction =
+        resolve(attempt(Coping::SubstanceUse), &a, &s, 0.7, 1.0);
+
+    assert!(
+        rest_from_the_unfixable.deferred < rest_from_the_unfixable.relief * 0.35,
+        "an evening off was charged as though it were denial"
+    );
+    assert!(
+        drink_about_the_eviction.deferred > drink_about_the_eviction.relief,
+        "drinking through an eviction came out cheap"
+    );
+    assert!(drink_about_the_eviction.deferred > rest_from_the_unfixable.deferred * 3.0);
+}
+
+/// **Putting down a goal that genuinely cannot be reached is not a
+/// failure of nerve.** The same act, when the goal was reachable, is.
+#[test]
+fn giving_up_on_the_impossible_is_different_from_giving_up() {
+    let s = SupportGiven::default();
+    let hopeless = ActualControl { source: 0.0, consequences: 0.1, exit: 0.5, means: 0.2 };
+    let winnable = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.9 };
+    let wise = resolve(attempt(Coping::Disengagement), &hopeless, &s, 0.7, 0.5);
+    let premature = resolve(attempt(Coping::Disengagement), &winnable, &s, 0.7, 0.5);
+    assert!(
+        premature.deferred > wise.deferred * 2.0,
+        "walking away from a winnable fight cost the same as from a lost one"
+    );
+}
+
+/// **Avoiding something that will not get worse does not make it
+/// worse.** The debt is a consequence of a concrete thing happening.
+#[test]
+fn avoidance_of_the_unchangeable_carries_little_debt() {
+    let s = SupportGiven::default();
+    let a = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.0 };
+    let grief = resolve(attempt(Coping::Distraction), &a, &s, 0.8, 0.0);
+    let eviction = resolve(attempt(Coping::Distraction), &a, &s, 0.8, 1.0);
+    assert!(eviction.deferred > grief.deferred * 2.0);
+}
+
+/// Every avoidant strategy says what kind it is.
+#[test]
+fn avoidance_is_not_one_thing() {
+    let kinds: std::collections::BTreeSet<AvoidanceKind> =
+        Coping::ALL.into_iter().filter_map(|c| c.avoidance()).collect();
+    assert!(kinds.len() >= 4, "avoidance came out as one undifferentiated act");
+    assert_eq!(Coping::Distraction.avoidance(), Some(AvoidanceKind::TemporaryRespite));
+    assert_eq!(Coping::SubstanceUse.avoidance(), Some(AvoidanceKind::SubstanceEscape));
+    assert!(Coping::Active.avoidance().is_none());
+}
+
+// =====================================================================
+// support is an exchange, not a multiplier
+// =====================================================================
+
+/// **Offered is not received.** Help nobody wanted makes things worse,
+/// which a generic support bonus cannot express at all.
+#[test]
+fn an_unwanted_lecture_is_support_that_costs() {
+    let a = ActualControl::default();
+    let welcome = SupportGiven {
+        practical: 0.0,
+        emotional: 0.9,
+        read_as_helpful: 0.9,
+        obligation: 0.0,
+    };
+    let lecture = SupportGiven {
+        practical: 0.0,
+        emotional: 0.9,
+        read_as_helpful: 0.05,
+        obligation: 0.0,
+    };
+    let heard = resolve(attempt(Coping::EmotionalSupport), &a, &welcome, 0.7, 0.3);
+    let lectured = resolve(attempt(Coping::EmotionalSupport), &a, &lecture, 0.7, 0.3);
+    assert!(heard.relief > lectured.relief * 5.0);
+    assert!(lectured.deferred > 0.0, "being lectured at came out free");
+}
+
+/// **Practical help can move the problem; being listened to cannot** —
+/// and help that puts you under an obligation carries that cost.
+#[test]
+fn the_kind_of_support_decides_what_it_can_do() {
+    let a = ActualControl { source: 0.8, consequences: 0.8, exit: 0.3, means: 0.9 };
+    let listening = SupportGiven {
+        practical: 0.0,
+        emotional: 1.0,
+        read_as_helpful: 1.0,
+        obligation: 0.0,
+    };
+    let money = SupportGiven {
+        practical: 1.0,
+        emotional: 0.0,
+        read_as_helpful: 1.0,
+        obligation: 0.9,
+    };
+    let talked = resolve(attempt(Coping::EmotionalSupport), &a, &listening, 0.7, 0.5);
+    let lent = resolve(attempt(Coping::InstrumentalSupport), &a, &money, 0.7, 0.5);
+
+    assert!(talked.the_problem_moved < 0.01, "a sympathetic ear paid the rent");
+    assert!(lent.the_problem_moved > 0.2);
+    assert!(lent.deferred > 0.0, "being lent money left him owing nothing");
+}
+
+/// **Nobody there, nothing to ask.**
+#[test]
+fn you_cannot_ask_somebody_who_is_not_there() {
+    let sociable = a_person(6, &[(Facet::Gregariousness, 2.5)]);
+    let alone = Circumstances {
+        company: false,
+        substance_available: false,
+        ..Default::default()
+    };
+    let chose = choose(&sociable, &thinks_they_cannot(), &alone, 0.4);
+    assert!(!chose.needs_company(), "he asked somebody who was not there: {chose:?}");
+    assert_ne!(chose, Coping::SubstanceUse);
+}
+
+// =====================================================================
+// the ladder
+// =====================================================================
+
+/// **The states arrive in order and none is skipped.**
+#[test]
+fn the_states_arrive_in_order() {
     let mut st = Strain::default();
-    let mut seen = vec![st.stage];
+    let mut seen = vec![st.state];
     for _ in 0..4000 {
         st.a_day_passes(1.0, 0.2);
-        if *seen.last().unwrap() != st.stage {
-            seen.push(st.stage);
+        if *seen.last().unwrap() != st.state {
+            seen.push(st.state);
         }
     }
     assert_eq!(
         seen,
-        vec![Stage::Coping, Stage::Strained, Stage::Exhausted, Stage::Broken],
-        "somebody skipped a stage on the way down"
+        vec![
+            FunctionalState::Regulated,
+            FunctionalState::Strained,
+            FunctionalState::Depleted,
+            FunctionalState::Impaired
+        ]
     );
 }
 
-/// **A bad afternoon is not a breakdown, and a bad year is.**
-///
-/// The reason the debt accumulates rather than being read off today's
-/// stress: no single day of grinding pressure looks dramatic.
+/// **A bad afternoon is not chronic impairment, and a bad year is.**
 #[test]
 fn one_terrible_day_is_not_a_breakdown() {
     let mut st = Strain::default();
     st.a_day_passes(1.0, 0.2);
-    assert_eq!(st.stage, Stage::Coping, "one bad day broke somebody");
-
+    assert_eq!(st.state, FunctionalState::Regulated);
     for _ in 0..200 {
         st.a_day_passes(0.55, 0.2);
     }
-    assert!(
-        st.stage >= Stage::Strained,
-        "seven months of unrelieved pressure left no mark at all"
-    );
+    assert!(st.state >= FunctionalState::Strained);
 }
 
-/// **Coming back is slower than going under.** Severe burnout runs one
-/// to three years, and exhaustion leave is measured in months — the
-/// single most important asymmetry here.
+/// **Recovery requires the demands to actually fall below the
+/// resources.** A capped accumulator must not drain toward health while
+/// the conditions that caused it are unchanged.
 #[test]
-fn recovery_is_far_slower_than_the_descent() {
-    assert!(STRAIN_PER_DAY > RECOVERY_PER_DAY * 2.0);
+fn nothing_recovers_while_the_conditions_hold() {
+    let mut st = Strain::default();
+    st.advance(1500, 0.9, 0.2);
+    let sunk = st.debt;
+    st.advance(2000, 0.9, 0.2);
+    assert!(st.debt >= sunk, "he got better while nothing about his life changed");
+    assert_eq!(st.state, FunctionalState::Impaired);
 
+    st.advance(2000, 0.05, 0.4);
+    assert!(st.debt < sunk, "relief did nothing");
+}
+
+/// **Getting out takes more than getting back under the line.**
+#[test]
+fn hysteresis_holds_people_in_a_state() {
+    for i in 0..3 {
+        assert!(LEAVE[i] < ENTER[i]);
+    }
+    let mut st = Strain::default();
+    while st.state < FunctionalState::Strained {
+        st.a_day_passes(0.8, 0.2);
+    }
+    st.a_day_passes(0.2, 0.2);
+    assert_eq!(st.state, FunctionalState::Strained);
+}
+
+/// **Coming back is slower than going under**, but two years is a
+/// *designed bound under favourable conditions* — not a claim about what
+/// severe exhaustion generally takes. Recovery evidence is heterogeneous
+/// and one clinical cohort still had substantial residual symptoms after
+/// seven years.
+#[test]
+fn recovery_is_slower_than_the_descent() {
+    assert!(STRAIN_PER_DAY > RECOVERY_PER_DAY * 2.0);
     let mut down = Strain::default();
-    let mut to_exhausted = 0;
-    while down.stage < Stage::Exhausted && to_exhausted < 10_000 {
+    let mut fell = 0;
+    while down.state < FunctionalState::Depleted && fell < 10_000 {
         down.a_day_passes(0.6, 0.2);
-        to_exhausted += 1;
+        fell += 1;
     }
     let mut back = 0;
-    while down.stage > Stage::Coping && back < 20_000 {
+    while down.state > FunctionalState::Regulated && back < 20_000 {
         down.a_day_passes(0.0, 0.2);
         back += 1;
     }
-    assert!(
-        back > to_exhausted,
-        "he recovered in {back} days from a state that took {to_exhausted} to reach"
-    );
-    assert!(back > 365, "a year of exhaustion cleared up in {back} days");
+    assert!(back > fell);
+    assert!(back > 365);
 }
 
-/// **The hole has a bottom.** Unbounded, a decade under it builds a debt
-/// that takes a century to clear, so a man who had a very bad ten years
-/// could never recover in a lifetime. Being broken is a state, not a
-/// running total.
+/// **The hole has a bottom** — but capping the debt must not erase how
+/// long somebody was down there.
 #[test]
-fn the_debt_does_not_deepen_for_ever() {
-    let mut st = Strain::default();
-    for _ in 0..20_000 {
-        st.a_day_passes(1.0, 0.0);
-    }
-    assert!(st.load <= STRAIN_CEILING + 1e-9, "fifty years under it went to {}", st.load);
+fn the_debt_saturates_and_the_duration_does_not() {
+    let mut brief = Strain::default();
+    brief.advance(1200, 1.0, 0.0);
+    let mut long = Strain::default();
+    long.advance(1200 + 3650, 1.0, 0.0);
 
-    // And from the very bottom, real relief clears it in a couple of
-    // years, which is what severe burnout takes.
-    let mut days = 0;
-    while st.stage > Stage::Coping && days < 20_000 {
-        st.a_day_passes(0.0, 0.4);
-        days += 1;
-    }
+    assert!((brief.debt - long.debt).abs() < 1e-9, "the debt kept deepening");
+    assert!(brief.debt <= STRAIN_CEILING + 1e-9);
     assert!(
-        (365..=365 * 4).contains(&days),
-        "the worst case took {days} days to come back from"
+        long.days_severely_impaired > brief.days_severely_impaired * 2,
+        "ten extra years at the bottom left no trace at all"
+    );
+    assert!(
+        long.relapse_sensitivity() > brief.relapse_sensitivity()
+            || brief.relapse_sensitivity() >= 1.0
     );
 }
 
-/// **A way back exists at all**, which no tantrum table has.
+/// **Impairment is not global.** A capacity of 0.15 is functioning
+/// badly, not being a vegetable — which is why the state is not called
+/// "broken".
 #[test]
-fn people_do_come_back() {
-    let mut st = Strain::default();
-    for _ in 0..2000 {
-        st.a_day_passes(0.9, 0.2);
-    }
-    assert!(st.stage >= Stage::Exhausted);
-    for _ in 0..6000 {
-        st.a_day_passes(0.05, 0.35);
-    }
-    assert_eq!(st.stage, Stage::Coping, "nobody ever recovers from anything");
-    assert!(st.load < LEAVE[0]);
+fn impairment_is_a_degree_and_not_an_absence() {
+    assert!(FunctionalState::Regulated.capacity() > FunctionalState::Strained.capacity());
+    assert!(FunctionalState::Strained.capacity() > FunctionalState::Depleted.capacity());
+    assert!(FunctionalState::Depleted.capacity() > FunctionalState::Impaired.capacity());
+    assert!(FunctionalState::Impaired.capacity() > 0.0);
 }
 
-/// **Burnout does not lift the week the workload does.** Hysteresis: the
-/// level you leave a stage at is below the level you entered it at.
+/// **Burnout keeps its three dimensions**, which is what lets the
+/// dutiful worker exist honestly: worn out, not visibly cynical, still
+/// performing — at a cost.
 #[test]
-fn getting_out_takes_more_than_getting_back_under_the_line() {
-    for i in 0..3 {
-        assert!(LEAVE[i] < ENTER[i], "stage {i} left at the same load it was entered at");
-    }
-
-    let mut st = Strain::default();
-    while st.stage < Stage::Strained {
-        st.a_day_passes(0.8, 0.2);
-    }
-    // Drop the pressure to just under what caused it: still strained.
-    let load_at_entry = st.load;
-    st.a_day_passes(0.2, 0.2);
-    assert_eq!(st.stage, Stage::Strained, "it lifted the moment the pressure came off");
-    assert!(st.load <= load_at_entry);
-}
-
-/// **A stage costs capacity**, which is what makes it matter to the rest
-/// of the simulation rather than being a label.
-#[test]
-fn each_stage_takes_something_away() {
-    assert!(Stage::Coping.capacity() > Stage::Strained.capacity());
-    assert!(Stage::Strained.capacity() > Stage::Exhausted.capacity());
-    assert!(Stage::Exhausted.capacity() > Stage::Broken.capacity());
-    assert!(Stage::Broken.capacity() > 0.0, "a broken man can do literally nothing");
-}
-
-/// **Tolerance is what a person carries for nothing**, so the same
-/// pressure breaks one man and not another.
-#[test]
-fn the_same_pressure_does_not_break_everybody() {
-    let run = |tolerance: f64| {
-        let mut st = Strain::default();
-        for _ in 0..900 {
-            st.a_day_passes(0.5, tolerance);
-        }
-        st.stage
-    };
-    assert!(run(0.7) < run(0.15), "how much somebody can carry made no difference");
-    assert_eq!(run(0.7), Stage::Coping);
+fn burnout_is_three_axes_and_not_a_rung() {
+    let dutiful = Burnout { exhaustion: 0.95, cynicism: 0.10, reduced_efficacy: 0.15 };
+    let checked_out = Burnout { exhaustion: 0.40, cynicism: 0.55, reduced_efficacy: 0.25 };
+    assert!(dutiful.exhaustion > checked_out.exhaustion);
+    assert!(dutiful.cynicism < checked_out.cynicism);
+    // A single number could not tell these two apart, which is the point.
+    let flat = |b: &Burnout| b.exhaustion + b.cynicism + b.reduced_efficacy;
+    assert!(
+        (flat(&dutiful) - flat(&checked_out)).abs() < 0.01,
+        "the two men differ sharply and any single score puts them together"
+    );
 }
 
 // =====================================================================
-// breaking in character
+// crisis: a repertoire, not a class
 // =====================================================================
 
-/// **The replacement for the tantrum table.** How somebody breaks is
-/// read off who they are: not drawn, so it is the same every time for
-/// one person and different between people.
+/// **Personality constrains a repertoire; circumstance picks from it.**
+/// The same violent man does not lash out at somebody who can ruin him,
+/// and holds himself together in front of a child.
 #[test]
-fn a_breakdown_takes_the_shape_of_the_person() {
+fn the_same_man_does_different_things_in_different_rooms() {
     let violent = a_person(10, &[(Facet::Violence, 2.5), (Facet::Anger, 2.0)]);
-    let private = a_person(10, &[(Facet::Privacy, 2.5), (Facet::Gloom, 1.5)]);
-    let dutiful = a_person(10, &[(Facet::Dutifulness, 2.5), (Facet::Perseverance, 2.5)]);
-    let loud = a_person(10, &[(Facet::Anger, 2.2), (Facet::Gregariousness, 2.2)]);
-    let sot = a_person(
-        10,
-        &[(Facet::ExcitementSeeking, 2.5), (Facet::Gloom, 2.0), (Facet::Dutifulness, -2.0)],
+    let plain = Circumstances::default();
+    let before_a_child = Circumstances { someone_to_protect: true, ..Default::default() };
+    let before_a_magistrate =
+        Circumstances { other_has_authority: true, ..Default::default() };
+
+    assert_eq!(Strain::crisis_propensities(&violent, &plain)[0].0, Acute::Aggression);
+    assert_ne!(
+        Strain::crisis_propensities(&violent, &before_a_child)[0].0,
+        Acute::Aggression,
+        "he went for somebody in front of his own child"
     );
-
-    assert_eq!(Strain::breaks_as(&violent), Breaks::Violently);
-    assert_eq!(Strain::breaks_as(&private), Breaks::Withdrawn);
-    assert_eq!(Strain::breaks_as(&dutiful), Breaks::StillWorking);
-    assert_eq!(Strain::breaks_as(&loud), Breaks::Loudly);
-    assert_eq!(Strain::breaks_as(&sot), Breaks::Drinking);
-}
-
-/// **And it is stable.** Ask a hundred times, get the same answer — the
-/// property a die roll cannot have.
-#[test]
-fn the_same_man_breaks_the_same_way_every_time() {
-    let m = a_person(11, &[(Facet::Privacy, 1.8)]);
-    let first = Strain::breaks_as(&m);
-    for _ in 0..100 {
-        assert_eq!(Strain::breaks_as(&m), first);
-    }
-}
-
-/// **The one that gets missed.** A dutiful man breaks by carrying on
-/// perfectly, so nothing about him looks wrong from the outside — which
-/// is precisely why it is the dangerous one, and a tantrum table has no
-/// way to express it at all.
-#[test]
-fn some_people_break_by_showing_nothing() {
-    let dutiful = a_person(12, &[(Facet::Dutifulness, 2.5), (Facet::Perseverance, 2.0)]);
-    let mut st = Strain::default();
-    for _ in 0..3000 {
-        st.a_day_passes(0.9, 0.2);
-    }
-    assert_eq!(st.stage, Stage::Broken);
-    assert_eq!(
-        Strain::breaks_as(&dutiful),
-        Breaks::StillWorking,
-        "a thoroughly dutiful man made a scene"
+    assert_ne!(
+        Strain::crisis_propensities(&violent, &before_a_magistrate)[0].0,
+        Acute::Aggression,
+        "he swung at a man who could hang him"
     );
-    // He is still broken, whatever it looks like.
-    assert!(st.stage.capacity() < 0.2);
 }
 
-/// **Days at a stage are counted**, because how long somebody has been
-/// there is not the same question as how bad it is.
+/// **Stable given a genuinely identical state**, which is the invariant
+/// that matters — not that one man always does one thing.
 #[test]
-fn how_long_somebody_has_been_there_is_tracked_separately() {
-    let mut st = Strain::default();
-    for _ in 0..600 {
-        st.a_day_passes(0.6, 0.2);
+fn identical_circumstances_give_identical_propensities() {
+    let m = a_person(11, &[(Facet::Anxiety, 1.8)]);
+    let c = Circumstances::default();
+    let first = Strain::crisis_propensities(&m, &c);
+    for _ in 0..50 {
+        assert_eq!(Strain::crisis_propensities(&m, &c), first);
     }
-    let stage_then = st.stage;
-    let days_then = st.days_here;
-    st.a_day_passes(0.6, 0.2);
-    if st.stage == stage_then {
-        assert_eq!(st.days_here, days_then + 1);
-    } else {
-        assert_eq!(st.days_here, 0, "the counter did not reset on a change of stage");
+}
+
+/// **More than one response is live at once**, because withdrawal,
+/// drinking and a row are a sequence in a bad stretch rather than three
+/// character classes.
+#[test]
+fn several_responses_are_available_at_once() {
+    let m = a_person(12, &[(Facet::Anger, 1.2), (Facet::Anxiety, 1.0)]);
+    let ranked = Strain::crisis_propensities(&m, &Circumstances::default());
+    assert_eq!(ranked.len(), 5, "the repertoire collapsed to one answer");
+    assert!(
+        ranked[1].1 > ranked[4].1,
+        "everything below the top was equally impossible"
+    );
+}
+
+/// **Coping is not a stage**, and people go on doing it in every state —
+/// including the worst one, where what is left is mostly avoidance.
+#[test]
+fn people_cope_in_every_state_including_the_worst() {
+    let m = a_person(13, &[(Facet::Perseverance, 1.0)]);
+    let c = Circumstances::default();
+    for debt in [0.0, 0.5, 1.0, STRAIN_CEILING] {
+        let p = propensities(&m, &thinks_they_cannot(), &c, debt);
+        assert!(!p.is_empty(), "at a debt of {debt} he had no way of coping at all");
     }
+    // And at the bottom what he reaches for is avoidance.
+    let sunk = choose(&m, &thinks_they_cannot(), &c, STRAIN_CEILING);
+    assert!(sunk.is(Family::Avoidant), "at the very bottom he was still coping well");
+}
+
+/// **An attempt is raised, not a stress subtraction.** Nothing relieves
+/// anything until it has been settled against the world.
+#[test]
+fn a_strategy_raises_an_attempt_and_does_not_pay_out_by_itself() {
+    let a: Attempt = attempt(Coping::Active);
+    assert!(a.aims_at_the_world);
+    assert!(!a.asks_somebody);
+    let asked = attempt(Coping::InstrumentalSupport);
+    assert!(asked.asks_somebody);
+    // With nobody actually helping, asking achieves nothing.
+    let nothing = resolve(
+        asked,
+        &ActualControl::default(),
+        &SupportGiven::default(),
+        0.7,
+        0.5,
+    );
+    assert!(nothing.relief < 0.01, "asking for help worked with nobody answering");
 }

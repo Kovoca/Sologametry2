@@ -3651,68 +3651,118 @@ out finds zero, because crossing spends it.
 ## The tantrum table, replaced (`src/coping.rs`)
 
 Mind slice 8, spec section 10 — *coping and breakdown, **staged** rather
-than a tantrum table*. A tantrum table is a roll at a threshold: cross a
-stress number, draw a card, get a rage or a melancholy. It is the most
-imitated thing about DF's minds and it fails three ways — there is no
-coping in it, no order to it, and no way back out of it.
+than a tantrum table*. A table is a roll at a threshold, and it fails
+three ways: no coping in it, no order to it, no way back out.
 
-### What somebody does about it
+### Name the model after what it is, not after a study it resembles
 
-Lazarus and Folkman's families, and the fourteen strategies the Brief
-COPE actually measures rather than a list invented for a game.
+The same error as slice 7, in a new place. The first version called its
+four rungs Maslach's burnout model, and Maslach describes **three
+dimensions** — exhaustion, cynicism, reduced professional efficacy —
+arising from **chronic occupational conditions**. It is not a ladder of
+whole-person stages, lashing out and drinking are not burnout dimensions,
+and the ordering is not settled firmly enough to enforce universally.
 
-- **Controllability decides which family helps**, which is about the
-  best-replicated result there is. Problem-focused coping works where
-  there is control and *is itself harmful* where there is none: planning
-  your way out of a bereavement does not work, and the effort is spent
-  anyway. A mismatch is a cost, not a nil return.
-- **Avoidance works, and that is exactly why it is a trap.** It gives the
-  most relief *today* — more than facing the thing — and puts more than
-  it relieved onto the debt. A model in which avoidance simply fails
-  cannot explain why anybody avoids anything, and people avoid
-  constantly.
-- **Support buffers most where it is needed most.** The stress-buffering
-  hypothesis is specifically that company matters at high stress and does
-  little at low, so the benefit scales with severity instead of being a
-  flat bonus.
-- **Willpower is what holds somebody to the harder option**, and rising
-  strain pushes them off it — which is the feedback that turns a bad
-  patch into a spiral.
+So `FunctionalState` is **Regulated → Strained → Depleted → Impaired**,
+labelled a designed general strain model, and `Burnout` keeps its three
+axes separately for where occupational burnout is actually wanted. Two
+namings also had to go: **coping is not a stage** (people cope in every
+state, including by denial and drink) and **"broken" is too global** —
+somebody impaired at work may be a competent parent.
 
-### Staged, and the stages are real
+**Chronic strain and acute crisis are different mechanisms.** A bad
+afternoon must not produce chronic impairment; a catastrophic one can
+still produce panic, dissociation, flight or aggression on the spot.
 
-| | |
-|---|---|
-| Coping | managing; most people, most of the time |
-| Strained | holding it together and paying for it |
-| Exhausted | Maslach's order — the tiredness comes first, the cynicism follows |
-| Broken | months, not days |
+### Timestep invariance, or the mind depends on the camera
 
-- **Nobody skips a stage**, in either direction. Fine does not become
-  berserk and broken does not become fine.
-- **A bad afternoon is not a breakdown and a bad year is**, which is why
-  the debt accumulates rather than being read off today's stress. That is
-  allostatic load.
-- **Coming back is far slower than going under** — severe burnout runs
-  one to three years — and there is **hysteresis**: the load you leave a
-  stage at is below the load you entered it at, so burnout does not lift
-  the week the workload does.
-- **The hole has a bottom.** Unbounded, a decade under it builds a debt
-  that takes a century to clear, so a man who had a very bad ten years
-  could never recover in a lifetime. Being broken is a state, not a
-  running total.
+The bug that would have wrecked slice 9. "One stage at a time" has to
+mean **chronologically**, not one transition per call: a person updated
+daily traversed several stages while a distant one updated once after two
+years moved only one, so somebody's mental state depended on whether the
+engine happened to be looking at them.
 
-### Breaking in character
+`advance(days, …)` is analytic and asserted equal to that many
+`a_day_passes` calls — on the way down, on the way back up, at the
+ceiling, and split at any point. Legitimate because the load path is
+monotone over an interval of constant pressure, so thresholds are met in
+order and crossing times are solvable.
 
-The actual replacement for the die: **how somebody breaks is read off who
-they are.** A violent man lashes out, a private one stops speaking, an
-angry sociable one makes a scene, a dissolute one drinks — and a dutiful
-one **keeps working, perfectly, until he falls over**, which is the one
-that gets missed, because from the outside nothing is wrong. A tantrum
-table cannot express that at all.
+### Controllability exists twice
 
-Same person, same answer, every time. Different people, different
-answers. That is the property a roll cannot have.
+`ControlAppraisal` is what somebody believes and drives **selection**;
+`ActualControl` is what is so and drives **resolution**. The gap is where
+both real errors live: "I can fix this" when they cannot, which is futile
+effort and learned helplessness; and "nothing can be done" when something
+could have been.
+
+- **Control is not one scalar.** Somebody cannot reverse a terminal
+  diagnosis and can absolutely control symptoms, money, care and what
+  they do with the time left.
+- **The cost is the failure, not the family.** "Problem-focused coping is
+  harmful whenever control is low" was too strong — the evidence for that
+  interaction is mixed and measured *perceived* control. Effort costs
+  because the attempt failed.
+
+### A strategy raises an attempt; the world settles it
+
+Otherwise coping is a private spell that subtracts stress whether or not
+anything happened. Planning improves a later attempt rather than fixing
+anything; asking for help only helps if somebody answers and it is *read*
+as helpful.
+
+- **Fourteen strategies, first class.** Carver is explicit that the Brief
+  COPE has no overall score and recommends no one way to derive a
+  dominant style, and later factor analyses find between two and fifteen
+  higher-order factors. Families are **overlapping design tags** — our
+  synthesis of Lazarus and Folkman with the instrument's items — and no
+  family carries a payoff.
+- **Avoidance relieves most today**, or nobody would ever do it. But it
+  is *not* uniformly a trap: an evening off from something that was not
+  going to get worse is nearly free, while drinking through an approaching
+  eviction is not. **The debt arises from something concrete happening** —
+  a solvable problem left to worsen, a fear reinforced, a process
+  interrupted, a substance cost. Putting down a genuinely unreachable
+  goal is not a failure of nerve; putting down a winnable one is.
+- **Support is an exchange, not a multiplier.** Received and perceived
+  support are empirically distinct. An unwanted lecture is offered
+  support that makes things worse; money solves the problem and leaves an
+  obligation; a sympathetic ear does neither.
+
+### A repertoire, not a character class
+
+Personality constrains what somebody might do; **circumstance picks from
+it**. The same violent man lashes out when confronted, holds himself
+together in front of his own child, and says nothing to a magistrate —
+none of which is out of character.
+
+**Inhibition has to scale with the drive.** A flat penalty is nothing to
+a man two and a half standard deviations into violence, so he swung
+either way; suppression is now proportional as well as absolute, which is
+the honest model — the more there is to hold back, the more holding back
+removes.
+
+The invariant is **the same person in a genuinely identical state gives
+the same propensities**, which keeps a seeded draw reproducible. It is
+not that one person always performs the same act. Several responses stay
+live at once, because withdrawal and drinking and a row are a sequence in
+a bad stretch rather than three character classes.
+
+### Capping the debt must not erase the duration
+
+The hole has a bottom, or ten years under it takes a century to clear.
+But ten years at the ceiling is not ten days at the ceiling:
+`days_severely_impaired` and `relapse_sensitivity` are kept alongside the
+saturating debt, so a bad decade leaves consequences elsewhere — illness,
+lost work, a wrecked marriage, dependence, habits that have set — even
+once functional capacity returns.
+
+Recovery also **requires demands to fall below resources**; a capped
+accumulator must not drain toward health while the conditions hold. And
+"about two years" is a **designed bound under favourable conditions**,
+not what severe exhaustion generally takes — the evidence is
+heterogeneous and one clinical cohort still had substantial residual
+symptoms seven years on.
 
 ## Conventions
 
