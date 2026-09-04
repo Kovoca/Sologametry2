@@ -2,6 +2,7 @@
 //!
 //!   cargo run --release --bin jobs -- --seed N --rank K
 
+use scale_sim::census::{retail_share_of_fte, whole_distribution_sector, Base, Census, DISTRIBUTION};
 use scale_sim::econ::Doctrine;
 use scale_sim::network::Network;
 use scale_sim::polity::Polities;
@@ -39,13 +40,16 @@ fn main() {
     }
 
     let people: f64 = e.markets.iter().map(|m| m.population).sum();
-    // **Not Workforce::hands.** That counts the trades the works
-    // employ and nothing else, which this file already records — so
-    // dividing the state and the services by it gives shares over 100%.
-    // The labour force is the population in work: real participation
-    // runs 45-55%.
-    let hands = people * 0.5;
-    println!("nation of {people:.0}, labour force {hands:.0}\n");
+    // **Not `Workforce::hands`.** That counts the trades the works
+    // employ and nothing else, which this project already records — so
+    // dividing the state and the private services by it gives shares
+    // over 100%. `Census` exists so the mistake is hard to make twice:
+    // every share names what it is a share of.
+    let c = Census::of_a_nation(people);
+    println!(
+        "nation of {people:.0}\n  labour force {:.0}, in work {:.0}, jobs {:.0}, FTE {:.0}\n",
+        c.labour_force, c.employed_people, c.jobs, c.full_time_equivalents
+    );
 
     // Everybody the model actually employs, by where they work.
     let mut shop = 0.0;
@@ -62,18 +66,38 @@ fn main() {
     let services = e.services.as_ref().map(|s| s.posts.iter().flatten().sum::<f64>()).unwrap_or(0.0);
 
     let row = |name: &str, n: f64, real: f64| {
-        let share = if hands > 0.0 { 100.0 * n / hands } else { 0.0 };
-        println!("  {name:<28} {n:>12.0}  {share:>5.1}%   real {real:>4.1}%");
+        let s = c.share(n, Base::EmployedPeople);
+        println!(
+            "  {name:<30} {n:>12.0}  {:>5.1}% of {:<14} real {real:>4.1}%",
+            s.percent(),
+            s.of.name()
+        );
     };
-    row("retail (shops)", shop, 14.1);
+    // **Shops, not the whole distribution sector.** 14.1% is wholesale
+    // and retail and the motor trade together; shops are a little under
+    // two thirds of it.
+    row("retail (shops)", shop, DISTRIBUTION[0].of_employed * 100.0);
     row("works, mines, farms", works, 10.0);
     row("the state", state, 17.0);
     row("private services", services, 36.8);
 
     let total = shop + works + state + services;
+    let all = c.share(total, Base::EmployedPeople);
+    println!("\n  {:<30} {total:>12.0}  {:>5.1}% of {}", "accounted for", all.percent(), all.of.name());
+
+    println!("\nthe distribution sector, at the boundaries the statistics use");
+    for b in DISTRIBUTION {
+        println!("  {:<62} {:>4.1}%", b.what, b.of_employed * 100.0);
+    }
     println!(
-        "\n  {:<28} {total:>12.0}  {:>5.1}%",
-        "accounted for",
-        if hands > 0.0 { 100.0 * total / hands } else { 0.0 }
+        "  {:<62} {:>4.1}%",
+        "all three together — the figure usually quoted",
+        whole_distribution_sector() * 100.0
+    );
+    println!(
+        "\n  and shops measured in hours rather than heads: {:.1}% of employment,\n  \
+         because about 60% of retail work is part-time — which is what a model\n  \
+         whose staffing comes out of labour-hours should be aiming at.",
+        retail_share_of_fte() * 100.0
     );
 }

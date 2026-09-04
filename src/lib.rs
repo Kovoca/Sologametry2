@@ -7,6 +7,7 @@
 pub mod befall;
 pub mod biota;
 pub mod building;
+pub mod census;
 pub mod consequence;
 pub mod converse;
 pub mod coping;

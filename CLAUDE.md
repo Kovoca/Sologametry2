@@ -4534,8 +4534,49 @@ and floor to keep**, and most of what a real shop sells — clothing,
 household goods, everything that is not food — is not in the commodity
 list at all.
 
-So the missing 12.7 points of employment are not a coefficient. They are
-the goods nobody in this model buys.
+**And then the benchmark itself turned out to be wrong**, which had to
+be settled before anything was calibrated against it. "Wholesale and
+retail trade; repair of motor vehicles" is **one statistical section**,
+and 14% is the section — not the shops:
+
+| | share of people in work |
+|---|---|
+| retail — what a household buys over a counter | **9.1%** |
+| wholesale — warehouses, distributors, brokers | 3.6% |
+| motor trade — sale and repair of vehicles | 1.8% |
+| all three, the figure usually quoted | 14.5% |
+
+**And retail in hours is smaller again.** About 60% of shop work is
+part-time, so its share of full-time equivalents is about **6.4%** — and
+a model whose staffing comes out of recipe labour-hours is producing
+hours, not heads, so that is the target it should be aimed at.
+
+So the missing 12.7 points were never one thing:
+
+- shops are short by about **4.9** points, not 12.7 — four times under,
+  not ten;
+- **wholesale and the motor trade are 5.4 points of whole sectors this
+  model does not have at all**, and were never retail's to make up;
+- the remainder is spread across everything else.
+
+Calibrating shops against 14.1% would have replaced a tonnage error with
+a sector-boundary error, and looked right while doing it.
+
+### Every share names what it is a share of (`src/census.rs`)
+
+A denominator mistake produces a plausible percentage, which is what
+makes it the hardest error here to see, and it has now happened twice.
+So the reporting is typed: `Share` carries a `Base`, two shares on
+different bases will not compare, and there is deliberately **no `Base`
+for `Workforce::hands`** — it is labour available to the works this
+economy models and it is not a denominator.
+
+```text
+jobs  ≠  employed people  ≠  full-time equivalents  ≠  paid hours
+```
+
+One person may hold two jobs — 3.7% of Britons do — and one job may be
+half a week.
 
 ## Conventions
 
