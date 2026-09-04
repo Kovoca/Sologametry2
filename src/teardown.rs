@@ -24,6 +24,53 @@ use crate::item::{
     AssemblyRecord, Catalogue, Condition, DefId, ItemInstance, JointMethod, Quality,
 };
 use crate::material::{Composition, Material, Recovers};
+use crate::rng::Rng;
+use crate::save::channel;
+
+/// **A unique component is recovered or it is destroyed.** It is never
+/// 0.6 of a component, and it must not be decided by rounding: flooring
+/// always destroys a lone part at any probability under one, ceiling
+/// always saves it, and ordinary rounding turns every probability above
+/// a half into a certainty. All three are wrong in the same way — they
+/// replace a chance with a rule.
+///
+/// So the answer is a **deterministic Bernoulli**, keyed by the teardown
+/// event and which component it is. Doing it again gives the same answer;
+/// reloading a save gives the same answer; a different teardown of the
+/// same object is a different event and may go differently.
+///
+/// **The method is deliberately not in the key.** Using one draw across
+/// intentions is common random numbers: the same unit is tested against a
+/// higher probability when the work is careful, so careful recovery can
+/// never come out worse than smashing by an accident of sampling. That is
+/// a property worth having and it is asserted in the tests.
+fn survivors(event: u64, component: usize, count: u32, p: f64) -> u32 {
+    let p = p.clamp(0.0, 1.0);
+    if count == 0 {
+        return 0;
+    }
+    // A handful of parts: settle each one on its own.
+    if count <= 512 {
+        let mut out = 0;
+        for unit in 0..count {
+            let h = channel(event, component as u64, "component recovery")
+                ^ (unit as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            if (Rng::new(h).next_f32() as f64) < p {
+                out += 1;
+            }
+        }
+        return out;
+    }
+    // **A lot is a number.** Above a few hundred the binomial spread is
+    // negligible beside the count, so take the expectation and settle only
+    // the fractional remainder — which keeps the aggregate unbiased
+    // without drawing ten thousand times.
+    let expected = count as f64 * p;
+    let whole = expected.floor();
+    let h = channel(event, component as u64, "lot recovery remainder");
+    let extra = ((Rng::new(h).next_f32() as f64) < expected - whole) as u32;
+    (whole as u32 + extra).min(count)
+}
 
 /// **What somebody is trying to achieve**, which is what decides the
 /// yield. Not nine special cases — nine settings of the same three knobs:
@@ -202,6 +249,9 @@ pub fn take_apart(
     // `skill` is the person's ability at it, 0..1. Care sets the ceiling
     // and skill says how near it they get.
     skill: f64,
+    // `event` identifies this particular taking-apart, so that the same
+    // one cannot be rerolled and a different one may go differently.
+    event: u64,
 ) -> Recovered {
     let mut out = Recovered::default();
     let total = item.mass_kg;
@@ -217,7 +267,7 @@ pub fn take_apart(
             let minutes = 4.0 * rec.components.len() as f64 * how.time_multiplier()
                 / (0.4 + 0.6 * skill);
             out.minutes = minutes;
-            recover_from_record(&mut out, rec, item, how, skill, sound);
+            recover_from_record(&mut out, rec, item, how, skill, sound, event);
         }
         // ---- destructive, or nothing is known about how it was made --
         _ => {
@@ -241,6 +291,7 @@ fn recover_from_record(
     how: Teardown,
     skill: f64,
     sound: f64,
+    event: u64,
 ) {
     // A field strip goes only as far as the modules; it does not separate
     // what was glued, welded, cast or crimped.
@@ -252,7 +303,7 @@ fn recover_from_record(
     let recorded = rec.total_component_mass();
     let scale = if recorded > 0.0 { (item.mass_kg / recorded).min(1.0) } else { 0.0 };
 
-    for comp in &rec.components {
+    for (index, comp) in rec.components.iter().enumerate() {
         // **The fastener names the joint**, so a screw comes out of a
         // glued frame by unscrewing.
         let method = comp.held_by;
@@ -280,11 +331,10 @@ fn recover_from_record(
             continue;
         };
 
-        // **Round, do not floor.** Flooring means a thing there is only
-        // one of can never be recovered at all unless it survives with
-        // certainty, which quietly makes every single-part assembly
-        // unsalvageable.
-        let whole = (count as f64 * survives).round().min(count as f64) as u32;
+        // **A Bernoulli, not a rounding.** Flooring makes a lone part
+        // unrecoverable at any probability under one; rounding makes it
+        // certain at any probability over a half. Neither is a chance.
+        let whole = survivors(event, index, count, survives);
         let each = if count > 0 { kg / count as f64 } else { 0.0 };
 
         if whole > 0 {
@@ -391,8 +441,13 @@ pub fn possible(item: &ItemInstance, how: Teardown) -> bool {
 /// **The difference between demolition and deconstruction**, expressed as
 /// a comparison rather than asserted: same object, same person, two
 /// intentions.
-pub fn compare(item: &ItemInstance, a: Teardown, b: Teardown, cat: &Catalogue, skill: f64)
-    -> (Recovered, Recovered)
-{
-    (take_apart(item, a, cat, skill), take_apart(item, b, cat, skill))
+pub fn compare(
+    item: &ItemInstance,
+    a: Teardown,
+    b: Teardown,
+    cat: &Catalogue,
+    skill: f64,
+    event: u64,
+) -> (Recovered, Recovered) {
+    (take_apart(item, a, cat, skill, event), take_apart(item, b, cat, skill, event))
 }

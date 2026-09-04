@@ -221,6 +221,12 @@ pub enum Fitting {
     Bracket,
     /// A pocket sewn on, a patch.
     Stitched,
+    /// A wheel onto a hub.
+    Hub,
+    /// A door or window into a structural opening.
+    Opening,
+    /// An electrical accessory into a back box.
+    BackBox,
 }
 
 /// Somewhere a thing can hold other things.
@@ -701,6 +707,15 @@ pub fn standard_catalogue() -> Catalogue {
               &[(Pine, 1.0)]));
     c.add(def("particleboard sheet", Family::Stock, Form::Sheet, d(2.44, 1.22, 0.018), 34.8,
               &[(Particleboard, 1.0)]));
+    // **Right material, right thickness, right mass, wrong shape.** A
+    // batten will not yield a seat and an offcut will not yield a leg, and
+    // a substitution weighed rather than measured accepts both.
+    c.add(def("oak batten", Family::Stock, Form::Bar, d(2.4, 0.04, 0.025), 1.8,
+              &[(Oak, 1.0)]));
+    c.add(def("oak offcut", Family::Stock, Form::Bar, d(0.6, 0.15, 0.025), 1.69,
+              &[(Oak, 1.0)]));
+    c.add(def("rope", Family::Stock, Form::Bar, d(4.8, 0.012, 0.012), 1.44,
+              &[(Cotton, 1.0)]));
     c.add(def("cotton cloth", Family::Stock, Form::Fabric, d(10.0, 1.5, 0.0004), 4.5,
               &[(Cotton, 1.0)]));
     c.add(def("copper wire", Family::Stock, Form::Bar, d(100.0, 0.002, 0.002), 2.8,
@@ -950,6 +965,51 @@ pub fn standard_catalogue() -> Catalogue {
     c.add(def("cartridge", Family::Ammunition, Form::Assembly, d(0.057, 0.01, 0.01), 0.0124,
               &[(Brass, 0.55), (Lead, 0.23), (Copper, 0.1), (Propellant, 0.12)]));
 
+    // ---- what a building is made of ----------------------------------
+    // **Some of a building stays an identifiable item and some of it does
+    // not.** A door, a window, a socket and a radiator come out and go
+    // back in; mortar, adhesive and sealant become joint mass and are
+    // never on a shelf again.
+    //
+    // Real: a 2.4 m stud is 89 x 38 mm, OSB sheathing is 11 mm, a batt is
+    // 100 mm, plasterboard is 12.5 mm and about 8.5 kg/m2.
+    c.add(def("stud", Family::Stock, Form::Bar, d(2.4, 0.089, 0.038), 4.06,
+              &[(Pine, 1.0)]));
+    c.add(def("sheathing board", Family::Stock, Form::Sheet, d(2.4, 1.2, 0.011), 19.0,
+              &[(Plywood, 1.0)]));
+    c.add(def("insulation batt", Family::Stock, Form::Sheet, d(1.2, 0.6, 0.1), 0.9,
+              &[(Polyester, 1.0)]));
+    c.add(def("plasterboard sheet", Family::Stock, Form::Sheet, d(2.4, 1.2, 0.0125), 25.2,
+              &[(Gypsum, 1.0)]));
+    c.add(def("brick", Family::Stock, Form::Rigid, d(0.215, 0.1025, 0.065), 2.7,
+              &[(Brick, 1.0)]));
+
+    let mut door = def("door", Family::SparePart, Form::Assembly, d(1.98, 0.76, 0.04), 25.0,
+                       &[(Pine, 0.86), (MildSteel, 0.1), (Glass, 0.04)]);
+    door.fits = Some(Fitting::Opening);
+    door.repair_with = vec![Pine, MildSteel];
+    c.add(door);
+
+    let mut window = def("window", Family::SparePart, Form::Assembly, d(1.2, 1.0, 0.06), 30.0,
+                         &[(Glass, 0.7), (Abs, 0.25), (MildSteel, 0.05)]);
+    window.fits = Some(Fitting::Opening);
+    c.add(window);
+
+    let mut socket = def("socket outlet", Family::SparePart, Form::Rigid, d(0.086, 0.086, 0.03),
+                         0.1, &[(Abs, 0.7), (Copper, 0.25), (MildSteel, 0.05)]);
+    socket.fits = Some(Fitting::BackBox);
+    c.add(socket);
+
+    let mut radiator = def("radiator", Family::SparePart, Form::Assembly, d(1.0, 0.6, 0.08), 22.0,
+                           &[(MildSteel, 0.96), (Paint, 0.04)]);
+    radiator.fits = Some(Fitting::ThreadM12);
+    c.add(radiator);
+
+    let mut wheel = def("road wheel", Family::SparePart, Form::Rigid, d(1.05, 0.3, 1.05), 70.0,
+                        &[(MildSteel, 0.6), (Rubber, 0.4)]);
+    wheel.fits = Some(Fitting::Hub);
+    c.add(wheel);
+
     // ---- things that exist only part way through making something ----
     // **An intermediate is instantiated when it can be moved, traded,
     // spoil, be reused elsewhere, need its own storage, or be left
@@ -986,6 +1046,63 @@ pub fn standard_catalogue() -> Catalogue {
 // instances
 // =====================================================================
 
+/// **What is holding it up.**
+///
+/// A vehicle, a building, or another item. Kept as a bare id rather than a
+/// handle so that `item.rs` does not have to know what a lorry is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Host {
+    Item(Id<ItemInstance>),
+    Vehicle(u32),
+    Building(u32),
+}
+
+/// **An item is in exactly one place.**
+///
+/// Not a set of flags and not several optional fields, because those admit
+/// the state that must never exist: the same alternator sitting in the
+/// stockroom *and* fitted to a lorry. Installation is a move, and the type
+/// is what makes it one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Placement {
+    /// Made and not yet put anywhere, or destroyed.
+    #[default]
+    Nowhere,
+    Loose { locality: u32, x: i32, y: i32 },
+    Carried { person: u64 },
+    Contained { container: Id<ItemInstance> },
+    Installed { host: Host, mount: usize },
+    /// Reserved by a work order. Not available to be fitted to anything.
+    InWorkOrder { order: u64 },
+    /// Folded into a lot. It has no particulars any more and cannot be
+    /// addressed individually until the lot is expanded.
+    Aggregated { lot: u64 },
+}
+
+impl Placement {
+    /// Whether it is free to be picked up, fitted or consumed.
+    pub fn available(self) -> bool {
+        matches!(
+            self,
+            Placement::Loose { .. } | Placement::Carried { .. } | Placement::Contained { .. }
+        )
+    }
+
+    pub fn is_installed(self) -> bool {
+        matches!(self, Placement::Installed { .. })
+    }
+
+    pub fn why_not(self) -> &'static str {
+        match self {
+            Placement::Nowhere => "it is nowhere",
+            Placement::Installed { .. } => "it is already fitted to something",
+            Placement::InWorkOrder { .. } => "it is committed to a work order",
+            Placement::Aggregated { .. } => "it is part of a lot and has no particulars",
+            _ => "it is available",
+        }
+    }
+}
+
 /// **This particular one**, including everything that has happened to it.
 #[derive(Clone, Debug)]
 pub struct ItemInstance {
@@ -1002,8 +1119,9 @@ pub struct ItemInstance {
     pub faults: Vec<Fault>,
     pub contents: Vec<Id<ItemInstance>>,
     pub attachments: Vec<(Fitting, Id<ItemInstance>)>,
-    /// Where it is installed, if it is fitted to something.
-    pub installed_in: Option<Id<ItemInstance>>,
+    /// **The one place it is.** Every move goes through `Store`, which is
+    /// what stops the same object being in two of them.
+    pub placement: Placement,
     pub assembly: Option<AssemblyRecord>,
     pub provenance: Provenance,
     pub ownership: Ownership,
@@ -1026,7 +1144,7 @@ impl ItemInstance {
             faults: Vec::new(),
             contents: Vec::new(),
             attachments: Vec::new(),
-            installed_in: None,
+            placement: Placement::Nowhere,
             assembly: None,
             provenance: Provenance::default(),
             ownership: Ownership::default(),
@@ -1060,7 +1178,12 @@ impl ItemInstance {
     }
 
     pub fn is_installed(&self) -> bool {
-        self.installed_in.is_some()
+        self.placement.is_installed()
+    }
+
+    /// Whether it can be picked up, fitted or consumed right now.
+    pub fn available(&self) -> bool {
+        self.placement.available()
     }
 
     /// Whether this is an example that may be folded into a lot, or one
@@ -1071,7 +1194,7 @@ impl ItemInstance {
             && !self.ownership.accounted_for
             && self.contents.is_empty()
             && self.attachments.is_empty()
-            && self.installed_in.is_none()
+            && !self.placement.is_installed()
             && self.faults.is_empty()
             && self.assembly.as_ref().map(|a| a.substitutions.is_empty()).unwrap_or(true)
     }
@@ -1093,7 +1216,21 @@ impl Store {
         Store::default()
     }
 
+    /// **Something that exists is somewhere.** An item handed to the store
+    /// with no placement is put on the ground rather than left in limbo:
+    /// `Nowhere` means destroyed or not yet real, and a thing in that
+    /// state must not be fittable to anything.
     pub fn add(&mut self, item: ItemInstance) -> Id<ItemInstance> {
+        let mut item = item;
+        if matches!(item.placement, Placement::Nowhere) {
+            item.placement = Placement::Loose { locality: 0, x: 0, y: 0 };
+        }
+        self.items.add(item)
+    }
+
+    /// Add it and say where it goes.
+    pub fn add_at(&mut self, mut item: ItemInstance, at: Placement) -> Id<ItemInstance> {
+        item.placement = at;
         self.items.add(item)
     }
 
@@ -1119,6 +1256,11 @@ impl Store {
         let (cdef, tdef, tmass) = {
             let c = self.items.get(container).ok_or(Refusal::NoSuchItem)?;
             let t = self.items.get(thing).ok_or(Refusal::NoSuchItem)?;
+            // **A move, not a copy.** Something fitted to a lorry or
+            // committed to a work order is not also on a shelf.
+            if t.placement.is_installed() {
+                return Err(Refusal::AlreadyInstalled);
+            }
             (c.definition, t.definition, t.mass_kg)
         };
         let cd = cat.get(cdef).ok_or(Refusal::NoSuchItem)?;
@@ -1141,7 +1283,9 @@ impl Store {
             })
             .ok_or(Refusal::NoRoom)?;
         let _ = pocket;
+        self.detach(thing);
         self.items.get_mut(container).unwrap().contents.push(thing);
+        self.items.get_mut(thing).unwrap().placement = Placement::Contained { container };
         Ok(())
     }
 
@@ -1157,7 +1301,7 @@ impl Store {
         let (hdef, pdef) = {
             let h = self.items.get(host).ok_or(Refusal::NoSuchItem)?;
             let p = self.items.get(part).ok_or(Refusal::NoSuchItem)?;
-            if p.installed_in.is_some() {
+            if !p.available() {
                 return Err(Refusal::AlreadyInstalled);
             }
             (h.definition, p.definition)
@@ -1171,8 +1315,13 @@ impl Store {
         if self.items.get(host).unwrap().attachments.iter().any(|a| a.0 == fitting) {
             return Err(Refusal::PointTaken);
         }
+        // **Atomic.** It leaves wherever it was and arrives here, and
+        // there is no instant in between when it is in both.
+        self.detach(part);
+        let at = self.items.get(host).unwrap().attachments.len();
         self.items.get_mut(host).unwrap().attachments.push((fitting, part));
-        self.items.get_mut(part).unwrap().installed_in = Some(host);
+        self.items.get_mut(part).unwrap().placement =
+            Placement::Installed { host: Host::Item(host), mount: at };
         Ok(fitting)
     }
 
@@ -1186,9 +1335,52 @@ impl Store {
         let at = h.attachments.iter().position(|a| a.0 == fitting).ok_or(Refusal::NothingThere)?;
         let (_, part) = h.attachments.remove(at);
         if let Some(p) = self.items.get_mut(part) {
-            p.installed_in = None;
+            p.placement = Placement::Nowhere;
         }
         Ok(part)
+    }
+
+    /// **Take it out of wherever it currently is.** The private half of
+    /// every move: without it a part fitted to a lorry would still be
+    /// listed in the crate it came out of.
+    fn detach(&mut self, thing: Id<ItemInstance>) {
+        let was = self.items.get(thing).map(|i| i.placement).unwrap_or_default();
+        match was {
+            Placement::Contained { container } => {
+                if let Some(c) = self.items.get_mut(container) {
+                    c.contents.retain(|&x| x != thing);
+                }
+            }
+            Placement::Installed { host: Host::Item(host), .. } => {
+                if let Some(h) = self.items.get_mut(host) {
+                    h.attachments.retain(|a| a.1 != thing);
+                }
+            }
+            _ => {}
+        }
+        if let Some(i) = self.items.get_mut(thing) {
+            i.placement = Placement::Nowhere;
+        }
+    }
+
+    /// Put it down somewhere, taking it out of wherever it was.
+    pub fn place(&mut self, thing: Id<ItemInstance>, where_: Placement) {
+        self.detach(thing);
+        if let Some(i) = self.items.get_mut(thing) {
+            i.placement = where_;
+        }
+    }
+
+    /// Where it is.
+    pub fn placement(&self, thing: Id<ItemInstance>) -> Placement {
+        self.items.get(thing).map(|i| i.placement).unwrap_or_default()
+    }
+
+    /// **Destroying the mount destroys what was in it.** It must not fall
+    /// out loose and it must certainly not exist twice.
+    pub fn destroy(&mut self, thing: Id<ItemInstance>) {
+        self.detach(thing);
+        self.items.remove(thing);
     }
 
     /// Mass of a thing and everything in or on it.

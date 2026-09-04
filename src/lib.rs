@@ -15,6 +15,7 @@ pub mod craft;
 pub mod custom;
 pub mod econ;
 pub mod field;
+pub mod fitted;
 pub mod geology;
 pub mod ground;
 pub mod growth;

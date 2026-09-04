@@ -974,6 +974,10 @@ cannot shift it.
 quietly consumes another unit and lets the worker carry on is not what
 happens when primers go off.
 
+**Taking longer is not a defect.** A job can run over and come out
+perfect, so the schedule draw is independent of the quality one — which is
+why an accepted unit can still have been slow or wasteful.
+
 ### What was actually made, from what
 
 The exploit every fixed uncraft recipe has: a plan accepts oak or
@@ -1031,6 +1035,64 @@ resin being why it cannot even go in with the wood. Fuel keeps its identity,
 because one number would make oak and wool the same pile and then no test
 could tell whether a chair of particleboard had quietly yielded oak.
 
+### First-pass yield, rework and scrap are three numbers
+
+And this file said otherwise. "Scrap and rework run 1-5%, so 95% first
+pass is ordinary" conflates a loss measure with a throughput measure:
+**first-pass yield is the share of units passing with no correction and no
+rework** *(ASQ)*, and NIST lists yield, scrap ratio and rework ratio as
+separate indicators precisely because a process can run
+
+```text
+FPY       92%
+reworked   7%
+scrapped   1%
+```
+
+So a scrap rate implies nothing whatever about first-pass yield. Nor is
+"99% is world class" a fact on its own — it needs an industry, an
+operation, a defect opportunity, an inspection standard, whether rework
+counts, and whether the denominator is units or mass.
+
+**And yields compound down a sequence**: `RTY = prod(FPY_i)`, so twenty
+operations at 99% deliver 81.8% of units clean through the line. That is
+not the multiplier bug; it is the arithmetic the bug was standing on, and
+it is why a long plan is genuinely harder to get right than a short one.
+
+Measured on the chair, whose six operations make it a fair test:
+
+| | FPY | rework | scrap | clean through all six |
+|---|---|---|---|---|
+| a man at a bench | 95.5% | 3.4% | 1.1% | **76%** |
+| a jigged works | 98.3% | 1.4% | 0.3% | 90% |
+| a novice | 75.4% | 15.5% | 9.0% | **18%** |
+
+**A worse shop also scraps a larger share of what goes wrong**, because
+catching a fault while it can still be put right is itself something a
+good shop does.
+
+### Mass is a conservation check, not a fit
+
+Measuring a substitution by mass alone is right for bulk and wrong for
+everything with a shape. A requirement for a board is met, by weight, by
+
+- a batten too narrow to cut a seat from,
+- an offcut too short to cut a leg from,
+- a plate too thin, or a baulk too thick,
+- a rope too short and unnecessarily heavy,
+- a billet nothing in the shop can reshape.
+
+So `Amount` states what the operation needs — a count, a mass, a volume, a
+length, an area, a sheet of a minimum width and length within a thickness
+range, or a bar of a minimum section — and **geometry decides whether the
+stock will do while mass decides whether the books balance**.
+
+**And cutting partitions the source.** 4.8 m of rope cut at 1.8 is a 1.8 m
+rope and a 3.0 m rope, with the mass split between them — not "two ropes",
+and not one rope and a hole in the books. Lumber, pipe, cable, fabric and
+sheet all behave the same way, and a count still splits only on whole
+units, because half a cartridge is nothing.
+
 ### A million toothbrushes are a number
 
 A distant shop's ordinary stock is a lot; the drill somebody is carrying is
@@ -1046,10 +1108,10 @@ objects a story is made of.
 - **Four multipliers on the chance of success compound to nonsense**, which
   is the same error this file already records over prices. Difficulty,
   jigs, tolerance and skill each looked reasonable and together had a
-  skilled joiner spoiling more than half his work. They belong on the
-  **defect rate**, anchored on real first-pass yield: manufacturing scrap
-  and rework run **1-5%**, above 95% first-pass is ordinary and 99% is
-  called world class.
+  skilled joiner spoiling more than half his work. **Moving them onto the
+  defect rate was not the fix** — that is still four multipliers. The
+  contributions are *added* into one capability and mapped once into an
+  outcome.
 - **Material used over the plan is scrap, not a heavier chair.** An overrun
   scaled everything the order had consumed so far, so a fumbled sanding
   pass ate another two kilograms of board and delivered a 6.6 kg chair. And
@@ -1062,7 +1124,20 @@ objects a story is made of.
   the thing is what is in the record.
 - **Flooring the survivors means a thing there is only one of can never be
   recovered.** A component surviving at 0.79 floored to zero, so every
-  single-part assembly was quietly unsalvageable.
+  single-part assembly was quietly unsalvageable. **Rounding instead was
+  no better** — it makes any chance over a half a certainty. All three
+  replace a chance with a rule, so a lone part is settled by a
+  **deterministic Bernoulli** keyed by the teardown event and which
+  component it is: the same teardown cannot be rerolled by reloading, a
+  different one may go differently, and over three thousand of them the
+  share recovered lands on the probability the joint table authored. A lot
+  of more than a few hundred takes the expectation with the fractional
+  remainder settled by one keyed draw, which is unbiased without drawing
+  ten thousand times.
+- **The intention is deliberately not part of that key.** Common random
+  numbers: the same unit is tested against a higher probability when the
+  work is careful, so a careful teardown can never come out worse than a
+  sledgehammer by an accident of sampling.
 - **Every quality axis was divided by the total number of steps.** Three
   cutting operations out of six gave 0.5 for dimensional accuracy however
   well every cut was made, and a chair nobody was asked to polish scored
@@ -1070,9 +1145,87 @@ objects a story is made of.
   bear on it, and **an axis nothing bore on takes the ordinary standard
   rather than zero** — unfinished is not badly finished.
 
-Not built yet: installation adapters into `vehicle.rs` and `building.rs`
-(the mechanism is here; the wiring is not), industrial batch scheduling,
-and the household basket this exists to carry.
+Not built yet: industrial batch scheduling and the household basket this
+exists to carry.
+
+## Putting one thing inside another (`src/fitted.rs`)
+
+**Installing something is a move, not a copy.** The state that must never
+exist is the same alternator in a stockroom and in a van at once, and the
+way to make it impossible is a type rather than a discipline:
+`item::Placement` is **one** value — nowhere, loose, carried, contained,
+installed, committed to a work order, or folded into a lot — and `Store`
+is the only thing that changes it. Two optional fields would admit the bug
+by construction.
+
+A refusal says *which* of those it is, because "committed to a work order"
+and "already bolted to something" are different problems for whoever is
+holding the spanner.
+
+**And what was sacrificed fitting it is not part of it.** An
+`Installation` records the joint, the fasteners and mastic used up, who did
+it and when — kept apart from the component, which is exactly what lets
+the door come off and the mastic not.
+
+### A vehicle is a grid, so a mount is a tile
+
+`FittedVehicle::adapt` pulls named kinds of part out of a `Vehicle` and
+hands back the vehicle with holes in it plus the loose objects that used
+to fill them. That is what an adapter *is*, stated once instead of written
+out per vehicle — and which parts become objects is the same judgement
+CDDA makes about firearms: **the ones that fail, are replaced, are traded
+and are serviced.** Alternator, battery, wheels. Not every gusset.
+
+The physics then falls out, because it already reads the parts list:
+
+- a van whose alternator is on the bench **generates nothing**;
+- a van with three wheels off is **not drivable**, and the wheels are
+  objects on the floor rather than a number that went down;
+- fitting a 5.5 kg alternator moves the kerb weight by 5.5 kg, **once** —
+  structure is nominal and fitted components weigh what they actually
+  weigh, which is the point of making them objects at all;
+- **destroying the mount destroys the occupant.** It does not fall out
+  loose and it certainly does not go on existing somewhere else, which
+  would be a money printer of the exact shape this project keeps finding.
+
+Take the alternator off a year later and it is the same object: 0.61 of
+wear, the workmanship it was rebuilt to, the name somebody gave it, and
+the noisy bearing still noisy.
+
+### A building is layers, and only some of it stays an object
+
+The distinction the reviewer named and it is the right one. **A door, a
+window, a socket and a radiator come out whole and go back in.** Studs,
+sheathing, insulation and plasterboard are stock. **Mortar, adhesive and
+sealant are joint mass** — they went into the joint and there is no shelf
+they can return to.
+
+A wall is then handed to `teardown` as one object, so deconstruction and
+demolition are not two pieces of code but two intentions:
+
+| a 2.4 x 3.0 m wall | careful | smashed |
+|---|---|---|
+| the door | **back 30 times in 40** | never |
+| studs, screwed | most of them | none |
+| bricks, mortared | **a fraction** | none |
+
+**Mortar is why nobody saves bricks**, and it comes out of the joint table
+rather than being asserted. Real figures underneath: a stud is 89 x 38 mm
+and 2.4 m, sheathing 11 mm, plasterboard 12.5 mm at 8.5 kg/m², and the
+wall comes to about 25 kg per square metre.
+
+### A blackout disables the tool, not the step
+
+The operation still has to happen; what changes is what does it. A shop
+with a bandsaw *and* a handsaw carries on — slower, drawing nothing —
+because the provider is chosen from what is actually available. That is
+the rule `econ.rs` has always wanted and could only assert.
+
+**And yesterday is not recalculated.** Cut the power half way through and
+the steps already recorded keep the times and the outcomes they had; only
+what has yet to be done is done differently. A model that re-derived
+elapsed time from the current tool would rewrite history every time the
+lights flickered.
 
 ## Money, and who has it (`src/money.rs`)
 

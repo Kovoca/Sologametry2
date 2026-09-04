@@ -8,7 +8,7 @@
 use scale_sim::craft::{hand_tools, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace};
 use scale_sim::item::{standard_catalogue, Catalogue, ItemInstance, JointMethod};
 use scale_sim::material::Material;
-use scale_sim::teardown::{heat_mj, possible, take_apart, Teardown};
+use scale_sim::teardown::{heat_mj, possible, take_apart, Recovered, Teardown};
 
 fn world() -> (Catalogue, RecipeBook) {
     let cat = standard_catalogue();
@@ -26,7 +26,8 @@ fn a_chair(cat: &Catalogue, book: &RecipeBook, id: u64, cheap: bool) -> ItemInst
     let place = Workplace::a_workshop(hand_tools(cat));
     let mut o = WorkOrder::begin(id, book.must("chair, hand tools"), 1, 0, 1);
     if cheap {
-        o.substituted(cat.must("oak board"), cat.must("particleboard sheet"));
+        o.substituted(cat.must("oak board"), cat.must("particleboard sheet"), cat, book)
+            .expect("a sheet would not do");
     }
     for _ in 0..400 {
         if o.finished() {
@@ -38,8 +39,14 @@ fn a_chair(cat: &Catalogue, book: &RecipeBook, id: u64, cheap: bool) -> ItemInst
     o.deliver(book, cat, 1).expect("no chair came out")
 }
 
-fn got(r: &scale_sim::teardown::Recovered, m: Material) -> f64 {
-    r.material(m) + r.fuel_of(m)
+/// **Everything of one material that came back, in whatever form.** A
+/// component that survived whole is still made of oak, and a test that
+/// counted only the loose piles would be reading which way one Bernoulli
+/// went rather than what the chair was made of.
+fn got(r: &Recovered, m: Material) -> f64 {
+    r.material(m)
+        + r.fuel_of(m)
+        + r.components.iter().map(|c| c.materials.fraction_of(m) * c.mass_kg).sum::<f64>()
 }
 
 // =====================================================================
@@ -56,8 +63,8 @@ fn a_chair_of_particleboard_does_not_yield_oak() {
     let proper = a_chair(&cat, &book, 301, false);
     let bodged = a_chair(&cat, &book, 301, true);
 
-    let good = take_apart(&proper, Teardown::Disassemble, &cat, 0.8);
-    let cheap = take_apart(&bodged, Teardown::Disassemble, &cat, 0.8);
+    let good = take_apart(&proper, Teardown::Disassemble, &cat, 0.8, 1);
+    let cheap = take_apart(&bodged, Teardown::Disassemble, &cat, 0.8, 1);
 
     // The oak chair gives back oak, in whatever form oak can come back —
     // which for timber is firewood, because that is all timber ever is.
@@ -84,6 +91,42 @@ fn a_chair_of_particleboard_does_not_yield_oak() {
     }
 }
 
+/// **Gate: a proposed substitute is judged on shape, not on weight.**
+///
+/// A batten is the right timber at the right thickness and weighs what a
+/// board weighs; it will not yield a seat. An offcut is the right width
+/// and too short to get a leg out of. Measured by mass both are accepted,
+/// and that is the case a conservation check cannot see.
+#[test]
+fn the_right_mass_in_the_wrong_shape_will_not_do() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+    let oak = cat.must("oak board");
+
+    let try_it = |name: &str| {
+        let mut o = WorkOrder::begin(1, plan, 1, 0, 1);
+        o.substituted(oak, cat.must(name), &cat, &book)
+    };
+
+    // Real board stock, in two thicknesses and two materials.
+    assert!(try_it("particleboard sheet").is_ok());
+    assert!(try_it("pine board").is_ok());
+
+    // Same timber, same thickness, wrong geometry.
+    assert!(
+        matches!(try_it("oak batten"), Err(scale_sim::craft::Unsuitable::WrongShape(_))),
+        "a 40 mm batten was accepted as chair stock"
+    );
+    assert!(
+        matches!(try_it("oak offcut"), Err(scale_sim::craft::Unsuitable::WrongShape(_))),
+        "a 600 mm offcut was accepted as chair stock"
+    );
+    // Nothing you could cut a chair from at all.
+    assert!(try_it("steel sheet").is_err(), "2 mm plate was accepted as chair stock");
+    assert!(try_it("glass pane").is_err());
+    assert!(try_it("rope").is_err());
+}
+
 /// **Gate: glue does not come back.**
 ///
 /// Adhesive, paint and mortar are cured; what they were before is not
@@ -93,7 +136,7 @@ fn a_chair_of_particleboard_does_not_yield_oak() {
 fn what_was_cured_stays_cured() {
     let (cat, book) = world();
     let chair = a_chair(&cat, &book, 302, false);
-    let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.95);
+    let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.95, 1);
     assert_eq!(got(&apart, Material::Adhesive), 0.0, "the glue came back out of the joint");
 
     // The joint table is where this lives, and it is not one number.
@@ -134,8 +177,8 @@ fn a_wreck_gives_back_less_than_a_working_machine() {
     let mut wrecked = sound.clone();
     wrecked.condition.damage = 0.75;
 
-    let a = take_apart(&sound, Teardown::Salvage, &cat, 0.7);
-    let b = take_apart(&wrecked, Teardown::Salvage, &cat, 0.7);
+    let a = take_apart(&sound, Teardown::Salvage, &cat, 0.7, 1);
+    let b = take_apart(&wrecked, Teardown::Salvage, &cat, 0.7, 1);
 
     let usable = |r: &scale_sim::teardown::Recovered| {
         r.components.iter().map(|c| c.count as f64).sum::<f64>()
@@ -167,7 +210,7 @@ fn a_careful_hour_and_a_sledgehammer_do_not_return_the_same_pile() {
     let chair = a_chair(&cat, &book, 304, false);
 
     let (careful, smashed) =
-        scale_sim::teardown::compare(&chair, Teardown::Deconstruct, Teardown::Smash, &cat, 0.8);
+        scale_sim::teardown::compare(&chair, Teardown::Deconstruct, Teardown::Smash, &cat, 0.8, 77);
 
     let parts = |r: &scale_sim::teardown::Recovered| {
         r.components.iter().map(|c| c.count as f64).sum::<f64>()
@@ -198,7 +241,7 @@ fn every_teardown_accounts_for_the_whole_object() {
     let chair = a_chair(&cat, &book, 305, false);
     for how in [Teardown::Disassemble, Teardown::Deconstruct, Teardown::Salvage,
                 Teardown::Recycle, Teardown::CutUp, Teardown::Smash] {
-        let r = take_apart(&chair, how, &cat, 0.7);
+        let r = take_apart(&chair, how, &cat, 0.7, 1);
         assert!(
             (r.accounted_kg() - chair.mass_kg).abs() < 1e-6,
             "{}: {:.4} kg accounted for out of {:.4}",
@@ -218,8 +261,8 @@ fn recycling_asks_the_material_and_disassembly_asks_the_joint() {
     let (cat, book) = world();
     let chair = a_chair(&cat, &book, 306, false);
 
-    let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.9);
-    let recycled = take_apart(&chair, Teardown::Recycle, &cat, 0.9);
+    let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.9, 1);
+    let recycled = take_apart(&chair, Teardown::Recycle, &cat, 0.9, 1);
 
     assert!(!apart.components.is_empty(), "careful work returned no components");
     assert!(recycled.components.is_empty(), "the shredder handed back a board");
@@ -248,10 +291,7 @@ fn a_field_strip_stops_at_the_modules() {
     assert_eq!(o.state, Halt::Done);
     let rifle = o.deliver(&book, &cat, 1).unwrap();
 
-    let strip = take_apart(&rifle, Teardown::FieldStrip, &cat, 0.9);
-    let apart = take_apart(&rifle, Teardown::Disassemble, &cat, 0.9);
-
-    let names = |r: &scale_sim::teardown::Recovered| {
+    let names = |r: &Recovered| {
         let mut v: Vec<&str> = r
             .components
             .iter()
@@ -260,23 +300,120 @@ fn a_field_strip_stops_at_the_modules() {
         v.sort_unstable();
         v
     };
-    let stripped = names(&strip);
-    let stripped_down = names(&apart);
+
+    // **Reach is categorical; whether one draw succeeds is not.** Over
+    // twenty separate strip-downs a field strip must *never* reach the
+    // pinned barrel or the riveted fire control group, and a proper
+    // disassembly must reach both sometimes. Asserting either off a single
+    // teardown is reading a Bernoulli, not a rule.
+    let (mut strip_barrel, mut apart_barrel, mut strip_bolt, mut apart_fcg) = (0, 0, 0, 0);
+    let (mut strip_minutes, mut apart_minutes) = (0.0f64, 0.0f64);
+    for event in 0..20u64 {
+        let strip = take_apart(&rifle, Teardown::FieldStrip, &cat, 0.9, event);
+        let apart = take_apart(&rifle, Teardown::Disassemble, &cat, 0.9, event);
+        strip_minutes += strip.minutes;
+        apart_minutes += apart.minutes;
+        if names(&strip).contains(&"barrel") {
+            strip_barrel += 1;
+        }
+        if names(&strip).contains(&"bolt assembly") {
+            strip_bolt += 1;
+        }
+        if names(&apart).contains(&"barrel") {
+            apart_barrel += 1;
+        }
+        if names(&apart).contains(&"fire control group") {
+            apart_fcg += 1;
+        }
+    }
 
     // **What a field strip reaches is what unclips and unbolts.**
-    assert!(stripped.contains(&"bolt assembly"), "the bolt carrier stayed in");
-    assert!(stripped.contains(&"stock"), "the stock would not come off");
-    assert!(stripped.contains(&"magazine"));
-
+    assert!(strip_bolt > 15, "the bolt carrier would not come out: {strip_bolt} of 20");
     // **And what it does not reach is what was pressed and riveted.** A
-    // barrel is an armourer job and a riveted fire control group is not
-    // coming out at a kitchen table.
-    assert!(!stripped.contains(&"barrel"), "a field strip pulled the barrel");
-    assert!(!stripped.contains(&"fire control group"), "it drilled out the rivets too");
-    assert!(stripped_down.contains(&"barrel"), "a proper disassembly left the barrel in");
+    // barrel is an armourer job, and it is never a matter of luck.
+    assert_eq!(strip_barrel, 0, "a field strip pulled the barrel");
+    assert!(apart_barrel > 0, "a proper disassembly never reached the barrel");
+    assert!(apart_fcg > 0, "the rivets were never drilled out");
+    assert!(apart_minutes > strip_minutes, "stripping took as long as a strip-down");
+}
 
-    assert!(strip.components.len() < apart.components.len());
-    assert!(strip.minutes < apart.minutes, "stripping took as long as a strip-down");
+/// **Gate: a teardown cannot be rerolled by reloading.**
+///
+/// And a different teardown of the same object is a different event, so it
+/// may go differently — which is what makes it a chance rather than a
+/// property of the object.
+#[test]
+fn the_same_teardown_twice_gives_the_same_answer() {
+    let (cat, book) = world();
+    let chair = a_chair(&cat, &book, 401, false);
+
+    let a = take_apart(&chair, Teardown::Salvage, &cat, 0.6, 900);
+    let b = take_apart(&chair, Teardown::Salvage, &cat, 0.6, 900);
+    assert_eq!(a.components, b.components, "reloading gave a different pile");
+    assert_eq!(a.materials, b.materials);
+
+    let mut counts = std::collections::BTreeSet::new();
+    for event in 0..40u64 {
+        let r = take_apart(&chair, Teardown::Salvage, &cat, 0.6, event);
+        counts.insert(r.components.iter().map(|c| c.count).sum::<u32>());
+    }
+    assert!(counts.len() > 1, "every teardown of every chair returned the same number of parts");
+}
+
+/// **Gate: a unique component is recovered or destroyed, never 0.6 of
+/// one** — and over enough of them the share recovered approaches the
+/// probability the joint table authored.
+#[test]
+fn one_component_is_a_coin_and_many_are_a_rate() {
+    let (cat, book) = world();
+    let chair = a_chair(&cat, &book, 402, false);
+    let parts = cat.must("chair parts");
+
+    let mut recovered = 0;
+    let trials = 3000u64;
+    for event in 0..trials {
+        let r = take_apart(&chair, Teardown::Deconstruct, &cat, 0.8, event);
+        for c in &r.components {
+            // Never a fraction: a count is a whole number of things.
+            assert!(c.count >= 1);
+            if c.definition == parts {
+                assert_eq!(c.count, 1, "one set of chair parts came back as {}", c.count);
+                recovered += 1;
+            }
+        }
+    }
+    // The glued joint recovers 0.45, deconstruction takes 0.80 of that,
+    // and a skilled hand gets 0.91 of what is left: about a third.
+    let rate = recovered as f64 / trials as f64;
+    assert!(
+        (0.25..=0.42).contains(&rate),
+        "the parts came back {:.1}% of the time, which is not the authored chance",
+        rate * 100.0
+    );
+}
+
+/// **Common random numbers**: the same unit is tested against a higher
+/// probability when the work is careful, so **careful recovery can never
+/// come out worse than smashing** by an accident of sampling. That is why
+/// the intention is deliberately not part of the draw's key.
+#[test]
+fn care_never_returns_less_than_carelessness() {
+    let (cat, book) = world();
+    let chair = a_chair(&cat, &book, 403, false);
+    let parts = |r: &Recovered| r.components.iter().map(|c| c.count).sum::<u32>();
+
+    for event in 0..200u64 {
+        let careful = take_apart(&chair, Teardown::Disassemble, &cat, 0.8, event);
+        let rough = take_apart(&chair, Teardown::Salvage, &cat, 0.8, event);
+        let smashed = take_apart(&chair, Teardown::Smash, &cat, 0.8, event);
+        assert!(
+            parts(&careful) >= parts(&rough) && parts(&rough) >= parts(&smashed),
+            "on event {event}: careful {} rough {} smashed {}",
+            parts(&careful),
+            parts(&rough),
+            parts(&smashed)
+        );
+    }
 }
 
 /// Some actions are not available on some objects, and saying so is better
@@ -302,7 +439,7 @@ fn a_thing_with_no_record_can_only_be_weighed() {
     let anonymous = ItemInstance::one(&cat, cat.must("wooden chair"));
     assert!(anonymous.assembly.is_none());
 
-    let r = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9);
+    let r = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9, 1);
     assert!(r.components.is_empty(), "a chair with no history yielded named parts");
     assert!(r.fuel_kg() > 0.0 || !r.materials.is_empty(), "it yielded nothing whatever");
     assert!((r.accounted_kg() - anonymous.mass_kg).abs() < 1e-6);

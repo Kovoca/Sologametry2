@@ -10,7 +10,7 @@ use scale_sim::item::{
     standard_catalogue, Condition, Family, ItemInstance, ItemLot, Lifecycle, Quality, Refusal,
     Store,
 };
-use scale_sim::material::{Composition, Dims, Material, Quantity, Recovers};
+use scale_sim::material::{Amount, Composition, Dims, Fit, Material, Quantity, Recovers};
 
 // =====================================================================
 // quantities
@@ -354,4 +354,118 @@ fn particular_things_refuse_to_become_a_statistic() {
     let (lot, kept) = ItemLot::aggregate(id, vec![plain, ItemInstance::one(&cat, id)], 10);
     assert_eq!(lot.unwrap().count, 2);
     assert!(kept.is_empty());
+}
+
+// =====================================================================
+// shape, which mass cannot see
+// =====================================================================
+
+/// **Gate: mass is a conservation check, not a fit.**
+///
+/// Every one of these has enough of the right stuff by weight and cannot
+/// do the job, which is precisely the case a mass-only substitution
+/// accepts. Geometry decides whether the stock can satisfy the operation.
+#[test]
+fn the_right_weight_of_the_wrong_shape_is_not_the_right_stock() {
+    let board = Amount::Sheet {
+        min_width_m: 0.14,
+        min_length_m: 1.2,
+        thickness_m: (0.016, 0.032),
+    };
+    let one = Quantity::Count(1);
+
+    // A real board.
+    assert!(board.met_by(Dims::new(2.4, 0.15, 0.025), one, 6.75).is_yes());
+
+    // Same timber, same thickness, same order of mass — and useless.
+    assert!(matches!(
+        board.met_by(Dims::new(2.4, 0.04, 0.025), one, 1.8),
+        Fit::WrongShape("too narrow, whatever it weighs")
+    ));
+    assert!(matches!(
+        board.met_by(Dims::new(0.6, 0.15, 0.025), one, 1.69),
+        Fit::WrongShape("too short, whatever it weighs")
+    ));
+    // Plate that outweighs the board several times over and is 2 mm thick.
+    assert!(matches!(
+        board.met_by(Dims::new(2.0, 1.0, 0.002), one, 31.4),
+        Fit::WrongShape("too thin for the section wanted")
+    ));
+    // And a baulk of timber is not sheet either.
+    assert!(matches!(
+        board.met_by(Dims::new(2.4, 0.2, 0.2), one, 72.0),
+        Fit::WrongShape("too thick to work as sheet")
+    ));
+
+    // A rope that outweighs the requirement and is too short for it.
+    let rope = Amount::Length { metres: 6.0 };
+    assert!(matches!(
+        rope.met_by(Dims::new(4.8, 0.02, 0.02), Quantity::Length { metres: 4.8, kg: 9.0 }, 9.0),
+        Fit::WrongShape("too short, whatever it weighs")
+    ));
+    assert!(rope
+        .met_by(Dims::new(9.0, 0.012, 0.012), Quantity::Length { metres: 9.0, kg: 2.7 }, 2.7)
+        .is_yes());
+
+    // A bar wants a section as well as a length.
+    let bar = Amount::Bar { min_section_m: 0.02, min_length_m: 1.0 };
+    assert!(bar.met_by(Dims::new(3.0, 0.025, 0.025), one, 14.7).is_yes());
+    assert!(matches!(
+        bar.met_by(Dims::new(3.0, 0.006, 0.006), one, 0.85),
+        Fit::WrongShape("the section is too small")
+    ));
+
+    // Where shape genuinely does not matter, mass is the whole question.
+    let flour = Amount::Mass { kg: 25.0 };
+    assert!(flour.met_by(Dims::default(), Quantity::Mass { kg: 40.0 }, 0.0).is_yes());
+    assert_eq!(
+        flour.met_by(Dims::default(), Quantity::Mass { kg: 10.0 }, 0.0),
+        Fit::NotEnough
+    );
+}
+
+/// **Gate: cutting partitions the source.**
+///
+/// Four point eight metres of rope cut at one point eight is a 1.8 m rope
+/// and a 3.0 m rope. Not "two ropes", not one rope and a hole in the
+/// books, and not five destroyed charges.
+#[test]
+fn a_rope_cut_in_two_is_a_short_rope_and_a_long_one() {
+    let rope = Quantity::Length { metres: 4.8, kg: 1.44 };
+    let (short, long) = rope.split(1.8).expect("the rope would not cut");
+
+    match (short, long) {
+        (Quantity::Length { metres: a, kg: ka }, Quantity::Length { metres: b, kg: kb }) => {
+            assert!((a - 1.8).abs() < 1e-9 && (b - 3.0).abs() < 1e-9);
+            assert!((ka + kb - 1.44).abs() < 1e-9, "mass was not conserved by the cut");
+            // Mass follows length, so the short piece is lighter.
+            assert!(ka < kb);
+        }
+        _ => panic!("cutting a rope gave something that is not two ropes"),
+    }
+
+    // The two halves go back together.
+    let rejoined = short.merged(long).expect("two lengths of the same rope would not merge");
+    assert_eq!(rejoined, rope);
+
+    // You cannot cut off more than there is.
+    assert!(rope.split(6.0).is_none());
+
+    // Sheet, fabric and bulk partition the same way.
+    let cloth = Quantity::Area { m2: 15.0, kg: 4.5 };
+    let (a, b) = cloth.split(4.0).unwrap();
+    assert!((a.mass_kg(0.0) + b.mass_kg(0.0) - 4.5).abs() < 1e-9);
+
+    // **And half a cartridge is nothing.** A count splits on whole units.
+    let rounds = Quantity::Count(20);
+    let (taken, left) = rounds.split(7.0).unwrap();
+    assert_eq!((taken, left), (Quantity::Count(7), Quantity::Count(13)));
+    assert!(rounds.split(21.0).is_none());
+
+    // A rack of boards splits by the piece, and each piece keeps its size.
+    let rack = Quantity::Stock { count: 10, each: Dims::new(2.4, 0.15, 0.025), kg: 67.5 };
+    let (four, six) = rack.split(4.0).unwrap();
+    assert!((four.mass_kg(0.0) - 27.0).abs() < 1e-9);
+    assert!((six.mass_kg(0.0) - 40.5).abs() < 1e-9);
+    assert!(four.mergeable_with(six), "two pieces of the same rack would not stack");
 }

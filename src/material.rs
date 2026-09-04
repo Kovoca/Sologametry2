@@ -61,6 +61,10 @@ pub enum Material {
     Brick,
     Mortar,
     Ceramic,
+    /// Plasterboard. Its own material because it is most of the inside
+    /// surface of a modern building and it genuinely does recycle back
+    /// into plasterboard.
+    Gypsum,
     Paperboard,
     Silicon,
     /// Smokeless powder. Its own material because loading it is a process
@@ -106,6 +110,7 @@ impl Material {
             Brick => 1900.0,
             Mortar => 2000.0,
             Ceramic => 2300.0,
+            Gypsum => 700.0,
             Paperboard => 700.0,
             Silicon => 2330.0,
             Propellant => 1600.0,
@@ -124,7 +129,8 @@ impl Material {
         match self {
             MildSteel | ToolSteel | Stainless | Aluminium | Copper | Brass | Lead | Solder
             | Glass => Recovers::Feedstock,
-            Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Silicon => {
+            Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Gypsum
+            | Silicon => {
                 Recovers::Downcycled
             }
             Oak | Pine | Plywood | Particleboard | Cotton | Wool | Leather | Thread | Rubber => {
@@ -174,6 +180,7 @@ impl Material {
             Brick => "brick",
             Mortar => "mortar",
             Ceramic => "ceramic",
+            Gypsum => "plasterboard",
             Paperboard => "paperboard",
             Silicon => "silicon",
             Propellant => "propellant",
@@ -396,6 +403,230 @@ impl Quantity {
                 Quantity::Stock { count: b, kg: kb, .. },
             ) => Quantity::Stock { count: a + b, each, kg: ka + kb },
             _ => return None,
+        })
+    }
+}
+
+/// **What an operation actually needs**, which is not always a mass.
+///
+/// Mass alone is a conservation check, not a fit. Measured by mass a
+/// requirement for a board is met by a plate too short and very thick, by
+/// a batten too narrow to cut a seat from, by a rope too short but
+/// unnecessarily heavy, or by a steel billet nothing in the shop can
+/// reshape. **Geometry decides whether the stock can satisfy the
+/// operation; mass decides whether the books balance afterwards.**
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Amount {
+    /// So many discrete things: screws, cartridges, bearings.
+    Count(u32),
+    /// Loose stuff, where shape genuinely does not matter.
+    Mass { kg: f64 },
+    Volume { litres: f64 },
+    /// Rope, cable, wire, moulding. A short heavy piece will not do.
+    Length { metres: f64 },
+    Area { m2: f64 },
+    /// Board, plate, panel, cloth. Both plan dimensions and the thickness
+    /// have to be right.
+    Sheet { min_width_m: f64, min_length_m: f64, thickness_m: (f64, f64) },
+    /// Bar, tube, billet, timber in section.
+    Bar { min_section_m: f64, min_length_m: f64 },
+}
+
+/// Whether a piece of stock will do, and why not if it will not.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Fit {
+    /// It will do, and this much of it is used.
+    Yes { uses_kg: f64 },
+    /// The right stuff and not enough of it.
+    NotEnough,
+    /// The right mass in the wrong shape. **This is the case mass alone
+    /// cannot see.**
+    WrongShape(&'static str),
+}
+
+impl Fit {
+    pub fn is_yes(self) -> bool {
+        matches!(self, Fit::Yes { .. })
+    }
+
+    pub fn uses_kg(self) -> f64 {
+        match self {
+            Fit::Yes { uses_kg } => uses_kg,
+            _ => 0.0,
+        }
+    }
+}
+
+impl Amount {
+    /// Whether one piece of stock of these dimensions, held in this
+    /// quantity, satisfies the requirement — and how much of it goes.
+    pub fn met_by(self, each: Dims, held: Quantity, unit_mass_kg: f64) -> Fit {
+        let have_kg = held.mass_kg(unit_mass_kg);
+        match self {
+            Amount::Count(n) => match held {
+                Quantity::Count(h) | Quantity::Stock { count: h, .. } if h >= n => {
+                    Fit::Yes { uses_kg: unit_mass_kg * n as f64 }
+                }
+                Quantity::Count(_) | Quantity::Stock { .. } => Fit::NotEnough,
+                _ => Fit::WrongShape("a count was wanted and this is not counted"),
+            },
+            Amount::Mass { kg } => {
+                if have_kg + 1e-9 >= kg {
+                    Fit::Yes { uses_kg: kg }
+                } else {
+                    Fit::NotEnough
+                }
+            }
+            Amount::Volume { litres } => match held {
+                Quantity::Fluid { litres: h, kg, .. } if h + 1e-9 >= litres => {
+                    Fit::Yes { uses_kg: kg * litres / h.max(1e-9) }
+                }
+                Quantity::Fluid { .. } => Fit::NotEnough,
+                _ => Fit::WrongShape("a volume was wanted and this is not a fluid"),
+            },
+            // **A short heavy rope is not a long one.**
+            Amount::Length { metres } => match held {
+                Quantity::Length { metres: h, kg } => {
+                    if h + 1e-9 < metres {
+                        Fit::WrongShape("too short, whatever it weighs")
+                    } else {
+                        Fit::Yes { uses_kg: kg * metres / h.max(1e-9) }
+                    }
+                }
+                Quantity::Stock { each: d, count, .. } => {
+                    if d.longest_m() + 1e-9 < metres {
+                        Fit::WrongShape("no single piece is long enough")
+                    } else {
+                        Fit::Yes { uses_kg: unit_mass_kg * metres / d.longest_m().max(1e-9) * count.min(1) as f64 }
+                    }
+                }
+                _ => Fit::WrongShape("a length was wanted and this has none"),
+            },
+            Amount::Area { m2 } => match held {
+                Quantity::Area { m2: h, kg } if h + 1e-9 >= m2 => {
+                    Fit::Yes { uses_kg: kg * m2 / h.max(1e-9) }
+                }
+                Quantity::Area { .. } => Fit::NotEnough,
+                _ => {
+                    let sheet = each.length_m * each.width_m;
+                    if sheet + 1e-9 >= m2 {
+                        Fit::Yes { uses_kg: unit_mass_kg * m2 / sheet.max(1e-9) }
+                    } else {
+                        Fit::WrongShape("no single piece has the area")
+                    }
+                }
+            },
+            // **Both plan dimensions and the thickness.** A board too
+            // narrow to cut a seat from weighs exactly as much as one that
+            // is wide enough.
+            Amount::Sheet { min_width_m, min_length_m, thickness_m } => {
+                let (t0, t1) = thickness_m;
+                let mut d = [each.length_m, each.width_m, each.height_m];
+                d.sort_by(f64::total_cmp);
+                let (thick, narrow, long) = (d[0], d[1], d[2]);
+                if thick + 1e-9 < t0 {
+                    return Fit::WrongShape("too thin for the section wanted");
+                }
+                if thick > t1 + 1e-9 {
+                    return Fit::WrongShape("too thick to work as sheet");
+                }
+                if narrow + 1e-9 < min_width_m {
+                    return Fit::WrongShape("too narrow, whatever it weighs");
+                }
+                if long + 1e-9 < min_length_m {
+                    return Fit::WrongShape("too short, whatever it weighs");
+                }
+                if have_kg <= 0.0 {
+                    return Fit::NotEnough;
+                }
+                Fit::Yes { uses_kg: unit_mass_kg }
+            }
+            Amount::Bar { min_section_m, min_length_m } => {
+                let mut d = [each.length_m, each.width_m, each.height_m];
+                d.sort_by(f64::total_cmp);
+                let (thin, section, long) = (d[0], d[1], d[2]);
+                if thin + 1e-9 < min_section_m || section + 1e-9 < min_section_m {
+                    return Fit::WrongShape("the section is too small");
+                }
+                if long + 1e-9 < min_length_m {
+                    return Fit::WrongShape("too short, whatever it weighs");
+                }
+                if have_kg <= 0.0 {
+                    return Fit::NotEnough;
+                }
+                Fit::Yes { uses_kg: unit_mass_kg }
+            }
+        }
+    }
+}
+
+impl Quantity {
+    /// **Cutting partitions the source.** Four point eight metres of rope
+    /// cut at one point eight is a 1.8 m rope and a 3.0 m rope — not "two
+    /// ropes", and not one rope and a hole in the books. The same holds
+    /// for lumber, pipe, cable, fabric and sheet.
+    ///
+    /// `take` is in the unit the quantity is measured in: metres for a
+    /// length, square metres for an area, kilograms for a mass, litres for
+    /// a fluid, pieces for a count.
+    pub fn split(self, take: f64) -> Option<(Quantity, Quantity)> {
+        if take <= 0.0 {
+            return None;
+        }
+        let part = |whole: f64, kg: f64| -> Option<(f64, f64, f64)> {
+            if take > whole + 1e-9 {
+                return None;
+            }
+            let taken = take.min(whole);
+            Some((taken, whole - taken, kg * taken / whole.max(1e-12)))
+        };
+        Some(match self {
+            Quantity::Length { metres, kg } => {
+                let (a, b, akg) = part(metres, kg)?;
+                (
+                    Quantity::Length { metres: a, kg: akg },
+                    Quantity::Length { metres: b, kg: kg - akg },
+                )
+            }
+            Quantity::Area { m2, kg } => {
+                let (a, b, akg) = part(m2, kg)?;
+                (Quantity::Area { m2: a, kg: akg }, Quantity::Area { m2: b, kg: kg - akg })
+            }
+            Quantity::Mass { kg } => {
+                let (a, b, _) = part(kg, kg)?;
+                (Quantity::Mass { kg: a }, Quantity::Mass { kg: b })
+            }
+            Quantity::Fluid { litres, kg, celsius } => {
+                let (a, b, akg) = part(litres, kg)?;
+                (
+                    Quantity::Fluid { litres: a, kg: akg, celsius },
+                    Quantity::Fluid { litres: b, kg: kg - akg, celsius },
+                )
+            }
+            Quantity::Energy { kwh } => {
+                let (a, b, _) = part(kwh, kwh)?;
+                (Quantity::Energy { kwh: a }, Quantity::Energy { kwh: b })
+            }
+            // **Half a cartridge is nothing.** A count splits only on
+            // whole units, and so does a rack of boards.
+            Quantity::Count(n) => {
+                let k = take.round() as u32;
+                if k > n {
+                    return None;
+                }
+                (Quantity::Count(k), Quantity::Count(n - k))
+            }
+            Quantity::Stock { count, each, kg } => {
+                let k = take.round() as u32;
+                if k > count {
+                    return None;
+                }
+                let per = kg / count.max(1) as f64;
+                (
+                    Quantity::Stock { count: k, each, kg: per * k as f64 },
+                    Quantity::Stock { count: count - k, each, kg: per * (count - k) as f64 },
+                )
+            }
         })
     }
 }

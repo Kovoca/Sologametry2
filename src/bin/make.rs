@@ -89,7 +89,8 @@ fn main() {
     let make = |cheap: bool| -> ItemInstance {
         let mut o = WorkOrder::begin(9, book.must("chair, hand tools"), 1, 0, 1);
         if cheap {
-            o.substituted(cat.must("oak board"), cat.must("particleboard sheet"));
+            o.substituted(cat.must("oak board"), cat.must("particleboard sheet"), &cat, &book)
+                .expect("a particleboard sheet will not do for a chair");
         }
         run(&mut o, &book, &cat, &bench, hand);
         o.deliver(&book, &cat, 1).unwrap()
@@ -109,7 +110,7 @@ fn main() {
             .collect();
         println!("\n  a chair of {label}, {:.2} kg", chair.mass_kg);
         println!("    made of: {}", parts.join(", "));
-        let apart = take_apart(&chair, Teardown::Deconstruct, &cat, 0.8);
+        let apart = take_apart(&chair, Teardown::Deconstruct, &cat, 0.8, 1);
         let back: Vec<String> = apart
             .components
             .iter()
@@ -131,7 +132,7 @@ fn main() {
     println!("  {:<14} {:>6} {:>9} {:>9} {:>8}", "", "parts", "material", "to burn", "lost");
     for how in [Teardown::Disassemble, Teardown::Deconstruct, Teardown::Salvage,
                 Teardown::Recycle, Teardown::CutUp, Teardown::Smash] {
-        let r = take_apart(&chair, how, &cat, 0.8);
+        let r = take_apart(&chair, how, &cat, 0.8, 1);
         println!(
             "  {:<14} {:>6} {:>8.3} {:>9.3} {:>8.3}   {:.0} min",
             how.name(),

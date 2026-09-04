@@ -7,8 +7,8 @@
 //! reloaded.
 
 use scale_sim::craft::{
-    hand_tools, machine_shop, standard_recipes, Effort, Halt, Maker, RecipeBook, WorkOrder,
-    Workplace,
+    capability_of, hand_tools, machine_shop, rolled_throughput_yield, standard_recipes, Effort,
+    Grade, Halt, Maker, ProcessCapability, RecipeBook, WorkOrder, Workplace,
 };
 use scale_sim::item::{standard_catalogue, Capability, Catalogue, JointMethod};
 use scale_sim::material::Material;
@@ -402,6 +402,12 @@ fn a_botched_weld_stays_botched_across_a_reload() {
 /// **A mishap happens to an operation, not to the object.** A clumsy
 /// worker produces a worse chair, not the absence of a chair — which is
 /// the difference between a simulation and a slot machine.
+///
+/// Measured over two hundred chairs, because **one chair is one draw** and
+/// a single comparison says nothing: at a 96% first-pass yield the good
+/// hand and the poor one will often produce the identical run of grades by
+/// coincidence, and a test that reads a mechanism off one sample is the
+/// mistake this project has already had to unlearn three times.
 #[test]
 fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
     let (cat, book) = world();
@@ -412,22 +418,162 @@ fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
     let poor = Maker { skill: 0.12, proficiency: 0.1, knows_recipe: true,
                        tool_familiarity: 0.2, focus: 0.25, fatigue: 0.8 };
 
-    let mut fine = WorkOrder::begin(61, plan, 1, 0, 1);
-    let mut rough = WorkOrder::begin(61, plan, 1, 0, 1);
-    run(&mut fine, &book, &cat, &place, good);
-    run(&mut rough, &book, &cat, &place, poor);
+    let over_a_batch = |m: Maker| {
+        let (mut quality, mut made, mut accepted, mut reworked, mut scrapped) =
+            (0.0f64, 0.0f64, 0u32, 0u32, 0u32);
+        for id in 0..200u64 {
+            let mut o = WorkOrder::begin(id, plan, 1, 0, 1);
+            run(&mut o, &book, &cat, &place, m);
+            for r in &o.completed {
+                match r.grade {
+                    Grade::Accepted => accepted += 1,
+                    Grade::Reworkable => reworked += 1,
+                    Grade::Scrapped => scrapped += 1,
+                }
+            }
+            if let Some(c) = o.deliver(&book, &cat, 1) {
+                quality += c.quality.overall();
+                made += 1.0;
+            }
+        }
+        (quality / made.max(1.0), made, accepted, reworked, scrapped)
+    };
 
-    let a = fine.deliver(&book, &cat, 1).expect("the good hand made nothing");
-    let b = rough.deliver(&book, &cat, 1).expect("the poor hand made nothing at all");
+    let (fine, made_fine, acc_g, rew_g, scr_g) = over_a_batch(good);
+    let (rough, made_rough, acc_p, rew_p, scr_p) = over_a_batch(poor);
+
+    assert!(made_fine > 190.0, "a skilled joiner finished only {made_fine} of 200 chairs");
+    assert!(made_rough > 100.0, "the novice finished almost nothing: {made_rough}");
     assert!(
-        a.quality.overall() > b.quality.overall(),
-        "workmanship came out the same: {:.2} against {:.2}",
-        a.quality.overall(),
-        b.quality.overall()
+        fine > rough + 0.05,
+        "workmanship came out the same: {fine:.3} against {rough:.3}"
     );
-    // Both are chairs.
-    assert!(b.mass_kg > 3.0);
-    assert!(rough.completed.iter().any(|r| !r.mishap.is_none()), "nothing went wrong at all");
+
+    // **Three separate rates**, and the novice is worse on all of them.
+    let rate = |n: u32, a: u32, r: u32, s: u32| n as f64 / (a + r + s) as f64;
+    assert!(rate(acc_g, acc_g, rew_g, scr_g) > rate(acc_p, acc_p, rew_p, scr_p));
+    assert!(rate(scr_p, acc_p, rew_p, scr_p) > rate(scr_g, acc_g, rew_g, scr_g));
+    // And the shop that makes more mistakes also scraps a larger share of
+    // them, because catching a fault while it can still be put right is
+    // itself a thing a good shop does.
+    assert!(
+        scr_p as f64 / (rew_p + scr_p) as f64 > scr_g as f64 / (rew_g + scr_g) as f64,
+        "the bad shop reworked as large a share of its defects as the good one"
+    );
+}
+
+/// **Gate: first-pass yield, rework and scrap are three different
+/// numbers.**
+///
+/// ASQ defines first-pass yield as passing *without correction or rework*;
+/// NIST lists yield, scrap ratio and rework ratio separately. A process at
+/// FPY 92 / rework 7 / scrap 1 is perfectly ordinary — so a scrap rate of
+/// 1-5% implies nothing at all about first-pass yield, and this file used
+/// to say it did.
+#[test]
+fn a_scrap_rate_does_not_imply_a_first_pass_yield() {
+    let ordinary = ProcessCapability {
+        baseline: 0.0, worker: 0.0, tool: 0.0, workplace: 0.0, material: 0.0, difficulty: 0.0,
+    };
+    let y = ordinary.yields();
+
+    // They are three fields, and they sum to one because every unit goes
+    // somewhere.
+    assert!((y.first_pass + y.rework + y.scrap - 1.0).abs() < 1e-9);
+    assert!(y.scrap < y.rework, "an ordinary shop scrapped more than it put right");
+
+    // A scrap rate inside the real 1-5% band sits alongside a first-pass
+    // yield well under 99%: the two are simply not the same measurement.
+    assert!((0.005..=0.05).contains(&y.scrap), "scrap came to {:.3}", y.scrap);
+    assert!(y.first_pass < 0.99, "an ordinary shop was world class");
+    assert!(y.first_pass > 0.90);
+    assert!(
+        y.defect_rate() > y.scrap * 1.5,
+        "every defect was scrapped, so rework does not exist"
+    );
+
+    // A better process improves all three, and a worse one is worse on all
+    // three — but never by the same factor.
+    let good = ProcessCapability { worker: 0.4, tool: 0.2, workplace: 0.25, ..ordinary };
+    let bad = ProcessCapability { worker: -0.4, tool: -0.2, difficulty: 0.5, ..ordinary };
+    assert!(good.yields().first_pass > y.first_pass);
+    assert!(bad.yields().first_pass < y.first_pass);
+    assert!(bad.yields().scrap > good.yields().scrap * 10.0);
+}
+
+/// **Gate: yields compound down a sequence, and that is not the bug.**
+///
+/// `RTY = prod(FPY_i)`, so twenty operations at 99% each deliver 81.8% of
+/// units clean through the line. The bug was multiplying four uncalibrated
+/// modifiers against whole-craft success; this is the arithmetic that was
+/// hiding behind it, and a long plan really is harder to get right first
+/// time than a short one.
+#[test]
+fn a_long_plan_is_harder_to_get_right_than_a_short_one() {
+    assert!((rolled_throughput_yield(0.99, 20) - 0.8179).abs() < 1e-3);
+    assert!((rolled_throughput_yield(0.99, 1) - 0.99).abs() < 1e-9);
+
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let chair = book.get(book.must("chair, hand tools")).unwrap();
+    let cap = capability_of(chair, &chair.steps[1], &[], &place, a_good_hand());
+    let fpy = cap.yields().first_pass;
+
+    let over_all_six = rolled_throughput_yield(fpy, chair.steps.len());
+    assert!(over_all_six < fpy, "six operations were as easy as one");
+    assert!(over_all_six > 0.5, "a skilled joiner botched half his chairs: {over_all_six:.2}");
+}
+
+/// **Gate: the influences combine, then the outcome is calculated once.**
+///
+/// A poor tool in a poor hand is additively poor. Multiplying the two
+/// against the chance of success is what had a skilled joiner spoiling
+/// more than half his work.
+#[test]
+fn a_bad_tool_and_a_bad_hand_are_additively_bad() {
+    let base = ProcessCapability {
+        baseline: 0.0, worker: 0.0, tool: 0.0, workplace: 0.0, material: 0.0, difficulty: 0.0,
+    };
+    let bad_hand = ProcessCapability { worker: -0.3, ..base };
+    let bad_tool = ProcessCapability { tool: -0.3, ..base };
+    let both = ProcessCapability { worker: -0.3, tool: -0.3, ..base };
+
+    assert!((both.effective() - (bad_hand.effective() + bad_tool.effective())).abs() < 1e-9);
+
+    // And the defect rate that comes out of it is bounded rather than
+    // compounding away: two poor contributions do not make the work
+    // impossible.
+    assert!(both.yields().first_pass > 0.6, "two setbacks made the job unperformable");
+    assert!(both.yields().first_pass < bad_hand.yields().first_pass);
+
+    // A single mapping, so the same total gives the same rates however it
+    // was arrived at.
+    let elsewhere = ProcessCapability { workplace: -0.6, ..base };
+    assert_eq!(elsewhere.yields(), both.yields());
+}
+
+/// **Taking longer is not a defect.** A job can run over and come out
+/// perfect, so the schedule draw is independent of the quality one.
+#[test]
+fn a_job_can_be_slow_and_still_be_right() {
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let plan = book.must("chair, hand tools");
+
+    let mut slow_but_accepted = 0;
+    for id in 0..300u64 {
+        let mut o = WorkOrder::begin(id, plan, 1, 0, 1);
+        run(&mut o, &book, &cat, &place, a_good_hand());
+        slow_but_accepted += o
+            .completed
+            .iter()
+            .filter(|r| r.grade == Grade::Accepted && !r.mishap.is_none())
+            .count();
+    }
+    assert!(
+        slow_but_accepted > 0,
+        "nothing that passed inspection had ever taken a minute longer than planned"
+    );
 }
 
 /// **Handloading is hazardous work**, and a failure there is not a quietly
@@ -490,7 +636,7 @@ fn what_went_in_is_what_the_record_says() {
     let good_chair = proper.deliver(&book, &cat, 1).unwrap();
 
     let mut bodged = WorkOrder::begin(71, plan, 1, 0, 1);
-    bodged.substituted(oak, cheap);
+    bodged.substituted(oak, cheap, &cat, &book).expect("a sheet would not do");
     run(&mut bodged, &book, &cat, &place, a_good_hand());
     let cheap_chair = bodged.deliver(&book, &cat, 1).unwrap();
 

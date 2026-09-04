@@ -22,7 +22,7 @@ use crate::item::{
     AssemblyRecord, Capability, Catalogue, Condition, DefId, DomainQuality, Family, Installed,
     ItemInstance, Joint, JointMethod, Provides, Quality, Substitution,
 };
-use crate::material::{Composition, Material, Quantity};
+use crate::material::{Amount, Composition, Fit, Material, Quantity};
 use crate::rng::Rng;
 use crate::save::channel;
 
@@ -243,6 +243,12 @@ pub struct Step {
     pub joins: Option<JointMethod>,
     /// Real process hazards: primer and propellant work, hot metal, dust.
     pub hazard: f64,
+    /// **What shape of stock the operation actually needs.** Mass is a
+    /// conservation check, not a fit: measured by weight alone a
+    /// requirement for a board is met by a batten too narrow to cut a seat
+    /// from and by an offcut too short to cut a leg from, both of which
+    /// weigh exactly what a usable board weighs.
+    pub shapes: Vec<(DefId, Amount)>,
 }
 
 impl Step {
@@ -258,6 +264,7 @@ impl Step {
             needs_power: false,
             joins: None,
             hazard: 0.0,
+            shapes: Vec::new(),
         }
     }
 
@@ -294,6 +301,12 @@ impl Step {
 
     pub fn dangerous(mut self, hazard: f64) -> Self {
         self.hazard = hazard;
+        self
+    }
+
+    /// What shape each of its inputs has to be in.
+    pub fn shaped(mut self, shapes: &[(DefId, Amount)]) -> Self {
+        self.shapes = shapes.to_vec();
         self
     }
 }
@@ -487,6 +500,23 @@ impl RecipeDefinition {
         }
     }
 
+    /// What shape of stock the plan wants where it calls for a given
+    /// definition, if it has an opinion.
+    pub fn shape_wanted(&self, def: DefId) -> Option<Amount> {
+        self.steps.iter().find_map(|s| s.shapes.iter().find(|p| p.0 == def).map(|p| p.1))
+    }
+
+    /// The alternatives the plan's author had in mind. Advisory: what
+    /// actually decides a substitution is whether the stock fits, not
+    /// whether somebody wrote it down.
+    pub fn suggested_substitutes(&self, def: DefId) -> &[DefId] {
+        self.substitutions
+            .iter()
+            .find(|p| p.0 == def)
+            .map(|p| p.1.as_slice())
+            .unwrap_or(&[])
+    }
+
     /// Whether every one of the plan's own needs can be met by these
     /// tools — which is what makes the same plan runnable by a man with a
     /// handsaw and by a factory.
@@ -596,39 +626,223 @@ impl Mishap {
     }
 }
 
+/// **What an operation came to.**
+///
+/// Three destinations, not two, and they are the three the trade actually
+/// counts. A unit that needed a touch-up is not a unit that passed, and it
+/// is emphatically not a unit that was thrown away.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Grade {
+    /// Passed with no correction and no rework. This and only this is what
+    /// first-pass yield counts.
+    Accepted,
+    /// Wrong, and putting it right is cheaper than starting again.
+    Reworkable,
+    /// Gone.
+    Scrapped,
+}
+
+/// **First-pass yield, rework and scrap are three different numbers.**
+///
+/// ASQ defines first-pass yield as the share of units passing *without
+/// correction or rework*, and NIST lists first-pass yield, scrap ratio and
+/// rework ratio as separate manufacturing indicators — because a process
+/// can perfectly well run
+///
+/// ```text
+/// FPY       92%
+/// reworked   7%
+/// scrapped   1%
+/// ```
+///
+/// So **"1-5% scrap" implies nothing whatever about first-pass yield**,
+/// and a note saying otherwise (this file used to) is conflating a
+/// throughput measure with a loss measure. They are kept apart here so
+/// that neither can quietly stand in for the other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Yields {
+    pub first_pass: f64,
+    pub rework: f64,
+    pub scrap: f64,
+}
+
+impl Yields {
+    pub fn defect_rate(&self) -> f64 {
+        self.rework + self.scrap
+    }
+
+    /// Where a drawn number in `[0, 1)` lands.
+    pub fn grade(&self, x: f64) -> Grade {
+        if x < self.first_pass {
+            Grade::Accepted
+        } else if x < self.first_pass + self.rework {
+            Grade::Reworkable
+        } else {
+            Grade::Scrapped
+        }
+    }
+}
+
+/// **The influences combine, and then the outcome is calculated once.**
+///
+/// The bug this replaces was multiplying four uncalibrated modifiers
+/// straight against the chance of success, which compounds to nonsense —
+/// the same error this project already made over prices. The fix is not to
+/// move the multiplication onto the defect rate (which is still four
+/// multipliers); it is to add the contributions into one capability and
+/// map that, once, into three rates.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ProcessCapability {
+    /// What the process is worth before anybody touches it.
+    pub baseline: f64,
+    pub worker: f64,
+    pub tool: f64,
+    pub workplace: f64,
+    /// Stock that is out of specification, warped, damp or substituted
+    /// makes every operation on it harder. A hook with a real consumer
+    /// once `Amount` refuses a bad fit outright.
+    pub material: f64,
+    pub difficulty: f64,
+}
+
+impl ProcessCapability {
+    pub fn effective(&self) -> f64 {
+        (self.baseline + self.worker + self.tool + self.workplace + self.material
+            - self.difficulty)
+            .clamp(-1.5, 1.5)
+    }
+
+    /// **Anchored on an ordinary shop.** At capability zero — a competent
+    /// hand, an adequate tool, a job of middling difficulty — the defect
+    /// rate is 5%, of which about a quarter is scrapped and the rest put
+    /// right. Capability climbs and falls it eightfold per point.
+    pub fn yields(&self) -> Yields {
+        let e = self.effective();
+        let defect = (0.05 * 8.0f64.powf(-e)).clamp(0.001, 0.60);
+        // A better-run process does not merely make fewer mistakes; it
+        // catches more of them at a stage where they can still be put
+        // right. Bad shops scrap what good shops rework.
+        let scrapped_share = (0.26 - 0.14 * e).clamp(0.08, 0.45);
+        let scrap = defect * scrapped_share;
+        Yields { first_pass: 1.0 - defect, rework: defect - scrap, scrap }
+    }
+}
+
+/// **A rework is another go, not an unlimited one.** Past a few attempts
+/// the piece is scrap and somebody has to admit it.
+pub const MAX_ATTEMPTS: u32 = 3;
+
+/// **Everything that bears on the work, added up.**
+///
+/// Each contribution is a shift in capability rather than a multiplier on
+/// the outcome, so a poor tool and a poor hand are additively poor and not
+/// catastrophically so, and the three yields are computed once from the
+/// total.
+///
+/// The ranges are the model, and they are chosen so that an ordinary
+/// competent hand at an ordinary bench on a job of middling difficulty
+/// lands near zero — which is where the 5% defect anchor sits.
+pub fn capability_of(
+    recipe: &RecipeDefinition,
+    step: &Step,
+    tools: &[Provides],
+    place: &Workplace,
+    maker: Maker,
+) -> ProcessCapability {
+    // -0.5 .. +0.5. Skill dominates; proficiency with this operation
+    // family and today's attention are real and smaller.
+    let hand = 0.60 * maker.skill + 0.25 * maker.proficiency + 0.15 * maker.focus;
+    let worker = (hand - 0.5) * 1.0 - 0.15 * maker.fatigue;
+
+    // -0.3 .. +0.3. Room in hand on the tolerance, not raw capacity: a
+    // tool working at its limit is where dimensional defects come from.
+    let tool = (worst_precision(tools, &step.needs) - 0.7) * 1.0;
+
+    // 0 .. +0.25. A jig is what holds a tolerance without a craftsman
+    // holding it.
+    let workplace = 0.25 * place.jigs;
+
+    ProcessCapability {
+        baseline: 0.0,
+        worker: worker.clamp(-0.5, 0.5),
+        tool: tool.clamp(-0.3, 0.3),
+        workplace,
+        material: 0.0,
+        difficulty: 0.70 * recipe.difficulty,
+    }
+}
+
+/// **Yields compound down a sequence of operations.**
+///
+/// `RTY = prod(FPY_i)`, which is why twenty operations at 99% each deliver
+/// only 81.8% of units clean through the line. This is not the compounding
+/// *bug* — it is the arithmetic the bug was hiding, and a plan with many
+/// steps is genuinely harder to get right first time than a plan with two.
+pub fn rolled_throughput_yield(first_pass: f64, operations: usize) -> f64 {
+    first_pass.powi(operations as i32)
+}
+
 /// **Keyed to the order, the step and the attempt**, never to a running
 /// stream — so reloading a save cannot reroll a failure, and adding a draw
 /// somewhere else tomorrow cannot shift this one.
-fn roll_mishap(order: u64, step: usize, attempt: u32, care: f64, hazard: f64) -> Mishap {
+fn roll_outcome(
+    order: u64,
+    step: usize,
+    attempt: u32,
+    yields: Yields,
+    hazard: f64,
+) -> (Grade, Mishap) {
     let h = channel(order, step as u64, "operation outcome")
         ^ (attempt as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     let mut r = Rng::new(h);
     let x = r.next_f32() as f64;
-    if x < care {
-        return Mishap::None;
-    }
-    // How badly it went, given that it went wrong at all.
-    let severity = ((x - care) / (1.0 - care).max(1e-6)).clamp(0.0, 1.0);
+    let grade = yields.grade(x);
     let k = r.next_f32() as f64;
-    // Hazardous work turns a mistake into an injury or a fire far more
-    // readily. Handloading is the reason this exists: a crafting failure
-    // that quietly consumes another unit and lets the worker carry on is
-    // not what happens when primers go off.
-    if k < hazard * severity {
-        return if k < hazard * severity * 0.4 { Mishap::Fire } else { Mishap::Injury };
-    }
-    match severity {
-        s if s < 0.30 => Mishap::Slow(1.0 + s),
-        s if s < 0.45 => Mishap::Overrun(0.05 + s * 0.2),
-        s if s < 0.58 => Mishap::CosmeticFlaw,
-        s if s < 0.70 => Mishap::Rework,
-        s if s < 0.79 => Mishap::DimensionalDefect,
-        s if s < 0.86 => Mishap::WeakJoint,
-        s if s < 0.91 => Mishap::Contamination,
-        s if s < 0.95 => Mishap::DamagedComponent,
-        s if s < 0.975 => Mishap::ToolDamage,
-        s if s < 0.995 => Mishap::RuinedComponent,
-        _ => Mishap::CatastrophicLoss,
+
+    // **Taking longer is not a defect.** A job can run over and come out
+    // perfect, so the schedule draw is independent of the quality one and
+    // an accepted unit can still have been slow or wasteful.
+    let variance = |k: f64| -> Mishap {
+        if k < 0.06 {
+            Mishap::Slow(1.0 + k * 5.0)
+        } else if k < 0.09 {
+            Mishap::Overrun(0.04 + k * 0.3)
+        } else {
+            Mishap::None
+        }
+    };
+
+    match grade {
+        Grade::Accepted => (grade, variance(k)),
+        Grade::Reworkable => {
+            // Hazardous work turns a mistake into an injury far more
+            // readily. Handloading is the reason this exists: a failure
+            // that quietly consumes another unit and lets the worker carry
+            // on is not what happens when primers go off.
+            if k < hazard {
+                return (grade, if k < hazard * 0.3 { Mishap::Fire } else { Mishap::Injury });
+            }
+            let m = match ((k - hazard) / (1.0 - hazard).max(1e-6)).clamp(0.0, 1.0) {
+                s if s < 0.28 => Mishap::CosmeticFlaw,
+                s if s < 0.52 => Mishap::Rework,
+                s if s < 0.72 => Mishap::DimensionalDefect,
+                s if s < 0.88 => Mishap::WeakJoint,
+                s if s < 0.96 => Mishap::Contamination,
+                _ => Mishap::ToolDamage,
+            };
+            (grade, m)
+        }
+        Grade::Scrapped => {
+            if k < hazard {
+                return (grade, if k < hazard * 0.5 { Mishap::Fire } else { Mishap::Injury });
+            }
+            let m = match ((k - hazard) / (1.0 - hazard).max(1e-6)).clamp(0.0, 1.0) {
+                s if s < 0.45 => Mishap::DamagedComponent,
+                s if s < 0.85 => Mishap::RuinedComponent,
+                _ => Mishap::CatastrophicLoss,
+            };
+            (grade, m)
+        }
     }
 }
 
@@ -698,6 +912,9 @@ impl Workplace {
 pub struct StepRecord {
     pub step: usize,
     pub attempt: u32,
+    /// Whether it passed, needed putting right, or was thrown away.
+    pub grade: Grade,
+    /// What was wrong with it, or what merely cost time.
     pub mishap: Mishap,
     pub labour_minutes: f64,
     pub machine_minutes: f64,
@@ -845,8 +1062,29 @@ impl WorkOrder {
     /// **Use something other than what the plan named.** From here on the
     /// order draws the substitute, and the finished item record says so —
     /// which is what stops a chair of particleboard yielding oak.
-    pub fn substituted(&mut self, wanted: DefId, used: DefId) {
+    ///
+    /// **Checked against the shape the operation needs, not against a
+    /// list an author wrote.** A batten of the right timber at the right
+    /// thickness weighs what a board weighs and will not yield a seat, so
+    /// what refuses it is geometry.
+    pub fn substituted(
+        &mut self,
+        wanted: DefId,
+        used: DefId,
+        cat: &Catalogue,
+        book: &RecipeBook,
+    ) -> Result<(), Unsuitable> {
+        let recipe = book.get(self.recipe).ok_or(Unsuitable::NoSuchPlan)?;
+        let d = cat.get(used).ok_or(Unsuitable::NoSuchPlan)?;
+        if let Some(shape) = recipe.shape_wanted(wanted) {
+            match shape.met_by(d.nominal, Quantity::Count(1), d.nominal_mass_kg) {
+                Fit::Yes { .. } => {}
+                Fit::NotEnough => return Err(Unsuitable::NotEnough),
+                Fit::WrongShape(why) => return Err(Unsuitable::WrongShape(why)),
+            }
+        }
         self.substitutions.push(Substitution { wanted, used });
+        Ok(())
     }
 
     /// **A substitute is measured out by mass, not counted one for one.**
@@ -1013,22 +1251,17 @@ impl WorkOrder {
             }
 
             // ---- the step is over. Did it go as intended? ----------
-            // **Difficulty, jigs and tolerance move the defect rate, not
-            // the success rate.** Multiplying four factors into the chance
-            // of success is the same compounding error this project has
-            // already recorded over prices: each one looks reasonable and
-            // together they had a skilled joiner spoiling half his work.
-            let precision = worst_precision(&chosen, &step.needs);
-            let defects = (1.0 - maker.care())
-                * (0.5 + 1.5 * recipe.difficulty)   // trivial 0.5x, hardest 2x
-                * (2.0 - precision)                 // working at the tool limit
-                * (1.0 - 0.5 * place.jigs);         // a jig halves them
-            let care = 1.0 - defects.clamp(0.002, 0.60);
-            let mishap = roll_mishap(self.id, self.step, self.attempt, care, step.hazard);
-            self.note(step, mishap, place, cat, recipe);
+            // **Everything that bears on the work is added up first**, and
+            // the outcome is calculated once from the total.
+            let capability = capability_of(recipe, step, &chosen, place, maker);
+            let yields = capability.yields();
+            let (grade, mishap) =
+                roll_outcome(self.id, self.step, self.attempt, yields, step.hazard);
+            self.note(step, grade, mishap, place, cat, recipe);
             self.completed.push(StepRecord {
                 step: self.step,
                 attempt: self.attempt,
+                grade,
                 mishap,
                 labour_minutes: step.effort.labour_minutes(),
                 machine_minutes: step.effort.machine_minutes(),
@@ -1039,9 +1272,10 @@ impl WorkOrder {
                 self.state = Halt::Abandoned;
                 return self.state;
             }
-            if matches!(mishap, Mishap::Rework) {
-                // Caught in time. The same step again, and the material
-                // it already took is gone.
+            // **Reworkable means it is done again.** Which is the whole
+            // point of the grade: a unit that needed a touch-up did not
+            // pass first time, and it did not go in the skip either.
+            if grade == Grade::Reworkable && self.attempt < MAX_ATTEMPTS {
                 self.attempt += 1;
                 self.step_done = 0.0;
                 continue;
@@ -1118,12 +1352,19 @@ impl WorkOrder {
     fn note(
         &mut self,
         step: &Step,
+        grade: Grade,
         mishap: Mishap,
         place: &Workplace,
         cat: &Catalogue,
         recipe: &RecipeDefinition,
     ) {
-        let good = if mishap.is_none() { 1.0 } else { 0.55 };
+        // Rework puts it right; it does not make it good. Scrap that was
+        // carried on with is worse again.
+        let good = match grade {
+            Grade::Accepted => 1.0,
+            Grade::Reworkable => 0.72,
+            Grade::Scrapped => 0.4,
+        };
         let jigged = 0.7 + 0.3 * place.jigs;
         let q = &mut self.quality;
         match step.operation.bears_on() {
@@ -1149,8 +1390,14 @@ impl WorkOrder {
             // Scaling everything consumed so far is how a fumbled sanding
             // pass came to eat another two kilograms of board.
             Mishap::Overrun(extra) => self.spoil(step, recipe, cat, extra),
-            // Doing it again costs the consumables again.
-            Mishap::Rework => self.spoil(step, recipe, cat, 1.0),
+            _ => {}
+        }
+        // Doing it again costs the consumables again, whatever it was that
+        // sent it back.
+        if grade == Grade::Reworkable {
+            self.spoil(step, recipe, cat, 1.0);
+        }
+        match mishap {
             Mishap::Slow(f) => {
                 self.elapsed_min += step.effort.span_minutes() * (f - 1.0);
                 self.active_labour_min += step.effort.labour_minutes() * (f - 1.0);
@@ -1383,6 +1630,15 @@ impl WorkOrder {
     }
 }
 
+/// Why a proposed substitute will not do.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unsuitable {
+    NoSuchPlan,
+    NotEnough,
+    /// **The case mass alone cannot see.**
+    WrongShape(&'static str),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Balance {
     pub inputs_kg: f64,
@@ -1402,16 +1658,18 @@ impl Balance {
     }
 }
 
+/// **Room in hand on the tolerance.** A tool exactly at the limit of what
+/// the operation asks holds it only just; one with a factor of four to
+/// spare holds it without thinking. Returns roughly 0.55 to 1.0, with an
+/// adequate tool near 0.7 — which is where `capability_of` centres it.
 fn worst_precision(tools: &[Provides], needs: &[Need]) -> f64 {
     if needs.is_empty() {
-        return 1.0;
+        return 0.85;
     }
     let mut worst: f64 = 1.0;
     for (t, n) in tools.iter().zip(needs) {
-        // A tool exactly at the tolerance is working at its limit; one
-        // with room in hand holds it comfortably.
         let headroom = (n.precision_mm / t.precision_mm.max(1e-6)).clamp(0.2, 4.0);
-        worst = worst.min((0.55 + 0.15 * headroom).min(1.0));
+        worst = worst.min((0.55 + 0.12 * headroom).min(1.0));
     }
     worst
 }
@@ -1455,9 +1713,21 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
     // sawdust: a 71% yield off rough stock, which is what furniture
     // actually gets.
     let chair_steps = |powered: bool, speed_needs: bool| {
+        // **A seat wants a panel and a leg wants a length.** Real chair
+        // stock is boards of 18-32 mm at least 140 mm wide; a batten is
+        // too narrow to get a seat out of and an offcut is too short to
+        // get a leg out of, whatever either of them weighs.
         let cut = Step::new("cut members", Operation::Cut, Effort::Hands { minutes: 45.0 })
             .needing(&[Need::of(C::CutWood, 30.0, if speed_needs { 0.8 } else { 2.0 })])
             .taking(&[Flow::Item { def: oak, count: 1.0 }])
+            .shaped(&[(
+                oak,
+                Amount::Sheet {
+                    min_width_m: 0.14,
+                    min_length_m: 1.2,
+                    thickness_m: (0.016, 0.032),
+                },
+            )])
             .giving(&[Flow::Waste { material: Material::Oak, kg: 1.95 }])
             .leaving(chair_parts);
         let cut = if powered { cut.powered() } else { cut };
