@@ -873,6 +873,207 @@ and shut the food chain down. Real grids shed this way too, and the
 heaviest users are *paid* to go first — an **interruptible tariff** buys a
 smelter cheaper power in exchange for being cut on demand.
 
+## Things, and how they are made
+
+`src/material.rs`, `src/item.rs`, `src/craft.rs`, `src/teardown.rs`.
+`cargo run --release --bin make`
+
+Placed **before** the household basket on purpose. An economy built around
+"retail goods" would have to be rewritten the moment a household buys a
+coat, a kettle, a chair, a box of screws and a spare alternator instead of
+a tonne of goods. The rule the whole layer turns on:
+
+> A recipe describes one way to make something. The resulting item records
+> what was actually made, from what, by whom, and in what condition.
+
+CDDA is the right structure to start from — item definitions apart from
+instances, abstract tool qualities, named recipe steps, unattended phases —
+and its own documentation is honest about where it stops. **Six objects,
+not two:** a material, a definition, an instance, an aggregate lot, a
+recipe, and a work order.
+
+### Not everything is a charge
+
+One `charges: u32` on every object is a serviceable game abstraction and
+wrong as soon as production is real. Nails are a count, rope is a length,
+sheet steel has dimensions, flour is a mass, fuel is a volume at a
+temperature, electricity is energy. **Half a rope is two ropes; half a
+cartridge is nothing.**
+
+Every variant carries a mass, because the conservation check rests on it —
+and **two stacks merge only if what is being discarded does not matter**.
+Fluids at different temperatures, boards of different lengths and
+ammunition of two loadings are not one pile, and silently merging them is
+how a difference that matters stops existing.
+
+### Quality is not condition
+
+A beautifully made knife can be badly worn; a badly made knife can be brand
+new; sharpening the worn one does not make it well made. One `quality: 0.73`
+cannot say any of that, so there is a common core — workmanship, structural
+integrity, dimensional accuracy, finish, contamination — and **domain
+dimensions only some things have**: headspace and bore for a firearm, edge
+and hardness for a blade, purity and sterility for a medicine. Repair moves
+condition and leaves workmanship exactly where it was.
+
+### A recipe is a plan, not the identity of a thing
+
+There is more than one way to make a chair, and they differ in components,
+machinery, labour, time, precision, waste, expected quality and what you
+have to know. So a plan asks for a **capability with a figure on it** —
+cut 30 mm of timber to 2 mm — and a handsaw, a bandsaw, an angle grinder
+and a plasma cutter all answer, differing in speed, kerf, tolerance, power
+and how big a piece will fit. `HAMMER 2` is a useful abstraction and cannot
+say whether the thing delivers enough impact with enough control.
+
+**A blackout stops the tool, not the step.** In the dark you reach for the
+handsaw, so the same plan finishes at a bench and halts in a works — which
+is the distinction `econ.rs` already wanted and could only assert.
+
+### Three kinds of time, and the economy needs all three
+
+| a loaf | minutes |
+|---|---|
+| labour — mixing, shaping, loading, drawing | **35** |
+| oven occupancy | **35** |
+| **on the clock** | **125** |
+
+**Staff a bakery off elapsed time and you hire three and a half times too
+many people.** Twelve hours of glue curing is twelve hours and nobody's
+day. Until labour, machine occupancy and unattended transformation were
+separate the economy had no way to be told so.
+
+**A batch saves the setup, once.** Per-unit labour and per-unit material
+are untouched — 5.9 labour-hours for one chair, 2.7 for a run of five,
+1.9 for five hundred, and never below the 1.9 that making a chair takes.
+A factory is cheaper per item and is not free.
+
+### An operation consumes what it uses, when it uses it
+
+Take the whole bill of materials at the start and a power cut half way
+through destroys steel that has already been cut into blanks. Interrupt the
+work and **the blanks and the offcuts are still there in the morning** —
+and a step blocked before it began has taken nothing.
+
+An intermediate becomes a real object when the state it reaches can be
+moved, traded, spoil, be reused or be stranded: dough can go off, cut
+panels can be used for something else, a primed case is a thing you can
+drop. A step that merely gets the workpiece further along leaves nothing.
+
+### Failure happens to an operation
+
+One final roll saying the object either exists or does not is a slot
+machine. A poor weld is a weak weld, a failed cake is often still edible,
+and a badly loaded cartridge is dangerous ammunition rather than generic
+scrap. Thirteen outcomes, from *took a bit longer* to *destroyed the work*,
+and every one of them is **keyed to the order, the step and the attempt**
+— so reloading a save cannot reroll it and adding a draw elsewhere tomorrow
+cannot shift it.
+
+**Handloading is hazardous and sewing is not.** A crafting failure that
+quietly consumes another unit and lets the worker carry on is not what
+happens when primers go off.
+
+### What was actually made, from what
+
+The exploit every fixed uncraft recipe has: a plan accepts oak or
+particleboard and the finished item says oak. Here the record says what
+went in — and **a substitute is measured out by mass, not counted one for
+one**, so standing a 34.8 kg sheet in for a 6.75 kg board means using a
+fifth of the sheet rather than making the chair five times heavier.
+
+**An intermediate cannot launder a substitution.** Both chairs are made of
+a component the plan calls `chair parts`; what tells them apart is the
+composition the record kept per component.
+
+**And the fastener names the joint.** A screw unscrews out of a frame that
+was also glued, because what recovers a component is what holds *it*.
+
+| joint | components back | fastener back |
+|---|---|---|
+| bolted | 0.98 | 0.95 |
+| screwed | 0.95 | 0.80 |
+| riveted | 0.90 | **0** — drilled out |
+| crimped | 0.90 | 0.85 |
+| stitched | 0.92 | 0.05 |
+| soldered | 0.85 | 0.30 |
+| glued | **0.45** | 0 |
+| welded | **0.55**, and it must be cut | 0 |
+| cast, forged, cooked, reacted | **nothing** | — |
+
+That last row is the thermodynamic boundary a reversible flag cannot
+express: a casting cannot become the ingot, and a cake cannot become flour.
+
+### Nine intentions, one engine
+
+Uninstalling an alternator, field stripping a rifle, deconstructing a wall
+and smashing a chair for firewood are the same transformation with
+different goals. On one chair:
+
+| | parts back | material | to burn | lost |
+|---|---|---|---|---|
+| disassemble | 10 | 0.008 | 4.04 | 0.78 |
+| deconstruct | 8 | 0.015 | 3.51 | 1.31 |
+| salvage | 7 | 0.015 | 2.85 | 1.98 |
+| recycle | 0 | 0.027 | 2.20 | 2.66 |
+| smash | 0 | 0.005 | 0.44 | **4.44** |
+
+**A field strip reaches what unclips and unbolts, and stops.** On a rifle
+it takes the bolt carrier, the stock and the magazine; the pressed-and-
+pinned barrel and the riveted fire control group stay in, because those are
+an armourer's job. That is what stripping a rifle *means*, and it falls out
+of the joint table rather than being a special case.
+
+**What a material can ever come back as is a property of the material.**
+Steel and glass melt back to feedstock; concrete and thermoplastics
+downcycle; timber and textiles only burn — and particleboard only burns,
+resin being why it cannot even go in with the wood. Fuel keeps its identity,
+because one number would make oak and wool the same pile and then no test
+could tell whether a chair of particleboard had quietly yielded oak.
+
+### A million toothbrushes are a number
+
+A distant shop's ordinary stock is a lot; the drill somebody is carrying is
+an instance. Expansion is deterministic and conserves count and mass
+exactly, with the last example taking the rounding. **What must never be
+folded up** is anything whose particulars would be destroyed by it — a
+named thing, a modified one, a loaded gun, somebody's property, evidence,
+an active device, or work in progress — because those are exactly the
+objects a story is made of.
+
+### Five things that were wrong first time
+
+- **Four multipliers on the chance of success compound to nonsense**, which
+  is the same error this file already records over prices. Difficulty,
+  jigs, tolerance and skill each looked reasonable and together had a
+  skilled joiner spoiling more than half his work. They belong on the
+  **defect rate**, anchored on real first-pass yield: manufacturing scrap
+  and rework run **1-5%**, above 95% first-pass is ordinary and 99% is
+  called world class.
+- **Material used over the plan is scrap, not a heavier chair.** An overrun
+  scaled everything the order had consumed so far, so a fumbled sanding
+  pass ate another two kilograms of board and delivered a 6.6 kg chair. And
+  **a rework does not re-cut the legs** — doing a joint again costs time
+  and consumables, not the workpiece.
+- **The record listed the board rather than the parts.** A chair contains
+  four fifths of a board; listing the board hands the offcuts back to
+  anybody who takes the chair apart, and the recovery came to 5.5 kg out of
+  a 4.9 kg chair. The record is built by *walking the plan*, so what is in
+  the thing is what is in the record.
+- **Flooring the survivors means a thing there is only one of can never be
+  recovered.** A component surviving at 0.79 floored to zero, so every
+  single-part assembly was quietly unsalvageable.
+- **Every quality axis was divided by the total number of steps.** Three
+  cutting operations out of six gave 0.5 for dimensional accuracy however
+  well every cut was made, and a chair nobody was asked to polish scored
+  half marks for finish. Each axis is scored against the operations that
+  bear on it, and **an axis nothing bore on takes the ordinary standard
+  rather than zero** — unfinished is not badly finished.
+
+Not built yet: installation adapters into `vehicle.rs` and `building.rs`
+(the mechanism is here; the wiring is not), industrial batch scheduling,
+and the household basket this exists to carry.
+
 ## Money, and who has it (`src/money.rs`)
 
 The economy priced everything and paid for nothing. Households took goods

@@ -1,0 +1,619 @@
+//! **Making something is a process, not a timer.**
+//!
+//! Every gate here is a way a crafting menu quietly lies: by consuming the
+//! whole bill of materials up front, by charging a bakery for the hour the
+//! bread spends rising, by giving a factory a magic multiplier instead of
+//! amortised setup, or by rerolling a botched weld when the game is
+//! reloaded.
+
+use scale_sim::craft::{
+    hand_tools, machine_shop, standard_recipes, Effort, Halt, Maker, RecipeBook, WorkOrder,
+    Workplace,
+};
+use scale_sim::item::{standard_catalogue, Capability, Catalogue, JointMethod};
+use scale_sim::material::Material;
+
+fn world() -> (Catalogue, RecipeBook) {
+    let cat = standard_catalogue();
+    let book = standard_recipes(&cat);
+    (cat, book)
+}
+
+fn a_good_hand() -> Maker {
+    Maker { skill: 0.85, proficiency: 0.8, knows_recipe: true, tool_familiarity: 0.9,
+            focus: 0.9, fatigue: 0.1 }
+}
+
+/// Run until it finishes or stops for a reason. Returns the reason.
+fn run(order: &mut WorkOrder, book: &RecipeBook, cat: &Catalogue, place: &Workplace, m: Maker)
+    -> Halt
+{
+    let mut last = Halt::Running;
+    for _ in 0..4000 {
+        let before = (order.step, order.step_done, order.elapsed_min);
+        last = order.advance(30.0, book, cat, place, m);
+        if order.finished() {
+            break;
+        }
+        if (order.step, order.step_done, order.elapsed_min) == before {
+            break; // it is stuck on something and more minutes will not help
+        }
+    }
+    last
+}
+
+// =====================================================================
+// the plan
+// =====================================================================
+
+/// **Gate: several ways to make the same thing.**
+///
+/// A chair by hand, in a cabinet shop and in a factory are three plans
+/// with one result. They differ in setup, difficulty and the tolerance
+/// they demand — not in what a chair is.
+#[test]
+fn one_result_has_more_than_one_plan() {
+    let (cat, book) = world();
+    let ways = book.ways_to_make(cat.must("wooden chair"));
+    assert!(ways.len() >= 3, "only {} way(s) to make a chair", ways.len());
+
+    let setups: Vec<f64> = ways.iter().map(|&i| book.get(i).unwrap().setup_minutes).collect();
+    assert!(setups.iter().fold(0.0f64, |a, b| a.max(*b)) > 10.0 * setups.iter().fold(f64::MAX, |a, b| a.min(*b)));
+
+    // And the same materials come out of every one of them: scale buys
+    // speed and consistency, never cheaper timber.
+    let mass: Vec<f64> = ways.iter().map(|&i| book.get(i).unwrap().implied_product_mass(&cat)).collect();
+    for m in &mass {
+        assert!((m - mass[0]).abs() < 1e-9, "one plan made a chair of a different weight");
+    }
+}
+
+/// **Gate: mass balances across product, waste and emissions.**
+///
+/// Checked on the recipes as written, so a plan whose declared wastes are
+/// wrong shows up as a chair of the wrong weight rather than as timber
+/// quietly disappearing.
+#[test]
+fn nothing_is_created_and_nothing_is_destroyed() {
+    let (cat, book) = world();
+    for r in &book.recipes {
+        let implied = r.implied_product_mass(&cat);
+        let nominal = cat.get(r.result).unwrap().nominal_mass_kg;
+        assert!(
+            (implied - nominal).abs() <= nominal * 0.06,
+            "{}: the inputs less the waste come to {implied:.4} kg and a {} is {nominal:.4} kg",
+            r.name,
+            cat.get(r.result).unwrap().name
+        );
+    }
+}
+
+/// **Water leaves a loaf as steam**, and the balance says so rather than
+/// hiding it. Real bread loses about 10% of the dough weight in the oven.
+#[test]
+fn the_oven_drives_off_water_and_it_is_counted() {
+    let (_cat, book) = world();
+    let loaf = book.get(book.must("loaf")).unwrap();
+    let emitted: f64 = loaf
+        .all_produced()
+        .iter()
+        .filter_map(|f| match f {
+            scale_sim::craft::Flow::Emission { material, kg } if *material == Material::Water => {
+                Some(*kg)
+            }
+            _ => None,
+        })
+        .sum();
+    assert!(emitted > 0.0, "baking a loaf lost nothing at all");
+    let dough = 0.85;
+    assert!(emitted / dough > 0.04 && emitted / dough < 0.15);
+
+    // And the water came from the tap, not from stock — recorded, so the
+    // balance still closes.
+    let from_env: f64 = loaf
+        .all_consumed()
+        .iter()
+        .filter_map(|f| match f {
+            scale_sim::craft::Flow::Environment { kg, .. } => Some(*kg),
+            _ => None,
+        })
+        .sum();
+    assert!(from_env > 0.3);
+}
+
+/// **Gate: a tool is used, not eaten.**
+#[test]
+fn no_recipe_swallows_its_own_tools() {
+    let (cat, book) = world();
+    for r in &book.recipes {
+        assert!(
+            r.consumes_a_tool(&cat).is_none(),
+            "{} eats {:?}",
+            r.name,
+            r.consumes_a_tool(&cat).and_then(|d| cat.get(d)).map(|d| d.name)
+        );
+    }
+    // Whereas welding wire, glue and thread genuinely are consumed, and
+    // the catalogue says so.
+    for n in ["welding wire", "wood glue", "thread reel"] {
+        assert!(cat.get(cat.must(n)).unwrap().consumable, "{n} was not consumable");
+    }
+}
+
+// =====================================================================
+// time
+// =====================================================================
+
+/// **Gate: unattended time advances without consuming labour.**
+///
+/// Twelve hours of glue curing is twelve hours on the clock and none of
+/// anybody's day. Charging it as employee-minutes is how a model comes to
+/// think furniture-making employs three times the people it does.
+#[test]
+fn nobody_is_paid_to_watch_glue_dry() {
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let mut o = WorkOrder::begin(11, book.must("chair, hand tools"), 1, 0, 1);
+
+    // Get as far as the curing step.
+    let mut guard = 0;
+    while o.state != Halt::Unattended && guard < 500 {
+        o.advance(20.0, &book, &cat, &place, a_good_hand());
+        guard += 1;
+    }
+    assert_eq!(o.state, Halt::Unattended, "the order never reached a step nobody attends");
+
+    let labour = o.active_labour_min;
+    let elapsed = o.elapsed_min;
+    o.advance(600.0, &book, &cat, &place, a_good_hand());
+    assert!((o.active_labour_min - labour).abs() < 1e-9, "somebody was paid to watch glue dry");
+    assert!((o.elapsed_min - elapsed - 600.0).abs() < 1e-6, "the clock did not run");
+    assert!(o.unattended_min >= 600.0);
+}
+
+/// **A loaf is 35 minutes of work and two hours of morning.**
+///
+/// Real: mixing and shaping and loading are the labour, the oven is
+/// occupied for 35 minutes and the dough proves for an hour on its own.
+#[test]
+fn work_time_and_elapsed_time_are_different_numbers() {
+    let (_cat, book) = world();
+    let loaf = book.get(book.must("loaf")).unwrap();
+    assert!((loaf.labour_minutes() - 35.0).abs() < 1e-9, "labour came to {}", loaf.labour_minutes());
+    assert!((loaf.machine_minutes() - 35.0).abs() < 1e-9);
+    assert!(loaf.span_minutes() > 120.0, "elapsed came to {}", loaf.span_minutes());
+    assert!(
+        loaf.span_minutes() > 3.0 * loaf.labour_minutes(),
+        "the clock and the wage bill were nearly the same figure"
+    );
+
+    // Which is the whole point: staffing a bakery off elapsed time hires
+    // three and a half times too many people.
+    let overstated = loaf.span_minutes() / loaf.labour_minutes();
+    assert!(overstated > 3.4 && overstated < 3.8, "overstatement was {overstated:.2}x");
+}
+
+/// **Gate: a batch saves setup and nothing else.**
+///
+/// Per-unit labour and per-unit material are untouched, which is why a
+/// factory is cheaper per chair and not free.
+#[test]
+fn a_batch_amortises_the_setup_and_not_the_work() {
+    let (cat, book) = world();
+    let r = book.get(book.must("chair, factory")).unwrap();
+
+    let one = r.labour_for_batch(1);
+    let forty = r.labour_for_batch(40);
+    let per_one = one;
+    let per_forty = forty / 40.0;
+
+    assert!(per_forty < per_one, "a run of forty was no cheaper per chair");
+    // But never below the labour the chair itself takes.
+    assert!(
+        per_forty > r.labour_minutes() * 0.999,
+        "the fortieth chair took less work than making a chair"
+    );
+    // And the saving is exactly the setup, spread.
+    assert!((forty - (r.setup_minutes + 40.0 * r.labour_minutes())).abs() < 1e-6);
+
+    // Material per unit does not move at all.
+    let m1 = r.implied_product_mass(&cat);
+    assert!(m1 > 0.0);
+    let _ = cat;
+}
+
+/// **Gate: the same plan run by a man and by a works.**
+///
+/// Identical operations, identical materials. What differs is the
+/// providers — and what that buys is speed, not cheaper timber.
+#[test]
+fn one_recipe_two_workshops() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+
+    let bench = Workplace::a_workshop(hand_tools(&cat));
+    let works = Workplace::a_factory(machine_shop(&cat), 4.0, 4);
+
+    let mut by_hand = WorkOrder::begin(21, plan, 1, 0, 1);
+    let mut by_works = WorkOrder::begin(21, plan, 1, 0, 1);
+    assert_eq!(run(&mut by_hand, &book, &cat, &bench, a_good_hand()), Halt::Done);
+    assert_eq!(run(&mut by_works, &book, &cat, &works, a_good_hand()), Halt::Done);
+
+    let a = by_hand.deliver(&book, &cat, 1).unwrap();
+    let b = by_works.deliver(&book, &cat, 1).unwrap();
+
+    // The same chair, out of the same timber. **Material spoiled over the
+    // plan is scrap, not a heavier chair** — so the two come out at the
+    // same weight even though the bench got through more board.
+    assert!((a.mass_kg - b.mass_kg).abs() < 1e-6, "the works made a chair of a different weight");
+    assert_eq!(a.materials.chiefly(), b.materials.chiefly());
+
+    let board = cat.must("oak board");
+    let used = |o: &WorkOrder| {
+        o.consumed_items.iter().find(|c| c.0 == board).map(|c| c.1).unwrap_or(0.0)
+    };
+    assert!(used(&by_hand) >= 1.0 && used(&by_works) >= 1.0);
+    assert!(
+        used(&by_works) <= used(&by_hand),
+        "the jigged shop wasted more board than the bench: {:.3} against {:.3}",
+        used(&by_works),
+        used(&by_hand)
+    );
+
+    // The works is quicker in hands-on work, and both wait the same twelve
+    // hours for the glue.
+    assert!(
+        by_works.active_labour_min < by_hand.active_labour_min,
+        "machines saved no labour: {:.0} against {:.0}",
+        by_works.active_labour_min,
+        by_hand.active_labour_min
+    );
+    assert!(by_works.unattended_min >= 720.0 && by_hand.unattended_min >= 720.0);
+
+    // And only the works drew any power.
+    assert!(by_hand.power_kwh == 0.0, "a man with a handsaw used electricity");
+    assert!(by_works.power_kwh > 0.0, "a bandsaw ran on nothing");
+}
+
+// =====================================================================
+// interruption
+// =====================================================================
+
+/// **Gate: power loss pauses the step that needs power.**
+///
+/// And it names the right reason: a plant waiting on the grid is a
+/// different problem from a plant that never had the machine.
+#[test]
+fn the_grid_goes_down_and_the_oven_stops() {
+    let (cat, book) = world();
+    let plan = book.must("loaf");
+    let mut dark = Workplace::a_factory(machine_shop(&cat), 2.0, 1);
+    dark.power = false;
+
+    let mut o = WorkOrder::begin(31, plan, 1, 0, 1);
+    let why = run(&mut o, &book, &cat, &dark, a_good_hand());
+    assert_eq!(why, Halt::NoPower, "the bakery carried on in the dark");
+    assert_eq!(o.step, 3, "it stopped at step {} rather than at the oven", o.step);
+    // Mixing, shaping and proving all happened. The dough is real and it
+    // is sitting there.
+    assert!(o.intermediates.iter().any(|&(d, n)| d == cat.must("risen dough") && n > 0.0));
+
+    // Put the power back and it finishes from where it stopped.
+    let lit = Workplace::a_factory(machine_shop(&cat), 2.0, 1);
+    assert_eq!(run(&mut o, &book, &cat, &lit, a_good_hand()), Halt::Done);
+    assert!(o.deliver(&book, &cat, 2).is_some());
+}
+
+/// **And a blackout stops the factory, not the joiner.** The same plan,
+/// the same moment, two workshops: one has nothing that runs without
+/// power and carries on.
+#[test]
+fn a_man_with_a_handsaw_does_not_notice_a_blackout() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+
+    let mut dark_bench = Workplace::a_workshop(hand_tools(&cat));
+    dark_bench.power = false;
+    let mut dark_works = Workplace::a_factory(machine_shop(&cat), 4.0, 4);
+    dark_works.power = false;
+
+    let mut by_hand = WorkOrder::begin(41, plan, 1, 0, 1);
+    assert_eq!(run(&mut by_hand, &book, &cat, &dark_bench, a_good_hand()), Halt::Done);
+
+    let mut by_works = WorkOrder::begin(41, plan, 1, 0, 1);
+    let why = run(&mut by_works, &book, &cat, &dark_works, a_good_hand());
+    assert_eq!(why, Halt::NoPower, "the works ran its bandsaw off the mains it did not have");
+}
+
+/// **Gate: an interruption leaves the intermediates where they are.**
+///
+/// The blanks and the offcuts exist. Taking the whole bill of materials up
+/// front is what destroys them.
+#[test]
+fn a_stoppage_does_not_swallow_the_work_so_far() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+
+    // A bench with no clamps: the joiner can cut and drill and then has
+    // nothing to hold a glued joint with.
+    let no_clamps: Vec<_> = hand_tools(&cat)
+        .into_iter()
+        .filter(|p| p.capability != Capability::Glue)
+        .collect();
+    let place = Workplace::a_workshop(no_clamps);
+
+    let mut o = WorkOrder::begin(51, plan, 1, 0, 1);
+    let why = run(&mut o, &book, &cat, &place, a_good_hand());
+    assert_eq!(why, Halt::NoTool(Capability::Glue));
+
+    // The board was cut, so the parts and the sawdust are real.
+    let parts = cat.must("chair parts");
+    assert!(
+        o.intermediates.iter().any(|&(d, n)| d == parts && n >= 1.0),
+        "the cut parts vanished when the work stopped"
+    );
+    assert!(
+        o.waste.iter().any(|&(m, kg)| m == Material::Oak && kg > 1.0),
+        "the offcuts vanished too"
+    );
+    // And the glue and the screws were never touched, because that step
+    // never began.
+    assert!(!o.consumed_items.iter().any(|&(d, n)| d == cat.must("wood glue") && n > 0.0));
+}
+
+// =====================================================================
+// what can go wrong
+// =====================================================================
+
+/// **Gate: a reload cannot reroll a failure.**
+///
+/// The outcome is keyed to the order, the step and the attempt, so the
+/// same work goes the same way whether it is run once or saved half way
+/// and picked up in the morning.
+#[test]
+fn a_botched_weld_stays_botched_across_a_reload() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    // Somebody clumsy, so that something actually goes wrong.
+    let clumsy = Maker { skill: 0.15, proficiency: 0.1, knows_recipe: true,
+                         tool_familiarity: 0.2, focus: 0.3, fatigue: 0.7 };
+
+    let mut once = WorkOrder::begin(97, plan, 1, 0, 1);
+    run(&mut once, &book, &cat, &place, clumsy);
+
+    // The same order run again from scratch.
+    let mut twice = WorkOrder::begin(97, plan, 1, 0, 1);
+    run(&mut twice, &book, &cat, &place, clumsy);
+    assert_eq!(once.completed, twice.completed, "the same work went two different ways");
+
+    // And the same order saved part way through and resumed.
+    let mut part = WorkOrder::begin(97, plan, 1, 0, 1);
+    part.advance(60.0, &book, &cat, &place, clumsy);
+    let reloaded = part.clone(); // what a save and a load amount to
+    let mut a = part;
+    let mut b = reloaded;
+    run(&mut a, &book, &cat, &place, clumsy);
+    run(&mut b, &book, &cat, &place, clumsy);
+    assert_eq!(a.completed, b.completed, "reloading changed what happened");
+    assert_eq!(a.completed, once.completed, "resuming differed from running straight through");
+}
+
+/// **A mishap happens to an operation, not to the object.** A clumsy
+/// worker produces a worse chair, not the absence of a chair — which is
+/// the difference between a simulation and a slot machine.
+#[test]
+fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+    let place = Workplace::a_workshop(hand_tools(&cat));
+
+    let good = a_good_hand();
+    let poor = Maker { skill: 0.12, proficiency: 0.1, knows_recipe: true,
+                       tool_familiarity: 0.2, focus: 0.25, fatigue: 0.8 };
+
+    let mut fine = WorkOrder::begin(61, plan, 1, 0, 1);
+    let mut rough = WorkOrder::begin(61, plan, 1, 0, 1);
+    run(&mut fine, &book, &cat, &place, good);
+    run(&mut rough, &book, &cat, &place, poor);
+
+    let a = fine.deliver(&book, &cat, 1).expect("the good hand made nothing");
+    let b = rough.deliver(&book, &cat, 1).expect("the poor hand made nothing at all");
+    assert!(
+        a.quality.overall() > b.quality.overall(),
+        "workmanship came out the same: {:.2} against {:.2}",
+        a.quality.overall(),
+        b.quality.overall()
+    );
+    // Both are chairs.
+    assert!(b.mass_kg > 3.0);
+    assert!(rough.completed.iter().any(|r| !r.mishap.is_none()), "nothing went wrong at all");
+}
+
+/// **Handloading is hazardous work**, and a failure there is not a quietly
+/// consumed component. Real primer and propellant work injures people.
+#[test]
+fn a_mistake_over_primers_is_not_a_wasted_component() {
+    let (cat, book) = world();
+    let plan = book.must("cartridge, handloaded");
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let careless = Maker { skill: 0.1, proficiency: 0.05, knows_recipe: true,
+                           tool_familiarity: 0.1, focus: 0.2, fatigue: 0.9 };
+
+    let mut hurt = 0;
+    for id in 0..400u64 {
+        let mut o = WorkOrder::begin(id, plan, 1, 0, 1);
+        run(&mut o, &book, &cat, &place, careless);
+        if o.completed.iter().any(|r| {
+            matches!(r.mishap, scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire)
+        }) {
+            hurt += 1;
+        }
+    }
+    assert!(hurt > 0, "four hundred careless handloading sessions hurt nobody");
+
+    // And the same person doing something with no hazard in it is never
+    // hurt by it, however badly it goes.
+    let sewing = book.must("work trousers");
+    let mut sewn_hurt = 0;
+    for id in 1000..1400u64 {
+        let mut o = WorkOrder::begin(id, sewing, 1, 0, 1);
+        run(&mut o, &book, &cat, &place, careless);
+        if o.completed.iter().any(|r| {
+            matches!(r.mishap, scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire)
+        }) {
+            sewn_hurt += 1;
+        }
+    }
+    assert_eq!(sewn_hurt, 0, "somebody set fire to a pair of trousers");
+}
+
+// =====================================================================
+// what was actually used
+// =====================================================================
+
+/// **Gate: a substitution is recorded and is what was actually used.**
+///
+/// The classic transmutation exploit: a recipe accepts oak or
+/// particleboard and the finished item says oak. Here the record says what
+/// went in, measured out by mass rather than counted one for one.
+#[test]
+fn what_went_in_is_what_the_record_says() {
+    let (cat, book) = world();
+    let plan = book.must("chair, hand tools");
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let oak = cat.must("oak board");
+    let cheap = cat.must("particleboard sheet");
+
+    let mut proper = WorkOrder::begin(71, plan, 1, 0, 1);
+    run(&mut proper, &book, &cat, &place, a_good_hand());
+    let good_chair = proper.deliver(&book, &cat, 1).unwrap();
+
+    let mut bodged = WorkOrder::begin(71, plan, 1, 0, 1);
+    bodged.substituted(oak, cheap);
+    run(&mut bodged, &book, &cat, &place, a_good_hand());
+    let cheap_chair = bodged.deliver(&book, &cat, 1).unwrap();
+
+    assert_eq!(good_chair.materials.chiefly(), Some(Material::Oak));
+    assert_eq!(
+        cheap_chair.materials.chiefly(),
+        Some(Material::Particleboard),
+        "a chair made of particleboard came out as oak"
+    );
+    let rec = cheap_chair.assembly.as_ref().unwrap();
+    assert_eq!(rec.substitutions.len(), 1);
+    assert_eq!(rec.substitutions[0].wanted, oak);
+    assert_eq!(rec.substitutions[0].used, cheap);
+
+    // **An intermediate cannot launder a substitution.** Both chairs are
+    // built out of a component the plan calls `chair parts`; what tells
+    // them apart is what those parts are made of, which the record keeps
+    // per component rather than taking from the definition.
+    let parts = cat.must("chair parts");
+    let made_of = |c: &scale_sim::item::ItemInstance| {
+        c.assembly
+            .as_ref()
+            .unwrap()
+            .components
+            .iter()
+            .find(|x| x.definition == parts)
+            .expect("the chair had no parts in it")
+            .materials
+            .chiefly()
+    };
+    assert_eq!(made_of(&good_chair), Some(Material::Oak));
+    assert_eq!(made_of(&cheap_chair), Some(Material::Particleboard),
+               "the definition said oak and the record believed it");
+
+    // **And the board is not in the chair.** A record that listed the
+    // stock rather than the parts would hand back the offcuts to anybody
+    // who took the chair apart.
+    for c in [&good_chair, &cheap_chair] {
+        let r = c.assembly.as_ref().unwrap();
+        assert!(!r.components.iter().any(|x| x.definition == oak || x.definition == cheap),
+                "the raw board was listed as part of the chair");
+        assert!(
+            (r.total_component_mass() - c.mass_kg).abs() < 0.02,
+            "the record adds up to {:.3} kg and the chair weighs {:.3}",
+            r.total_component_mass(),
+            c.mass_kg
+        );
+    }
+
+    // **Measured out by mass**: a chair does not swallow a whole
+    // two-and-a-half metre sheet, and the two chairs weigh the same.
+    assert!(
+        (good_chair.mass_kg - cheap_chair.mass_kg).abs() < 0.05,
+        "the cheap chair weighed {:.2} against {:.2}",
+        cheap_chair.mass_kg,
+        good_chair.mass_kg
+    );
+}
+
+/// The record keeps how things were held together, which is what a
+/// disassembly reads instead of guessing from the recipe.
+#[test]
+fn the_record_says_how_it_was_held_together() {
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let mut o = WorkOrder::begin(81, book.must("chair, hand tools"), 1, 0, 1);
+    run(&mut o, &book, &cat, &place, a_good_hand());
+    let chair = o.deliver(&book, &cat, 1).unwrap();
+    let rec = chair.assembly.as_ref().unwrap();
+
+    assert!(rec.joints.iter().any(|j| j.method == JointMethod::Glued), "nothing was glued");
+    assert!(rec.work_order == Some(81));
+    // Glue went in as a material, not as a bottle.
+    assert!(rec.components.iter().any(|c| c.definition == cat.must("wood glue"))
+        || rec.consumed.iter().any(|c| c.0 == Material::Adhesive));
+
+    // A pair of trousers is stitched, and knows it.
+    let mut t = WorkOrder::begin(82, book.must("work trousers"), 1, 0, 1);
+    run(&mut t, &book, &cat, &place, a_good_hand());
+    let trousers = t.deliver(&book, &cat, 1).unwrap();
+    assert!(trousers
+        .assembly
+        .as_ref()
+        .unwrap()
+        .joints
+        .iter()
+        .any(|j| j.method == JointMethod::Stitched));
+}
+
+/// **A run balances**, whatever went wrong during it.
+#[test]
+fn every_run_accounts_for_every_kilogram() {
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    for (id, name) in [(1u64, "chair, hand tools"), (2, "loaf"), (3, "work trousers"),
+                       (4, "cartridge, handloaded")] {
+        let mut o = WorkOrder::begin(id, book.must(name), 1, 0, 1);
+        run(&mut o, &book, &cat, &place, a_good_hand());
+        let b = o.balance(&book, &cat);
+        assert!(b.closes(1e-9), "{name}: {:.6} kg unaccounted for", b.residual());
+        assert!(b.product_kg > 0.0, "{name} produced nothing");
+        assert!(b.inputs_kg >= b.product_kg, "{name} made more than it took");
+    }
+}
+
+/// A step that produces an object leaves one; a step that only advances
+/// the workpiece leaves nothing. Dough can go off and be stranded; a
+/// drilled joint is not a thing you can put on a shelf.
+#[test]
+fn only_states_worth_having_become_objects() {
+    let (cat, book) = world();
+    let chair = book.get(book.must("chair, hand tools")).unwrap();
+    let leaves: Vec<_> = chair.steps.iter().filter(|s| s.leaves.is_some()).collect();
+    assert_eq!(leaves.len(), 1, "every step in the chair left an object behind");
+    assert_eq!(leaves[0].name, "cut members");
+
+    let loaf = book.get(book.must("loaf")).unwrap();
+    let named: Vec<_> = loaf.steps.iter().filter_map(|s| s.leaves).collect();
+    assert!(named.contains(&cat.must("dough")));
+    assert!(named.contains(&cat.must("risen dough")));
+
+    // And the resting step is the one nobody attends.
+    let rest = loaf.steps.iter().find(|s| matches!(s.effort, Effort::Unattended { .. })).unwrap();
+    assert_eq!(rest.name, "prove");
+    assert_eq!(rest.effort.labour_minutes(), 0.0);
+}
