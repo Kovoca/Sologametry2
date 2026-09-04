@@ -4505,6 +4505,38 @@ required the stored settlements to hold exactly 57% of the world. What is
 guaranteed now is the thing that actually mattered — the total is shared
 out from a fixed world population and never invented.
 
+## Who works at what, measured (`cargo run --release --bin jobs`)
+
+Three of the four sectors are right and one is an order of magnitude out:
+
+| | model | real |
+|---|---|---|
+| retail | **1.4%** | **14.1%** |
+| works, mines, farms | 12.3% | ~10% |
+| the state | 15.3% | 17% |
+| private services | 36.8% | 36.8% |
+| accounted for | 65.8% | ~78% |
+
+**The denominator was the first thing to get right.** `Workforce::hands`
+counts the trades the *works* employ and nothing else — this file already
+says so — and dividing the state and the private services by it gives
+shares over 100%. The labour force is the population in work, and real
+participation runs 45-55%.
+
+**Retail is 10x short, and the shape of the error is the interesting
+part.** Shop headcount does come off `building.rs`'s fixtures — tills at
+1.4 staff each, shelving, loading bays — and those fixtures are sized
+against the **tonnage of the commodities the model has**. Real retail
+headcount does not follow tonnage: a supermarket runs ~300 staff on ~75
+tonnes a day, four staff per daily tonne, against a mill's 0.2
+person-hours per tonne. What a shop employs follows **customers served
+and floor to keep**, and most of what a real shop sells — clothing,
+household goods, everything that is not food — is not in the commodity
+list at all.
+
+So the missing 12.7 points of employment are not a coefficient. They are
+the goods nobody in this model buys.
+
 ## Conventions
 
 - Scalar grids are flat `Vec<f32>` indexed `y * width + x`. Never
