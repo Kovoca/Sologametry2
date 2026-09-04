@@ -4468,10 +4468,23 @@ to conceal it. Take the homelessness away and the comparison inverted.
 It compares against `Shared` now, which is unrelated adults splitting a
 cost and nothing else.
 
-**Open: the gate cuts about 60% of candidate sites**, so a 9,000-target
-world places 3,500. Some of that is right — the Sahara, the Empty
-Quarter and the Australian interior really are empty — and whether it is
-*all* right is not yet established.
+**Measured, and the gate is not the fault.** It cuts about 60% of
+candidate sites, so a 9,000-target world places 3,500 — and the reason
+is that the water table underneath it is too deep:
+
+| | model | real |
+|---|---|---|
+| land within 10 m | 17% | ~15% is within **5** m |
+| land within 30 m | **28%** | most humid and temperate land |
+| median depth | **85 m** | far shallower |
+
+The shallow end is calibrated correctly; the tail is far too heavy. This
+file already records the intended figures — 106 m in arid uplands, 55 m
+on a mountainside, 6-13 m beside a river — and the *typical* cell is
+coming out at 85 m, which is to say the ordinary piece of ground is
+behaving like the Sahara. **Named rather than fixed:** it belongs in
+generate_water_table, and the siting gate is doing its job by exposing
+it.
 
 ### Size is not status
 

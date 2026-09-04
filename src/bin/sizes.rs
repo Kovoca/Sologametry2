@@ -23,6 +23,20 @@ fn main() {
     let pol = Polities::partition(&world, 24);
     let set = Settlements::place(&world, &pol, target);
 
+    // How much land has water anybody could dig for.
+    let mut depths: Vec<f64> = Vec::new();
+    for i in 0..world.width * world.height {
+        if world.elevation.data[i] >= world.sea_level {
+            depths.push(world.depth_to_water_m(i));
+        }
+    }
+    depths.sort_by(|a, b| a.total_cmp(b));
+    let share = |m: f64| 100.0 * depths.iter().filter(|d| **d <= m).count() as f64 / depths.len() as f64;
+    println!(
+        "land: {:.0}% within 10m, {:.0}% within 30m, {:.0}% within 100m; median {:.0}m",
+        share(10.0), share(30.0), share(100.0), depths[depths.len() / 2]
+    );
+
     let mut pops: Vec<u32> = set.list.iter().map(|s| s.population).collect();
     pops.sort_unstable_by(|a, b| b.cmp(a));
     let total: f64 = pops.iter().map(|&p| p as f64).sum();
