@@ -43,6 +43,7 @@ pub mod relations;
 pub mod rng;
 pub mod services;
 pub mod save;
+pub mod schedule;
 pub mod scaling;
 pub mod settlement;
 pub mod social;

@@ -786,7 +786,7 @@ pub fn rolled_throughput_yield(first_pass: f64, operations: usize) -> f64 {
 /// **Keyed to the order, the step and the attempt**, never to a running
 /// stream — so reloading a save cannot reroll a failure, and adding a draw
 /// somewhere else tomorrow cannot shift this one.
-fn roll_outcome(
+pub fn roll_outcome(
     order: u64,
     step: usize,
     attempt: u32,
@@ -964,6 +964,10 @@ pub struct WorkOrder {
     /// guess and a wardrobe nobody can carry has to be put *somewhere*.
     /// If the destination cannot take it, completion waits.
     pub output: Placement,
+    /// **A repair is not a manufacture.** The customer's chair goes back
+    /// to the customer as the same chair, with the same maker's marks and
+    /// the same name on it — not as a fresh one off the same plan.
+    pub repairing: Option<Id<ItemInstance>>,
     pub delivered: bool,
     pub started_day: u32,
     /// Running assessment of the work, one axis at a time.
@@ -1076,6 +1080,7 @@ impl WorkOrder {
             power_kwh: 0.0,
             state: Halt::Running,
             output,
+            repairing: None,
             delivered: false,
             started_day: day,
             quality: Building::default(),
@@ -1128,6 +1133,15 @@ impl WorkOrder {
 
     pub fn finished(&self) -> bool {
         matches!(self.state, Halt::Done | Halt::Abandoned)
+    }
+
+    /// **Put an existing object in, and get that object back.**
+    ///
+    /// What comes out of a repair is the thing that went in. Anything
+    /// else quietly swaps a customer's property for a copy of it.
+    pub fn on(mut self, item: Id<ItemInstance>) -> Self {
+        self.repairing = Some(item);
+        self
     }
 
     /// **Whether the output has anywhere to go.**
@@ -1190,6 +1204,21 @@ impl WorkOrder {
     ) -> Result<Id<ItemInstance>, Blocked> {
         if self.delivered {
             return Err(Blocked::AlreadyDelivered);
+        }
+        // **A repair hands back the same object.** Its condition improves
+        // by the work that was done to it; its identity, its workmanship
+        // and whatever anybody called it are untouched.
+        if let Some(existing) = self.repairing {
+            if self.state != Halt::Done {
+                return Err(Blocked::NotFinished);
+            }
+            let effort = self.quality_of_work();
+            let mended = store.get_mut(existing).ok_or(Blocked::NotFinished)?;
+            mended.repair(effort);
+            self.delivered = true;
+            let at = self.output;
+            store.place(existing, at);
+            return Ok(existing);
         }
         let made = self.deliver(book, cat, day).ok_or(Blocked::NotFinished)?;
         if !self.somewhere_to_put_it(store, cat, made.mass_kg) {
@@ -1664,6 +1693,20 @@ impl WorkOrder {
         item.materials = if actual.is_empty() { item.materials.clone() } else { actual };
         item.assembly = Some(record);
         Some(item)
+    }
+
+    /// How well the work went, as a single figure — what a repair puts
+    /// back rather than what a new thing is made to.
+    pub fn quality_of_work(&self) -> f64 {
+        if self.completed.is_empty() {
+            return 0.0;
+        }
+        let clean = self
+            .completed
+            .iter()
+            .filter(|r| r.grade == Grade::Accepted)
+            .count() as f64;
+        (clean / self.completed.len() as f64).clamp(0.0, 1.0)
     }
 
     fn assessed(&self, _cat: &Catalogue, _result: DefId) -> Quality {

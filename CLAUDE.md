@@ -1372,6 +1372,89 @@ what has yet to be done is done differently. A model that re-derived
 elapsed time from the current tool would rewrite history every time the
 lights flickered.
 
+## Who has the bench, and when (`src/schedule.rs`)
+
+**The scheduler does not model crafting. It allocates the three kinds of
+time crafting already has.** `craft.rs` knows a loaf is 35 minutes of
+labour, 35 of oven and 125 on the clock; what it cannot say is whether the
+baker can shape the next batch while the first proves, whether the oven is
+free, or what happens to a tray that is in it when the power goes off.
+
+```text
+recipe → work order → reservations → execution and interruption
+       → outputs, rework and scrap
+```
+
+**Deterministic earliest-feasible, and deliberately nothing cleverer.**
+Factory-wide optimisation is a much later problem. What is wanted first is
+that two jobs cannot have the same bench at the same moment, and that the
+answer does not depend on when anybody happened to look.
+
+- **Capacity is what separates a bandsaw from an oven.** One does one
+  thing at a time and the other takes four trays, and a model that only
+  knows "in use" cannot say so. A fifth tray waits for a shelf.
+- **The baker is free while the dough proves**, so a second loaf starts
+  inside that hour. That is the whole reason the three kinds of time are
+  separate, and the calendar is where it becomes visible.
+- **Nothing teleports between sites.** A shop with no saw cannot borrow
+  the one in the next town, and the two diaries are independent.
+- **A plan that cannot be finished books nothing.** Reserving the setup
+  and then finding there is no saw would leave the shop queueing behind a
+  ghost, so a failed booking rolls back.
+
+### A blackout has no one universal result
+
+Put it on the operation, not on the grid:
+
+| | what an outage costs |
+|---|---|
+| curing, proving | **nothing** — it carries on |
+| an electric saw | stops, resumes where it stopped |
+| a weld half done | the operation again from the start |
+| a kiln | its heat, and forty minutes to bring it back |
+| bread in the oven | goes on changing; long enough and it is spoiled |
+
+And the split happens **at the exact minute**, not at the end of the step
+and not at the end of the day. What was finished stays finished and is not
+charged twice.
+
+### Whoever is holding the tool
+
+**The player is not a special case.** The same hands and the same
+equipment give the same work, whoever is doing it — ownership decides
+permission, accounting and access, never the physics. An owner-operator is
+not on the payroll and **still costs the calendar an hour of somebody's
+day**, which is the whole reason owner labour is easy to lose.
+
+Working costs the worker: a nine-hour day takes somebody from fresh to
+spent, a night off puts some of it back, and the tool comes out of the run
+duller than it went in. **Walking out stops the sawing and not the
+curing.**
+
+### A batch has two kinds of fault
+
+A jig set up wrong spoils the whole run; a slip on the ninetieth unit
+spoils the ninetieth unit. A model with one roll per batch cannot have the
+first and a model with only per-unit rolls cannot have the second, so
+there are both — keyed the same way every other outcome here is, so a
+reload cannot change either.
+
+**And the report says total and per-unit and never confuses them.** Five
+hundred chairs are 950 hours in total and 1.9 hours each, never "five
+hundred chairs take 1.9 hours". Adding a unit never lowers the total; the
+per-unit figure never falls below what making one chair takes; and the
+saving is exactly the setup, spread.
+
+### A repair hands back the same thing
+
+What comes out of a repair is the object that went in — the same maker's
+marks, the same name somebody gave it, the same workmanship — with its
+condition improved by however well the work went. Anything else quietly
+swaps a customer's property for a copy of it. And **a machine failing
+leaves work in progress**: what was finished is finished, what was booked
+on the broken machine is stranded and rescheduled, and no output is
+created twice.
+
 ## Money, and who has it (`src/money.rs`)
 
 The economy priced everything and paid for nothing. Households took goods
