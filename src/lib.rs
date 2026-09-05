@@ -6,6 +6,7 @@
 
 pub mod befall;
 pub mod biota;
+pub mod bom;
 pub mod building;
 pub mod census;
 pub mod consequence;

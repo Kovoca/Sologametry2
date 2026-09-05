@@ -423,22 +423,44 @@ fn an_action_that_cannot_be_attempted_says_so() {
     let cat = standard_catalogue();
     let loose = ItemInstance::one(&cat, cat.must("alternator"));
     assert!(!possible(&loose, Teardown::Uninstall), "an alternator on a bench was uninstalled");
-    assert!(!possible(&loose, Teardown::Disassemble), "a thing with no record came apart into parts");
+
+    // **A bill is not a parts list.** A board says what it is made of and
+    // still has nothing in it that comes out as a component.
+    let board = ItemInstance::one(&cat, cat.must("oak board"));
+    assert!(board.assembly.is_some(), "a board did not say what it is made of");
+    assert!(
+        !possible(&board, Teardown::Disassemble),
+        "a plank was taken apart into components"
+    );
+    // Whereas a drill is parts all the way down.
+    let drill = ItemInstance::one(&cat, cat.must("cordless drill"));
+    assert!(possible(&drill, Teardown::Disassemble));
+    assert!(possible(&drill, Teardown::FieldStrip));
     // But anything at all can be shredded or smashed.
     assert!(possible(&loose, Teardown::Recycle));
     assert!(possible(&loose, Teardown::Smash));
 }
 
-/// **An item that arrived as a statistic has no history to read**, so the
-/// best anybody can do with it is weigh it and shred it. That is honest
-/// rather than a defect — and it is exactly why the aggregation rules
+/// **An instance whose history is genuinely unknown can only be
+/// weighed.**
+///
+/// Every definition now carries a bill, so this is no longer the ordinary
+/// case — it is what is left when a particular object's own record is
+/// missing: something recovered from a save an older generator wrote, or a
+/// distant thing materialised without provenance. The fallback is honest
+/// rather than a defect, and it is exactly why the aggregation rules
 /// refuse to fold up anything whose particulars matter.
 #[test]
 fn a_thing_with_no_record_can_only_be_weighed() {
     let cat = standard_catalogue();
-    let anonymous = ItemInstance::one(&cat, cat.must("wooden chair"));
-    assert!(anonymous.assembly.is_none());
+    let mut anonymous = ItemInstance::one(&cat, cat.must("wooden chair"));
+    // The ordinary case first: it knows.
+    assert!(anonymous.assembly.is_some(), "a spawned chair did not carry its bill");
+    let known = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9, 1);
+    assert!(!known.components.is_empty());
 
+    // And now with the history gone.
+    anonymous.assembly = None;
     let r = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9, 1);
     assert!(r.components.is_empty(), "a chair with no history yielded named parts");
     assert!(r.fuel_kg() > 0.0 || !r.materials.is_empty(), "it yielded nothing whatever");

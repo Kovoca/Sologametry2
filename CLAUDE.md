@@ -1148,6 +1148,86 @@ objects a story is made of.
 Not built yet: industrial batch scheduling and the household basket this
 exists to carry.
 
+### Every physical thing says what it is in (`src/bom.rs`)
+
+The rule, and it applies to a shirt button as much as to a truck
+transmission:
+
+> Grouping parts in the interface is allowed; omitting them from the
+> underlying data is not.
+
+There is no definition that reads *toaster, 1.8 kg, steel*. It says what a
+toaster contains — a stainless shell, a mild steel chassis, nickel-chromium
+elements on mica insulators, copper in polymer, a control assembly, a lever
+and its springs, polymer feet, eighteen screws — and each of those says
+what *it* contains, until the recursion bottoms out in materials. What the
+crafting screen shows as "motor" a deep teardown opens into copper
+windings, laminated steel, ferrite magnets, two bearings and insulation,
+because that was in the data the whole time.
+
+**Six kinds of content, because they behave differently coming apart:**
+components, bulk (the body of the thing — a pressed shell is steel, not a
+steel *component*), joints, coatings, fluids and declared trace. And
+`M_item = M_components + M_bulk + M_joints + M_coatings + M_fluids +
+M_trace`, checked rather than trusted.
+
+**A grouped detail is not a massless detail.** A washing machine's hundred
+and sixty screws are one line with a count on it; they still weigh 800 g
+and they are still steel.
+
+| | mass | levels | parts | materials |
+|---|---|---|---|---|
+| oak board | 6.75 kg | 1 | 0 | 1 |
+| rifle | 3.00 | 3 | 8 | 4 |
+| cordless drill | 1.60 | 3 | 18 | **11** |
+| toaster | 1.80 | 3 | 30 | 11 |
+| washing machine | 70.00 | 3 | **225** | 11 |
+
+A washing machine is **21 kg of concrete counterweight**, which is the fact
+a "steel appliance" hides and the reason moving one is a two-person job.
+
+**There is no `craftable = false`.** A route that names nothing is a
+prohibition in disguise, so a thing nobody here can make still declares a
+real one: a circuit board needs semiconductor-grade silicon,
+photolithography, a cleanroom, process chemicals, purified water and
+uninterrupted power. The impossibility comes from the missing capability.
+Where a plan has not been written yet, `Origin::Industrial` names what the
+process would take — and the diagnostic prints how many definitions are in
+that state, so the gap shrinks visibly instead of hiding.
+
+**And everything has an end**, derived from what it is made of rather than
+asserted: an assembly can be taken apart, a metal can be recycled, timber
+burns, food composts, propellant is destroyed chemically, and disposal is
+always the floor. A definition may not claim a route its own contents rule
+out — solid steel does not compost.
+
+**The contract is a test, not a convention.** `bom::validate` fails a
+definition with no mass, no dimensions, an empty bill, a bill that does not
+add up, a component that does not resolve, a component whose own mass
+disagrees with the line, a cycle, no origin, a plan nobody wrote, no end,
+or an end its materials forbid. A second gate provokes every one of those
+in turn, because a validator that has only ever seen clean data is
+untested. Two more run over the whole catalogue by *doing* it: nothing
+gives back more mass than it contains, and no assembly hands back its own
+adhesive.
+
+**Definition composition against instance composition.** A spawned item
+receives the authored bill; a crafted one receives what actually went in.
+Both are kept, and the difference between them is the whole point — a
+chair whose rear rail was replaced and whose two brass screws are not the
+six steel ones it left the works with is still a chair, and its record
+says so.
+
+Two things this changed elsewhere, both of which had been quietly resting
+on the old shallowness:
+- **A bill is not a parts list.** Every definition has a record now, so
+  "has a record" stopped being the test for whether a thing can be
+  disassembled; what decides it is whether there are components in it. A
+  board says what it is made of and still cannot be taken apart.
+- **"No record" is no longer the ordinary case.** It is what is left when
+  a particular object's history is genuinely unknown, and the fallback —
+  weigh it and shred it — is honest rather than a defect.
+
 ## Putting one thing inside another (`src/fitted.rs`)
 
 **Installing something is a move, not a copy.** The state that must never

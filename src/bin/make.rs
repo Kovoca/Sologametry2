@@ -5,6 +5,7 @@
 use scale_sim::craft::{
     hand_tools, machine_shop, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace,
 };
+use scale_sim::bom::{depth_of, explode, tree, validate, Origin};
 use scale_sim::item::{standard_catalogue, Catalogue, Family, ItemInstance};
 use scale_sim::teardown::{heat_mj, take_apart, Teardown};
 
@@ -34,6 +35,44 @@ fn main() {
         let names: Vec<&str> = cat.of_family(f).map(|d| d.name).take(6).collect();
         println!("  {:<12?} {}", f, names.join(", "));
     }
+
+    // ---- what a thing is made of, all the way down ------------------
+    println!("\nWHAT IS IN A CORDLESS DRILL");
+    let drill = cat.must("cordless drill");
+    let mut s = String::new();
+    tree(&cat, drill, cat.get(drill).unwrap().nominal_mass_kg, 1, &mut s);
+    print!("{s}");
+    println!("  flattened to materials:");
+    for (m, kg) in explode(&cat, drill, 1.6) {
+        println!("    {:>7.4} kg  {}", kg, m.name());
+    }
+
+    println!("\nHOW DEEP THE TREES GO");
+    for name in ["oak board", "wooden chair", "toaster", "cordless drill", "rifle",
+                 "washing machine"] {
+        let id = cat.must(name);
+        let d = cat.get(id).unwrap();
+        let flat = explode(&cat, id, d.nominal_mass_kg);
+        println!(
+            "  {name:<18} {:>7.2} kg  {} levels  {} parts  {} materials",
+            d.nominal_mass_kg,
+            depth_of(&cat, id),
+            d.bill.components.iter().map(|c| c.count).sum::<u32>(),
+            flat.len()
+        );
+    }
+
+    let findings = validate(&cat, &book.recipes.iter().map(|r| r.name).collect::<Vec<_>>());
+    let industrial = cat
+        .iter()
+        .filter(|d| d.origin.iter().any(|o| matches!(o, Origin::Industrial { .. })))
+        .count();
+    println!(
+        "\n  {} definitions, {} content errors, {} still awaiting a written plan",
+        cat.len(),
+        findings.len(),
+        industrial
+    );
 
     // ---- the same chair, three ways ---------------------------------
     println!("\nA WOODEN CHAIR, THREE WAYS");

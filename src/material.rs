@@ -67,6 +67,16 @@ pub enum Material {
     Gypsum,
     Paperboard,
     Silicon,
+    /// Nickel-chromium resistance wire. What a heating element is, and
+    /// it is neither steel nor copper.
+    Nichrome,
+    /// Sheet mica. The electrical insulator a toaster element is wound
+    /// on, because it takes the heat and ceramic would crack.
+    Mica,
+    /// Sintered ferrite. What a permanent magnet is made of.
+    Ferrite,
+    /// Bearing grease and gear oil. Present, small, and not massless.
+    Lubricant,
     /// Smokeless powder. Its own material because loading it is a process
     /// with real hazards, not a generic component.
     Propellant,
@@ -113,6 +123,10 @@ impl Material {
             Gypsum => 700.0,
             Paperboard => 700.0,
             Silicon => 2330.0,
+            Nichrome => 8400.0,
+            Mica => 2800.0,
+            Ferrite => 5000.0,
+            Lubricant => 900.0,
             Propellant => 1600.0,
             Adhesive => 1100.0,
             Solder => 8500.0,
@@ -128,16 +142,18 @@ impl Material {
         use Material::*;
         match self {
             MildSteel | ToolSteel | Stainless | Aluminium | Copper | Brass | Lead | Solder
-            | Glass => Recovers::Feedstock,
+            | Glass | Nichrome => Recovers::Feedstock,
             Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Gypsum
-            | Silicon => {
+            | Silicon | Ferrite | Mica => {
                 Recovers::Downcycled
             }
             Oak | Pine | Plywood | Particleboard | Cotton | Wool | Leather | Thread | Rubber => {
                 Recovers::Fuel
             }
             // Cured, set, cooked or reacted.
-            Adhesive | Paint | Mortar | Ceramic | Propellant | Flour | Water => Recovers::Nothing,
+            Adhesive | Paint | Mortar | Ceramic | Propellant | Lubricant | Flour | Water => {
+                Recovers::Nothing
+            }
         }
     }
 
@@ -183,6 +199,10 @@ impl Material {
             Gypsum => "plasterboard",
             Paperboard => "paperboard",
             Silicon => "silicon",
+            Nichrome => "nichrome",
+            Mica => "mica",
+            Ferrite => "ferrite",
+            Lubricant => "grease",
             Propellant => "propellant",
             Adhesive => "adhesive",
             Solder => "solder",

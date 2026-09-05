@@ -362,6 +362,13 @@ fn recover_from_record(
         }
     }
 
+    // **The body of the thing.** Not a component and not a joint: the
+    // pressed shell of a toaster is steel, and what it comes back as is
+    // decided by the material and by how much care was taken.
+    for &(m, kg) in &rec.bulk {
+        deposit_at(out, m, kg * scale * how.care() * (0.55 + 0.45 * skill) * sound);
+    }
+
     // **Glue, solder, welding wire and thread do not come back pristine.**
     // What the joint gives up is set by the method; what the material can
     // ever be is set by the material.
@@ -433,7 +440,13 @@ pub fn heat_mj(m: Material, kg: f64) -> f64 {
 pub fn possible(item: &ItemInstance, how: Teardown) -> bool {
     match how {
         Teardown::Uninstall => item.is_installed() || !item.attachments.is_empty(),
-        Teardown::FieldStrip | Teardown::Disassemble => item.assembly.is_some(),
+        // **Having a bill is not having parts.** Every definition now says
+        // what it is made of, so a board has a record too — and a board
+        // still cannot be disassembled, because there is nothing in it
+        // that comes out as a component.
+        Teardown::FieldStrip | Teardown::Disassemble => {
+            item.assembly.as_ref().map(|a| !a.components.is_empty()).unwrap_or(false)
+        }
         _ => true,
     }
 }

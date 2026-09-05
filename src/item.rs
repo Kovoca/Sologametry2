@@ -20,6 +20,7 @@
 //! replacing a chair's broken leg does not straighten a warped seat. One
 //! `quality: 0.73` cannot say any of it.
 
+use crate::bom::{plausible_ends, Acquisition, Bom, BomEntry, EndOfLife, Origin};
 use crate::id::{Arena, Id};
 use crate::material::{Composition, Dims, Material, Quantity};
 
@@ -481,6 +482,11 @@ pub struct Substitution {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssemblyRecord {
     pub components: Vec<Installed>,
+    /// **The body of the thing**, as opposed to the parts bolted to it.
+    /// A toaster shell is pressed steel and not a steel component, and a
+    /// model with nowhere to put that either invents a component or loses
+    /// the mass.
+    pub bulk: Vec<(Material, f64)>,
     pub joints: Vec<Joint>,
     /// Adhesive, solder, welding wire, thread, coating. Consumed into the
     /// assembly and generally not recoverable.
@@ -493,6 +499,7 @@ pub struct AssemblyRecord {
 impl AssemblyRecord {
     pub fn total_component_mass(&self) -> f64 {
         self.components.iter().map(|c| c.mass_kg).sum::<f64>()
+            + self.bulk.iter().map(|c| c.1).sum::<f64>()
             + self.consumed.iter().map(|c| c.1).sum::<f64>()
     }
 
@@ -509,7 +516,7 @@ impl AssemblyRecord {
                 add(m, mkg);
             }
         }
-        for &(m, kg) in &self.consumed {
+        for &(m, kg) in self.bulk.iter().chain(self.consumed.iter()) {
             add(m, kg);
         }
         Composition::of(&parts)
@@ -571,11 +578,28 @@ pub struct ItemDefinition {
     /// Whether using it uses it up. A drill is not consumed by drilling;
     /// a drill bit wears and welding wire is gone.
     pub consumable: bool,
+    /// **What it contains, and it is never optional.** A definition that
+    /// says only "toaster, 1.8 kg, steel" is a content error; this says
+    /// what the toaster is made of, and each component says what *it* is
+    /// made of, until the recursion bottoms out in materials.
+    pub bill: Bom,
+    /// **How it can come into existence.** There is no `craftable =
+    /// false`: a thing nobody here can make still has a real route, and
+    /// what stops them is the missing capability rather than a flag.
+    pub origin: Vec<Origin>,
+    /// **And how it stops.** Usually several, and never "reverses into its
+    /// ingredients".
+    pub end_of_life: Vec<EndOfLife>,
 }
 
 impl ItemDefinition {
     pub fn volume_litres(&self) -> f64 {
         self.nominal.litres()
+    }
+
+    /// Whether it is an assembly of named parts or simply made of stuff.
+    pub fn is_assembly(&self) -> bool {
+        !self.bill.components.is_empty()
     }
 
     /// **A fastener names the joint it makes.** Which is what lets a screw
@@ -622,8 +646,43 @@ impl Catalogue {
         id
     }
 
+    /// **Add something that is assembled from named parts**, deriving what
+    /// it is made of from its bill rather than being told twice. The
+    /// children have to be in the catalogue already, which is what makes
+    /// the tree finite: it is built from the leaves up.
+    pub fn add_built(&mut self, d: ItemDefinition, bill: Bom) -> DefId {
+        let id = self.add(d);
+        self.set_bill(id, bill);
+        id
+    }
+
+    /// Give something that is already in the catalogue a real bill —
+    /// for the assemblies that were declared before their parts existed.
+    pub fn set_bill(&mut self, id: DefId, bill: Bom) {
+        let shallow = bill.shallow_materials(self);
+        let Some(d) = self.defs.get_mut(id.0 as usize) else { return };
+        if !shallow.is_empty() {
+            d.materials = Composition::of(&shallow);
+        }
+        d.end_of_life = plausible_ends(&bill, &d.materials, d.family);
+        d.bill = bill;
+    }
+
+    /// Replace how it comes into existence.
+    pub fn set_origin(&mut self, id: DefId, origin: Vec<Origin>) {
+        if let Some(d) = self.defs.get_mut(id.0 as usize) {
+            d.origin = origin;
+        }
+    }
+
     pub fn get(&self, id: DefId) -> Option<&ItemDefinition> {
         self.defs.get(id.0 as usize)
+    }
+
+    /// For content tooling and tests. The catalogue is authored data, so
+    /// editing it at run time is a build step rather than a game action.
+    pub fn def_mut(&mut self, id: DefId) -> Option<&mut ItemDefinition> {
+        self.defs.get_mut(id.0 as usize)
     }
 
     pub fn named(&self, name: &str) -> Option<DefId> {
@@ -661,6 +720,13 @@ fn def(
     kg: f64,
     materials: &[(Material, f64)],
 ) -> ItemDefinition {
+    let comp = Composition::of(materials);
+    // **Simply made of stuff, until something says otherwise.** A board, a
+    // sheet, a brick: the bill is the material and the mass, which is a
+    // complete and honest answer for a thing with no parts in it.
+    let bill = Bom::of_material(&comp, kg);
+    let origin = vec![default_origin(family, &comp)];
+    let end_of_life = plausible_ends(&bill, &comp, family);
     ItemDefinition {
         id: DefId(0),
         name,
@@ -668,7 +734,7 @@ fn def(
         form,
         nominal,
         nominal_mass_kg: kg,
-        materials: Composition::of(materials),
+        materials: comp,
         provides: Vec::new(),
         pockets: Vec::new(),
         attachment_points: Vec::new(),
@@ -676,7 +742,43 @@ fn def(
         lifecycle: family.lifecycle(),
         repair_with: Vec::new(),
         consumable: matches!(family, Family::Stock | Family::Fastening | Family::Ammunition),
+        bill,
+        origin,
+        end_of_life,
     }
+}
+
+/// **Where a thing of this kind comes from, before anybody says
+/// otherwise.** Timber is felled, ore is mined, oil is extracted, food is
+/// harvested; everything else is made in a works, and the works is named
+/// rather than the making being denied.
+fn default_origin(family: Family, comp: &Composition) -> Origin {
+    use Material::*;
+    if family == Family::Stock {
+        if let Some(m) = comp.chiefly() {
+            return match m {
+                Oak | Pine => Origin::Gathered(Acquisition::Logging),
+                Flour | Water => Origin::Gathered(Acquisition::Harvesting),
+                Brick | Concrete | Mortar => {
+                    Origin::Industrial { needs: &["a quarry", "a kiln"] }
+                }
+                MildSteel | ToolSteel | Stainless | Aluminium | Copper | Brass | Lead
+                | Nichrome | Ferrite => {
+                    Origin::Industrial { needs: &["ore", "a smelter", "a rolling mill"] }
+                }
+                Mica => Origin::Gathered(Acquisition::Mining),
+                Polyethylene | Abs | Polyester | Lubricant => {
+                    Origin::Industrial { needs: &["petroleum", "a cracker"] }
+                }
+                Cotton | Wool | Leather => Origin::Gathered(Acquisition::Harvesting),
+                _ => Origin::Industrial { needs: &["a works"] },
+            };
+        }
+    }
+    if family == Family::Foodstuff {
+        return Origin::Industrial { needs: &["ingredients", "a kitchen"] };
+    }
+    Origin::Industrial { needs: &["a works", "tooling"] }
 }
 
 fn tool(mut d: ItemDefinition, provides: &[Provides]) -> ItemDefinition {
@@ -1039,8 +1141,400 @@ pub fn standard_catalogue() -> Catalogue {
     c.add(def("washer shell", Family::Stock, Form::Assembly, d(0.6, 0.6, 0.85), 32.0,
               &[(MildSteel, 1.0)]));
 
+    // **Everything above is a leaf or a stub; this is where the trees
+    // are.** It runs last because a bill can only name parts that exist.
+    deepen(&mut c);
+
     c
 }
+
+// =====================================================================
+// all the way down
+// =====================================================================
+
+/// **What the interface groups, the data still holds.**
+///
+/// A crafting screen may show a drill as having a motor. A deep teardown
+/// opens the motor and finds copper windings, laminated steel, ferrite
+/// magnets, two bearings and polymer insulation — and every one of those
+/// was in the data the whole time. This is where the trees are written.
+///
+/// The masses are real and they reconcile: a cordless drill is 1.6 kg and
+/// its parts come to 1.6 kg, which the validator checks rather than
+/// trusting.
+fn deepen(c: &mut Catalogue) {
+    use Material::*;
+    let d = Dims::new;
+    let e = |def: DefId, count: u32, kg: f64, place: &'static str, j: JointMethod| {
+        BomEntry::new(def, count, kg, place, j)
+    };
+
+    // ---- fasteners that are not woodscrews ---------------------------
+    let mscrew = c.add(def("machine screw", Family::Fastening, Form::Rigid,
+                           d(0.016, 0.004, 0.004), 0.005, &[(MildSteel, 1.0)]));
+    let mbolt = c.add(def("machine bolt", Family::Fastening, Form::Rigid,
+                          d(0.04, 0.008, 0.008), 0.02, &[(MildSteel, 1.0)]));
+    let spring = c.add(def("spring", Family::Fastening, Form::Rigid,
+                           d(0.03, 0.008, 0.008), 0.009, &[(ToolSteel, 1.0)]));
+    let pin = c.add(def("pin", Family::Fastening, Form::Rigid,
+                        d(0.03, 0.004, 0.004), 0.006, &[(ToolSteel, 1.0)]));
+
+    // ---- parts that turn up in more than one machine -----------------
+    let bearing = c.add_built(
+        def("ball bearing", Family::SparePart, Form::Rigid, d(0.022, 0.022, 0.007), 0.01,
+            &[(MildSteel, 1.0)]),
+        Bom::default().with_bulk(&[(MildSteel, 0.0098)]).with_fluids(&[(Lubricant, 0.0002)]),
+    );
+    let board = c.add_built(
+        def("circuit board", Family::SparePart, Form::Sheet, d(0.08, 0.05, 0.002), 0.05,
+            &[(Glass, 1.0)]),
+        // Glass-epoxy laminate with copper on it, and the solder is trace
+        // — small, declared, and emphatically not massless.
+        Bom::default()
+            .with_bulk(&[(Glass, 0.02), (Copper, 0.015), (Abs, 0.01)])
+            .with_trace(&[(Solder, 0.005)]),
+    );
+    let loom_s = c.add_built(
+        def("wiring loom, small", Family::SparePart, Form::Bar, d(0.4, 0.01, 0.01), 0.03,
+            &[(Copper, 1.0)]),
+        Bom::default().with_bulk(&[(Copper, 0.021), (Polyethylene, 0.009)]),
+    );
+    let loom_a = c.add_built(
+        def("wiring loom, appliance", Family::SparePart, Form::Bar, d(2.5, 0.02, 0.02), 1.2,
+            &[(Copper, 1.0)]),
+        Bom::default().with_bulk(&[(Copper, 0.84), (Polyethylene, 0.36)]),
+    );
+    let magnet = c.add(def("magnet", Family::SparePart, Form::Rigid, d(0.03, 0.02, 0.006),
+                           0.02, &[(Ferrite, 1.0)]));
+    let winding_s = c.add_built(
+        def("motor winding", Family::SparePart, Form::Rigid, d(0.05, 0.05, 0.03), 0.13,
+            &[(Copper, 1.0)]),
+        Bom::default().with_bulk(&[(Copper, 0.12), (Polyester, 0.01)]),
+    );
+    let lams_s = c.add(def("stator laminations", Family::SparePart, Form::Rigid,
+                           d(0.05, 0.05, 0.04), 0.15, &[(MildSteel, 1.0)]));
+    let motor_s = c.add_built(
+        def("electric motor, small", Family::SparePart, Form::Assembly, d(0.07, 0.05, 0.05),
+            0.36, &[(Copper, 1.0)]),
+        Bom::assembled(vec![
+            e(winding_s, 1, 0.13, "rotor", JointMethod::Glued),
+            e(lams_s, 1, 0.15, "stator", JointMethod::Riveted),
+            e(magnet, 2, 0.04, "field", JointMethod::Glued),
+            e(bearing, 2, 0.02, "shaft ends", JointMethod::Crimped),
+        ])
+        .with_bulk(&[(Polyester, 0.02)]),
+    );
+
+    // ---- a cordless drill, opened up ---------------------------------
+    let chuck_body = c.add(def("chuck body", Family::SparePart, Form::Rigid,
+                               d(0.05, 0.04, 0.04), 0.18, &[(ToolSteel, 1.0)]));
+    let jaw = c.add(def("chuck jaw", Family::SparePart, Form::Rigid, d(0.03, 0.006, 0.006),
+                        0.015, &[(ToolSteel, 1.0)]));
+    let chuck = c.add_built(
+        def("chuck assembly", Family::SparePart, Form::Assembly, d(0.06, 0.05, 0.05), 0.30,
+            &[(ToolSteel, 1.0)]),
+        Bom::assembled(vec![
+            e(chuck_body, 1, 0.18, "body", JointMethod::Crimped),
+            e(jaw, 3, 0.045, "jaws", JointMethod::Clipped),
+        ])
+        // The adjustment ring and the retaining parts, grouped — and
+        // still weighing 75 grams of steel.
+        .with_bulk(&[(MildSteel, 0.075)]),
+    );
+    let gear = c.add(def("spur gear", Family::SparePart, Form::Rigid, d(0.03, 0.03, 0.01),
+                         0.03, &[(ToolSteel, 1.0)]));
+    let shaft = c.add(def("shaft", Family::SparePart, Form::Bar, d(0.08, 0.008, 0.008),
+                          0.03, &[(ToolSteel, 1.0)]));
+    let gearbox = c.add_built(
+        def("gearbox", Family::SparePart, Form::Assembly, d(0.07, 0.05, 0.05), 0.28,
+            &[(ToolSteel, 1.0)]),
+        Bom::assembled(vec![
+            e(gear, 4, 0.12, "reduction train", JointMethod::Crimped),
+            e(shaft, 2, 0.06, "shafts", JointMethod::Crimped),
+            e(bearing, 4, 0.04, "journals", JointMethod::Crimped),
+        ])
+        .with_bulk(&[(Abs, 0.05)])
+        .with_fluids(&[(Lubricant, 0.01)]),
+    );
+    let trigger_sw = c.add_built(
+        def("trigger switch", Family::SparePart, Form::Rigid, d(0.03, 0.02, 0.02), 0.02,
+            &[(Abs, 1.0)]),
+        Bom::default().with_bulk(&[(Abs, 0.014), (Copper, 0.006)]),
+    );
+    let heatsink = c.add(def("heat sink", Family::SparePart, Form::Rigid, d(0.04, 0.03, 0.01),
+                             0.02, &[(Aluminium, 1.0)]));
+    let control = c.add_built(
+        def("control assembly", Family::SparePart, Form::Assembly, d(0.06, 0.04, 0.04), 0.12,
+            &[(Abs, 1.0)]),
+        Bom::assembled(vec![
+            e(trigger_sw, 1, 0.02, "trigger", JointMethod::Clipped),
+            e(board, 1, 0.05, "controller", JointMethod::Screwed),
+            e(loom_s, 1, 0.03, "harness", JointMethod::Crimped),
+            e(heatsink, 1, 0.02, "on the switching device", JointMethod::Screwed),
+        ]),
+    );
+    let casing = c.add(def("drill casing", Family::SparePart, Form::Rigid, d(0.22, 0.07, 0.22),
+                           0.42, &[(Abs, 1.0)]));
+    let batt_if = c.add_built(
+        def("battery interface", Family::SparePart, Form::Rigid, d(0.08, 0.06, 0.02), 0.06,
+            &[(Abs, 1.0)]),
+        Bom::default().with_bulk(&[(Abs, 0.04), (Copper, 0.02)]),
+    );
+    let drill = c.must("cordless drill");
+    c.set_bill(
+        drill,
+        Bom::assembled(vec![
+            e(chuck, 1, 0.30, "output spindle", JointMethod::Crimped),
+            e(gearbox, 1, 0.28, "behind the chuck", JointMethod::Screwed),
+            e(motor_s, 1, 0.36, "midships", JointMethod::Screwed),
+            e(control, 1, 0.12, "in the grip", JointMethod::Screwed),
+            e(casing, 1, 0.42, "clamshell", JointMethod::Screwed),
+            e(batt_if, 1, 0.06, "foot of the grip", JointMethod::Screwed),
+            e(mscrew, 12, 0.06, "throughout", JointMethod::Screwed),
+        ]),
+    );
+
+    // ---- a toaster, which is the example that started this -----------
+    let shell = c.add(def("toaster shell", Family::SparePart, Form::Sheet, d(0.3, 0.18, 0.19),
+                          0.55, &[(Stainless, 1.0)]));
+    let chassis = c.add(def("toaster chassis", Family::SparePart, Form::Sheet,
+                            d(0.28, 0.16, 0.17), 0.42, &[(MildSteel, 1.0)]));
+    let element = c.add_built(
+        def("heating element", Family::SparePart, Form::Sheet, d(0.14, 0.11, 0.004), 0.06,
+            &[(Nichrome, 1.0)]),
+        Bom::default().with_bulk(&[(Nichrome, 0.05), (Mica, 0.01)]),
+    );
+    let insulator = c.add(def("element insulator", Family::SparePart, Form::Sheet,
+                              d(0.15, 0.12, 0.003), 0.09, &[(Mica, 1.0)]));
+    let t_control = c.add_built(
+        def("toaster control", Family::SparePart, Form::Assembly, d(0.08, 0.05, 0.04), 0.14,
+            &[(MildSteel, 1.0)]),
+        Bom::assembled(vec![
+            e(board, 1, 0.05, "timer", JointMethod::Screwed),
+            e(trigger_sw, 1, 0.02, "browning control", JointMethod::Clipped),
+        ])
+        // The thermostat and its bimetal strip, grouped.
+        .with_bulk(&[(MildSteel, 0.05), (Copper, 0.02)]),
+    );
+    let lever = c.add_built(
+        def("carriage lever", Family::SparePart, Form::Assembly, d(0.16, 0.06, 0.03), 0.11,
+            &[(MildSteel, 1.0)]),
+        Bom::assembled(vec![e(spring, 2, 0.018, "return", JointMethod::Clipped)])
+            .with_bulk(&[(MildSteel, 0.072), (Abs, 0.02)]),
+    );
+    let feet = c.add_built(
+        def("toaster feet and trim", Family::SparePart, Form::Rigid, d(0.28, 0.16, 0.01),
+            0.10, &[(Rubber, 1.0)]),
+        Bom::default().with_bulk(&[(Rubber, 0.06), (Abs, 0.04)]),
+    );
+    let toaster = c.add(def("toaster", Family::Appliance, Form::Assembly, d(0.3, 0.18, 0.19),
+                            1.80, &[(Stainless, 1.0)]));
+    c.set_bill(
+        toaster,
+        Bom::assembled(vec![
+            e(shell, 1, 0.55, "outside", JointMethod::Screwed),
+            e(chassis, 1, 0.42, "inside", JointMethod::Riveted),
+            e(element, 2, 0.12, "each side of the slot", JointMethod::Clipped),
+            e(insulator, 2, 0.18, "behind the elements", JointMethod::Clipped),
+            e(loom_s, 3, 0.09, "throughout", JointMethod::Crimped),
+            e(t_control, 1, 0.14, "front", JointMethod::Screwed),
+            e(lever, 1, 0.11, "side", JointMethod::Clipped),
+            e(feet, 1, 0.10, "underneath", JointMethod::Clipped),
+            e(mscrew, 18, 0.09, "throughout", JointMethod::Screwed),
+        ]),
+    );
+
+    // ---- the rifle, past field-strip depth ---------------------------
+    let bolt_body = c.add(def("bolt body", Family::SparePart, Form::Rigid,
+                              d(0.09, 0.025, 0.025), 0.28, &[(ToolSteel, 1.0)]));
+    let extractor = c.add(def("extractor", Family::SparePart, Form::Rigid,
+                              d(0.03, 0.008, 0.008), 0.03, &[(ToolSteel, 1.0)]));
+    let ejector = c.add(def("ejector", Family::SparePart, Form::Rigid, d(0.02, 0.006, 0.006),
+                            0.02, &[(ToolSteel, 1.0)]));
+    let firing_pin = c.add(def("firing pin", Family::SparePart, Form::Bar,
+                               d(0.07, 0.005, 0.005), 0.025, &[(ToolSteel, 1.0)]));
+    let bolt_asm = c.must("bolt assembly");
+    c.set_bill(
+        bolt_asm,
+        Bom::assembled(vec![
+            e(bolt_body, 1, 0.28, "carrier", JointMethod::Crimped),
+            e(extractor, 1, 0.03, "bolt face", JointMethod::Clipped),
+            e(ejector, 1, 0.02, "bolt face", JointMethod::Clipped),
+            e(firing_pin, 1, 0.025, "through the carrier", JointMethod::Clipped),
+            e(spring, 5, 0.045, "retainers", JointMethod::Clipped),
+        ]),
+    );
+    let trigger = c.add(def("trigger", Family::SparePart, Form::Rigid, d(0.04, 0.008, 0.03),
+                            0.05, &[(ToolSteel, 1.0)]));
+    let hammer = c.add(def("hammer", Family::SparePart, Form::Rigid, d(0.04, 0.01, 0.04),
+                           0.07, &[(ToolSteel, 1.0)]));
+    let sear = c.add(def("sear", Family::SparePart, Form::Rigid, d(0.02, 0.006, 0.015),
+                         0.025, &[(ToolSteel, 1.0)]));
+    let fcg = c.must("fire control group");
+    c.set_bill(
+        fcg,
+        Bom::assembled(vec![
+            e(trigger, 1, 0.05, "front", JointMethod::Riveted),
+            e(hammer, 1, 0.07, "middle", JointMethod::Riveted),
+            e(sear, 1, 0.025, "on the hammer", JointMethod::Riveted),
+            e(pin, 5, 0.03, "pivots", JointMethod::Riveted),
+            e(spring, 3, 0.027, "trigger and hammer", JointMethod::Clipped),
+        ])
+        .with_bulk(&[(MildSteel, 0.048)]),
+    );
+    let rifle = c.must("rifle");
+    c.set_bill(
+        rifle,
+        Bom::assembled(vec![
+            e(c.must("receiver"), 1, 0.9, "the serialised part", JointMethod::Riveted),
+            e(c.must("barrel"), 1, 0.8, "forward", JointMethod::Crimped),
+            e(bolt_asm, 1, 0.4, "in the receiver", JointMethod::Clipped),
+            e(fcg, 1, 0.25, "under the receiver", JointMethod::Riveted),
+            e(c.must("stock"), 1, 0.5, "rear", JointMethod::Bolted),
+            e(c.must("magazine"), 1, 0.12, "magazine well", JointMethod::Clipped),
+            e(mbolt, 2, 0.04, "stock bolts", JointMethod::Bolted),
+        ]),
+    );
+
+    // ---- a washing machine, which is mostly concrete -----------------
+    let w_casing = c.add(def("washer casing", Family::SparePart, Form::Sheet,
+                             d(0.6, 0.6, 0.85), 12.0, &[(MildSteel, 1.0)]));
+    let w_drum = c.add(def("washer drum", Family::SparePart, Form::Assembly,
+                           d(0.5, 0.5, 0.4), 8.5, &[(Stainless, 1.0)]));
+    let w_tub = c.add(def("washer tub", Family::SparePart, Form::Assembly, d(0.55, 0.55, 0.45),
+                          5.0, &[(Polyethylene, 1.0)]));
+    // **Real, and the reason a washing machine is a two-person lift.**
+    let weight = c.add(def("counterweight", Family::SparePart, Form::Rigid,
+                           d(0.4, 0.15, 0.1), 10.5, &[(Concrete, 1.0)]));
+    let winding_l = c.add_built(
+        def("motor winding, large", Family::SparePart, Form::Rigid, d(0.15, 0.15, 0.08), 2.2,
+            &[(Copper, 1.0)]),
+        Bom::default().with_bulk(&[(Copper, 2.0), (Polyester, 0.2)]),
+    );
+    let lams_l = c.add(def("stator laminations, large", Family::SparePart, Form::Rigid,
+                           d(0.15, 0.15, 0.1), 2.8, &[(MildSteel, 1.0)]));
+    let motor_a = c.add_built(
+        def("electric motor, appliance", Family::SparePart, Form::Assembly, d(0.2, 0.16, 0.16),
+            6.0, &[(Copper, 1.0)]),
+        Bom::assembled(vec![
+            e(winding_l, 1, 2.2, "rotor", JointMethod::Glued),
+            e(lams_l, 1, 2.8, "stator", JointMethod::Riveted),
+            e(bearing, 2, 0.02, "shaft ends", JointMethod::Crimped),
+        ])
+        .with_bulk(&[(MildSteel, 0.9)])
+        .with_fluids(&[(Lubricant, 0.08)]),
+    );
+    let pump = c.add_built(
+        def("water pump", Family::SparePart, Form::Assembly, d(0.14, 0.1, 0.1), 1.5,
+            &[(Abs, 1.0)]),
+        Bom::default()
+            .with_bulk(&[(Abs, 0.6), (MildSteel, 0.5), (Copper, 0.35)])
+            .with_fluids(&[(Lubricant, 0.05)]),
+    );
+    let a_board = c.add_built(
+        def("appliance control board", Family::SparePart, Form::Assembly, d(0.25, 0.1, 0.04),
+            0.6, &[(Abs, 1.0)]),
+        Bom::assembled(vec![e(board, 4, 0.20, "stacked", JointMethod::Screwed)])
+            .with_bulk(&[(Abs, 0.30), (Copper, 0.09)])
+            .with_trace(&[(Solder, 0.01)]),
+    );
+    let w_door = c.add_built(
+        def("washer door", Family::SparePart, Form::Assembly, d(0.35, 0.35, 0.08), 3.2,
+            &[(Glass, 1.0)]),
+        Bom::default().with_bulk(&[(Glass, 2.2), (Abs, 0.9), (Rubber, 0.1)]),
+    );
+    let damper = c.add_built(
+        def("suspension damper", Family::SparePart, Form::Bar, d(0.3, 0.04, 0.04), 1.0,
+            &[(MildSteel, 1.0)]),
+        Bom::default()
+            .with_bulk(&[(MildSteel, 0.85), (Polyethylene, 0.1)])
+            .with_fluids(&[(Lubricant, 0.05)]),
+    );
+    let w_frame = c.add(def("washer frame", Family::SparePart, Form::Assembly,
+                            d(0.58, 0.58, 0.8), 3.0, &[(MildSteel, 1.0)]));
+    let washer = c.must("washing machine");
+    c.set_bill(
+        washer,
+        Bom::assembled(vec![
+            e(w_casing, 1, 12.0, "outside", JointMethod::Screwed),
+            e(w_frame, 1, 3.0, "chassis", JointMethod::Bolted),
+            e(w_drum, 1, 8.5, "inside the tub", JointMethod::Bolted),
+            e(w_tub, 1, 5.0, "suspended", JointMethod::Bolted),
+            e(weight, 2, 21.0, "front and top of the tub", JointMethod::Bolted),
+            e(motor_a, 1, 6.0, "under the tub", JointMethod::Bolted),
+            e(pump, 1, 1.5, "sump", JointMethod::Clipped),
+            e(a_board, 1, 0.6, "behind the fascia", JointMethod::Screwed),
+            e(w_door, 1, 3.2, "front", JointMethod::Screwed),
+            e(damper, 4, 4.0, "tub suspension", JointMethod::Bolted),
+            e(loom_a, 1, 1.2, "throughout", JointMethod::Crimped),
+            e(mscrew, 160, 0.8, "throughout", JointMethod::Screwed),
+            e(mbolt, 50, 1.0, "structure", JointMethod::Bolted),
+        ])
+        .with_bulk(&[(Rubber, 2.2)]),
+    );
+
+    // ---- and the chair, which the plan already half knew -------------
+    let leg = c.add(def("chair leg", Family::Stock, Form::Bar, d(0.45, 0.04, 0.04), 0.4875,
+                        &[(Oak, 1.0)]));
+    let rail = c.add(def("chair rail", Family::Stock, Form::Bar, d(0.4, 0.05, 0.02), 0.3925,
+                         &[(Oak, 1.0)]));
+    let seat = c.add(def("chair seat", Family::Stock, Form::Sheet, d(0.4, 0.4, 0.02), 0.74,
+                         &[(Oak, 1.0)]));
+    let backrest = c.add(def("chair back", Family::Stock, Form::Bar, d(0.4, 0.3, 0.02), 0.56,
+                             &[(Oak, 1.0)]));
+    // **The intermediate is a group, not a mystery.** The plan cuts a
+    // board into "chair parts"; what those parts are is written down.
+    let parts = c.must("chair parts");
+    c.set_bill(
+        parts,
+        Bom::assembled(vec![
+            e(leg, 4, 1.95, "legs", JointMethod::Clipped),
+            e(rail, 4, 1.57, "rails", JointMethod::Clipped),
+            e(seat, 1, 0.74, "seat", JointMethod::Clipped),
+            e(backrest, 1, 0.56, "back", JointMethod::Clipped),
+        ]),
+    );
+    let chair = c.must("wooden chair");
+    c.set_bill(
+        chair,
+        Bom::assembled(vec![
+            e(parts, 1, 4.82, "the frame", JointMethod::Glued),
+            e(c.must("wood screw"), 12, 0.06, "seat and rails", JointMethod::Screwed),
+        ])
+        .with_joints(&[(Adhesive, 0.09)])
+        .with_coatings(&[(Paint, 0.04)]),
+    );
+
+    // ---- which plan makes which thing --------------------------------
+    for (name, plan) in [
+        ("wooden chair", "chair, hand tools"),
+        ("loaf", "loaf"),
+        ("work trousers", "work trousers"),
+        ("cartridge", "cartridge, handloaded"),
+        ("rifle", "rifle, assembled"),
+    ] {
+        let id = c.must(name);
+        c.set_origin(id, vec![Origin::Made { plan }]);
+    }
+    // **A microprocessor is not uncraftable; it needs a fab.** Naming the
+    // requirement is the difference between a gap and a prohibition.
+    let id = c.must("circuit board");
+    c.set_origin(
+        id,
+        vec![Origin::Industrial {
+            needs: &[
+                "semiconductor-grade silicon",
+                "photolithography",
+                "a cleanroom",
+                "process chemicals",
+                "purified water",
+                "uninterrupted power",
+            ],
+        }],
+    );
+    let _ = (toaster, drill, washer, mbolt);
+}
+
 
 // =====================================================================
 // instances
@@ -1130,10 +1624,16 @@ pub struct ItemInstance {
 }
 
 impl ItemInstance {
-    /// A factory-fresh example of a definition.
+    /// **A factory-fresh example**, which knows what it contains.
+    ///
+    /// A spawned instance receives the definition bill: what a normal one
+    /// of these is made of. A crafted instance receives the *actual* bill
+    /// — what really went into that one — and the two are allowed to
+    /// differ, which is the whole point of keeping both.
     pub fn fresh(cat: &Catalogue, id: DefId, quantity: Quantity) -> Self {
         let d = cat.get(id).expect("unknown definition");
         let mass = quantity.mass_kg(d.nominal_mass_kg);
+        let assembly = default_record(cat, d, mass);
         ItemInstance {
             definition: id,
             quantity,
@@ -1145,7 +1645,7 @@ impl ItemInstance {
             contents: Vec::new(),
             attachments: Vec::new(),
             placement: Placement::Nowhere,
-            assembly: None,
+            assembly,
             provenance: Provenance::default(),
             ownership: Ownership::default(),
             given_name: None,
@@ -1198,6 +1698,54 @@ impl ItemInstance {
             && self.faults.is_empty()
             && self.assembly.as_ref().map(|a| a.substitutions.is_empty()).unwrap_or(true)
     }
+}
+
+/// Turn a definition bill into the record a fresh example carries.
+fn default_record(cat: &Catalogue, d: &ItemDefinition, mass_kg: f64) -> Option<AssemblyRecord> {
+    if d.bill.is_empty() {
+        return None;
+    }
+    let scale = if d.nominal_mass_kg > 0.0 { mass_kg / d.nominal_mass_kg } else { 1.0 };
+    let mut record = AssemblyRecord {
+        bulk: d.bill.bulk.iter().map(|&(m, kg)| (m, kg * scale)).collect(),
+        consumed: d
+            .bill
+            .joints
+            .iter()
+            .chain(&d.bill.coatings)
+            .chain(&d.bill.fluids)
+            .chain(&d.bill.trace)
+            .map(|&(m, kg)| (m, kg * scale))
+            .collect(),
+        ..Default::default()
+    };
+    for c in &d.bill.components {
+        let Some(child) = cat.get(c.def) else { continue };
+        record.components.push(Installed {
+            definition: c.def,
+            quantity: Quantity::Count(c.count.max(1)),
+            mass_kg: c.kg * scale,
+            materials: child.materials.clone(),
+            condition_at_install: Condition::fresh(),
+            quality_at_install: Quality::default(),
+            held_by: c.held_by,
+        });
+    }
+    for (i, c) in record.components.iter().enumerate() {
+        record.joints.push(Joint {
+            method: c.held_by,
+            joins: (i, i),
+            fastener: None,
+            accessible: true,
+        });
+    }
+    Some(record)
+}
+
+/// A definition with nothing but a name and a mass — for tests that need
+/// to prove the validator rejects one.
+pub fn bare(name: &'static str, kg: f64) -> ItemDefinition {
+    def(name, Family::Stock, Form::Rigid, Dims::new(0.1, 0.1, 0.1), kg, &[(Material::MildSteel, 1.0)])
 }
 
 /// **Every instance in one place, held by durable handle.**
