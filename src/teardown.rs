@@ -27,6 +27,41 @@ use crate::material::{Composition, Material, Recovers};
 use crate::rng::Rng;
 use crate::save::channel;
 
+/// **The coupling, stated once.**
+///
+/// ```text
+/// u = hash(world seed, teardown event, component, named draw)
+/// survives = u < survival_probability(method, skill, joint, condition)
+/// ```
+///
+/// **The intention is deliberately outside the key.** That is a monotone
+/// coupling rather than a reroll: the same unit is tested against a higher
+/// probability when the work is careful, so a method with a higher
+/// authored recovery can never return fewer components merely because it
+/// drew different numbers.
+///
+/// **And separate questions get separate draws.** Whether a part came off
+/// in one piece, how badly it was knocked about, whether it came out
+/// dirty, and whether it has something wrong with it that nobody can see
+/// are four different facts, and one number cannot carry them. There is
+/// also an **event-level** draw, so that a job that went badly went badly
+/// for everything — common-mode damage is real and per-component draws
+/// alone cannot produce it.
+fn draw(event: u64, component: usize, unit: u32, what: &str) -> f64 {
+    let h = channel(event, component as u64, what)
+        ^ (unit as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    Rng::new(h).next_f32() as f64
+}
+
+/// How badly the whole job went, before any one component is considered.
+/// A wall that came down in a heap damages everything in it.
+fn common_mode(event: u64, how: Teardown) -> f64 {
+    let x = Rng::new(channel(event, 0, "common mode")).next_f32() as f64;
+    // Careful work has little common-mode risk; a sledgehammer is nearly
+    // all common mode.
+    (x * (1.0 - how.care())).clamp(0.0, 1.0)
+}
+
 /// **A unique component is recovered or it is destroyed.** It is never
 /// 0.6 of a component, and it must not be decided by rounding: flooring
 /// always destroys a lone part at any probability under one, ceiling
@@ -53,9 +88,7 @@ fn survivors(event: u64, component: usize, count: u32, p: f64) -> u32 {
     if count <= 512 {
         let mut out = 0;
         for unit in 0..count {
-            let h = channel(event, component as u64, "component recovery")
-                ^ (unit as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
-            if (Rng::new(h).next_f32() as f64) < p {
+            if draw(event, component, unit, "component separability") < p {
                 out += 1;
             }
         }
@@ -161,6 +194,8 @@ pub struct Returned {
     pub definition: DefId,
     pub count: u32,
     pub mass_kg: f64,
+    /// Something wrong with it that will not show until it is used.
+    pub hidden_defect: bool,
     /// What it is made of — read off the record, so a part cut from
     /// particleboard comes back as particleboard however the intermediate
     /// was named.
@@ -296,6 +331,7 @@ fn recover_from_record(
     // A field strip goes only as far as the modules; it does not separate
     // what was glued, welded, cast or crimped.
     let modules_only = how == Teardown::FieldStrip;
+    let shared = common_mode(event, how);
 
     // **The object weighs what it weighs.** If the record and the object
     // have drifted apart — moisture, wear, a repair — the object is the
@@ -344,6 +380,15 @@ fn recover_from_record(
             let mut cond = comp.condition_at_install;
             cond.wear = (cond.wear + 0.10 + if r.needs_cutting { 0.15 } else { 0.0 }).min(1.0);
             cond.damage = (cond.damage + item.condition.damage * 0.5).min(1.0);
+            // Four separate questions, four separate draws, plus how
+            // badly the job as a whole went.
+            let knocked = draw(event, index, 0, "damage severity");
+            cond.damage = (cond.damage + knocked * (1.0 - how.care()) + shared * 0.4).min(1.0);
+            cond.contamination = (cond.contamination
+                + draw(event, index, 0, "contamination") * (1.0 - how.care()) * 0.6)
+                .min(1.0);
+            let hidden = draw(event, index, 0, "hidden defect")
+                < (0.05 + 0.25 * (1.0 - how.care()) + 0.3 * shared);
             out.components.push(Returned {
                 definition: comp.definition,
                 count: whole,
@@ -353,6 +398,10 @@ fn recover_from_record(
                 // **Workmanship is not touched.** Pulling a leg off a
                 // badly made chair gives you a badly made leg.
                 quality: comp.quality_at_install,
+                // **Something wrong with it that nobody can see yet.** A
+                // hairline crack in a casting, a strained thread. Real,
+                // and the reason salvaged parts are cheaper.
+                hidden_defect: hidden,
             });
         }
         // The rest of that component is scrap of whatever it was made of.
@@ -439,7 +488,10 @@ pub fn heat_mj(m: Material, kg: f64) -> f64 {
 /// guess why.
 pub fn possible(item: &ItemInstance, how: Teardown) -> bool {
     match how {
-        Teardown::Uninstall => item.is_installed() || !item.attachments.is_empty(),
+        // **Whether it is fitted to something is the store's question**,
+        // not the instance's. What an instance can answer on its own is
+        // whether anything is fitted to *it*.
+        Teardown::Uninstall => !item.attachments.is_empty(),
         // **Having a bill is not having parts.** Every definition now says
         // what it is made of, so a board has a record too — and a board
         // still cannot be disassembled, because there is nothing in it

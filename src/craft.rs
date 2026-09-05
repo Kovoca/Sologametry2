@@ -18,9 +18,10 @@
 //! destroys steel that has already been cut into blanks. The blanks and
 //! the offcuts are real, and they are still there in the morning.
 
+use crate::id::Id;
 use crate::item::{
     AssemblyRecord, Capability, Catalogue, Condition, DefId, DomainQuality, Family, Installed,
-    ItemInstance, Joint, JointMethod, Provides, Quality, Substitution,
+    ItemInstance, Joint, JointMethod, Placement, Provides, Quality, Store, Substitution,
 };
 use crate::material::{Amount, Composition, Fit, Material, Quantity};
 use crate::rng::Rng;
@@ -957,6 +958,13 @@ pub struct WorkOrder {
     pub elapsed_min: f64,
     pub power_kwh: f64,
     pub state: Halt,
+    /// **Where the finished thing goes.**
+    ///
+    /// Named when the order is raised, because "the current ground" is a
+    /// guess and a wardrobe nobody can carry has to be put *somewhere*.
+    /// If the destination cannot take it, completion waits.
+    pub output: Placement,
+    pub delivered: bool,
     pub started_day: u32,
     /// Running assessment of the work, one axis at a time.
     quality: Building,
@@ -1029,7 +1037,20 @@ struct Building {
 }
 
 impl WorkOrder {
+    /// Raise an order with the output going onto the floor of the shop.
     pub fn begin(id: u64, recipe: usize, intended: u32, workplace: u32, day: u32) -> Self {
+        WorkOrder::begin_for(id, recipe, intended, workplace, day, Placement::anywhere())
+    }
+
+    /// **Raise an order and say where the result goes.**
+    pub fn begin_for(
+        id: u64,
+        recipe: usize,
+        intended: u32,
+        workplace: u32,
+        day: u32,
+        output: Placement,
+    ) -> Self {
         WorkOrder {
             id,
             recipe,
@@ -1054,6 +1075,8 @@ impl WorkOrder {
             elapsed_min: 0.0,
             power_kwh: 0.0,
             state: Halt::Running,
+            output,
+            delivered: false,
             started_day: day,
             quality: Building::default(),
         }
@@ -1105,6 +1128,77 @@ impl WorkOrder {
 
     pub fn finished(&self) -> bool {
         matches!(self.state, Halt::Done | Halt::Abandoned)
+    }
+
+    /// **Whether the output has anywhere to go.**
+    ///
+    /// A work order is not over when the last operation is; it is over
+    /// when the thing it made is somewhere. A bench with no room, a
+    /// carrier already at their limit, or a destination that is not a
+    /// place at all all mean the same thing: it waits.
+    pub fn somewhere_to_put_it(&self, store: &Store, cat: &Catalogue, kg: f64) -> bool {
+        match self.output {
+            Placement::Ground { .. } => true,
+            // Real: 35 kg is what somebody carries any distance, which is
+            // the figure `travel.rs` already uses.
+            Placement::Carried { person } => {
+                let already: f64 = store
+                    .items
+                    .iter()
+                    .filter(|(id, _)| {
+                        matches!(store.placement(*id), Some(Placement::Carried { person: p })
+                            if p == person)
+                    })
+                    .map(|(_, i)| i.mass_kg)
+                    .sum();
+                already + kg <= 35.0
+            }
+            Placement::Contained { container } => store
+                .get(container)
+                .and_then(|c| cat.get(c.definition))
+                .map(|d| {
+                    let used: f64 = store
+                        .get(container)
+                        .map(|c| {
+                            c.contents
+                                .iter()
+                                .filter_map(|&i| store.get(i))
+                                .map(|i| i.mass_kg)
+                                .sum()
+                        })
+                        .unwrap_or(0.0);
+                    d.pockets.iter().any(|p| used + kg <= p.max_kg)
+                })
+                .unwrap_or(false),
+            // You cannot finish a chair into a bracket or into another
+            // order.
+            Placement::Installed { .. } | Placement::InWorkOrder { .. } => false,
+        }
+    }
+
+    /// **Complete the order into the world.**
+    ///
+    /// `Err(Blocked::NoRoom)` is not a failure of the work — the thing is
+    /// made and there is nowhere to set it down, which is a real thing
+    /// that happens in a small shop and is worth being able to say.
+    pub fn deliver_into(
+        &mut self,
+        book: &RecipeBook,
+        cat: &Catalogue,
+        day: u32,
+        store: &mut Store,
+    ) -> Result<Id<ItemInstance>, Blocked> {
+        if self.delivered {
+            return Err(Blocked::AlreadyDelivered);
+        }
+        let made = self.deliver(book, cat, day).ok_or(Blocked::NotFinished)?;
+        if !self.somewhere_to_put_it(store, cat, made.mass_kg) {
+            return Err(Blocked::NoRoom);
+        }
+        let at = self.output;
+        let id = store.add(made, at);
+        self.delivered = true;
+        Ok(id)
     }
 
     /// **Advance the work by so many minutes of wall clock.**
@@ -1637,6 +1731,15 @@ pub enum Unsuitable {
     NotEnough,
     /// **The case mass alone cannot see.**
     WrongShape(&'static str),
+}
+
+/// Why a finished order has not been handed over.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Blocked {
+    NotFinished,
+    /// Made, and nowhere to set it down.
+    NoRoom,
+    AlreadyDelivered,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

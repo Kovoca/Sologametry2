@@ -24,10 +24,12 @@
 
 use crate::id::{Arena, Id};
 use crate::item::{
-    AssemblyRecord, Catalogue, Condition, DefId, Fitting, Host, Installed, ItemInstance, Joint,
-    JointMethod, Placement, Quality, Refusal, Store,
+    AssemblyRecord, Catalogue, Condition, DefId, Fault, Fitting, Host, Installed, ItemEnd,
+    ItemInstance, Joint, JointMethod, Placement, Quality, Refusal, Store,
 };
 use crate::material::{Composition, Material, Quantity};
+use crate::rng::Rng;
+use crate::save::channel;
 use crate::teardown::{take_apart, Recovered, Teardown};
 use crate::vehicle::{Part, Vehicle};
 
@@ -151,9 +153,10 @@ impl FittedVehicle {
                         Mount::new(name, (x, y), takes, joint).providing(part),
                     );
                     if let Some(def) = cat.named(def_name) {
-                        let mut item = ItemInstance::one(cat, def);
-                        item.placement = Placement::Loose { locality: 0, x, y };
-                        loose.push(store.add(item));
+                        let item = ItemInstance::one(cat, def);
+                        loose.push(
+                            store.add(item, Placement::Ground { locality: 0, x, y }),
+                        );
                     }
                 }
                 None => kept.push((part, x, y)),
@@ -217,11 +220,13 @@ impl FittedVehicle {
         }
         let takes = m.takes;
         let joint = m.joint;
+        match store.placement(item) {
+            None => return Err(WontFit::NotAvailable("it is not a live item")),
+            Some(p) if !p.available() => return Err(WontFit::NotAvailable(p.why_not())),
+            _ => {}
+        }
         {
             let i = store.get(item).ok_or(WontFit::NoSuchItem)?;
-            if !i.available() {
-                return Err(WontFit::NotAvailable(i.placement.why_not()));
-            }
             let d = cat.get(i.definition).ok_or(WontFit::NoSuchItem)?;
             if d.fits != Some(takes) {
                 return Err(WontFit::DoesNotFit);
@@ -250,26 +255,211 @@ impl FittedVehicle {
     ) -> Result<Id<ItemInstance>, WontFit> {
         let m = self.mounts.get_mut(mount).ok_or(WontFit::NoSuchMount)?;
         let item = m.occupant.take().ok_or(WontFit::Empty)?;
-        store.place(item, Placement::Loose { locality: 0, x: 0, y: 0 });
+        store.place(item, Placement::anywhere());
         self.installations.retain(|i| i.item != item);
         Ok(item)
     }
 
-    /// **Destroying the mount destroys what was in it.** It does not fall
-    /// out loose, and it certainly does not go on existing somewhere else.
-    pub fn destroy_mount(&mut self, store: &mut Store, mount: usize) {
-        if let Some(m) = self.mounts.get_mut(mount) {
-            if let Some(item) = m.occupant.take() {
-                store.destroy(item);
+    /// **Wreck the mount, and settle what was in it.**
+    ///
+    /// The rule this replaces was "destroying the mount destroys the
+    /// occupant", which prevented identity leaking and bought universal
+    /// annihilation instead. A component in a crashed vehicle may stay
+    /// bolted to the wreck, come off intact, come off bent, be jammed
+    /// where nobody can reach it, split and spill what was in it, or be
+    /// broken up — and which of those depends on the joint, the impact and
+    /// how strong the thing is.
+    ///
+    /// **Exactly one outcome, and the mass reaches it.** Nothing is
+    /// duplicated and nothing quietly disappears.
+    pub fn wreck_mount(
+        &mut self,
+        store: &mut Store,
+        mount: usize,
+        severity: f64,
+        cat: &Catalogue,
+        event: u64,
+        day: u32,
+    ) -> Option<InstallationFailure> {
+        let (item, joint) = {
+            let m = self.mounts.get(mount)?;
+            (m.occupant?, m.joint)
+        };
+        let robustness = store
+            .get(item)
+            .map(|i| i.quality.structural_integrity * i.condition.serviceability())
+            .unwrap_or(0.5);
+        let holds_something = store.get(item).map(|i| !i.contents.is_empty()).unwrap_or(false);
+        let outcome = settle_mount(joint, severity, robustness, holds_something, event, mount);
+
+        match &outcome {
+            InstallationFailure::RemainsAttached { damage } => {
+                if let Some(i) = store.get_mut(item) {
+                    i.condition.damage = (i.condition.damage + damage).min(1.0);
+                }
+            }
+            InstallationFailure::Detached { damage } => {
+                self.mounts[mount].occupant = None;
                 self.installations.retain(|i| i.item != item);
+                store.place(item, Placement::anywhere());
+                if let Some(i) = store.get_mut(item) {
+                    i.condition.damage = (i.condition.damage + damage).min(1.0);
+                }
+            }
+            InstallationFailure::Inaccessible => {
+                if let Some(i) = store.get_mut(item) {
+                    i.condition.damage = (i.condition.damage + 0.2 * severity).min(1.0);
+                    i.faults.push(Fault {
+                        what: "jammed in the wreckage",
+                        severity: 0.9,
+                        disabling: false,
+                        since_day: day,
+                    });
+                }
+            }
+            InstallationFailure::ContentsReleased => {
+                let spilt: Vec<_> =
+                    store.get(item).map(|i| i.contents.clone()).unwrap_or_default();
+                for c in spilt {
+                    store.place(c, Placement::anywhere());
+                }
+                if let Some(i) = store.get_mut(item) {
+                    i.condition.damage = (i.condition.damage + 0.5).min(1.0);
+                }
+            }
+            InstallationFailure::Destroyed { .. } => {
+                self.mounts[mount].occupant = None;
+                self.installations.retain(|i| i.item != item);
+                store.end(item, ItemEnd::Destroyed, day);
             }
         }
+
+        let _ = cat;
+        Some(outcome)
+    }
+
+    /// The wreckage of a component, worked out by smashing it — used by a
+    /// caller that wants the scrap rather than only the verdict.
+    pub fn wreckage_of(item: &ItemInstance, cat: &Catalogue, event: u64) -> Recovered {
+        take_apart(item, Teardown::Smash, cat, 0.2, event)
+    }
+
+    /// **Structural breakup moves what survives, it does not kill it.**
+    ///
+    /// When a lorry comes in half, a component on a tile that is still
+    /// part of a standing section is still bolted to that section. Only
+    /// what was on the ground that is gone has to be settled.
+    pub fn break_up(
+        &mut self,
+        store: &mut Store,
+        lost_tiles: &[(i32, i32)],
+        severity: f64,
+        cat: &Catalogue,
+        event: u64,
+        day: u32,
+    ) -> Vec<(usize, InstallationFailure)> {
+        let hit: Vec<usize> = self
+            .mounts
+            .iter()
+            .enumerate()
+            .filter(|(_, m)| m.occupied() && lost_tiles.contains(&m.at))
+            .map(|(i, _)| i)
+            .collect();
+        let mut out = Vec::new();
+        for mount in hit {
+            if let Some(f) = self.wreck_mount(store, mount, severity, cat, event, day) {
+                out.push((mount, f));
+            }
+        }
+        // Everything else is still attached to whatever is left standing,
+        // which is the point: a hole in the floor is not a total loss.
+        self.base.parts.retain(|&(_, x, y)| !lost_tiles.contains(&(x, y)));
+        out
     }
 
     /// Whatever is fitted, in the order the mounts are declared.
     pub fn fitted(&self) -> impl Iterator<Item = (usize, Id<ItemInstance>)> + '_ {
         self.mounts.iter().enumerate().filter_map(|(i, m)| m.occupant.map(|o| (i, o)))
     }
+}
+
+/// **What became of a fitted component when its mount was wrecked.**
+///
+/// Exactly one of these, and every one of them accounts for the mass.
+#[derive(Clone, Debug, PartialEq)]
+pub enum InstallationFailure {
+    /// Still bolted to the wreck, and worse for it.
+    RemainsAttached { damage: f64 },
+    /// Came off, and is on the ground.
+    Detached { damage: f64 },
+    /// Still there and nobody can get at it. Not destroyed — which is a
+    /// different and much more annoying problem.
+    Inaccessible,
+    /// It split and what was inside it is out.
+    ContentsReleased,
+    /// Broken past being a component. What is left is scrap, and
+    /// `wreckage_of` says how much of what.
+    Destroyed { recoverable: bool },
+}
+
+/// **How a joint gives up.**
+///
+/// A weld holds until the metal around it tears; a clip lets go early and
+/// the part is usually fine. That is why a crash strips the trim off a car
+/// and leaves the engine mounts alone.
+fn settle_mount(
+    joint: JointMethod,
+    severity: f64,
+    robustness: f64,
+    holds_something: bool,
+    event: u64,
+    mount: usize,
+) -> InstallationFailure {
+    let severity = severity.clamp(0.0, 1.0);
+    let robustness = robustness.clamp(0.0, 1.0);
+    // How well the joint holds under load, against how hard it was hit.
+    let grip = match joint {
+        JointMethod::Welded | JointMethod::Cast | JointMethod::Forged => 0.95,
+        JointMethod::Riveted | JointMethod::CementMortared => 0.85,
+        JointMethod::LimeMortared => 0.75,
+        JointMethod::Bolted => 0.7,
+        JointMethod::Screwed | JointMethod::Crimped => 0.55,
+        JointMethod::Glued | JointMethod::Soldered | JointMethod::Stitched => 0.4,
+        JointMethod::Clipped => 0.25,
+        JointMethod::Cooked | JointMethod::Reacted => 0.6,
+    };
+
+    // **Separate draws for separate questions.** Whether it let go, and
+    // whether the thing itself survived, are not the same event.
+    let mut sep = Rng::new(channel(event, mount as u64, "mount separability"));
+    let mut sur = Rng::new(channel(event, mount as u64, "component survival"));
+    let mut jam = Rng::new(channel(event, mount as u64, "jamming"));
+
+    // **A light knock shakes almost nothing loose.** Both of these are
+    // driven by the severity rather than merely modified by it: at zero
+    // impact a bolted alternator stays bolted on, which is the ordinary
+    // case and has to be the ordinary outcome.
+    let let_go = (sep.next_f32() as f64) < (severity * (1.0 - grip) * 1.8).clamp(0.0, 1.0);
+    // A thing is broken by the impact reaching it, not by the joint.
+    let broke = (sur.next_f32() as f64)
+        < (severity.powf(1.5) * (1.0 - 0.8 * robustness)).clamp(0.0, 1.0);
+
+    if broke {
+        return if holds_something {
+            InstallationFailure::ContentsReleased
+        } else {
+            InstallationFailure::Destroyed { recoverable: severity < 0.85 }
+        };
+    }
+    if let_go {
+        return InstallationFailure::Detached { damage: 0.25 * severity };
+    }
+    // Still attached — and in a bad enough wreck, folded in where nobody
+    // is getting a spanner to it.
+    if severity > 0.6 && (jam.next_f32() as f64) < (severity - 0.6) * 1.5 {
+        return InstallationFailure::Inaccessible;
+    }
+    InstallationFailure::RemainsAttached { damage: 0.15 * severity }
 }
 
 /// The parts of a road vehicle worth making individual: the ones that
@@ -318,6 +508,31 @@ pub struct WallAssembly {
     pub joint_mass: Vec<(Material, f64)>,
     pub fixtures: Vec<Mount>,
     pub installations: Vec<Installation>,
+    /// Which stages of the strip-down have been done. A wall that has had
+    /// its door taken out is a different object from one that has not,
+    /// and a sledgehammer arriving later can only wreck what is left.
+    pub stripped: Vec<Stage>,
+}
+
+/// **The stages of taking a wall down**, in the order a demolition
+/// contractor actually does them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Stage {
+    /// Kill the power and the water. Nothing else is safe until this is
+    /// done, and it recovers nothing.
+    IsolateUtilities,
+    /// Sockets, switches, radiators.
+    RemoveFittings,
+    /// The door and the windows, which come out whole if anybody bothers.
+    RemoveOpenings,
+    /// Plaster and paint off, which is dirty and returns almost nothing.
+    StripFinishes,
+    /// Sheathing and barrier off the frame.
+    ExposeStructure,
+    /// Take the frame apart, or knock the brickwork down.
+    SeparateStructure,
+    /// Reusable one side, recyclable the other, waste in the skip.
+    Sort,
 }
 
 impl WallAssembly {
@@ -339,23 +554,96 @@ impl WallAssembly {
                 Mount::new("back box", (0, 0), Fitting::BackBox, JointMethod::Screwed),
             ],
             installations: Vec::new(),
+            stripped: Vec::new(),
         }
     }
 
-    /// A brick wall of the same size: bricks in mortar, and the mortar is
-    /// most of why taking one down carefully is worth so little.
-    pub fn brick(id: u32, cat: &Catalogue) -> Self {
+    /// **A brick wall, and which mortar it was built in decides almost
+    /// everything about taking it down.**
+    ///
+    /// Lime is softer than the brick, so the joint gives way and the brick
+    /// survives; cement is harder than the brick, so the brick gives way.
+    /// That is the difference between a reclamation yard and a skip.
+    pub fn brick(id: u32, cat: &Catalogue, bond: JointMethod) -> Self {
         WallAssembly {
             id,
-            courses: vec![Course {
-                def: cat.must("brick"),
-                count: 430,
-                held_by: JointMethod::Mortared,
-            }],
+            courses: vec![Course { def: cat.must("brick"), count: 430, held_by: bond }],
             joint_mass: vec![(Material::Mortar, 190.0)],
-            fixtures: vec![Mount::new("opening", (0, 0), Fitting::Opening, JointMethod::Mortared)],
+            fixtures: vec![Mount::new("opening", (0, 0), Fitting::Opening, bond)],
             installations: Vec::new(),
+            stripped: Vec::new(),
         }
+    }
+
+    /// **The order the work is done in.**
+    ///
+    /// Taking a wall down is a sequence, not a verb. Which is why "a
+    /// sledgehammer never saves the door" is not a property of
+    /// demolition — it is a property of demolishing a wall with the door
+    /// still in it.
+    pub fn deconstruction_plan() -> &'static [Stage] {
+        &[
+            Stage::IsolateUtilities,
+            Stage::RemoveFittings,
+            Stage::RemoveOpenings,
+            Stage::StripFinishes,
+            Stage::ExposeStructure,
+            Stage::SeparateStructure,
+            Stage::Sort,
+        ]
+    }
+
+    pub fn done(&self, stage: Stage) -> bool {
+        self.stripped.contains(&stage)
+    }
+
+    /// Carry out one stage. Each takes out of the wall whatever that stage
+    /// is *for*, so what a later operation can wreck is only what is
+    /// still in it.
+    pub fn perform(
+        &mut self,
+        stage: Stage,
+        store: &mut Store,
+        cat: &Catalogue,
+    ) -> Vec<Id<ItemInstance>> {
+        let mut out = Vec::new();
+        match stage {
+            Stage::IsolateUtilities => {}
+            Stage::RemoveFittings | Stage::RemoveOpenings => {
+                let want = if stage == Stage::RemoveOpenings {
+                    Fitting::Opening
+                } else {
+                    Fitting::BackBox
+                };
+                let at: Vec<usize> = self
+                    .fixtures
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, m)| m.occupied() && m.takes == want)
+                    .map(|(i, _)| i)
+                    .collect();
+                for i in at {
+                    if let Ok(item) = self.uninstall(store, i) {
+                        out.push(item);
+                    }
+                }
+            }
+            Stage::StripFinishes => {
+                // The interior finish comes off first and comes off whole
+                // far less often than the frame behind it.
+                let finish = cat.named("plasterboard sheet");
+                self.courses.retain(|c| Some(c.def) != finish);
+            }
+            Stage::ExposeStructure => {
+                let sheathing = cat.named("sheathing board");
+                self.courses.retain(|c| Some(c.def) != sheathing);
+            }
+            Stage::SeparateStructure | Stage::Sort => {}
+        }
+        if !self.stripped.contains(&stage) {
+            self.stripped.push(stage);
+        }
+        out
     }
 
     pub fn fixture_named(&self, name: &str) -> Option<usize> {
@@ -376,11 +664,13 @@ impl WallAssembly {
             return Err(WontFit::Occupied);
         }
         let (takes, joint) = (m.takes, m.joint);
+        match store.placement(item) {
+            None => return Err(WontFit::NotAvailable("it is not a live item")),
+            Some(p) if !p.available() => return Err(WontFit::NotAvailable(p.why_not())),
+            _ => {}
+        }
         {
             let i = store.get(item).ok_or(WontFit::NoSuchItem)?;
-            if !i.available() {
-                return Err(WontFit::NotAvailable(i.placement.why_not()));
-            }
             let d = cat.get(i.definition).ok_or(WontFit::NoSuchItem)?;
             if d.fits != Some(takes) {
                 return Err(WontFit::DoesNotFit);
@@ -407,7 +697,7 @@ impl WallAssembly {
     ) -> Result<Id<ItemInstance>, WontFit> {
         let m = self.fixtures.get_mut(mount).ok_or(WontFit::NoSuchMount)?;
         let item = m.occupant.take().ok_or(WontFit::Empty)?;
-        store.place(item, Placement::Loose { locality: 0, x: 0, y: 0 });
+        store.place(item, Placement::anywhere());
         self.installations.retain(|i| i.item != item);
         Ok(item)
     }
@@ -483,7 +773,6 @@ impl WallAssembly {
             faults: Vec::new(),
             contents: Vec::new(),
             attachments: Vec::new(),
-            placement: Placement::Nowhere,
             assembly: None,
             provenance: Default::default(),
             ownership: Default::default(),

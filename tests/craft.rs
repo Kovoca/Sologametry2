@@ -763,3 +763,87 @@ fn only_states_worth_having_become_objects() {
     assert_eq!(rest.name, "prove");
     assert_eq!(rest.effort.labour_minutes(), 0.0);
 }
+
+// =====================================================================
+// where the finished thing goes
+// =====================================================================
+
+/// **Gate: completion cannot create an item without somewhere to put it.**
+///
+/// An order is not over when the last operation is; it is over when the
+/// thing it made is somewhere. "The current ground" is a guess, and a
+/// wardrobe nobody can carry has to be put somewhere in particular.
+#[test]
+fn a_finished_order_needs_a_destination() {
+    use scale_sim::craft::Blocked;
+    use scale_sim::item::{ItemInstance, Placement, Store};
+
+    let (cat, book) = world();
+    let place = Workplace::a_workshop(hand_tools(&cat));
+    let plan = book.must("chair, hand tools");
+    let mut store = Store::new();
+
+    // Onto the floor: always fine.
+    let mut onto_the_floor =
+        WorkOrder::begin_for(1, plan, 1, 0, 1, Placement::anywhere());
+    run(&mut onto_the_floor, &book, &cat, &place, a_good_hand());
+    let id = onto_the_floor
+        .deliver_into(&book, &cat, 1, &mut store)
+        .expect("a chair would not go on the floor");
+    assert!(matches!(store.placement(id), Some(Placement::Ground { .. })));
+    assert!(onto_the_floor.delivered);
+    // And it is handed over exactly once.
+    assert_eq!(
+        onto_the_floor.deliver_into(&book, &cat, 1, &mut store),
+        Err(Blocked::AlreadyDelivered)
+    );
+
+    // **Into somebody's hands: a five-kilogram chair is fine and a
+    // seventieth is not.** Real carrying capacity is about 35 kg.
+    let mut carried = WorkOrder::begin_for(2, plan, 1, 0, 1, Placement::Carried { person: 7 });
+    run(&mut carried, &book, &cat, &place, a_good_hand());
+    assert!(carried.deliver_into(&book, &cat, 1, &mut store).is_ok());
+
+    let mut too_heavy = WorkOrder::begin_for(
+        3,
+        book.must("chair, hand tools"),
+        1,
+        0,
+        1,
+        Placement::Carried { person: 7 },
+    );
+    run(&mut too_heavy, &book, &cat, &place, a_good_hand());
+    // Fill the poor man up first.
+    for k in 0..7 {
+        let mut heavy = ItemInstance::one(&cat, cat.must("washing machine"));
+        heavy.mass_kg = 5.0;
+        let _ = k;
+        store.add(heavy, Placement::Carried { person: 7 });
+    }
+    assert_eq!(
+        too_heavy.deliver_into(&book, &cat, 1, &mut store),
+        Err(Blocked::NoRoom),
+        "a man already carrying his limit took a chair as well"
+    );
+    assert!(!too_heavy.delivered, "it was handed over anyway");
+
+    // **A mount is not a destination.** You do not finish a chair into a
+    // bracket.
+    let mut nonsense = WorkOrder::begin_for(
+        4,
+        plan,
+        1,
+        0,
+        1,
+        Placement::Installed { host: scale_sim::item::Host::Vehicle(1), mount: 0 },
+    );
+    run(&mut nonsense, &book, &cat, &place, a_good_hand());
+    assert_eq!(nonsense.deliver_into(&book, &cat, 1, &mut store), Err(Blocked::NoRoom));
+
+    // An order that has not finished has nothing to hand over.
+    let mut unstarted = WorkOrder::begin(5, plan, 1, 0, 1);
+    assert_eq!(
+        unstarted.deliver_into(&book, &cat, 1, &mut store),
+        Err(Blocked::NotFinished)
+    );
+}

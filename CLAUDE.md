@@ -1137,7 +1137,19 @@ objects a story is made of.
 - **The intention is deliberately not part of that key.** Common random
   numbers: the same unit is tested against a higher probability when the
   work is careful, so a careful teardown can never come out worse than a
-  sledgehammer by an accident of sampling.
+  sledgehammer by an accident of sampling. Stated once, in one place:
+
+  ```text
+  u = hash(world seed, teardown event, component, named draw)
+  survives = u < survival_probability(method, skill, joint, condition)
+  ```
+- **Separate questions get separate draws.** Whether a part came off in
+  one piece, how badly it was knocked about, whether it came out dirty,
+  and whether it has something wrong with it nobody can see are four
+  different facts and one number cannot carry them. There is also an
+  **event-level** draw, because a job that went badly went badly for
+  everything in it — common-mode damage is real, and per-component draws
+  alone cannot produce it.
 - **Every quality axis was divided by the total number of steps.** Three
   cutting operations out of six gave 0.5 for dimensional accuracy however
   well every cut was made, and a chair nobody was asked to polish scored
@@ -1233,14 +1245,32 @@ on the old shallowness:
 **Installing something is a move, not a copy.** The state that must never
 exist is the same alternator in a stockroom and in a van at once, and the
 way to make it impossible is a type rather than a discipline:
-`item::Placement` is **one** value — nowhere, loose, carried, contained,
-installed, committed to a work order, or folded into a lot — and `Store`
-is the only thing that changes it. Two optional fields would admit the bug
-by construction.
+`item::Placement` is **one** value — ground, carried, contained, installed,
+or committed to a work order — and `Store` is the only thing that changes
+it. Two optional fields would admit the bug by construction.
 
 A refusal says *which* of those it is, because "committed to a work order"
 and "already bolted to something" are different problems for whoever is
 holding the spanner.
+
+**A live item cannot be nowhere, and the type says so.** `Nowhere` was two
+different conditions wearing one name — *not made yet* and *destroyed* —
+and neither is a location. Whether a thing exists is a separate question
+from where it is, so the placement lives on the **`Store`** rather than on
+the instance (an `ItemInstance` outside a store is a value, not an object
+in the world, and a field that had to hold *something* is exactly how
+`Nowhere` came to exist). What has gone leaves the live store and survives
+as an `ItemEnd` tombstone — consumed, destroyed, or folded into a lot —
+which is what keeps the world bounded and still lets the books be checked.
+
+**And putting something into the world requires saying where.**
+`Store::add` takes a destination; there is no "the current ground". A work
+order names where its output goes when it is raised, and **completion
+waits if the destination cannot take it** — a five-kilogram chair goes to
+a man already carrying thirty, and a wardrobe nobody can carry has to be
+put somewhere in particular. `deliver_into` returns `Blocked::NoRoom`,
+which is not a failure of the work: the thing is made and there is nowhere
+to set it down, which is a real thing that happens in a small shop.
 
 **And what was sacrificed fitting it is not part of it.** An
 `Installation` records the joint, the fasteners and mastic used up, who did
@@ -1264,9 +1294,27 @@ The physics then falls out, because it already reads the parts list:
 - fitting a 5.5 kg alternator moves the kerb weight by 5.5 kg, **once** —
   structure is nominal and fitted components weigh what they actually
   weigh, which is the point of making them objects at all;
-- **destroying the mount destroys the occupant.** It does not fall out
-  loose and it certainly does not go on existing somewhere else, which
-  would be a money printer of the exact shape this project keeps finding.
+- **a wrecked mount settles its occupant; it does not annihilate it.**
+
+The last of those was wrong first time. "Destroying the mount destroys
+what was in it" stops identity leaking and buys **universal annihilation**
+instead, which is a different bug of the same size. A component in a crash
+may stay bolted to the wreck, come off intact, come off bent, be jammed
+where nobody can reach it, split and spill what was in it, or be broken
+up — and which of those depends on the joint, the impact and how strong
+the thing is. **Exactly one outcome, and the mass reaches it.**
+
+Separate draws for separate questions: whether the joint let go, whether
+the component itself survived, and whether the wreckage folded round it.
+Measured over three hundred crashes at each severity, a nudge leaves the
+alternator bolted on and a heavy impact destroys it three times as often —
+and a clip lets go where a weld holds, which is why a crash strips the
+trim off a car and leaves the engine mounts alone.
+
+**Structural breakup moves what survives.** A hole in the floor is not a
+total loss: what was bolted to a section that is still standing is still
+bolted to it, and only what was on ground that has gone has to be
+settled.
 
 Take the alternator off a year later and it is the same object: 0.61 of
 wear, the workmanship it was rebuilt to, the name somebody gave it, and
@@ -1287,12 +1335,29 @@ demolition are not two pieces of code but two intentions:
 |---|---|---|
 | the door | **back 30 times in 40** | never |
 | studs, screwed | most of them | none |
-| bricks, mortared | **a fraction** | none |
 
-**Mortar is why nobody saves bricks**, and it comes out of the joint table
-rather than being asserted. Real figures underneath: a stud is 89 x 38 mm
-and 2.4 m, sheathing 11 mm, plasterboard 12.5 mm at 8.5 kg/m², and the
-wall comes to about 25 kg per square metre.
+**But taking a wall down is a sequence, not a verb** — isolate the
+utilities, strip the fittings, take the door out, strip the finishes,
+expose the frame, separate it, sort it — and each stage takes out of the
+wall what that stage is *for*. So "a sledgehammer never saves the door" is
+not a property of demolition. It is a property of demolishing a wall with
+the door still in it: **take the door out first and the sledgehammer has
+nothing to say about it.**
+
+**And which mortar it was built in decides whether the bricks come back.**
+Not "mortar is why nobody saves bricks" — that is too broad. Lime is
+softer than the brick, so the joint gives way and the brick survives,
+which is what reclamation yards are full of. Cement is harder than the
+brick, so the brick gives way, and the reclamation literature names
+cement-based mortar as *the* barrier — a slow problem with known
+techniques rather than an impossibility, so recovery is low and not zero.
+It is also what damages softer historic fabric when somebody repoints with
+it. Measured over a careful deconstruction: **lime gives 63% of the bricks
+back, cement 22%.**
+
+Real figures underneath: a stud is 89 x 38 mm and 2.4 m, sheathing 11 mm,
+plasterboard 12.5 mm at 8.5 kg/m², and the wall comes to about 25 kg per
+square metre.
 
 ### A blackout disables the tool, not the step
 

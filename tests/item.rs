@@ -172,20 +172,20 @@ fn a_part_taken_out_is_the_part_that_went_in() {
     let cat = standard_catalogue();
     let mut store = Store::new();
 
-    let washer = store.add(ItemInstance::one(&cat, cat.must("washing machine")));
+    let washer = store.add_loose(ItemInstance::one(&cat, cat.must("washing machine")));
     let mut alt = ItemInstance::one(&cat, cat.must("alternator"));
     alt.condition.wear = 0.31;
     alt.quality.workmanship = 0.88;
     alt.given_name = Some("the one off the old machine".into());
-    let alt_id = store.add(alt);
+    let alt_id = store.add_loose(alt);
 
     let fitting = store.install(washer, alt_id, &cat).expect("the bracket would not take it");
-    assert!(store.get(alt_id).unwrap().is_installed());
+    assert!(store.is_installed(alt_id));
     // The mass of the machine now includes it.
     assert!(store.laden_mass(washer) > 70.0);
 
     // Nothing else may take the same point while it is occupied.
-    let second = store.add(ItemInstance::one(&cat, cat.must("alternator")));
+    let second = store.add_loose(ItemInstance::one(&cat, cat.must("alternator")));
     assert_eq!(store.install(washer, second, &cat), Err(Refusal::PointTaken));
 
     let back = store.uninstall(washer, fitting).expect("it would not come off");
@@ -194,7 +194,7 @@ fn a_part_taken_out_is_the_part_that_went_in() {
     assert!((a.condition.wear - 0.31).abs() < 1e-9, "its hours were forgotten");
     assert_eq!(a.quality.workmanship, 0.88);
     assert_eq!(a.given_name.as_deref(), Some("the one off the old machine"));
-    assert!(!a.is_installed());
+    assert!(!store.is_installed(back));
 }
 
 /// A thing only goes where it fits, and a thing cannot contain itself.
@@ -202,9 +202,9 @@ fn a_part_taken_out_is_the_part_that_went_in() {
 fn a_fitting_is_a_shape_and_not_a_permission() {
     let cat = standard_catalogue();
     let mut store = Store::new();
-    let rifle = store.add(ItemInstance::one(&cat, cat.must("rifle")));
-    let mag = store.add(ItemInstance::one(&cat, cat.must("magazine")));
-    let loaf = store.add(ItemInstance::one(&cat, cat.must("loaf")));
+    let rifle = store.add_loose(ItemInstance::one(&cat, cat.must("rifle")));
+    let mag = store.add_loose(ItemInstance::one(&cat, cat.must("magazine")));
+    let loaf = store.add_loose(ItemInstance::one(&cat, cat.must("loaf")));
 
     assert!(store.install(rifle, mag, &cat).is_ok());
     assert_eq!(store.install(rifle, loaf, &cat), Err(Refusal::DoesNotFit));
@@ -217,10 +217,10 @@ fn a_fitting_is_a_shape_and_not_a_permission() {
 fn a_worn_tool_holds_a_worse_tolerance() {
     let cat = standard_catalogue();
     let mut store = Store::new();
-    let good = store.add(ItemInstance::one(&cat, cat.must("bandsaw")));
+    let good = store.add_loose(ItemInstance::one(&cat, cat.must("bandsaw")));
     let mut tired = ItemInstance::one(&cat, cat.must("bandsaw"));
     tired.condition.wear = 0.75;
-    let tired = store.add(tired);
+    let tired = store.add_loose(tired);
 
     let a = store.capability(good, scale_sim::item::Capability::CutWood, &cat).unwrap();
     let b = store.capability(tired, scale_sim::item::Capability::CutWood, &cat).unwrap();
@@ -341,8 +341,8 @@ fn particular_things_refuse_to_become_a_statistic() {
     marked.provenance.marked = true;
 
     // A loaded gun: the magazine is a fitted part, so it is modified.
-    let host = store.add(ItemInstance::one(&cat, id));
-    let mag = store.add(ItemInstance::one(&cat, cat.must("magazine")));
+    let host = store.add_loose(ItemInstance::one(&cat, id));
+    let mag = store.add_loose(ItemInstance::one(&cat, cat.must("magazine")));
     store.install(host, mag, &cat).unwrap();
     let loaded = store.get(host).unwrap().clone();
 

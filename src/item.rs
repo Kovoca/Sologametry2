@@ -22,6 +22,7 @@
 
 use crate::bom::{plausible_ends, Acquisition, Bom, BomEntry, EndOfLife, Origin};
 use crate::id::{Arena, Id};
+use std::collections::BTreeMap;
 use crate::material::{Composition, Dims, Material, Quantity};
 
 // =====================================================================
@@ -384,8 +385,16 @@ pub enum JointMethod {
     Forged,
     Cooked,
     Reacted,
-    /// Bricks in mortar, a wall.
-    Mortared,
+    /// **Bricks in lime mortar.** Soft, weaker than the brick, and it
+    /// comes off with a bolster — which is why reclamation yards exist
+    /// and why old brickwork is worth taking down carefully.
+    LimeMortared,
+    /// **Bricks in cement mortar.** Harder than the brick it holds, so
+    /// what gives way is the brick. Cement-based mortar is named in the
+    /// reclamation literature as *the* barrier to recovering brick, and
+    /// it is also what damages softer historic fabric when somebody
+    /// repoints with it.
+    CementMortared,
 }
 
 impl JointMethod {
@@ -404,7 +413,12 @@ impl JointMethod {
             Glued => Recovery { components: 0.45, fastener: 0.0, needs_cutting: false },
             Soldered => Recovery { components: 0.85, fastener: 0.30, needs_cutting: false },
             Welded => Recovery { components: 0.55, fastener: 0.0, needs_cutting: true },
-            Mortared => Recovery { components: 0.60, fastener: 0.0, needs_cutting: true },
+            // Real reclamation: lime-mortared brick comes back at a high
+            // rate, cement-mortared brick mostly does not — and "mostly"
+            // rather than "never", because the techniques exist and are
+            // slow rather than impossible.
+            LimeMortared => Recovery { components: 0.85, fastener: 0.10, needs_cutting: false },
+            CementMortared => Recovery { components: 0.30, fastener: 0.0, needs_cutting: true },
             // Past these there is no assembly to undo. The shape was made,
             // not joined, so what you get is scrap or nothing.
             Cast => Recovery { components: 0.0, fastener: 0.0, needs_cutting: true },
@@ -1551,34 +1565,36 @@ pub enum Host {
     Building(u32),
 }
 
-/// **An item is in exactly one place.**
+/// **A live item is in exactly one place**, and every one of these is a
+/// real place.
 ///
-/// Not a set of flags and not several optional fields, because those admit
-/// the state that must never exist: the same alternator sitting in the
-/// stockroom *and* fitted to a lorry. Installation is a move, and the type
-/// is what makes it one.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+/// There is deliberately no `Nowhere`. That variant was two different
+/// conditions wearing one name — *not made yet* and *destroyed* — and
+/// neither of them is a location. Whether a thing exists is
+/// [`ItemEnd`]'s question; this answers only where it is, and it exists
+/// only for things that are in a [`Store`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Placement {
-    /// Made and not yet put anywhere, or destroyed.
-    #[default]
-    Nowhere,
-    Loose { locality: u32, x: i32, y: i32 },
+    Ground { locality: u32, x: i32, y: i32 },
     Carried { person: u64 },
     Contained { container: Id<ItemInstance> },
     Installed { host: Host, mount: usize },
     /// Reserved by a work order. Not available to be fitted to anything.
     InWorkOrder { order: u64 },
-    /// Folded into a lot. It has no particulars any more and cannot be
-    /// addressed individually until the lot is expanded.
-    Aggregated { lot: u64 },
 }
 
 impl Placement {
+    /// Somewhere on the floor at the origin. For tests and for anything
+    /// that genuinely does not care where.
+    pub fn anywhere() -> Self {
+        Placement::Ground { locality: 0, x: 0, y: 0 }
+    }
+
     /// Whether it is free to be picked up, fitted or consumed.
     pub fn available(self) -> bool {
         matches!(
             self,
-            Placement::Loose { .. } | Placement::Carried { .. } | Placement::Contained { .. }
+            Placement::Ground { .. } | Placement::Carried { .. } | Placement::Contained { .. }
         )
     }
 
@@ -1588,13 +1604,36 @@ impl Placement {
 
     pub fn why_not(self) -> &'static str {
         match self {
-            Placement::Nowhere => "it is nowhere",
             Placement::Installed { .. } => "it is already fitted to something",
             Placement::InWorkOrder { .. } => "it is committed to a work order",
-            Placement::Aggregated { .. } => "it is part of a lot and has no particulars",
             _ => "it is available",
         }
     }
+}
+
+/// **How a thing stopped being a live item.**
+///
+/// Not a placement. An item that reaches one of these leaves the store
+/// altogether and survives as a tombstone — which is what keeps the live
+/// world bounded and still lets the books be checked.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemEnd {
+    /// Used up: eaten, burnt, welded into something, fired.
+    Consumed,
+    /// Broken past recovery. Whatever came off it is separate objects.
+    Destroyed,
+    /// Folded into a lot. It has no particulars any more, and it cannot
+    /// be addressed individually until the lot is expanded.
+    Aggregated { lot: u64 },
+}
+
+/// What is left in the record of something that has gone.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Tombstone {
+    pub was: DefId,
+    pub end: ItemEnd,
+    pub mass_kg: f64,
+    pub on_day: u32,
 }
 
 /// **This particular one**, including everything that has happened to it.
@@ -1613,9 +1652,6 @@ pub struct ItemInstance {
     pub faults: Vec<Fault>,
     pub contents: Vec<Id<ItemInstance>>,
     pub attachments: Vec<(Fitting, Id<ItemInstance>)>,
-    /// **The one place it is.** Every move goes through `Store`, which is
-    /// what stops the same object being in two of them.
-    pub placement: Placement,
     pub assembly: Option<AssemblyRecord>,
     pub provenance: Provenance,
     pub ownership: Ownership,
@@ -1644,7 +1680,6 @@ impl ItemInstance {
             faults: Vec::new(),
             contents: Vec::new(),
             attachments: Vec::new(),
-            placement: Placement::Nowhere,
             assembly,
             provenance: Provenance::default(),
             ownership: Ownership::default(),
@@ -1677,24 +1712,17 @@ impl ItemInstance {
         self.faults.retain(|f| f.severity > take);
     }
 
-    pub fn is_installed(&self) -> bool {
-        self.placement.is_installed()
-    }
 
-    /// Whether it can be picked up, fitted or consumed right now.
-    pub fn available(&self) -> bool {
-        self.placement.available()
-    }
-
-    /// Whether this is an example that may be folded into a lot, or one
-    /// whose particulars would be destroyed by it.
+    /// Whether this is an example whose particulars would survive being
+    /// folded into a lot. **Where it is, is the `Store`'s question** — a
+    /// fitted part is not aggregatable either, and `Store::aggregatable`
+    /// asks both.
     pub fn aggregatable(&self) -> bool {
         self.given_name.is_none()
             && !self.provenance.marked
             && !self.ownership.accounted_for
             && self.contents.is_empty()
             && self.attachments.is_empty()
-            && !self.placement.is_installed()
             && self.faults.is_empty()
             && self.assembly.as_ref().map(|a| a.substitutions.is_empty()).unwrap_or(true)
     }
@@ -1757,6 +1785,15 @@ pub fn bare(name: &'static str, kg: f64) -> ItemDefinition {
 #[derive(Debug, Default)]
 pub struct Store {
     pub items: Arena<ItemInstance>,
+    /// **Where each live item is.** Held here rather than on the instance
+    /// because an `ItemInstance` that is not in a store is not anywhere —
+    /// it is a value, not an object in the world — and a field that had to
+    /// hold *something* is exactly how `Nowhere` came to exist.
+    ///
+    /// A `BTreeMap`, because a save must write in the same order every
+    /// time.
+    where_: BTreeMap<u64, Placement>,
+    graves: Vec<Tombstone>,
 }
 
 impl Store {
@@ -1764,22 +1801,26 @@ impl Store {
         Store::default()
     }
 
-    /// **Something that exists is somewhere.** An item handed to the store
-    /// with no placement is put on the ground rather than left in limbo:
-    /// `Nowhere` means destroyed or not yet real, and a thing in that
-    /// state must not be fittable to anything.
-    pub fn add(&mut self, item: ItemInstance) -> Id<ItemInstance> {
-        let mut item = item;
-        if matches!(item.placement, Placement::Nowhere) {
-            item.placement = Placement::Loose { locality: 0, x: 0, y: 0 };
+    /// **Putting something into the world requires saying where.**
+    ///
+    /// There is no default destination: "the current ground" is a guess,
+    /// and a work order that finishes a wardrobe somebody cannot carry
+    /// has to be told what to do with it rather than quietly dropping it
+    /// at the origin.
+    pub fn add(&mut self, item: ItemInstance, at: Placement) -> Id<ItemInstance> {
+        let id = self.items.add(item);
+        self.where_.insert(id.bits(), at);
+        if let Placement::Contained { container } = at {
+            if let Some(c) = self.items.get_mut(container) {
+                c.contents.push(id);
+            }
         }
-        self.items.add(item)
+        id
     }
 
-    /// Add it and say where it goes.
-    pub fn add_at(&mut self, mut item: ItemInstance, at: Placement) -> Id<ItemInstance> {
-        item.placement = at;
-        self.items.add(item)
+    /// On the floor, for a caller that genuinely does not care where.
+    pub fn add_loose(&mut self, item: ItemInstance) -> Id<ItemInstance> {
+        self.add(item, Placement::anywhere())
     }
 
     pub fn get(&self, id: Id<ItemInstance>) -> Option<&ItemInstance> {
@@ -1801,14 +1842,14 @@ impl Store {
         if container == thing {
             return Err(Refusal::WouldContainItself);
         }
+        // **A move, not a copy.** Something fitted to a lorry or
+        // committed to a work order is not also on a shelf.
+        if self.is_installed(thing) {
+            return Err(Refusal::AlreadyInstalled);
+        }
         let (cdef, tdef, tmass) = {
             let c = self.items.get(container).ok_or(Refusal::NoSuchItem)?;
             let t = self.items.get(thing).ok_or(Refusal::NoSuchItem)?;
-            // **A move, not a copy.** Something fitted to a lorry or
-            // committed to a work order is not also on a shelf.
-            if t.placement.is_installed() {
-                return Err(Refusal::AlreadyInstalled);
-            }
             (c.definition, t.definition, t.mass_kg)
         };
         let cd = cat.get(cdef).ok_or(Refusal::NoSuchItem)?;
@@ -1831,9 +1872,7 @@ impl Store {
             })
             .ok_or(Refusal::NoRoom)?;
         let _ = pocket;
-        self.detach(thing);
-        self.items.get_mut(container).unwrap().contents.push(thing);
-        self.items.get_mut(thing).unwrap().placement = Placement::Contained { container };
+        self.place(thing, Placement::Contained { container });
         Ok(())
     }
 
@@ -1849,11 +1888,11 @@ impl Store {
         let (hdef, pdef) = {
             let h = self.items.get(host).ok_or(Refusal::NoSuchItem)?;
             let p = self.items.get(part).ok_or(Refusal::NoSuchItem)?;
-            if !p.available() {
-                return Err(Refusal::AlreadyInstalled);
-            }
             (h.definition, p.definition)
         };
+        if !self.available(part) {
+            return Err(Refusal::AlreadyInstalled);
+        }
         let hd = cat.get(hdef).ok_or(Refusal::NoSuchItem)?;
         let pd = cat.get(pdef).ok_or(Refusal::NoSuchItem)?;
         let fitting = pd.fits.ok_or(Refusal::DoesNotFit)?;
@@ -1868,12 +1907,13 @@ impl Store {
         self.detach(part);
         let at = self.items.get(host).unwrap().attachments.len();
         self.items.get_mut(host).unwrap().attachments.push((fitting, part));
-        self.items.get_mut(part).unwrap().placement =
-            Placement::Installed { host: Host::Item(host), mount: at };
+        self.where_
+            .insert(part.bits(), Placement::Installed { host: Host::Item(host), mount: at });
         Ok(fitting)
     }
 
-    /// Take it off again. Returns the same handle it was installed with.
+    /// Take it off again, onto the ground. Returns the same handle it was
+    /// installed with.
     pub fn uninstall(
         &mut self,
         host: Id<ItemInstance>,
@@ -1882,9 +1922,7 @@ impl Store {
         let h = self.items.get_mut(host).ok_or(Refusal::NoSuchItem)?;
         let at = h.attachments.iter().position(|a| a.0 == fitting).ok_or(Refusal::NothingThere)?;
         let (_, part) = h.attachments.remove(at);
-        if let Some(p) = self.items.get_mut(part) {
-            p.placement = Placement::Nowhere;
-        }
+        self.where_.insert(part.bits(), Placement::anywhere());
         Ok(part)
     }
 
@@ -1892,43 +1930,88 @@ impl Store {
     /// every move: without it a part fitted to a lorry would still be
     /// listed in the crate it came out of.
     fn detach(&mut self, thing: Id<ItemInstance>) {
-        let was = self.items.get(thing).map(|i| i.placement).unwrap_or_default();
+        let was = self.where_.remove(&thing.bits());
         match was {
-            Placement::Contained { container } => {
+            Some(Placement::Contained { container }) => {
                 if let Some(c) = self.items.get_mut(container) {
                     c.contents.retain(|&x| x != thing);
                 }
             }
-            Placement::Installed { host: Host::Item(host), .. } => {
+            Some(Placement::Installed { host: Host::Item(host), .. }) => {
                 if let Some(h) = self.items.get_mut(host) {
                     h.attachments.retain(|a| a.1 != thing);
                 }
             }
             _ => {}
         }
-        if let Some(i) = self.items.get_mut(thing) {
-            i.placement = Placement::Nowhere;
-        }
     }
 
     /// Put it down somewhere, taking it out of wherever it was.
     pub fn place(&mut self, thing: Id<ItemInstance>, where_: Placement) {
         self.detach(thing);
-        if let Some(i) = self.items.get_mut(thing) {
-            i.placement = where_;
+        if !self.items.holds(thing) {
+            return;
         }
+        if let Placement::Contained { container } = where_ {
+            if let Some(c) = self.items.get_mut(container) {
+                c.contents.push(thing);
+            }
+        }
+        self.where_.insert(thing.bits(), where_);
     }
 
-    /// Where it is.
-    pub fn placement(&self, thing: Id<ItemInstance>) -> Placement {
-        self.items.get(thing).map(|i| i.placement).unwrap_or_default()
+    /// Where it is, if it is anywhere. `None` means it is not a live item
+    /// — which is a different answer from "at the origin".
+    pub fn placement(&self, thing: Id<ItemInstance>) -> Option<Placement> {
+        self.where_.get(&thing.bits()).copied()
     }
 
-    /// **Destroying the mount destroys what was in it.** It must not fall
-    /// out loose and it must certainly not exist twice.
-    pub fn destroy(&mut self, thing: Id<ItemInstance>) {
+    /// Whether it is free to be picked up, fitted or consumed.
+    pub fn available(&self, thing: Id<ItemInstance>) -> bool {
+        self.placement(thing).map(|p| p.available()).unwrap_or(false)
+    }
+
+    pub fn is_installed(&self, thing: Id<ItemInstance>) -> bool {
+        self.placement(thing).map(|p| p.is_installed()).unwrap_or(false)
+    }
+
+    /// Whether it could be folded into a lot: its particulars must survive
+    /// it, and it must be loose stock rather than fitted to something.
+    pub fn aggregatable(&self, thing: Id<ItemInstance>) -> bool {
+        self.items.get(thing).map(|i| i.aggregatable()).unwrap_or(false)
+            && self.placement(thing).map(|p| p.available()).unwrap_or(false)
+    }
+
+    /// **It stopped being a live item.**
+    ///
+    /// Whatever came off it is separate objects placed separately; this
+    /// only says that *this* one has gone, and leaves a tombstone so the
+    /// books can still be checked.
+    pub fn end(
+        &mut self,
+        thing: Id<ItemInstance>,
+        end: ItemEnd,
+        day: u32,
+    ) -> Option<ItemInstance> {
         self.detach(thing);
-        self.items.remove(thing);
+        let gone = self.items.remove(thing)?;
+        self.graves.push(Tombstone {
+            was: gone.definition,
+            end,
+            mass_kg: gone.mass_kg,
+            on_day: day,
+        });
+        Some(gone)
+    }
+
+    /// Everything that has gone, and how.
+    pub fn graves(&self) -> &[Tombstone] {
+        &self.graves
+    }
+
+    /// How many live items there are.
+    pub fn live(&self) -> usize {
+        self.items.len()
     }
 
     /// Mass of a thing and everything in or on it.
