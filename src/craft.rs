@@ -22,6 +22,7 @@ use crate::id::Id;
 use crate::item::{
     AssemblyRecord, Capability, Catalogue, Condition, DefId, DomainQuality, Family, Installed,
     ItemInstance, Joint, JointMethod, Placement, Provides, Quality, Store, Substitution,
+    WorkStatus,
 };
 use crate::material::{Amount, Composition, Fit, Material, Quantity};
 use crate::rng::Rng;
@@ -1182,6 +1183,10 @@ impl WorkOrder {
         }
         let _ = was;
         store.place(parked, to);
+        // **Collected.** The machine is free and the thing is ordinary
+        // stock again — and it is the same object, with the quality it
+        // came out with.
+        store.set_status(parked, WorkStatus::Available);
         Ok(())
     }
 
@@ -1219,11 +1224,15 @@ impl WorkOrder {
                     d.pockets.iter().any(|p| used + kg <= p.max_kg)
                 })
                 .unwrap_or(false),
-            // You cannot finish a chair into a bracket, into another
-            // order, or onto a machine that is already holding one.
-            Placement::Installed { .. }
-            | Placement::InWorkOrder { .. }
-            | Placement::AwaitingUnload { .. } => false,
+            // You cannot finish a chair into a bracket, and you cannot
+            // finish one into a fixture that is already holding something.
+            Placement::Installed { .. } => false,
+            Placement::Fixtured { resource, slot, .. } => !store.items.iter().any(|(id, _)| {
+                store.placement(id)
+                    == Some(Placement::Fixtured { resource, slot, clamped: false })
+                    || store.placement(id)
+                        == Some(Placement::Fixtured { resource, slot, clamped: true })
+            }),
         }
     }
 
@@ -1268,16 +1277,20 @@ impl WorkOrder {
         let at = if room {
             self.output
         } else {
-            // **It exists.** The work is done and the thing is real; what
-            // is missing is somewhere to put it, so it sits on the bench
-            // and the bench stays busy until somebody moves it.
-            Placement::AwaitingUnload { order: self.id, occupying: self.workplace }
+            // **It exists, and it is in the output tray.** The work is
+            // done and the thing is real; what is missing is somewhere to
+            // put it, so it sits in the fixture and the machine stays busy
+            // until somebody comes and fetches it. Not clamped — anybody
+            // can lift a finished chair off a bench — but the bench is not
+            // free while it is there.
+            Placement::Fixtured { resource: self.workplace, slot: 0, clamped: false }
         };
         let id = store.add(made, at);
         self.delivered = true;
         if room {
             Ok(id)
         } else {
+            store.set_status(id, WorkStatus::AwaitingUnload { order: self.id });
             Err(Blocked::NoRoom { parked: id })
         }
     }

@@ -1602,8 +1602,11 @@ fn deepen(c: &mut Catalogue) {
     let trim = c.add(def("door trim panel", Family::SparePart, Form::Sheet, d(0.9, 0.6, 0.03),
                          2.0, &[(Abs, 0.75), (Polyester, 0.25)]));
 
-    let door = c.add(def("car door", Family::SparePart, Form::Assembly, d(1.0, 1.0, 0.15),
-                         28.1, &[(MildSteel, 1.0)]));
+    let mut car_door = def("car door", Family::SparePart, Form::Assembly, d(1.0, 1.0, 0.15),
+                           28.1, &[(MildSteel, 1.0)]);
+    car_door.fits = Some(Fitting::Opening);
+    car_door.repair_with = vec![MildSteel, Paint, Glass];
+    let door = c.add(car_door);
     c.set_bill(
         door,
         Bom::assembled(vec![
@@ -1716,17 +1719,11 @@ pub enum Placement {
     Carried { person: u64 },
     Contained { container: Id<ItemInstance> },
     Installed { host: Host, mount: usize },
-    /// Reserved by a work order. Not available to be fitted to anything.
-    InWorkOrder { order: u64 },
-    /// **Made, and still on the machine.**
-    ///
-    /// "Completion waits" is only honest if the finished object already
-    /// physically exists: the inputs are consumed, the quality is settled
-    /// and cannot be rerolled, and the oven or bench it is sitting in is
-    /// still occupied by it. Otherwise a finished washing machine exists
-    /// nowhere while its machine goes free, which is `Nowhere` coming back
-    /// in through the scheduler.
-    AwaitingUnload { order: u64, occupying: u32 },
+    /// **In a machine**: clamped in the press, on the bed, or sitting in
+    /// its output tray. A real place, which is why it can hold the machine
+    /// up and why somebody can pick a cool panel out of a tray and walk
+    /// off with it.
+    Fixtured { resource: u32, slot: u32, clamped: bool },
 }
 
 impl Placement {
@@ -1736,12 +1733,16 @@ impl Placement {
         Placement::Ground { locality: 0, x: 0, y: 0 }
     }
 
-    /// Whether it is free to be picked up, fitted or consumed.
-    pub fn available(self) -> bool {
-        matches!(
-            self,
-            Placement::Ground { .. } | Placement::Carried { .. } | Placement::Contained { .. }
-        )
+    /// **Whether it can be got at.** A panel in an output tray can be
+    /// picked up and walked off with; the same panel clamped in the press
+    /// cannot, and that is a fact about where it is rather than about who
+    /// has booked it.
+    pub fn reachable(self) -> bool {
+        match self {
+            Placement::Installed { .. } => false,
+            Placement::Fixtured { clamped, .. } => !clamped,
+            _ => true,
+        }
     }
 
     pub fn is_installed(self) -> bool {
@@ -1750,18 +1751,62 @@ impl Placement {
 
     pub fn why_not(self) -> &'static str {
         match self {
-            Placement::Installed { .. } => "it is already fitted to something",
-            Placement::InWorkOrder { .. } => "it is committed to a work order",
-            Placement::AwaitingUnload { .. } => "it is finished and still on the machine",
-            _ => "it is available",
+            Placement::Installed { .. } => "it is fitted to something",
+            Placement::Fixtured { clamped: true, .. } => "it is clamped in a machine",
+            _ => "it is where it can be got at",
         }
     }
 
-    /// What it is holding up, if anything.
+    /// Which machine it is holding up, if any.
     pub fn occupying(self) -> Option<u32> {
         match self {
-            Placement::AwaitingUnload { occupying, .. } => Some(occupying),
+            Placement::Fixtured { resource, .. } => Some(resource),
             _ => None,
+        }
+    }
+}
+
+/// **What a thing is spoken for, which is not where it is.**
+///
+/// A work order is not a place. A reserved board is physically on its
+/// rack; a workpiece part way through a stamping is physically in the
+/// press; a finished panel awaiting collection is physically in the output
+/// tray. Folding any of that into the placement puts `Nowhere` back under
+/// a more informative name.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum WorkStatus {
+    #[default]
+    Available,
+    /// Somebody has claimed it for a job that has not started. It has not
+    /// moved.
+    Reserved { order: u64 },
+    /// It is being worked on right now, and this is which operation.
+    Wip { order: u64, operation: usize },
+    /// Finished, and still where it was made. Whoever wants it has to come
+    /// and fetch it, and until they do the machine is not free.
+    AwaitingUnload { order: u64 },
+}
+
+impl WorkStatus {
+    pub fn free(self) -> bool {
+        matches!(self, WorkStatus::Available)
+    }
+
+    pub fn order(self) -> Option<u64> {
+        match self {
+            WorkStatus::Available => None,
+            WorkStatus::Reserved { order }
+            | WorkStatus::Wip { order, .. }
+            | WorkStatus::AwaitingUnload { order } => Some(order),
+        }
+    }
+
+    pub fn why_not(self) -> &'static str {
+        match self {
+            WorkStatus::Available => "it is free",
+            WorkStatus::Reserved { .. } => "it is committed to a work order",
+            WorkStatus::Wip { .. } => "it is being worked on",
+            WorkStatus::AwaitingUnload { .. } => "it is finished and not yet collected",
         }
     }
 }
@@ -1812,6 +1857,11 @@ pub struct ItemInstance {
     pub ownership: Ownership,
     /// A name somebody gave it. Named things are never aggregated.
     pub given_name: Option<String>,
+    /// **What it is on the way to being**, for something part way through
+    /// a plan. `None` for an ordinary finished object; `Some` for a blank,
+    /// a pressed shell or a coated panel, which are real things with a
+    /// geometry and a history and no catalogue entry of their own.
+    pub shape: Option<crate::wip::Shape>,
 }
 
 impl ItemInstance {
@@ -1839,6 +1889,7 @@ impl ItemInstance {
             provenance: Provenance::default(),
             ownership: Ownership::default(),
             given_name: None,
+            shape: None,
         }
     }
 
@@ -1958,6 +2009,9 @@ pub struct Store {
     /// A `BTreeMap`, because a save must write in the same order every
     /// time.
     where_: BTreeMap<u64, Placement>,
+    /// **What it is spoken for.** Kept apart from where it is, because a
+    /// reserved board has not moved off its rack.
+    status_: BTreeMap<u64, WorkStatus>,
     graves: Vec<Tombstone>,
 }
 
@@ -2131,9 +2185,35 @@ impl Store {
         self.where_.get(&thing.bits()).copied()
     }
 
-    /// Whether it is free to be picked up, fitted or consumed.
+    /// **Whether it can be picked up, fitted or consumed**, which needs
+    /// both answers: it has to be somewhere it can be got at *and* not
+    /// spoken for by somebody else.
     pub fn available(&self, thing: Id<ItemInstance>) -> bool {
-        self.placement(thing).map(|p| p.available()).unwrap_or(false)
+        self.placement(thing).map(|p| p.reachable()).unwrap_or(false)
+            && self.status(thing).free()
+    }
+
+    /// What it is spoken for. `Available` for anything nobody has claimed.
+    pub fn status(&self, thing: Id<ItemInstance>) -> WorkStatus {
+        self.status_.get(&thing.bits()).copied().unwrap_or_default()
+    }
+
+    /// **Claim it, or let it go.** Reserving does not move it.
+    pub fn set_status(&mut self, thing: Id<ItemInstance>, status: WorkStatus) {
+        if status.free() {
+            self.status_.remove(&thing.bits());
+        } else {
+            self.status_.insert(thing.bits(), status);
+        }
+    }
+
+    /// Why it cannot be had — where it is, or who has it.
+    pub fn why_not(&self, thing: Id<ItemInstance>) -> &'static str {
+        match self.placement(thing) {
+            None => "it is not a live item",
+            Some(p) if !p.reachable() => p.why_not(),
+            _ => self.status(thing).why_not(),
+        }
     }
 
     pub fn is_installed(&self, thing: Id<ItemInstance>) -> bool {
@@ -2144,7 +2224,7 @@ impl Store {
     /// it, and it must be loose stock rather than fitted to something.
     pub fn aggregatable(&self, thing: Id<ItemInstance>) -> bool {
         self.items.get(thing).map(|i| i.aggregatable()).unwrap_or(false)
-            && self.placement(thing).map(|p| p.available()).unwrap_or(false)
+            && self.available(thing)
     }
 
     /// **It stopped being a live item.**
@@ -2159,6 +2239,7 @@ impl Store {
         day: u32,
     ) -> Option<ItemInstance> {
         self.detach(thing);
+        self.status_.remove(&thing.bits());
         let gone = self.items.remove(thing)?;
         self.graves.push(Tombstone {
             was: gone.definition,

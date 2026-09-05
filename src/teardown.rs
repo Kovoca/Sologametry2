@@ -279,6 +279,12 @@ impl Recovered {
         self.fuel.iter().find(|p| p.0 == m).map(|p| p.1).unwrap_or(0.0)
     }
 
+    /// For a caller that has worked out a recovery itself — `wip` releases
+    /// real component identities and reports the rest as material.
+    pub fn add_material_public(&mut self, m: Material, kg: f64) {
+        self.add_material(m, kg)
+    }
+
     fn add_material(&mut self, m: Material, kg: f64) {
         if kg <= 0.0 {
             return;

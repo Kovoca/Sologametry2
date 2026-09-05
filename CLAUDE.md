@@ -1467,6 +1467,116 @@ what has yet to be done is done differently. A model that re-derived
 elapsed time from the current tool would rewrite history every time the
 lights flickered.
 
+## From the rack to the finished thing (`src/wip.rs`)
+
+**An operation is an irreversible physical transaction.** Between the
+sheet on the rack and the door on the car there is a sequence of real
+objects — a blank, a stamped shell, a drilled shell, a coated shell — and
+each of them can be seen, moved, stolen, damaged or left stranded when the
+power goes off. A model that jumps from consumed inputs to a completed
+output cannot say any of that, and it encodes the material-only shortcut
+into every cutting, stamping and forming operation it will ever have.
+
+```text
+inputs from stock and environment
+  = work in progress retained + outputs + scrap + emissions + residue
+```
+
+**The environmental terms are not decoration.** Painting a panel with half
+a kilogram of paint at 45% solids puts 225 g on the panel and 275 g up the
+extractor; drying takes water out of the wood and puts it in the air;
+melting loses 3% to the flue.
+
+### A work order is not a place
+
+`Placement` says where a thing is — ground, carried, contained, installed,
+or **fixtured** in a machine. `WorkStatus` says what it is spoken for —
+available, reserved, work in progress, or awaiting collection. Folding
+either into the other puts `Nowhere` back under a more informative name.
+
+So **a reserved board is still on its rack**, where anybody walking past
+can see it; a panel clamped in the press cannot be picked up and one
+sitting in the output tray can; and a finished door holds the bay it was
+made in until somebody comes and fetches it.
+
+### The identity rules
+
+| | what happens to identity |
+|---|---|
+| cutting, splitting | **one ends, two begin**, both remembering what they came off |
+| bending, drilling, coating, repairing, heat-treating | **preserved** |
+| joining | a new assembly, and **the components stay themselves inside it** |
+| melting, mixing | the inputs end; a new material lot with no lineage |
+| completion | the workpiece is **promoted**, not replaced |
+
+That last row matters more than it looks. The thing that has been cut,
+pressed, drilled and painted *is* the door; making a fresh door and
+discarding the workpiece would throw away its lineage, its as-built record
+and every substitution anybody made on the way. And the one before it is
+what lets a door give back **the** second-hand latch somebody fitted
+rather than the latch the design expected.
+
+**No catalogue definition for every temporary shape.** A `Shape` carries
+the geometry, the material state, the surface, the features cut into it
+and where it came from. Only standardised intermediates — dough, chair
+parts, a primed case — earn a definition, because those are things a
+person puts on a shelf.
+
+### There is no universal 63% complete
+
+What "part way through" means is different for every kind of work, and
+once it is stated properly the interruption behaviour stops being a rule
+and becomes a consequence:
+
+| | progress is |
+|---|---|
+| cutting | how far along the path |
+| heating | the temperature |
+| drying | the moisture content |
+| curing | how far the reaction has gone |
+| welding | segments laid |
+| coating | layers and microns |
+| assembly | joints made |
+| machining | features cut, and the allowance left |
+
+A cut keeps its path through an outage. A kiln loses its heat at its own
+rate. A cure carries on by itself, because it does not know the power is
+off. Two operations at the same *fraction* are in completely different
+states, which is exactly why one number could not carry it.
+
+### Planning failure and execution failure are not the same
+
+**A reservation that cannot secure everything rolls back completely** —
+that half is allowed to undo itself, and a half-taken booking would leave
+the next order queueing behind a ghost.
+
+**An operation that has begun never rolls physics back.** A stamping that
+goes wrong leaves a malformed panel, the electricity spent, the tooling
+worn, the offcut still on the rack and the press still occupied. It does
+not put the pristine sheet back, and a model that lets it has invented a
+way to unmake things.
+
+And **rework goes at the feature that is wrong**: putting a bend right
+does not re-drill the panel.
+
+### The whole layer in one object
+
+`a_car_door_from_the_rack_to_the_scrap_heap` runs it end to end — reserve,
+cut, press, punch, galvanise, paint, form the frame, weld the structure,
+fit the regulator and latch and glass and wiring and seals, inspect, park
+it in the bay, move it to store, hang it on a van, take it off and
+dismantle it. Every gram accounted for at each step, and the offcut is
+still on the rack at the end, because it is a real object.
+
+### Not everything that stops being used is thrown away
+
+A sound washing machine with no scrap dealer nearby is not buried. It sits
+in a yard, or goes up for sale, or waits for a lorry, or has its motor
+taken for something else, or is simply abandoned. `Disposition` carries
+the five, and only when none of them applies is destroying it the answer —
+which is what the household basket will need before it can model repair,
+replacement and the second-hand trade.
+
 ## Who has the bench, and when (`src/schedule.rs`)
 
 **The scheduler does not model crafting. It allocates the three kinds of

@@ -351,21 +351,63 @@ pub enum Surface {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct NominalMass {
     pub expected: f64,
-    /// As a fraction. Tight for a machined part, loose for a thing full of
-    /// fluid or timber.
-    pub tolerance: f64,
     pub provenance: MassProvenance,
+    /// **How sure anybody is of the authored figure.** A measurement is
+    /// firm; a placeholder is a guess. This says nothing about whether
+    /// real examples differ from each other.
+    pub source_uncertainty: f64,
+    /// **How much real examples vary.** A machined part is held to a
+    /// thousandth; a timber board varies with moisture and a washing
+    /// machine varies with what is in the pump. This says nothing about
+    /// whether the authored figure is any good.
+    pub manufacturing_variation: f64,
 }
 
 impl NominalMass {
+    /// The provenance supplies **defaults** for both, and does not
+    /// determine either. A measured figure for a thing that genuinely
+    /// varies is a firm number about a loose population.
     pub fn of(expected: f64, provenance: MassProvenance) -> Self {
-        NominalMass { expected, tolerance: provenance.usual_tolerance(), provenance }
+        NominalMass {
+            expected,
+            provenance,
+            source_uncertainty: provenance.usual_uncertainty(),
+            manufacturing_variation: 0.03,
+        }
     }
 
-    pub fn within(&self, actual: f64) -> bool {
-        (actual - self.expected).abs() <= self.expected * self.tolerance + 1e-9
+    pub fn varying_by(mut self, fraction: f64) -> Self {
+        self.manufacturing_variation = fraction;
+        self
+    }
+
+    pub fn known_to(mut self, fraction: f64) -> Self {
+        self.source_uncertainty = fraction;
+        self
+    }
+
+    /// Whether an actual example of this weight is an ordinary one. This
+    /// is the **population** question, and it uses manufacturing
+    /// variation.
+    pub fn an_ordinary_example(&self, actual: f64) -> bool {
+        (actual - self.expected).abs()
+            <= self.expected * self.manufacturing_variation + 1e-9
+    }
+
+    /// Whether the authored figure could plausibly be this instead. This
+    /// is the **authoring** question, and it uses source uncertainty.
+    pub fn could_have_been(&self, other: f64) -> bool {
+        (other - self.expected).abs() <= self.expected * self.source_uncertainty + 1e-9
     }
 }
+
+/// **Numerical rounding, and nothing else.**
+///
+/// A bill of materials either adds up or it does not. This is the width of
+/// a floating-point sum over a few dozen terms, and it must never be used
+/// to excuse a bill that is genuinely out — which is what a
+/// provenance-scaled tolerance in the validator quietly did.
+pub const BALANCE_EPSILON: f64 = 1e-6;
 
 /// Where a number came from is part of the number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -384,8 +426,10 @@ pub enum MassProvenance {
 }
 
 impl MassProvenance {
-    /// How far a figure of this kind may sensibly be out.
-    pub fn usual_tolerance(self) -> f64 {
+    /// **How far the authored figure may be out** — a default, and only a
+    /// default. It is not how much real examples vary, and it is
+    /// emphatically not what the validator will accept in a bill.
+    pub fn usual_uncertainty(self) -> f64 {
         match self {
             MassProvenance::Measured => 0.01,
             MassProvenance::ManufacturerSpecification => 0.03,
@@ -712,11 +756,9 @@ pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
     let mut out = Vec::new();
 
     for d in cat.iter() {
-        // **The tolerance belongs to the figure, not to the validator.** A
-        // measured mass may be out by a percent; a designed placeholder
-        // may be out by fifteen, and saying so is more honest than
-        // pretending every number in the catalogue is a measurement.
-        let tolerance = d.mass.tolerance;
+        // **A bill either adds up or it does not.** How sure anybody is of
+        // the declared figure, and how much real examples vary, are
+        // different questions and neither of them excuses arithmetic.
         let say = |flaw: Flaw| Finding { what: d.id, name: d.name, flaw };
 
         if d.nominal_mass_kg <= 0.0 {
@@ -733,7 +775,7 @@ pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
         // ---- it adds up ------------------------------------------
         let bill = d.bill.declared_mass();
         if d.nominal_mass_kg > 0.0
-            && (bill - d.nominal_mass_kg).abs() > d.nominal_mass_kg * tolerance
+            && (bill - d.nominal_mass_kg).abs() > BALANCE_EPSILON * d.nominal_mass_kg.max(1.0)
         {
             out.push(say(Flaw::MassMismatch { declared: d.nominal_mass_kg, bill }));
         }

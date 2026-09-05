@@ -14,6 +14,7 @@ use scale_sim::fitted::{
 };
 use scale_sim::item::{
     standard_catalogue, Catalogue, Host, ItemInstance, ItemLot, JointMethod, Placement, Store,
+    WorkStatus,
 };
 use scale_sim::material::Material;
 use scale_sim::teardown::{Recovered, Teardown};
@@ -123,10 +124,13 @@ fn something_spoken_for_is_not_available() {
     let (mut van, _) = a_van(&cat, &mut store);
     let bracket = van.mount_named("alternator bracket").unwrap();
 
-    // Committed to a work order, or already bolted to something else.
+    // **Where it is and what it is spoken for are two different
+    // refusals.** A board reserved for a job has not moved off its rack;
+    // a panel clamped in a press has not been claimed by anybody. Both
+    // stop you fitting it, for different reasons.
     for (state, expect) in [
-        (Placement::InWorkOrder { order: 9 }, "committed"),
-        (Placement::Installed { host: Host::Vehicle(77), mount: 0 }, "already fitted"),
+        (Placement::Installed { host: Host::Vehicle(77), mount: 0 }, "fitted"),
+        (Placement::Fixtured { resource: 3, slot: 1, clamped: true }, "clamped"),
     ] {
         let alt = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
         store.place(alt, state);
@@ -137,6 +141,27 @@ fn something_spoken_for_is_not_available() {
             other => panic!("{state:?} was accepted: {other:?}"),
         }
     }
+    for (status, expect) in [
+        (WorkStatus::Reserved { order: 9 }, "committed"),
+        (WorkStatus::Wip { order: 9, operation: 2 }, "being worked on"),
+        (WorkStatus::AwaitingUnload { order: 9 }, "not yet collected"),
+    ] {
+        let alt = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
+        store.set_status(alt, status);
+        // **It has not moved.** A reserved board is still on its rack.
+        assert!(matches!(store.placement(alt), Some(Placement::Ground { .. })));
+        match van.install(&mut store, bracket, alt, &cat, &[], None, 1) {
+            Err(WontFit::NotAvailable(why)) => {
+                assert!(why.contains(expect), "the refusal said {why:?} for {status:?}")
+            }
+            other => panic!("{status:?} was accepted: {other:?}"),
+        }
+    }
+    // And a panel sitting in an output tray is reachable: somebody can
+    // pick it up and walk off with it.
+    let tray = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
+    store.place(tray, Placement::Fixtured { resource: 3, slot: 0, clamped: false });
+    assert!(store.available(tray), "a cool part in a tray could not be picked up");
 
     // **And a thing that has ended is not somewhere else — it is not
     // anywhere, because it is not an item any more.** That is a different

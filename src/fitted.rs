@@ -220,10 +220,8 @@ impl FittedVehicle {
         }
         let takes = m.takes;
         let joint = m.joint;
-        match store.placement(item) {
-            None => return Err(WontFit::NotAvailable("it is not a live item")),
-            Some(p) if !p.available() => return Err(WontFit::NotAvailable(p.why_not())),
-            _ => {}
+        if !store.available(item) {
+            return Err(WontFit::NotAvailable(store.why_not(item)));
         }
         {
             let i = store.get(item).ok_or(WontFit::NoSuchItem)?;
@@ -683,10 +681,8 @@ impl WallAssembly {
             return Err(WontFit::Occupied);
         }
         let (takes, joint) = (m.takes, m.joint);
-        match store.placement(item) {
-            None => return Err(WontFit::NotAvailable("it is not a live item")),
-            Some(p) if !p.available() => return Err(WontFit::NotAvailable(p.why_not())),
-            _ => {}
+        if !store.available(item) {
+            return Err(WontFit::NotAvailable(store.why_not(item)));
         }
         {
             let i = store.get(item).ok_or(WontFit::NoSuchItem)?;
@@ -796,6 +792,7 @@ impl WallAssembly {
             provenance: Default::default(),
             ownership: Default::default(),
             given_name: None,
+            shape: None,
         };
         wall.materials = record.actual_materials();
         wall.assembly = Some(record);

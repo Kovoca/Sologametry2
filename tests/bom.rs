@@ -600,16 +600,29 @@ fn a_nominal_mass_knows_how_firm_it_is() {
 
     for d in cat.iter() {
         assert!((d.mass.expected - d.nominal_mass_kg).abs() < 1e-9);
-        assert!(d.mass.tolerance > 0.0, "{} admits no variation at all", d.name);
+        assert!(d.mass.source_uncertainty > 0.0, "{} admits no doubt at all", d.name);
+        assert!(d.mass.manufacturing_variation > 0.0, "{} says every one is identical", d.name);
     }
 
-    // A measured figure is held far tighter than a designed one, which is
-    // the whole point of recording where it came from.
+    // **Three different things, and they are not one.** How sure anybody
+    // is of the figure, how much real examples vary, and what a bill is
+    // allowed to be out by are separate questions.
     let measured = NominalMass::of(70.0, MassProvenance::Measured);
     let guessed = NominalMass::of(70.0, MassProvenance::DesignedPlaceholder);
-    assert!(measured.tolerance < guessed.tolerance / 3.0);
-    assert!(measured.within(70.5) && !measured.within(78.0));
-    assert!(guessed.within(78.0), "a placeholder was held to a measurement tolerance");
+    assert!(measured.source_uncertainty < guessed.source_uncertainty / 3.0);
+    assert!(measured.could_have_been(70.5) && !measured.could_have_been(78.0));
+    assert!(guessed.could_have_been(78.0), "a placeholder was held to a measurement");
+
+    // A firm figure about a population that genuinely varies: the two
+    // move independently.
+    let timber = NominalMass::of(6.75, MassProvenance::Measured).varying_by(0.12);
+    assert!(timber.source_uncertainty < 0.02, "the measurement stopped being firm");
+    assert!(timber.an_ordinary_example(7.4), "a damp board was called abnormal");
+    assert!(!timber.could_have_been(7.4), "the measurement was loosened by the timber");
+
+    // **And the validator gets neither of them.** A bill adds up or it
+    // does not, to floating-point width.
+    assert!(scale_sim::bom::BALANCE_EPSILON < 1e-5);
 
     // And an instance weighs what is actually in it, not the nominal.
     let mut one = ItemInstance::one(&cat, cat.must("washing machine"));
