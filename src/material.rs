@@ -45,6 +45,13 @@ pub enum Material {
     Copper,
     Brass,
     Lead,
+    /// Galvanising. What keeps a car door from rusting through, and the
+    /// reason a zinc-coated panel welds differently from a bare one.
+    Zinc,
+    /// Cell chemistry, standing in for the whole family.
+    Lithium,
+    /// What is inside a cell. Hazardous, and not recoverable as itself.
+    Electrolyte,
     Oak,
     Pine,
     Plywood,
@@ -104,6 +111,9 @@ impl Material {
             Copper => 8960.0,
             Brass => 8500.0,
             Lead => 11340.0,
+            Zinc => 7140.0,
+            Lithium => 534.0,
+            Electrolyte => 1200.0,
             Oak => 750.0,
             Pine => 500.0,
             Plywood => 600.0,
@@ -142,16 +152,17 @@ impl Material {
         use Material::*;
         match self {
             MildSteel | ToolSteel | Stainless | Aluminium | Copper | Brass | Lead | Solder
-            | Glass | Nichrome => Recovers::Feedstock,
+            | Glass | Nichrome | Zinc => Recovers::Feedstock,
             Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Gypsum
-            | Silicon | Ferrite | Mica => {
+            | Silicon | Ferrite | Mica | Lithium => {
                 Recovers::Downcycled
             }
             Oak | Pine | Plywood | Particleboard | Cotton | Wool | Leather | Thread | Rubber => {
                 Recovers::Fuel
             }
             // Cured, set, cooked or reacted.
-            Adhesive | Paint | Mortar | Ceramic | Propellant | Lubricant | Flour | Water => {
+            Adhesive | Paint | Mortar | Ceramic | Propellant | Lubricant | Electrolyte
+            | Flour | Water => {
                 Recovers::Nothing
             }
         }
@@ -180,6 +191,9 @@ impl Material {
             Copper => "copper",
             Brass => "brass",
             Lead => "lead",
+            Zinc => "zinc",
+            Lithium => "lithium",
+            Electrolyte => "electrolyte",
             Oak => "oak",
             Pine => "pine",
             Plywood => "plywood",

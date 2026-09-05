@@ -68,6 +68,11 @@ pub struct Bom {
     /// Small, declared, and **not massless**. Solder on a board, the
     /// magnets in a speaker, the label on a tin.
     pub trace: Vec<(Material, f64)>,
+    /// **Pressed, drawn, cast or machined pieces that are not separately
+    /// traded components and are not anonymous stuff either.** A door
+    /// skin, an appliance panel, a bracket. Separated carefully they are
+    /// still that shape; cut or crushed they become the material.
+    pub formed: Vec<Formed>,
 }
 
 impl Bom {
@@ -105,6 +110,11 @@ impl Bom {
         self
     }
 
+    pub fn with_formed(mut self, formed: &[Formed]) -> Self {
+        self.formed = formed.to_vec();
+        self
+    }
+
     pub fn is_empty(&self) -> bool {
         self.components.is_empty()
             && self.bulk.is_empty()
@@ -112,9 +122,15 @@ impl Bom {
             && self.coatings.is_empty()
             && self.fluids.is_empty()
             && self.trace.is_empty()
+            && self.formed.is_empty()
     }
 
-    /// Everything that is not a sub-assembly, by mass.
+    pub fn formed_mass(&self) -> f64 {
+        self.formed.iter().map(|f| f.kg).sum()
+    }
+
+    /// Everything that is not a sub-assembly and not a formed part, by
+    /// mass. Genuine stuff: sealer, adhesive, paint, grease, trace.
     pub fn loose_mass(&self) -> f64 {
         [&self.bulk, &self.joints, &self.coatings, &self.fluids, &self.trace]
             .iter()
@@ -123,11 +139,23 @@ impl Bom {
             .sum()
     }
 
+    /// **The three ways mass gets into a thing**, which is what a printed
+    /// tree has to show if it is to be audited rather than believed.
+    pub fn reconcile(&self) -> Reconciliation {
+        Reconciliation {
+            components: self.components.iter().map(|c| c.kg).sum(),
+            formed: self.formed_mass(),
+            direct: self.loose_mass(),
+        }
+    }
+
     /// **The total has to reconcile.** Components plus joints plus
     /// coatings plus fluids plus declared trace — and no
     /// "miscellaneous parts" line without a mass on it.
     pub fn declared_mass(&self) -> f64 {
-        self.components.iter().map(|c| c.kg).sum::<f64>() + self.loose_mass()
+        self.components.iter().map(|c| c.kg).sum::<f64>()
+            + self.formed_mass()
+            + self.loose_mass()
     }
 
     /// Every material in it, one level down: sub-assemblies contribute
@@ -145,6 +173,9 @@ impl Bom {
                 }
             }
         }
+        for f in &self.formed {
+            add(f.material, f.kg);
+        }
         for v in [&self.bulk, &self.joints, &self.coatings, &self.fluids, &self.trace] {
             for &(m, kg) in v {
                 add(m, kg);
@@ -154,9 +185,216 @@ impl Bom {
     }
 }
 
+/// **What a node is made of, in the three kinds, so the arithmetic can be
+/// checked by looking at it.**
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Reconciliation {
+    pub components: f64,
+    pub formed: f64,
+    pub direct: f64,
+}
+
+impl Reconciliation {
+    pub fn total(&self) -> f64 {
+        self.components + self.formed + self.direct
+    }
+
+    pub fn residual(&self, declared: f64) -> f64 {
+        declared - self.total()
+    }
+}
+
+
+// =====================================================================
+// a formed part is neither bulk nor a component
+// =====================================================================
+
+/// **The rule, and it decides which of the two a thing is.**
+///
+/// > Bulk has no independently meaningful shape. If its shape matters
+/// > after separation, it is a fabricated part.
+///
+/// Calling a pressed door skin "bulk steel" recreates the problem the
+/// whole contract exists to fix: separated, it becomes anonymous sheet
+/// rather than a door skin that is bent but still a door skin. It only
+/// becomes scrap after somebody cuts, crushes or shreds it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Formed {
+    pub name: &'static str,
+    /// What it does in the assembly, for a person reading a teardown.
+    pub role: &'static str,
+    pub material: Material,
+    pub kg: f64,
+    pub geometry: Geometry,
+    pub state: MaterialState,
+    pub surface: Surface,
+}
+
+impl Formed {
+    pub fn new(
+        name: &'static str,
+        role: &'static str,
+        material: Material,
+        kg: f64,
+        geometry: Geometry,
+    ) -> Self {
+        Formed {
+            name,
+            role,
+            material,
+            kg,
+            geometry,
+            state: MaterialState::AsRolled,
+            surface: Surface::Bare,
+        }
+    }
+
+    pub fn treated(mut self, state: MaterialState) -> Self {
+        self.state = state;
+        self
+    }
+
+    pub fn finished(mut self, surface: Surface) -> Self {
+        self.surface = surface;
+        self
+    }
+
+    /// **What separating it gives you.** Undone carefully it is still the
+    /// part; cut, crushed or shredded it is the material it was pressed
+    /// from and nothing more.
+    pub fn survives_separation(&self, destructive: bool) -> bool {
+        !destructive && self.geometry.holds_its_shape()
+    }
+}
+
+/// **The shape, because the shape is the point.** NIST's manufacturing
+/// information work is explicit that an intermediate has to keep form
+/// features and surface properties and not merely a material and a mass.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Geometry {
+    /// Flat stock of a thickness. Still generic: a sheet is a sheet.
+    Sheet { mm: f64 },
+    Bar { mm: f64 },
+    /// Pressed to a shape. A door skin, an appliance panel.
+    Stamping,
+    /// Deep-drawn or folded into a body.
+    Shell,
+    Casting,
+    Extrusion,
+    /// Cut to a drawing on a machine.
+    Machined,
+    Woven,
+    /// Wound, laid up, or otherwise built from a continuous run.
+    Wound,
+}
+
+impl Geometry {
+    /// Whether the thing has a shape worth keeping. Flat stock does not —
+    /// a sheet separated from an assembly is just a sheet again.
+    pub fn holds_its_shape(self) -> bool {
+        !matches!(self, Geometry::Sheet { .. } | Geometry::Bar { .. })
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Geometry::Sheet { .. } => "sheet",
+            Geometry::Bar { .. } => "bar",
+            Geometry::Stamping => "stamping",
+            Geometry::Shell => "shell",
+            Geometry::Casting => "casting",
+            Geometry::Extrusion => "extrusion",
+            Geometry::Machined => "machined",
+            Geometry::Woven => "woven",
+            Geometry::Wound => "wound",
+        }
+    }
+}
+
+/// What has been done to the metal, which decides what it will take next.
+/// A quenched-and-tempered bolt cannot be bent cold; annealed sheet can.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MaterialState {
+    AsRolled,
+    Annealed,
+    Normalised,
+    WorkHardened,
+    QuenchedAndTempered,
+    /// Set, and past the point of being reworked.
+    Cured,
+}
+
+/// What is on the outside, which decides how it corrodes and whether it
+/// can be welded or painted again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Surface {
+    Bare,
+    Galvanised,
+    Primed,
+    Painted,
+    Anodised,
+    Plated,
+}
+
 // =====================================================================
 // where it came from and where it goes
 // =====================================================================
+
+/// **A declared mass is an expectation, not a measurement.**
+///
+/// A washing machine "weighs 70 kg" the way a car does 40 miles to the
+/// gallon: real examples vary with configuration, moisture, how much water
+/// is still in the pump and which parts have been changed. An instance's
+/// mass comes from what is actually in it; this is what a normal one is
+/// expected to come to, how far it may reasonably vary, and **where the
+/// number came from** — because a figure somebody measured and a figure
+/// somebody assumed are not the same kind of fact.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NominalMass {
+    pub expected: f64,
+    /// As a fraction. Tight for a machined part, loose for a thing full of
+    /// fluid or timber.
+    pub tolerance: f64,
+    pub provenance: MassProvenance,
+}
+
+impl NominalMass {
+    pub fn of(expected: f64, provenance: MassProvenance) -> Self {
+        NominalMass { expected, tolerance: provenance.usual_tolerance(), provenance }
+    }
+
+    pub fn within(&self, actual: f64) -> bool {
+        (actual - self.expected).abs() <= self.expected * self.tolerance + 1e-9
+    }
+}
+
+/// Where a number came from is part of the number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MassProvenance {
+    /// Somebody put one on a scale.
+    Measured,
+    /// Off the maker's plate.
+    ManufacturerSpecification,
+    /// A published figure for things of this kind.
+    LiteratureEstimate,
+    /// Worked out from what it is made of.
+    Inferred,
+    /// Chosen so the model has something to work with. **Not a fact**, and
+    /// the honest label for most of a young catalogue.
+    DesignedPlaceholder,
+}
+
+impl MassProvenance {
+    /// How far a figure of this kind may sensibly be out.
+    pub fn usual_tolerance(self) -> f64 {
+        match self {
+            MassProvenance::Measured => 0.01,
+            MassProvenance::ManufacturerSpecification => 0.03,
+            MassProvenance::LiteratureEstimate => 0.10,
+            MassProvenance::Inferred => 0.05,
+            MassProvenance::DesignedPlaceholder => 0.15,
+        }
+    }
+}
 
 /// How a thing that was not manufactured is got.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -186,12 +424,41 @@ pub enum Origin {
     Gathered(Acquisition),
     /// It is not made here. Somewhere it is made by one of the above.
     Imported,
+    /// It was in the world when the world was made, and nobody here can
+    /// replace it.
+    LegacyStock,
+}
+
+impl Origin {
+    /// **Whether a local economy can actually produce it.**
+    ///
+    /// `Industrial` is explicit debt, not a portal: it names a real
+    /// process that nobody has written a plan for, so a thing whose only
+    /// route is industrial can be found, imported, salvaged or held as
+    /// world-generation stock — and **cannot be manufactured here**. Once
+    /// the existing stock is gone it stays gone until the chain exists.
+    pub fn can_be_made_locally(&self) -> bool {
+        matches!(self, Origin::Made { .. } | Origin::Gathered(_))
+    }
+
+    pub fn is_debt(&self) -> bool {
+        matches!(self, Origin::Industrial { .. })
+    }
 }
 
 /// **How a thing stops being that thing.** Several are usually possible,
 /// and none of them is "reverses into its ingredients".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndOfLife {
+    /// Used again as it is, by somebody else.
+    Reuse,
+    /// Put right and used again.
+    Repair,
+    /// Stripped, cleaned and put back to a working standard.
+    Refurbish,
+    /// Taken to pieces and rebuilt to as-new, which is a factory
+    /// operation and not a repair.
+    Remanufacture,
     /// Undo the joints and get components back.
     Disassembly,
     /// Break it up for whatever pieces survive.
@@ -213,9 +480,17 @@ pub enum EndOfLife {
 /// asserted — so a definition cannot claim a route its contents rule out.
 pub fn plausible_ends(bill: &Bom, materials: &Composition, family: Family) -> Vec<EndOfLife> {
     let mut out = Vec::new();
-    if !bill.components.is_empty() {
+    if !bill.components.is_empty() || !bill.formed.is_empty() {
         out.push(EndOfLife::Disassembly);
         out.push(EndOfLife::Salvage);
+        out.push(EndOfLife::Refurbish);
+        out.push(EndOfLife::Remanufacture);
+    }
+    // Anything durable enough to have a second owner can have one, and
+    // anything that can be taken apart can be put right.
+    if !matches!(family, Family::Foodstuff | Family::Medicine | Family::Ammunition) {
+        out.push(EndOfLife::Reuse);
+        out.push(EndOfLife::Repair);
     }
     let mut recyclable = false;
     let mut burnable = false;
@@ -251,6 +526,144 @@ pub fn plausible_ends(bill: &Bom, materials: &Composition, family: Family) -> Ve
 // =====================================================================
 // validation
 // =====================================================================
+
+/// **What is technically possible is not what happens.**
+///
+/// Five different questions, and collapsing them is how a model comes to
+/// believe every washing machine is recycled. Whether the thing *can* be
+/// remanufactured is a fact about the object; whether anybody within reach
+/// has a plant that does it, whether the law allows it, and whether it is
+/// worth anybody's while are three more, and only the last of them
+/// decides what actually happens.
+#[derive(Clone, Debug, Default)]
+pub struct Available {
+    /// What plant is within reach: "a foundry", "a remanufacturer".
+    pub facilities: Vec<&'static str>,
+    /// What the law here permits. Empty means everything.
+    pub forbidden: Vec<EndOfLife>,
+    /// What each route pays, per kilogram, net of the work.
+    pub worth: Vec<(EndOfLife, f64)>,
+}
+
+impl Available {
+    pub fn can_perform(&self, route: EndOfLife) -> bool {
+        match route {
+            EndOfLife::Remanufacture => self.facilities.contains(&"a remanufacturer"),
+            EndOfLife::Recycling => self.facilities.contains(&"a foundry"),
+            EndOfLife::Refurbish => self.facilities.contains(&"a workshop"),
+            // Anybody with hands can take a thing apart, burn it or bury
+            // it, which is why those are always the fallbacks.
+            _ => true,
+        }
+    }
+
+    pub fn permitted(&self, route: EndOfLife) -> bool {
+        !self.forbidden.contains(&route)
+    }
+
+    pub fn pays(&self, route: EndOfLife) -> f64 {
+        self.worth.iter().find(|w| w.0 == route).map(|w| w.1).unwrap_or(0.0)
+    }
+}
+
+/// **What actually becomes of it**, given what it is, what state it is in
+/// and what is available. The routes are filtered in the order the
+/// questions are asked, and the last surviving one is chosen on what it
+/// pays — with disposal as the floor, because a hole in the ground is
+/// always available.
+pub fn what_happens_to_it(
+    technically_possible: &[EndOfLife],
+    have: &Available,
+    condition: f64,
+    contamination: f64,
+) -> EndOfLife {
+    // **Disposal is the floor and it is what happens by default.** A
+    // route only displaces it by being worth more than it, which is why a
+    // sound machine in a village with no scrap dealer still goes in the
+    // ground.
+    let mut best = EndOfLife::Disposal;
+    let mut best_pay = have.pays(EndOfLife::Disposal);
+    for &route in technically_possible {
+        if !have.can_perform(route) || !have.permitted(route) {
+            continue;
+        }
+        // A wreck is not reused and a contaminated thing is not refurbished.
+        let condition_ok = match route {
+            EndOfLife::Reuse => condition > 0.7 && contamination < 0.2,
+            EndOfLife::Repair | EndOfLife::Refurbish => condition > 0.25,
+            EndOfLife::Remanufacture => condition > 0.1,
+            _ => true,
+        };
+        if !condition_ok {
+            continue;
+        }
+        let pay = have.pays(route);
+        if pay > best_pay {
+            best_pay = pay;
+            best = route;
+        }
+    }
+    best
+}
+
+/// **How much of the catalogue anybody can actually make, by what it is
+/// for.** A count of definitions says far less than which parts of life
+/// are covered: 18 plans out of 134 is one number, and "medical
+/// necessities 24%" is the one that tells you something.
+pub fn plan_coverage(cat: &Catalogue) -> Vec<(Family, usize, usize)> {
+    let families = [
+        Family::Foodstuff,
+        Family::Clothing,
+        Family::Furniture,
+        Family::Appliance,
+        Family::Tool,
+        Family::SparePart,
+        Family::Ammunition,
+        Family::Firearm,
+        Family::Medicine,
+        Family::Stock,
+        Family::Fastening,
+        Family::Machine,
+        Family::Container,
+    ];
+    families
+        .iter()
+        .map(|&f| {
+            let all: Vec<_> = cat.of_family(f).collect();
+            let made = all
+                .iter()
+                .filter(|d| d.origin.iter().any(|o| o.can_be_made_locally()))
+                .count();
+            (f, made, all.len())
+        })
+        .filter(|(_, _, n)| *n > 0)
+        .collect()
+}
+
+/// **When a leaf should stop being a leaf.**
+///
+/// Not to record how a bolt was forged — manufacturing history is not
+/// physical composition, and a bolt body carrying its alloy, its heat
+/// treatment and its coating is a perfectly good leaf. Open it only when
+/// the inside has a consequence: it fails on its own, it is repaired or
+/// replaced on its own, it is recovered on its own, it changes what the
+/// thing does, or it makes a crafting decision somebody would think about.
+pub fn should_be_opened(cat: &Catalogue, def: DefId) -> Option<&'static str> {
+    let d = cat.get(def)?;
+    if !d.bill.components.is_empty() {
+        return None;
+    }
+    // A sealed thing whose insides fail, are replaced, are recovered
+    // separately or are hazardous is not honestly a leaf.
+    let materials: Vec<Material> = d.materials.parts().iter().map(|p| p.0).collect();
+    if materials.contains(&Material::Lead) && d.family == Family::SparePart {
+        return Some("its cells, casing and electrolyte fail and are recovered separately");
+    }
+    if materials.contains(&Material::Propellant) && d.nominal_mass_kg > 0.01 {
+        return Some("what is inside it is hazardous and handled on its own");
+    }
+    None
+}
 
 /// A content error. Not a runtime failure — a thing wrong with the data
 /// that a test should refuse to let through.
@@ -297,9 +710,13 @@ pub struct Finding {
 /// nobody wrote is caught rather than believed.
 pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
     let mut out = Vec::new();
-    let tolerance = 0.02;
 
     for d in cat.iter() {
+        // **The tolerance belongs to the figure, not to the validator.** A
+        // measured mass may be out by a percent; a designed placeholder
+        // may be out by fifteen, and saying so is more honest than
+        // pretending every number in the catalogue is a measurement.
+        let tolerance = d.mass.tolerance;
         let say = |flaw: Flaw| Finding { what: d.id, name: d.name, flaw };
 
         if d.nominal_mass_kg <= 0.0 {
@@ -338,6 +755,11 @@ pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
                         }));
                     }
                 }
+            }
+        }
+        for f in &d.bill.formed {
+            if f.kg <= 0.0 {
+                out.push(say(Flaw::MasslessLine(f.name)));
             }
         }
         for (label, v) in [
@@ -447,49 +869,145 @@ pub fn depth_of(cat: &Catalogue, def: DefId) -> usize {
     go(cat, def, 0)
 }
 
-/// A readable tree, for a teardown screen or a diagnostic.
-pub fn tree(cat: &Catalogue, def: DefId, kg: f64, indent: usize, into: &mut String) {
+/// One line of an audited tree.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Node {
+    pub depth: usize,
+    pub name: &'static str,
+    /// What the line says this much of it weighs.
+    pub declared: f64,
+    /// How that mass is made up. `None` for a leaf, which is simply the
+    /// material it is made of.
+    pub made_up_of: Option<Reconciliation>,
+    pub detail: String,
+}
+
+impl Node {
+    /// **The number that has to be zero.** A node whose parts do not add
+    /// up to what it says it weighs is a content error the printed tree
+    /// must show rather than hide.
+    pub fn residual(&self) -> f64 {
+        self.made_up_of.map(|r| r.residual(self.declared)).unwrap_or(0.0)
+    }
+}
+
+/// **Walk a thing and account for every gram of it, node by node.**
+///
+/// The diagnostic is data before it is text, so a gate can check that
+/// every printed node reconciles rather than trusting that an internal
+/// validator would have caught it.
+pub fn audit(cat: &Catalogue, def: DefId, kg: f64) -> Vec<Node> {
+    let mut out = Vec::new();
+    audit_into(cat, def, kg, 0, "", &mut out);
+    out
+}
+
+fn audit_into(
+    cat: &Catalogue,
+    def: DefId,
+    kg: f64,
+    depth: usize,
+    role: &str,
+    out: &mut Vec<Node>,
+) {
     let Some(d) = cat.get(def) else { return };
-    let pad = "  ".repeat(indent);
-    into.push_str(&format!("{pad}{} — {:.3} kg\n", d.name, kg));
+    if depth > 24 {
+        return;
+    }
     let scale = if d.nominal_mass_kg > 0.0 { kg / d.nominal_mass_kg } else { 1.0 };
-    for c in &d.bill.components {
-        let label = if c.count > 1 { format!(" x{}", c.count) } else { String::new() };
-        let pad2 = "  ".repeat(indent + 1);
-        if cat.get(c.def).map(|x| x.bill.components.is_empty()).unwrap_or(true) {
-            // **A leaf still says what it is made of.** A line reading
-            // "heating element" and nothing else is exactly the omission
-            // the contract exists to prevent.
-            let of = cat
-                .get(c.def)
-                .map(|x| {
-                    x.materials.parts().iter().map(|p| p.0.name()).collect::<Vec<_>>().join(", ")
-                })
-                .unwrap_or_default();
-            into.push_str(&format!(
-                "{pad2}{}{label} — {:.3} kg  ({}; {of})\n",
-                cat.get(c.def).map(|x| x.name).unwrap_or("?"),
-                c.kg * scale,
-                c.placement
-            ));
+    // Clamp the floating-point dust, or a tree prints "-0.000" and a
+    // reader has to wonder what it means.
+    let tidy = |x: f64| if x.abs() < 5e-7 { 0.0 } else { x };
+    let r = Reconciliation {
+        components: tidy(d.bill.components.iter().map(|c| c.kg * scale).sum()),
+        formed: tidy(d.bill.formed_mass() * scale),
+        direct: tidy(d.bill.loose_mass() * scale),
+    };
+    let leaf = d.bill.components.is_empty() && d.bill.formed.is_empty();
+    out.push(Node {
+        depth,
+        name: d.name,
+        declared: kg,
+        made_up_of: if leaf { None } else { Some(r) },
+        detail: if leaf {
+            let of: Vec<&str> = d.materials.parts().iter().map(|p| p.0.name()).collect();
+            if role.is_empty() {
+                of.join(", ")
+            } else {
+                format!("{role}; {}", of.join(", "))
+            }
         } else {
-            tree(cat, c.def, c.kg * scale, indent + 1, into);
-        }
+            role.to_string()
+        },
+    });
+    if leaf {
+        return;
+    }
+    for c in &d.bill.components {
+        let each = if c.count > 0 { c.kg / c.count as f64 } else { c.kg };
+        // **Unambiguous**: three jaws of fifteen grams, not three jaws of
+        // forty-five. A count and a total that could be read either way
+        // is a report nobody can audit.
+        let role = format!("{} x {:.3} kg = {:.3} kg [{}]", c.count, each * scale,
+                           c.kg * scale, c.placement);
+        audit_into(cat, c.def, c.kg * scale, depth + 1, &role, out);
+    }
+    for f in &d.bill.formed {
+        out.push(Node {
+            depth: depth + 1,
+            name: f.name,
+            declared: f.kg * scale,
+            made_up_of: None,
+            detail: format!(
+                "formed {} of {}, {:?}, {:?} [{}]",
+                f.geometry.name(),
+                f.material.name(),
+                f.state,
+                f.surface,
+                f.role
+            ),
+        });
     }
     for (label, v) in [
-        ("", &d.bill.bulk),
-        ("joint ", &d.bill.joints),
-        ("coating ", &d.bill.coatings),
-        ("fluid ", &d.bill.fluids),
-        ("trace ", &d.bill.trace),
+        ("bulk", &d.bill.bulk),
+        ("joint", &d.bill.joints),
+        ("coating", &d.bill.coatings),
+        ("fluid", &d.bill.fluids),
+        ("trace", &d.bill.trace),
     ] {
         for &(m, mkg) in v {
-            into.push_str(&format!(
-                "{}{label}{} — {:.3} kg\n",
-                "  ".repeat(indent + 1),
-                m.name(),
-                mkg * scale
-            ));
+            out.push(Node {
+                depth: depth + 1,
+                name: m.name(),
+                declared: mkg * scale,
+                made_up_of: None,
+                detail: format!("direct {label}"),
+            });
+        }
+    }
+}
+
+/// The same walk, rendered. **Every node shows its own arithmetic**, so a
+/// reader can add the children up and get the parent.
+pub fn tree(cat: &Catalogue, def: DefId, kg: f64, indent: usize, into: &mut String) {
+    for n in audit(cat, def, kg) {
+        let pad = "  ".repeat(indent + n.depth);
+        match n.made_up_of {
+            Some(r) => into.push_str(&format!(
+                "{pad}{}: declared {:.3} kg = parts {:.3} + formed {:.3} + direct {:.3} \
+                 (residual {:+.3}){}\n",
+                n.name,
+                n.declared,
+                r.components,
+                r.formed,
+                r.direct,
+                n.residual(),
+                if n.detail.is_empty() { String::new() } else { format!("  {}", n.detail) },
+            )),
+            None => into.push_str(&format!(
+                "{pad}{}: {:.3} kg  ({})\n",
+                n.name, n.declared, n.detail
+            )),
         }
     }
 }

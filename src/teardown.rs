@@ -23,6 +23,7 @@
 use crate::item::{
     AssemblyRecord, Catalogue, Condition, DefId, ItemInstance, JointMethod, Quality,
 };
+use crate::bom::Formed;
 use crate::material::{Composition, Material, Recovers};
 use crate::rng::Rng;
 use crate::save::channel;
@@ -188,6 +189,26 @@ impl Teardown {
     }
 }
 
+/// **What state a recovered piece is in**, which is what decides whether
+/// anybody can use it and for what. A brick that comes off clean goes back
+/// in a wall; one still covered in mortar needs a man with a bolster
+/// first; a chipped one goes where nobody looks at it; a broken one is
+/// hardcore.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum RecoveryGrade {
+    /// Clean and sound: structural reuse.
+    IntactClean,
+    /// Sound, and still bonded to what it was set in. Reusable after a
+    /// cleaning operation somebody has to pay for.
+    IntactBonded,
+    /// Sound enough for somewhere it will not be seen or loaded.
+    Chipped,
+    /// Aggregate.
+    Broken,
+    /// Waste, or a specialist problem.
+    Contaminated,
+}
+
 /// One component that came back out.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Returned {
@@ -196,6 +217,9 @@ pub struct Returned {
     pub mass_kg: f64,
     /// Something wrong with it that will not show until it is used.
     pub hidden_defect: bool,
+    /// What state it came out in, which is a different question from how
+    /// many came out.
+    pub grade: RecoveryGrade,
     /// What it is made of — read off the record, so a part cut from
     /// particleboard comes back as particleboard however the intermediate
     /// was named.
@@ -212,6 +236,10 @@ pub struct Returned {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Recovered {
     pub components: Vec<Returned>,
+    /// **Pressed and machined pieces that came off in one piece.** A
+    /// door skin recovered from a careful strip-down is a door skin, bent
+    /// or not; the same skin out of a shredder is in `materials`.
+    pub formed: Vec<(Formed, Condition)>,
     /// Loose material: swarf, offcuts, shredded feedstock, firewood.
     pub materials: Vec<(Material, f64)>,
     /// Mass that went nowhere useful — burnt off, ground away, dropped in
@@ -229,6 +257,7 @@ impl Recovered {
     /// Everything that came back, by mass.
     pub fn mass_kg(&self) -> f64 {
         self.components.iter().map(|r| r.mass_kg).sum::<f64>()
+            + self.formed.iter().map(|f| f.0.kg).sum::<f64>()
             + self.materials.iter().map(|m| m.1).sum::<f64>()
             + self.fuel_kg()
     }
@@ -389,11 +418,29 @@ fn recover_from_record(
                 .min(1.0);
             let hidden = draw(event, index, 0, "hidden defect")
                 < (0.05 + 0.25 * (1.0 - how.care()) + 0.3 * shared);
+            // **How many came back and what state they are in are two
+            // questions.** A mortared joint gives the brick back bonded;
+            // a cut one leaves it chipped; contamination is its own axis.
+            let grade = if cond.contamination > 0.5 {
+                RecoveryGrade::Contaminated
+            } else if cond.damage > 0.6 {
+                RecoveryGrade::Broken
+            } else if r.needs_cutting || cond.damage > 0.25 {
+                RecoveryGrade::Chipped
+            } else if matches!(
+                method,
+                JointMethod::LimeMortared | JointMethod::CementMortared | JointMethod::Glued
+            ) {
+                RecoveryGrade::IntactBonded
+            } else {
+                RecoveryGrade::IntactClean
+            };
             out.components.push(Returned {
                 definition: comp.definition,
                 count: whole,
                 mass_kg: each * whole as f64,
                 materials: comp.materials.clone(),
+                grade,
                 condition: cond,
                 // **Workmanship is not touched.** Pulling a leg off a
                 // badly made chair gives you a badly made leg.
@@ -408,6 +455,30 @@ fn recover_from_record(
         let broken = (count - whole) as f64 * each;
         if broken > 0.0 {
             scrap_out(out, &comp.materials, broken, how, skill);
+        }
+    }
+
+    // **A formed part is neither.** Taken off carefully it is still that
+    // shape — a bent door skin is a door skin — and only cutting,
+    // crushing or shredding turns it back into the sheet it came from.
+    let destructive = matches!(
+        how,
+        Teardown::Recycle | Teardown::CutUp | Teardown::Smash
+    );
+    for (k, f) in rec.formed.iter().enumerate() {
+        let mut piece = *f;
+        piece.kg *= scale;
+        let survives = f.survives_separation(destructive)
+            && draw(event, 1000 + k, 0, "formed separability")
+                < how.care() * (0.55 + 0.45 * skill) * sound;
+        if survives {
+            let mut cond = Condition::fresh();
+            cond.damage = (draw(event, 1000 + k, 0, "damage severity") * (1.0 - how.care())
+                + shared * 0.4)
+                .min(1.0);
+            out.formed.push((piece, cond));
+        } else {
+            deposit_at(out, piece.material, piece.kg * how.care() * (0.6 + 0.4 * skill));
         }
     }
 

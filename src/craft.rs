@@ -244,6 +244,11 @@ pub struct Step {
     pub joins: Option<JointMethod>,
     /// Real process hazards: primer and propellant work, hot metal, dust.
     pub hazard: f64,
+    /// **What an interruption does to this operation.** `None` takes the
+    /// default for the kind of work; a step that knows better says so, and
+    /// the calibrated figures live with the step rather than in the
+    /// scheduler.
+    pub interruption: Option<crate::schedule::OnInterruption>,
     /// **What shape of stock the operation actually needs.** Mass is a
     /// conservation check, not a fit: measured by weight alone a
     /// requirement for a board is met by a batten too narrow to cut a seat
@@ -265,6 +270,7 @@ impl Step {
             needs_power: false,
             joins: None,
             hazard: 0.0,
+            interruption: None,
             shapes: Vec::new(),
         }
     }
@@ -302,6 +308,15 @@ impl Step {
 
     pub fn dangerous(mut self, hazard: f64) -> Self {
         self.hazard = hazard;
+        self
+    }
+
+    /// Say what an interruption does to this particular operation.
+    pub fn interrupted_by(
+        mut self,
+        policy: crate::schedule::OnInterruption,
+    ) -> Self {
+        self.interruption = Some(policy);
         self
     }
 
@@ -1150,6 +1165,26 @@ impl WorkOrder {
     /// when the thing it made is somewhere. A bench with no room, a
     /// carrier already at their limit, or a destination that is not a
     /// place at all all mean the same thing: it waits.
+    /// **Move a parked output somewhere it can go**, freeing the machine.
+    pub fn unload(
+        &self,
+        store: &mut Store,
+        cat: &Catalogue,
+        parked: Id<ItemInstance>,
+        to: Placement,
+    ) -> Result<(), Blocked> {
+        let kg = store.get(parked).map(|i| i.mass_kg).unwrap_or(0.0);
+        let was = self.output;
+        let mut probe = self.clone();
+        probe.output = to;
+        if !probe.somewhere_to_put_it(store, cat, kg) {
+            return Err(Blocked::NoRoom { parked });
+        }
+        let _ = was;
+        store.place(parked, to);
+        Ok(())
+    }
+
     pub fn somewhere_to_put_it(&self, store: &Store, cat: &Catalogue, kg: f64) -> bool {
         match self.output {
             Placement::Ground { .. } => true,
@@ -1184,17 +1219,25 @@ impl WorkOrder {
                     d.pockets.iter().any(|p| used + kg <= p.max_kg)
                 })
                 .unwrap_or(false),
-            // You cannot finish a chair into a bracket or into another
-            // order.
-            Placement::Installed { .. } | Placement::InWorkOrder { .. } => false,
+            // You cannot finish a chair into a bracket, into another
+            // order, or onto a machine that is already holding one.
+            Placement::Installed { .. }
+            | Placement::InWorkOrder { .. }
+            | Placement::AwaitingUnload { .. } => false,
         }
     }
 
     /// **Complete the order into the world.**
     ///
-    /// `Err(Blocked::NoRoom)` is not a failure of the work — the thing is
-    /// made and there is nowhere to set it down, which is a real thing
-    /// that happens in a small shop and is worth being able to say.
+    /// `Err(Blocked::NoRoom { parked })` is not a failure of the work —
+    /// the thing is made, it exists, and there is nowhere to set it down,
+    /// so it stays on the machine and the machine stays busy. Somebody has
+    /// to come and move it, and choosing a different destination later
+    /// cannot reroll what it came out as.
+    ///
+    /// **The room is checked at completion and not only at planning**,
+    /// because between raising the order and finishing it somebody may
+    /// have filled the shelf or driven off in the van.
     pub fn deliver_into(
         &mut self,
         book: &RecipeBook,
@@ -1221,13 +1264,22 @@ impl WorkOrder {
             return Ok(existing);
         }
         let made = self.deliver(book, cat, day).ok_or(Blocked::NotFinished)?;
-        if !self.somewhere_to_put_it(store, cat, made.mass_kg) {
-            return Err(Blocked::NoRoom);
-        }
-        let at = self.output;
+        let room = self.somewhere_to_put_it(store, cat, made.mass_kg);
+        let at = if room {
+            self.output
+        } else {
+            // **It exists.** The work is done and the thing is real; what
+            // is missing is somewhere to put it, so it sits on the bench
+            // and the bench stays busy until somebody moves it.
+            Placement::AwaitingUnload { order: self.id, occupying: self.workplace }
+        };
         let id = store.add(made, at);
         self.delivered = true;
-        Ok(id)
+        if room {
+            Ok(id)
+        } else {
+            Err(Blocked::NoRoom { parked: id })
+        }
     }
 
     /// **Advance the work by so many minutes of wall clock.**
@@ -1780,8 +1832,11 @@ pub enum Unsuitable {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Blocked {
     NotFinished,
-    /// Made, and nowhere to set it down.
-    NoRoom,
+    /// **Made, and nowhere to set it down** — so it is sitting on the
+    /// machine, which is still occupied by it. The handle is the object,
+    /// which already exists: its inputs are consumed and its quality is
+    /// settled, and choosing a different destination cannot reroll it.
+    NoRoom { parked: Id<ItemInstance> },
     AlreadyDelivered,
 }
 
@@ -1874,7 +1929,7 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
                     thickness_m: (0.016, 0.032),
                 },
             )])
-            .giving(&[Flow::Waste { material: Material::Oak, kg: 1.95 }])
+            .giving(&[Flow::Waste { material: Material::Oak, kg: 1.93 }])
             .leaving(chair_parts);
         let cut = if powered { cut.powered() } else { cut };
         vec![
@@ -1972,7 +2027,12 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
                 .taking(&[Flow::Item { def: dough, count: 1.0 }])
                 .leaving(risen),
             Step::new("prove", Operation::Rest, Effort::Unattended { minutes: 60.0 }),
+            // **Bread is the spoilage case and the oven is the thermal
+            // one.** Forty-five minutes in a cooling oven is a loaf
+            // nobody wants; the general oven default only knows about
+            // getting the heat back.
             Step::new("bake", Operation::Bake, Effort::Machine { minutes: 35.0, tending: 10.0 })
+                .interrupted_by(crate::schedule::OnInterruption::SpoilAfter { minutes: 45.0 })
                 .needing(&[Need::of(C::Bake, 220.0, 100.0)])
                 .taking(&[Flow::Item { def: risen, count: 1.0 }])
                 .giving(&[Flow::Emission { material: Material::Water, kg: 0.05 }])

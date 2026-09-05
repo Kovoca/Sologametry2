@@ -20,7 +20,10 @@
 //! replacing a chair's broken leg does not straighten a warped seat. One
 //! `quality: 0.73` cannot say any of it.
 
-use crate::bom::{plausible_ends, Acquisition, Bom, BomEntry, EndOfLife, Origin};
+use crate::bom::{
+    plausible_ends, Acquisition, Bom, BomEntry, EndOfLife, Formed, Geometry, MassProvenance,
+    MaterialState, NominalMass, Origin, Surface,
+};
 use crate::id::{Arena, Id};
 use std::collections::BTreeMap;
 use crate::material::{Composition, Dims, Material, Quantity};
@@ -401,6 +404,22 @@ impl JointMethod {
     /// **What comes back**: the fraction of each joined component
     /// recovered intact by careful disassembly, and whether the joining
     /// material itself survives.
+    ///
+    /// **These are reference-case figures, not "the recovery rate".** The
+    /// case is: a sound example in ordinary condition, taken apart by hand
+    /// by somebody competent with the right tools, counting pieces that
+    /// come off in one piece. What a real job returns depends on age,
+    /// condition, method, tooling and how much anybody is being paid to
+    /// care — and `RecoveryGrade` is where "came off intact" and "came off
+    /// clean enough to build with" stop being the same number.
+    ///
+    /// The masonry rows are the ones to read carefully: the reclamation
+    /// literature reports separation around 85% for lime-mortared brick
+    /// under favourable conditions, and cement-mortared recovery varying
+    /// enormously with method. 0.85 and 0.30 here are the *joint*
+    /// contribution before care, skill and condition are applied, which is
+    /// why a careful hand recovers about 63% and 22% of a wall rather than
+    /// those numbers.
     pub fn recovery(self) -> Recovery {
         use JointMethod::*;
         match self {
@@ -496,6 +515,10 @@ pub struct Substitution {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssemblyRecord {
     pub components: Vec<Installed>,
+    /// **Pressed, drawn and machined pieces.** Not components and not
+    /// stuff: a door skin separated carefully is a bent door skin, and it
+    /// only becomes sheet after somebody cuts or crushes it.
+    pub formed: Vec<crate::bom::Formed>,
     /// **The body of the thing**, as opposed to the parts bolted to it.
     /// A toaster shell is pressed steel and not a steel component, and a
     /// model with nowhere to put that either invents a component or loses
@@ -513,6 +536,7 @@ pub struct AssemblyRecord {
 impl AssemblyRecord {
     pub fn total_component_mass(&self) -> f64 {
         self.components.iter().map(|c| c.mass_kg).sum::<f64>()
+            + self.formed.iter().map(|f| f.kg).sum::<f64>()
             + self.bulk.iter().map(|c| c.1).sum::<f64>()
             + self.consumed.iter().map(|c| c.1).sum::<f64>()
     }
@@ -529,6 +553,9 @@ impl AssemblyRecord {
             for (m, mkg) in c.materials.masses(c.mass_kg) {
                 add(m, mkg);
             }
+        }
+        for f in &self.formed {
+            add(f.material, f.kg);
         }
         for &(m, kg) in self.bulk.iter().chain(self.consumed.iter()) {
             add(m, kg);
@@ -576,7 +603,14 @@ pub struct ItemDefinition {
     pub family: Family,
     pub form: Form,
     pub nominal: Dims,
+    /// What a normal example is expected to come to. Kept as a bare
+    /// number because everything reads it; `mass` says how firm it is.
     pub nominal_mass_kg: f64,
+    /// **How firm that figure is, and where it came from.** An instance's
+    /// mass comes from what is actually in it; this is only the
+    /// expectation, and most of a young catalogue is honestly a designed
+    /// placeholder rather than a measurement.
+    pub mass: NominalMass,
     pub materials: Composition,
     /// What it offers as a tool. Several can coexist: an angle grinder
     /// cuts and grinds, and a rifle is a firearm and a club.
@@ -693,6 +727,15 @@ impl Catalogue {
         self.defs.get(id.0 as usize)
     }
 
+    /// Say where a mass figure came from, which tightens or loosens what
+    /// the validator will accept.
+    pub fn set_mass(&mut self, id: DefId, mass: NominalMass) {
+        if let Some(d) = self.defs.get_mut(id.0 as usize) {
+            d.nominal_mass_kg = mass.expected;
+            d.mass = mass;
+        }
+    }
+
     /// For content tooling and tests. The catalogue is authored data, so
     /// editing it at run time is a build step rather than a game action.
     pub fn def_mut(&mut self, id: DefId) -> Option<&mut ItemDefinition> {
@@ -748,6 +791,7 @@ fn def(
         form,
         nominal,
         nominal_mass_kg: kg,
+        mass: NominalMass::of(kg, MassProvenance::DesignedPlaceholder),
         materials: comp,
         provides: Vec::new(),
         pockets: Vec::new(),
@@ -993,7 +1037,7 @@ pub fn standard_catalogue() -> Catalogue {
 
     // ---- what a household buys ---------------------------------------
     let mut chair = def("wooden chair", Family::Furniture, Form::Assembly,
-                        d(0.45, 0.45, 0.9), 5.0, &[(Oak, 0.96), (MildSteel, 0.03), (Adhesive, 0.01)]);
+                        d(0.45, 0.45, 0.9), 5.01, &[(Oak, 0.96), (MildSteel, 0.03), (Adhesive, 0.01)]);
     chair.repair_with = vec![Oak, Adhesive, MildSteel];
     c.add(chair);
 
@@ -1061,7 +1105,7 @@ pub fn standard_catalogue() -> Catalogue {
                            &[(Abs, 0.7), (MildSteel, 0.3)]);
     magazine.fits = Some(Fitting::Magazine);
     c.add(magazine);
-    let mut rifle = def("rifle", Family::Firearm, Form::Assembly, d(0.9, 0.06, 0.22), 3.0,
+    let mut rifle = def("rifle", Family::Firearm, Form::Assembly, d(0.9, 0.06, 0.22), 3.01,
                         &[(ToolSteel, 0.45), (Aluminium, 0.3), (Abs, 0.25)]);
     rifle.attachment_points = vec![Fitting::Magazine, Fitting::BarrelThread];
     rifle.repair_with = vec![ToolSteel, Abs];
@@ -1132,7 +1176,7 @@ pub fn standard_catalogue() -> Catalogue {
     // stranded by an interrupted process.** Dough can go off and cut
     // panels can be used for something else, so both are real. A step that
     // merely leaves a workpiece a bit further along gets no object.
-    c.add(def("chair parts", Family::Stock, Form::Rigid, d(1.0, 0.5, 0.2), 4.8,
+    c.add(def("chair parts", Family::Stock, Form::Rigid, d(1.0, 0.5, 0.2), 4.82,
               &[(Oak, 1.0)]));
     c.add(def("cut panels", Family::Stock, Form::Fabric, d(1.0, 0.5, 0.01), 0.58,
               &[(Cotton, 1.0)]));
@@ -1519,6 +1563,99 @@ fn deepen(c: &mut Catalogue) {
         .with_coatings(&[(Paint, 0.04)]),
     );
 
+    // ---- a car door, which is the case that named the problem --------
+    //
+    // **Calling a pressed skin "bulk steel" recreates the problem.** Taken
+    // off carefully it is a door skin, bent or not; it only becomes sheet
+    // after somebody cuts or crushes it. So the skin, the inner frame, the
+    // intrusion beam and the brackets are *formed parts* — neither
+    // separately traded components nor anonymous stuff — while the seam
+    // sealer and the damping compound genuinely are stuff.
+    //
+    // Real: a front door is 25-30 kg with the glass and the trim in it.
+    let latch = c.add(def("door latch", Family::SparePart, Form::Assembly,
+                          d(0.12, 0.08, 0.06), 1.1, &[(MildSteel, 0.8), (Abs, 0.2)]));
+    let hinge = c.add(def("door hinge", Family::SparePart, Form::Rigid,
+                          d(0.1, 0.06, 0.05), 0.8, &[(MildSteel, 1.0)]));
+    let regulator = c.add_built(
+        def("window regulator", Family::SparePart, Form::Assembly, d(0.5, 0.4, 0.05), 2.4,
+            &[(MildSteel, 1.0)]),
+        Bom::assembled(vec![
+            e(motor_s, 1, 0.36, "drive", JointMethod::Bolted),
+            e(mscrew, 6, 0.03, "rails", JointMethod::Screwed),
+        ])
+        .with_formed(&[
+            Formed::new("regulator rail", "guides the glass", MildSteel, 1.2, Geometry::Stamping)
+                .finished(Surface::Galvanised),
+            Formed::new("lift arm", "carries the glass", MildSteel, 0.81, Geometry::Stamping),
+        ]),
+    );
+    let door_loom = c.add_built(
+        def("wiring loom, door", Family::SparePart, Form::Bar, d(1.2, 0.02, 0.02), 0.9,
+            &[(Copper, 1.0)]),
+        Bom::default().with_bulk(&[(Copper, 0.63), (Polyethylene, 0.27)]),
+    );
+    let seal = c.add(def("weather seal", Family::SparePart, Form::Bar, d(3.5, 0.02, 0.02),
+                         1.2, &[(Rubber, 1.0)]));
+    let glass = c.add(def("door glass", Family::SparePart, Form::Sheet, d(0.9, 0.5, 0.004),
+                          4.0, &[(Glass, 1.0)]));
+    let trim = c.add(def("door trim panel", Family::SparePart, Form::Sheet, d(0.9, 0.6, 0.03),
+                         2.0, &[(Abs, 0.75), (Polyester, 0.25)]));
+
+    let door = c.add(def("car door", Family::SparePart, Form::Assembly, d(1.0, 1.0, 0.15),
+                         28.1, &[(MildSteel, 1.0)]));
+    c.set_bill(
+        door,
+        Bom::assembled(vec![
+            e(latch, 1, 1.1, "rear edge", JointMethod::Bolted),
+            e(hinge, 2, 1.6, "front edge", JointMethod::Bolted),
+            e(regulator, 1, 2.4, "inside the cavity", JointMethod::Bolted),
+            e(door_loom, 1, 0.9, "through the cavity", JointMethod::Clipped),
+            e(seal, 1, 1.2, "round the aperture", JointMethod::Clipped),
+            e(glass, 1, 4.0, "in the regulator", JointMethod::Clipped),
+            e(trim, 1, 2.0, "inner face", JointMethod::Clipped),
+        ])
+        .with_formed(&[
+            Formed::new("outer skin", "the visible panel", MildSteel, 4.5, Geometry::Stamping)
+                .finished(Surface::Painted),
+            Formed::new("inner frame", "the structure", MildSteel, 6.0, Geometry::Stamping)
+                .finished(Surface::Galvanised),
+            Formed::new("intrusion beam", "side-impact protection", MildSteel, 2.2,
+                        Geometry::Extrusion)
+                .treated(MaterialState::QuenchedAndTempered),
+            Formed::new("mounting brackets", "hinge and latch mountings", MildSteel, 0.8,
+                        Geometry::Stamping),
+        ])
+        // **These really are stuff.** Neither has a shape that means
+        // anything once it is off the panel.
+        .with_bulk(&[(Adhesive, 0.25), (Rubber, 0.6)])
+        .with_coatings(&[(Zinc, 0.15), (Paint, 0.3)])
+        .with_joints(&[(MildSteel, 0.05), (Adhesive, 0.05)]),
+    );
+
+    // ---- a battery is not honestly a leaf ----------------------------
+    // A bolt body can stay a leaf: how it was forged is manufacturing
+    // history, not composition. A sealed pack cannot, because its cells,
+    // its casing and its electrolyte fail, are replaced and are recovered
+    // on their own — and one of them is hazardous.
+    let cell = c.add_built(
+        def("battery cell", Family::SparePart, Form::Rigid, d(0.065, 0.018, 0.018), 0.046,
+            &[(Lithium, 1.0)]),
+        Bom::default()
+            .with_bulk(&[(Lithium, 0.006), (Copper, 0.018), (Aluminium, 0.012), (Abs, 0.004)])
+            .with_fluids(&[(Electrolyte, 0.006)]),
+    );
+    let pack = c.must("battery pack");
+    c.set_bill(
+        pack,
+        Bom::assembled(vec![
+            e(cell, 5, 0.23, "in series", JointMethod::Soldered),
+            e(board, 1, 0.05, "protection circuit", JointMethod::Soldered),
+        ])
+        .with_formed(&[Formed::new("pack casing", "the shell", Abs, 0.26, Geometry::Shell)])
+        .with_bulk(&[(Copper, 0.06)]),
+    );
+
     // ---- which plan makes which thing --------------------------------
     for (name, plan) in [
         ("wooden chair", "chair, hand tools"),
@@ -1581,6 +1718,15 @@ pub enum Placement {
     Installed { host: Host, mount: usize },
     /// Reserved by a work order. Not available to be fitted to anything.
     InWorkOrder { order: u64 },
+    /// **Made, and still on the machine.**
+    ///
+    /// "Completion waits" is only honest if the finished object already
+    /// physically exists: the inputs are consumed, the quality is settled
+    /// and cannot be rerolled, and the oven or bench it is sitting in is
+    /// still occupied by it. Otherwise a finished washing machine exists
+    /// nowhere while its machine goes free, which is `Nowhere` coming back
+    /// in through the scheduler.
+    AwaitingUnload { order: u64, occupying: u32 },
 }
 
 impl Placement {
@@ -1606,7 +1752,16 @@ impl Placement {
         match self {
             Placement::Installed { .. } => "it is already fitted to something",
             Placement::InWorkOrder { .. } => "it is committed to a work order",
+            Placement::AwaitingUnload { .. } => "it is finished and still on the machine",
             _ => "it is available",
+        }
+    }
+
+    /// What it is holding up, if anything.
+    pub fn occupying(self) -> Option<u32> {
+        match self {
+            Placement::AwaitingUnload { occupying, .. } => Some(occupying),
+            _ => None,
         }
     }
 }
@@ -1735,6 +1890,16 @@ fn default_record(cat: &Catalogue, d: &ItemDefinition, mass_kg: f64) -> Option<A
     }
     let scale = if d.nominal_mass_kg > 0.0 { mass_kg / d.nominal_mass_kg } else { 1.0 };
     let mut record = AssemblyRecord {
+        formed: d
+            .bill
+            .formed
+            .iter()
+            .map(|f| {
+                let mut f = *f;
+                f.kg *= scale;
+                f
+            })
+            .collect(),
         bulk: d.bill.bulk.iter().map(|&(m, kg)| (m, kg * scale)).collect(),
         consumed: d
             .bill

@@ -880,3 +880,96 @@ fn adapting_a_vehicle_moves_parts_out_rather_than_copying_them() {
     assert_eq!(rebuilt.parts.len(), whole.parts.len(), "the van did not go back together");
     assert!((rebuilt.kerb_t() - whole.kerb_t()).abs() < 1e-9);
 }
+
+/// **Gate: the crash model is asserted, not sampled.**
+///
+/// Three hundred crashes are a diagnostic. A proportion over 300 draws can
+/// pass or fail by luck even when the model underneath is exactly right,
+/// which is the same small-sample mistake this project already had to
+/// unlearn over first-pass yield. So the probabilities themselves are the
+/// gate.
+#[test]
+fn the_crash_probabilities_are_the_model_and_they_are_checked_directly() {
+    use scale_sim::fitted::{chance_destroyed, chance_detached, chance_jammed, grip_of};
+
+    // Every probability is a probability.
+    for severity in [0.0, 0.05, 0.3, 0.5, 0.9, 1.0] {
+        for robustness in [0.0, 0.25, 0.5, 0.8, 1.0] {
+            let p = chance_destroyed(severity, robustness);
+            assert!((0.0..=1.0).contains(&p), "P(destroyed) = {p} at {severity}/{robustness}");
+        }
+        assert!((0.0..=1.0).contains(&chance_jammed(severity)));
+        for j in [JointMethod::Welded, JointMethod::Clipped, JointMethod::Bolted] {
+            assert!((0.0..=1.0).contains(&chance_detached(j, severity)));
+        }
+    }
+
+    // **A heavier impact breaks more**, monotonically, at every strength.
+    for robustness in [0.1, 0.5, 0.9] {
+        let mut last = -1.0;
+        for severity in [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0] {
+            let p = chance_destroyed(severity, robustness);
+            assert!(p >= last, "breaking got less likely as the impact got harder");
+            last = p;
+        }
+    }
+    assert!(chance_destroyed(0.9, 0.5) > chance_destroyed(0.1, 0.5));
+    // And a nudge breaks almost nothing, which is what makes it a nudge.
+    assert!(chance_destroyed(0.1, 0.8) < 0.02, "a light knock destroyed things");
+
+    // **A stronger thing survives what a weaker one does not.**
+    assert!(chance_destroyed(0.6, 0.2) > chance_destroyed(0.6, 0.9));
+
+    // **A clip lets go where a weld holds** — which is why a crash strips
+    // the trim off a car and leaves the engine mounts alone.
+    assert!(grip_of(JointMethod::Welded) > grip_of(JointMethod::Bolted));
+    assert!(grip_of(JointMethod::Bolted) > grip_of(JointMethod::Clipped));
+    for severity in [0.2, 0.5, 0.9] {
+        assert!(
+            chance_detached(JointMethod::Clipped, severity)
+                > chance_detached(JointMethod::Welded, severity),
+            "a weld gave way as readily as a clip at severity {severity}"
+        );
+    }
+    // Nothing comes off in a crash that did not happen.
+    assert_eq!(chance_detached(JointMethod::Clipped, 0.0), 0.0);
+    assert_eq!(chance_destroyed(0.0, 0.0), 0.0);
+
+    // **Jamming is conditional**, and it never happens below the point at
+    // which the structure is folding at all.
+    assert_eq!(chance_jammed(0.5), 0.0, "a light knock jammed something in");
+    assert!(chance_jammed(0.95) > 0.0);
+}
+
+/// The sampled run is kept as a **diagnostic** rather than as proof, and
+/// it is asserted loosely enough that sampling noise cannot fail it.
+#[test]
+fn a_population_of_crashes_looks_like_the_model_says_it_should() {
+    use scale_sim::fitted::chance_destroyed;
+    let cat = standard_catalogue();
+    let mut destroyed = 0;
+    let n = 400;
+    for event in 0..n as u64 {
+        let mut store = Store::new();
+        let (mut van, loose) = a_van(&cat, &mut store);
+        let bracket = van.mount_named("alternator bracket").unwrap();
+        van.install(&mut store, bracket, loose[0], &cat, &[], None, 1).unwrap();
+        if let Some(InstallationFailure::Destroyed { .. }) =
+            van.wreck_mount(&mut store, bracket, 0.9, &cat, event, 1)
+        {
+            destroyed += 1;
+        }
+    }
+    // A fresh alternator: structural integrity 0.8, sound, so robustness
+    // is 0.8 and the model says about a fifth of them.
+    let expected = chance_destroyed(0.9, 0.8);
+    let seen = destroyed as f64 / n as f64;
+    // Three standard errors, which is wide on purpose: this is a check
+    // that the sampler agrees with the model, not a calibration.
+    let se = (expected * (1.0 - expected) / n as f64).sqrt();
+    assert!(
+        (seen - expected).abs() < 3.0 * se + 0.02,
+        "the sample says {seen:.3} and the model says {expected:.3}"
+    );
+}
+

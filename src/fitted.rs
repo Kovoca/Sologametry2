@@ -402,11 +402,43 @@ pub enum InstallationFailure {
     Destroyed { recoverable: bool },
 }
 
-/// **How a joint gives up.**
-///
-/// A weld holds until the metal around it tears; a clip lets go early and
-/// the part is usually fine. That is why a crash strips the trim off a car
-/// and leaves the engine mounts alone.
+/// **How well a joint holds under load.** A weld holds until the metal
+/// round it tears; a clip lets go early and the part is usually fine.
+pub fn grip_of(joint: JointMethod) -> f64 {
+    match joint {
+        JointMethod::Welded | JointMethod::Cast | JointMethod::Forged => 0.95,
+        JointMethod::Riveted | JointMethod::CementMortared => 0.85,
+        JointMethod::LimeMortared => 0.75,
+        JointMethod::Bolted => 0.7,
+        JointMethod::Screwed | JointMethod::Crimped => 0.55,
+        JointMethod::Glued | JointMethod::Soldered | JointMethod::Stitched => 0.4,
+        JointMethod::Clipped => 0.25,
+        JointMethod::Cooked | JointMethod::Reacted => 0.6,
+    }
+}
+
+/// **The chance the joint lets go**, which is the model rather than a
+/// figure measured off three hundred samples. Gating this directly is
+/// stronger than gating a sample of it: a proportion over 300 draws can
+/// pass or fail by luck even when the model is right.
+pub fn chance_detached(joint: JointMethod, severity: f64) -> f64 {
+    (severity.clamp(0.0, 1.0) * (1.0 - grip_of(joint)) * 1.8).clamp(0.0, 1.0)
+}
+
+/// **The chance the component itself is broken**, which the joint has
+/// nothing to do with: it is the impact reaching the thing.
+pub fn chance_destroyed(severity: f64, robustness: f64) -> f64 {
+    (severity.clamp(0.0, 1.0).powf(1.5) * (1.0 - 0.8 * robustness.clamp(0.0, 1.0)))
+        .clamp(0.0, 1.0)
+}
+
+/// **The chance the wreckage folds round something that is still
+/// attached.** Conditional by construction: it is only ever asked about a
+/// component that neither broke nor came off.
+pub fn chance_jammed(severity: f64) -> f64 {
+    ((severity.clamp(0.0, 1.0) - 0.6) * 1.5).clamp(0.0, 1.0)
+}
+
 fn settle_mount(
     joint: JointMethod,
     severity: f64,
@@ -417,32 +449,17 @@ fn settle_mount(
 ) -> InstallationFailure {
     let severity = severity.clamp(0.0, 1.0);
     let robustness = robustness.clamp(0.0, 1.0);
-    // How well the joint holds under load, against how hard it was hit.
-    let grip = match joint {
-        JointMethod::Welded | JointMethod::Cast | JointMethod::Forged => 0.95,
-        JointMethod::Riveted | JointMethod::CementMortared => 0.85,
-        JointMethod::LimeMortared => 0.75,
-        JointMethod::Bolted => 0.7,
-        JointMethod::Screwed | JointMethod::Crimped => 0.55,
-        JointMethod::Glued | JointMethod::Soldered | JointMethod::Stitched => 0.4,
-        JointMethod::Clipped => 0.25,
-        JointMethod::Cooked | JointMethod::Reacted => 0.6,
-    };
 
-    // **Separate draws for separate questions.** Whether it let go, and
-    // whether the thing itself survived, are not the same event.
+    // **Separate draws for separate questions**, asked as a decision tree
+    // rather than four independent verdicts: whether the thing broke,
+    // then — only if it did not — whether the joint let go, and only if it
+    // did not, whether the wreckage folded round it.
     let mut sep = Rng::new(channel(event, mount as u64, "mount separability"));
     let mut sur = Rng::new(channel(event, mount as u64, "component survival"));
     let mut jam = Rng::new(channel(event, mount as u64, "jamming"));
 
-    // **A light knock shakes almost nothing loose.** Both of these are
-    // driven by the severity rather than merely modified by it: at zero
-    // impact a bolted alternator stays bolted on, which is the ordinary
-    // case and has to be the ordinary outcome.
-    let let_go = (sep.next_f32() as f64) < (severity * (1.0 - grip) * 1.8).clamp(0.0, 1.0);
-    // A thing is broken by the impact reaching it, not by the joint.
-    let broke = (sur.next_f32() as f64)
-        < (severity.powf(1.5) * (1.0 - 0.8 * robustness)).clamp(0.0, 1.0);
+    let let_go = (sep.next_f32() as f64) < chance_detached(joint, severity);
+    let broke = (sur.next_f32() as f64) < chance_destroyed(severity, robustness);
 
     if broke {
         return if holds_something {
@@ -455,8 +472,10 @@ fn settle_mount(
         return InstallationFailure::Detached { damage: 0.25 * severity };
     }
     // Still attached — and in a bad enough wreck, folded in where nobody
-    // is getting a spanner to it.
-    if severity > 0.6 && (jam.next_f32() as f64) < (severity - 0.6) * 1.5 {
+    // is getting a spanner to it. **Only ever asked about something that
+    // is still there**, which is what makes it a tree rather than four
+    // verdicts that might contradict each other.
+    if (jam.next_f32() as f64) < chance_jammed(severity) {
         return InstallationFailure::Inaccessible;
     }
     InstallationFailure::RemainsAttached { damage: 0.15 * severity }

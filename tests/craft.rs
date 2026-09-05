@@ -820,12 +820,29 @@ fn a_finished_order_needs_a_destination() {
         let _ = k;
         store.add(heavy, Placement::Carried { person: 7 });
     }
+    // **The thing exists, and it is sitting on the bench.** "Completion
+    // waits" is only honest if the finished object is real: the inputs
+    // are consumed, the quality is settled, and the bench it is on is
+    // still occupied by it.
+    let parked = match too_heavy.deliver_into(&book, &cat, 1, &mut store) {
+        Err(Blocked::NoRoom { parked }) => parked,
+        other => panic!("a man already carrying his limit took a chair as well: {other:?}"),
+    };
+    assert!(store.get(parked).is_some(), "the chair that could not be handed over vanished");
     assert_eq!(
-        too_heavy.deliver_into(&book, &cat, 1, &mut store),
-        Err(Blocked::NoRoom),
-        "a man already carrying his limit took a chair as well"
+        store.placement(parked).and_then(|p| p.occupying()),
+        Some(0),
+        "the finished chair is not holding up the bench it is sitting on"
     );
-    assert!(!too_heavy.delivered, "it was handed over anyway");
+    assert!(too_heavy.delivered, "the work was not done, though the chair exists");
+    // And it cannot be rerolled by choosing somewhere else: the same
+    // object moves.
+    let was = store.get(parked).unwrap().quality.overall();
+    too_heavy
+        .unload(&mut store, &cat, parked, Placement::anywhere())
+        .expect("it would not go on the floor either");
+    assert!(matches!(store.placement(parked), Some(Placement::Ground { .. })));
+    assert_eq!(store.get(parked).unwrap().quality.overall(), was, "moving it rerolled it");
 
     // **A mount is not a destination.** You do not finish a chair into a
     // bracket.
@@ -838,7 +855,10 @@ fn a_finished_order_needs_a_destination() {
         Placement::Installed { host: scale_sim::item::Host::Vehicle(1), mount: 0 },
     );
     run(&mut nonsense, &book, &cat, &place, a_good_hand());
-    assert_eq!(nonsense.deliver_into(&book, &cat, 1, &mut store), Err(Blocked::NoRoom));
+    assert!(matches!(
+        nonsense.deliver_into(&book, &cat, 1, &mut store),
+        Err(Blocked::NoRoom { .. })
+    ));
 
     // An order that has not finished has nothing to hand over.
     let mut unstarted = WorkOrder::begin(5, plan, 1, 0, 1);

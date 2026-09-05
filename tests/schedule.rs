@@ -277,7 +277,7 @@ fn what_an_outage_costs_depends_on_the_operation() {
     let cure = plan
         .slots
         .iter()
-        .find(|s| s.policy == OnInterruption::Unaffected)
+        .find(|s| s.policy.is_indifferent())
         .copied()
         .expect("nothing in a chair is unaffected by an outage");
     let hit = interrupt(&mut plan, cure.start + 60.0, cure.start + 120.0);
@@ -290,7 +290,7 @@ fn what_an_outage_costs_depends_on_the_operation() {
     let o = an_order(&recipes, 2, "loaf");
     let mut plan = book(&mut shop, &o, &recipes, 0.0, 1).unwrap();
     let bake = plan.slots.iter().find(|s| s.machine_min > 0.0).copied().unwrap();
-    assert!(matches!(bake.policy, OnInterruption::ContinuesChanging { .. }));
+    assert!(matches!(bake.policy, OnInterruption::SpoilAfter { .. }));
     let brief = interrupt(&mut plan, bake.start + 5.0, bake.start + 15.0);
     assert!(!brief[0].spoiled, "ten minutes off ruined the bread");
 
@@ -700,4 +700,164 @@ fn the_same_plan_runs_in_a_shed_and_in_a_works() {
         b.finish() <= a.finish() + 1e-9,
         "six hands finished four chairs later than one pair"
     );
+}
+/// **Gate: ownership grants permission, not availability.**
+///
+/// Being allowed to use the lathe and the lathe being free are different
+/// facts, and the owner waits his turn like anybody else.
+#[test]
+fn owning_the_lathe_does_not_make_it_free() {
+    let (cat, recipes) = world();
+    let mut mine = a_bench(&cat);
+    mine.stations[0] = station(&cat, "handsaw").unwrap().owned_by(7);
+    mine.workers = vec![Worker::owner(7, a_good_hand()), Worker::new(8, a_good_hand())];
+
+    // Permission is about who you are.
+    assert!(mine.may_use(7, 0), "the owner could not use his own saw");
+    assert!(!mine.may_use(8, 0), "an employee helped himself to the owner's saw");
+    // An unowned bench is anybody's.
+    let free = mine.stations.iter().position(|s| s.owner.is_none()).unwrap();
+    assert!(mine.may_use(7, free) && mine.may_use(8, free));
+
+    // And availability is about the diary, which does not care whose it
+    // is: two orders on one saw still queue.
+    let a = an_order(&recipes, 1, "chair, hand tools");
+    let b = an_order(&recipes, 2, "chair, hand tools");
+    let first = book(&mut mine, &a, &recipes, 0.0, 1).unwrap();
+    let second = book(&mut mine, &b, &recipes, 0.0, 1).unwrap();
+    let saw_first = first.slots.iter().find(|s| s.station == Some(0)).unwrap();
+    let saw_second = second.slots.iter().find(|s| s.station == Some(0)).unwrap();
+    assert!(
+        saw_second.start >= saw_first.end - 1e-9 || saw_first.start >= saw_second.end - 1e-9,
+        "the owner and the employee used one saw at the same moment"
+    );
+}
+
+/// **Gate: a reservation is a plan, not a lock on reality.**
+///
+/// Between booking the drill and picking it up somebody can steal it,
+/// break it or run the battery flat, so what was reserved is checked again
+/// when the work is due to start.
+#[test]
+fn a_reserved_tool_can_still_be_stolen() {
+    let (cat, recipes) = world();
+    let mut shop = a_bench(&cat);
+    let o = an_order(&recipes, 1, "chair, hand tools");
+    let plan = book(&mut shop, &o, &recipes, 0.0, 1).unwrap();
+
+    assert!(shop.revalidate(&plan, 0.0).is_empty(), "a shop in order failed its own check");
+
+    // The saw goes missing overnight.
+    let saw = plan.slots.iter().find_map(|s| s.station).unwrap();
+    shop.stations[saw].serviceable = false;
+    let stranded = shop.revalidate(&plan, 0.0);
+    assert!(!stranded.is_empty(), "a reservation survived the tool being taken");
+    for i in &stranded {
+        assert_eq!(plan.slots[*i].station, Some(saw));
+    }
+
+    // Work already finished is not affected: it happened.
+    let mut done = plan.clone();
+    let end = done.finish();
+    advance_to(&mut done, end);
+    assert!(
+        shop.revalidate(&done, end).is_empty(),
+        "losing a tool un-did work that was already finished"
+    );
+}
+
+/// **Gate: accounting profit and economic profit are not the same
+/// number.**
+///
+/// An owner-operator draws no wage and still spends the hours. That cost
+/// is exactly what goes missing when a business looks profitable and is
+/// not — and it is why owner labour was worth putting on the calendar.
+#[test]
+fn the_owner_takes_no_wage_and_the_work_still_costs_something() {
+    let (cat, recipes) = world();
+    let mut employed = Shop::new(1, vec![Worker::new(5, a_good_hand())], a_bench(&cat).stations);
+    let mut owned = Shop::new(2, vec![Worker::owner(9, a_good_hand())], a_bench(&cat).stations);
+
+    let o = an_order(&recipes, 1, "chair, hand tools");
+    let a = book(&mut employed, &o, &recipes, 0.0, 1).unwrap();
+    let b = book(&mut owned, &o, &recipes, 0.0, 1).unwrap();
+
+    let hired = employed.hours_worked(&a);
+    let mine = owned.hours_worked(&b);
+
+    // The same hours are spent either way.
+    assert!((hired.total_minutes() - mine.total_minutes()).abs() < 1e-6);
+    assert!(hired.paid_minutes > 0.0 && hired.owner_minutes == 0.0);
+    assert!(mine.paid_minutes == 0.0 && mine.owner_minutes > 0.0);
+
+    // The books say the owner's chair cost nothing to make.
+    let wage = 18.0;
+    assert!(hired.accounting_cost(wage) > 20.0);
+    assert_eq!(mine.accounting_cost(wage), 0.0, "the owner paid himself a wage");
+
+    // And the truth is that it cost the same, because his time was worth
+    // something.
+    let economic_hired = hired.economic_cost(wage, wage);
+    let economic_mine = mine.economic_cost(wage, wage);
+    assert!(
+        (economic_hired - economic_mine).abs() < 1e-6,
+        "the owner's time came free: {economic_mine:.2} against {economic_hired:.2}"
+    );
+    assert!(economic_mine > mine.accounting_cost(wage), "economic profit ignored the owner");
+}
+
+/// **Gate: the interruption policy is the operation's, and the numbers
+/// are the process's.**
+///
+/// "A kiln loses forty minutes" is one calibrated example, not a rule the
+/// scheduler holds about blackouts.
+#[test]
+fn what_an_outage_costs_is_a_property_of_the_process() {
+    use scale_sim::schedule::OnInterruption as P;
+
+    // Curing does not care how long the power was off.
+    assert_eq!(P::ContinuePassively.cost_of(10.0, 30.0), (0.0, false));
+    assert_eq!(P::ContinuePassively.cost_of(600.0, 30.0), (0.0, false));
+
+    // A saw picks up where it stopped; a milling machine has to be set up
+    // again; a casting is done again from the beginning.
+    assert_eq!(P::PauseResume.cost_of(30.0, 12.0).0, 0.0);
+    assert_eq!(P::ResumeWithSetup { setup_min: 8.0 }.cost_of(30.0, 12.0).0, 8.0);
+    assert_eq!(P::RestartOperation.cost_of(30.0, 12.0).0, 12.0);
+
+    // **An interrupted weld is inspected, and usually carries on.** Doing
+    // the whole thing again is the exception rather than the rule.
+    let weld = P::InspectThenResume { inspect_min: 6.0, restart_chance: 0.35 };
+    let (lost, _) = weld.cost_of(30.0, 20.0);
+    assert!(lost > 6.0 && lost < 20.0, "an interrupted weld cost {lost:.1} minutes");
+
+    // **A thermal process loses heat at its own rate**, and a longer
+    // outage costs more — up to the point where it is stone cold and
+    // cannot get any colder.
+    let oven = P::ThermalProcess {
+        loss_per_hour: 150.0,
+        recovery_min_per_degree: 0.13,
+        holds_at_c: 220.0,
+    };
+    let brief = oven.cost_of(10.0, 5.0).0;
+    let long = oven.cost_of(60.0, 5.0).0;
+    let overnight = oven.cost_of(720.0, 5.0).0;
+    assert!(brief < long, "a ten-minute outage cost as much as an hour");
+    assert!((long - overnight).abs() > 1.0, "an hour cost the same as a night");
+    assert!(overnight <= 220.0 * 0.13 + 1e-9, "it cooled below the room it is in");
+    // A kiln is a different process with different numbers, and neither
+    // of them is the scheduler's opinion.
+    let kiln = P::ThermalProcess {
+        loss_per_hour: 260.0,
+        recovery_min_per_degree: 0.09,
+        holds_at_c: 850.0,
+    };
+    assert!(kiln.cost_of(60.0, 5.0).0 > oven.cost_of(60.0, 5.0).0);
+
+    // Spoilage is a duration, and it belongs to what is in the oven
+    // rather than to the oven.
+    assert!(!P::SpoilAfter { minutes: 45.0 }.cost_of(10.0, 5.0).1);
+    assert!(P::SpoilAfter { minutes: 45.0 }.cost_of(300.0, 5.0).1);
+    // And some things cannot be stopped safely at all.
+    assert!(P::UnsafeAbort.cost_of(5.0, 20.0).1);
 }

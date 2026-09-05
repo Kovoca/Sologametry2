@@ -1177,11 +1177,46 @@ crafting screen shows as "motor" a deep teardown opens into copper
 windings, laminated steel, ferrite magnets, two bearings and insulation,
 because that was in the data the whole time.
 
-**Six kinds of content, because they behave differently coming apart:**
-components, bulk (the body of the thing — a pressed shell is steel, not a
-steel *component*), joints, coatings, fluids and declared trace. And
-`M_item = M_components + M_bulk + M_joints + M_coatings + M_fluids +
-M_trace`, checked rather than trusted.
+**Seven kinds of content, because they behave differently coming apart:**
+components, **formed parts**, bulk, joints, coatings, fluids and declared
+trace. And the total is checked rather than trusted.
+
+### A formed part is neither bulk nor a component
+
+> Bulk has no independently meaningful shape. If its shape matters after
+> separation, it is a fabricated part.
+
+Calling a pressed door skin "bulk steel" recreates the problem the whole
+contract exists to fix: separated, it becomes anonymous sheet instead of a
+door skin that is bent and still a door skin. It only becomes scrap after
+somebody cuts, crushes or shreds it — which is what NIST's manufacturing
+work means by an intermediate having to keep form features and surface
+properties and not merely a material and a mass.
+
+So a car door is components (latch, hinges, regulator, harness, seals,
+glass, trim), **formed parts** (outer skin, inner frame, intrusion beam,
+brackets — each with its geometry, its material state and its surface),
+genuine bulk (seam sealer, acoustic damping), coatings (zinc, primer,
+paint) and joints. Measured: a careful strip returns the skin 30 times in
+40 and a shredder never does, and the shredder returns the steel instead
+so nothing is lost either way.
+
+### The report has to add up where a reader can see it
+
+`chuck jaw x3 — 0.045 kg` is ambiguous — three jaws of 45 g or three of
+15 g? — so every line says `3 x 0.015 kg = 0.045 kg`, and every node shows
+its own arithmetic:
+
+```text
+electric motor, small: declared 0.360 kg
+    = parts 0.340 + formed 0.000 + direct 0.020 (residual +0.000)
+```
+
+**A validator can be right while its diagnostic hides content**, so the
+gate is on the report itself: every node of every printed tree reconciles.
+Turning it on found four nodes that did not — a chair, its parts and a
+rifle, all of them a declared mass rounded off while the bill underneath
+was exact. The tree caught what the validator's tolerance let through.
 
 **A grouped detail is not a massless detail.** A washing machine's hundred
 and sixty screws are one line with a count on it; they still weigh 800 g
@@ -1212,6 +1247,43 @@ asserted: an assembly can be taken apart, a metal can be recycled, timber
 burns, food composts, propellant is destroyed chemically, and disposal is
 always the floor. A definition may not claim a route its own contents rule
 out — solid steel does not compost.
+
+### What "zero content errors" is entitled to mean
+
+**Internally consistent, and not externally calibrated.** A declared mass
+is an expectation, not a measurement: real washing machines vary with
+configuration, moisture and what has been changed, so `NominalMass` carries
+a tolerance and a **provenance** — measured, off the maker's plate, from
+the literature, inferred from the bill, or an honest designed placeholder.
+The tolerance follows the provenance (1% for a measurement, 15% for a
+placeholder), and an instance weighs what is actually in it.
+
+**An ending is conditional, and five questions are not one.** What a thing
+*can* become — reused, repaired, refurbished, remanufactured, dismantled,
+recycled, downcycled, burnt, buried — is a fact about the object. Whether
+a facility is within reach, whether the law allows it, and what it pays
+are three more, and only the last decides what happens. A sound washing
+machine in a village with no scrap dealer goes in the ground; the same
+machine in a town is reused; a wreck in that town is recycled; and the law
+can forbid the profitable one.
+
+**The cycle rule is about the bill of materials only.** A rifle cannot
+contain itself. Steel becomes an appliance, the appliance becomes scrap,
+and the scrap becomes steel — forbidding that would forbid recycling.
+
+**A leaf stops being a leaf when its inside has a consequence**, not to
+record how it was forged. Manufacturing history is not physical
+composition, so a bolt body is a good leaf carrying its alloy, its heat
+treatment and its coating. A sealed battery is not: its cells, its casing
+and its electrolyte fail, are replaced and are recovered separately, and
+one of them is hazardous.
+
+**And `Origin::Industrial` is debt, not a portal.** A thing whose only
+route is an unwritten process can be found, imported, salvaged or held as
+world-generation stock; it **cannot be manufactured here**, and once the
+stock is gone it stays gone until the chain exists. Coverage is therefore
+reported by what things are *for* rather than by counting definitions —
+"125 remaining" says far less than which parts of life are covered.
 
 **The contract is a test, not a convention.** `bom::validate` fails a
 definition with no mass, no dimensions, an empty bill, a bill that does not
@@ -1304,12 +1376,20 @@ where nobody can reach it, split and spill what was in it, or be broken
 up — and which of those depends on the joint, the impact and how strong
 the thing is. **Exactly one outcome, and the mass reaches it.**
 
-Separate draws for separate questions: whether the joint let go, whether
-the component itself survived, and whether the wreckage folded round it.
-Measured over three hundred crashes at each severity, a nudge leaves the
-alternator bolted on and a heavy impact destroys it three times as often —
-and a clip lets go where a weld holds, which is why a crash strips the
-trim off a car and leaves the engine mounts alone.
+Separate draws for separate questions, asked as a **decision tree** rather
+than four verdicts that could contradict each other: whether the thing
+broke, then — only if it did not — whether the joint let go, and only if
+it did not, whether the wreckage folded round it. Jamming is never asked
+about something that has already come off.
+
+**And the model is gated, not a sample of it.** Three hundred crashes are
+a diagnostic: a proportion over 300 draws can pass or fail by luck even
+when the model underneath is exactly right, which is the same small-sample
+mistake this file already records over first-pass yield. So the gates
+assert the probabilities — monotone in severity, monotone in robustness, a
+clip letting go where a weld holds, nothing coming off in a crash that did
+not happen — and the sampled run is kept alongside, checked against the
+model within three standard errors.
 
 **Structural breakup moves what survives.** A hole in the floor is not a
 total loss: what was bolted to a section that is still standing is still
@@ -1352,8 +1432,23 @@ brick, so the brick gives way, and the reclamation literature names
 cement-based mortar as *the* barrier — a slow problem with known
 techniques rather than an impossibility, so recovery is low and not zero.
 It is also what damages softer historic fabric when somebody repoints with
-it. Measured over a careful deconstruction: **lime gives 63% of the bricks
-back, cement 22%.**
+it.
+
+**These are reference-case figures, not "the recovery rate".** The case is
+a sound common-clay brick, dismantled by hand by somebody competent with
+the right tools, counting pieces that come off in one piece: **lime 63%,
+cement 22%**. The literature reports separation around 85% for
+lime-mortared brick under favourable conditions and cement recovery
+varying enormously with method, so the joint table's 0.85 and 0.30 are the
+*joint's* contribution before care, skill and condition are applied.
+
+**And how many came back is a different question from what state they are
+in.** `RecoveryGrade` separates them: intact and clean is structural
+reuse, intact but still bonded needs a cleaning operation somebody pays
+for, chipped goes where nobody looks at it, broken is aggregate, and
+contaminated is a specialist problem. Lime gives back bonded brick and
+cement gives back chipped brick, which is the difference between a
+reclamation yard and a skip.
 
 Real figures underneath: a stud is 89 x 38 mm and 2.4 m, sheathing 11 mm,
 plasterboard 12.5 mm at 8.5 kg/m², and the wall comes to about 25 kg per
@@ -1404,27 +1499,64 @@ answer does not depend on when anybody happened to look.
 
 ### A blackout has no one universal result
 
-Put it on the operation, not on the grid:
+**The resource supplies the state; the operation decides what that state
+does to the work.** Which is why none of these is a rule about blackouts:
 
 | | what an outage costs |
 |---|---|
 | curing, proving | **nothing** — it carries on |
 | an electric saw | stops, resumes where it stopped |
-| a weld half done | the operation again from the start |
-| a kiln | its heat, and forty minutes to bring it back |
+| a mill | resumes, after setting up again |
+| a weld half done | **inspected**, and usually carried on |
+| a casting | the operation again from the start |
+| an oven or a kiln | **its own heat at its own rate** |
 | bread in the oven | goes on changing; long enough and it is spoiled |
+| some chemistry | cannot be stopped safely at all |
+
+The figures belong to the process, not to the scheduler. A domestic oven
+at 220 °C loses about 150 degrees an hour with the door shut and comes
+back at a degree every eight seconds; a kiln at 850 °C loses 260 an hour
+and recovers faster per degree. **"A kiln loses forty minutes" was one
+calibrated example dressed up as a rule**, and an interrupted weld
+wanting cleaning and inspecting far more often than it wants doing again
+was the case the old table could not express at all.
 
 And the split happens **at the exact minute**, not at the end of the step
 and not at the end of the day. What was finished stays finished and is not
 charged twice.
 
+### A finished thing exists, even when there is nowhere to put it
+
+"Completion waits" is only honest if the object is already real. So a
+blocked delivery **makes the thing and parks it on the machine**: the
+inputs are consumed, the quality is settled and cannot be rerolled by
+choosing somewhere else later, and the bench stays occupied until somebody
+comes and moves it. Otherwise a finished washing machine exists nowhere
+while its machine goes free, which is `Nowhere` coming back in through the
+scheduler.
+
+**The room is checked at completion and not only at planning**, because
+between raising the order and finishing it somebody may have filled the
+shelf or driven off in the van.
+
 ### Whoever is holding the tool
 
 **The player is not a special case.** The same hands and the same
 equipment give the same work, whoever is doing it — ownership decides
-permission, accounting and access, never the physics. An owner-operator is
-not on the payroll and **still costs the calendar an hour of somebody's
-day**, which is the whole reason owner labour is easy to lose.
+permission, accounting and access, never the physics.
+
+- **Ownership grants permission, not availability.** Being allowed to use
+  the lathe and the lathe being free are different facts, and the owner
+  waits his turn like anybody else.
+- **A reservation is a plan, not a lock on reality.** Between booking the
+  drill and picking it up somebody can steal it, break it or run the
+  battery flat, so what was reserved is checked again when the work is due
+  to start — and work already finished is not undone by it.
+- **Accounting profit and economic profit are not the same number.** An
+  owner-operator draws no wage and still spends the hours: the books say
+  his chair cost nothing to make and the truth is that it cost exactly
+  what the employee's did. That missing cost is the whole reason owner
+  labour goes on the calendar.
 
 Working costs the worker: a nine-hour day takes somebody from fresh to
 spent, a night off puts some of it back, and the tool comes out of the run

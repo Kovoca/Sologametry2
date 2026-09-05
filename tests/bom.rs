@@ -5,8 +5,8 @@
 //! of them is a content error, not a runtime surprise.
 
 use scale_sim::bom::{
-    depth_of, explode, plausible_ends, tree, validate, Acquisition, Bom, BomEntry, EndOfLife,
-    Flaw, Origin,
+    audit, depth_of, explode, plausible_ends, tree, validate, Acquisition, Bom, BomEntry,
+    EndOfLife, Flaw, Origin,
 };
 use scale_sim::craft::standard_recipes;
 use scale_sim::item::{
@@ -319,9 +319,9 @@ fn an_armourer_sees_further_than_a_soldier() {
 
     let rifle = cat.must("rifle");
     assert!(depth_of(&cat, rifle) >= 3);
-    let flat = explode(&cat, rifle, 3.0);
+    let flat = explode(&cat, rifle, 3.01);
     let total: f64 = flat.iter().map(|m| m.1).sum();
-    assert!((total - 3.0).abs() < 0.02, "a rifle exploded to {total:.3} kg");
+    assert!((total - 3.01).abs() < 0.02, "a rifle exploded to {total:.3} kg");
 }
 
 /// **A washing machine is mostly concrete**, which is the fact a
@@ -465,4 +465,303 @@ fn what_is_not_manufactured_is_got_from_somewhere() {
             assert!(!d.origin.is_empty(), "{} comes from nowhere", d.name);
         }
     }
+}
+
+// =====================================================================
+// a formed part is neither bulk nor a component
+// =====================================================================
+
+/// **Gate: a pressed shell is not "bulk steel".**
+///
+/// The rule: bulk has no independently meaningful shape, and if the shape
+/// matters after separation it is a fabricated part. Calling a door skin
+/// bulk recreates the problem the whole contract exists to fix — separated
+/// it becomes anonymous sheet instead of a door skin that is bent but
+/// still a door skin.
+#[test]
+fn a_car_door_is_not_thirty_kilograms_of_sheet() {
+    use scale_sim::bom::{Geometry, Surface};
+    let cat = standard_catalogue();
+    let id = cat.must("car door");
+    let d = cat.get(id).unwrap();
+
+    // The four pressings are declared as formed parts, with their shape,
+    // their state and their surface.
+    let names: Vec<&str> = d.bill.formed.iter().map(|f| f.name).collect();
+    for want in ["outer skin", "inner frame", "intrusion beam", "mounting brackets"] {
+        assert!(names.contains(&want), "a car door has no {want}: {names:?}");
+    }
+    let skin = d.bill.formed.iter().find(|f| f.name == "outer skin").unwrap();
+    assert_eq!(skin.geometry, Geometry::Stamping);
+    assert_eq!(skin.surface, Surface::Painted);
+    assert!(skin.geometry.holds_its_shape(), "a stamping was treated as generic stock");
+
+    // The things that genuinely are stuff stayed stuff.
+    let bulk: Vec<Material> = d.bill.bulk.iter().map(|b| b.0).collect();
+    assert!(bulk.contains(&Material::Adhesive), "the seam sealer became a part");
+    assert!(bulk.contains(&Material::Rubber), "the damping compound became a part");
+
+    // Flat stock does not hold a shape and is therefore never a formed
+    // part in its own right.
+    assert!(!Geometry::Sheet { mm: 0.7 }.holds_its_shape());
+    assert!(!Geometry::Bar { mm: 20.0 }.holds_its_shape());
+    assert!(Geometry::Casting.holds_its_shape());
+
+    // And it all adds up.
+    let r = d.bill.reconcile();
+    assert!(r.components > 10.0 && r.formed > 10.0 && r.direct > 0.5);
+    assert!(r.residual(d.nominal_mass_kg).abs() < 1e-6);
+}
+
+/// **Gate: a door skin comes off as a door skin and only a shredder turns
+/// it into sheet.**
+#[test]
+fn taking_a_door_apart_gives_back_a_door_skin() {
+    let cat = standard_catalogue();
+    let door = ItemInstance::one(&cat, cat.must("car door"));
+
+    let (mut careful_skins, mut shredded_skins) = (0, 0);
+    for event in 0..40u64 {
+        let careful = take_apart(&door, Teardown::Disassemble, &cat, 0.85, event);
+        let shredded = take_apart(&door, Teardown::Recycle, &cat, 0.85, event);
+        careful_skins += careful.formed.iter().filter(|f| f.0.name == "outer skin").count();
+        shredded_skins += shredded.formed.iter().filter(|f| f.0.name == "outer skin").count();
+    }
+    assert!(careful_skins > 20, "a careful strip returned {careful_skins} skins in 40");
+    assert_eq!(shredded_skins, 0, "a shredder handed back a door skin");
+
+    // The shredder returns the steel instead, so nothing is lost.
+    let shredded = take_apart(&door, Teardown::Recycle, &cat, 0.85, 1);
+    assert!(shredded.material(Material::MildSteel) > 5.0, "the pressings went nowhere");
+    assert!((shredded.accounted_kg() - door.mass_kg).abs() < 1e-6);
+
+    // A recovered skin is bent, not pristine — it went through a crash and
+    // a strip-down.
+    let rough = take_apart(&door, Teardown::Salvage, &cat, 0.5, 3);
+    if let Some((_, cond)) = rough.formed.first() {
+        assert!(cond.damage > 0.0, "rough salvage returned an undamaged pressing");
+    }
+}
+
+/// **Gate: every node of every printed tree reconciles.**
+///
+/// A validator that passes while its diagnostic hides content is worse
+/// than no diagnostic. This checks the report itself, definition by
+/// definition and node by node.
+#[test]
+fn the_printed_tree_adds_up_everywhere() {
+    let cat = standard_catalogue();
+    for d in cat.iter() {
+        for n in audit(&cat, d.id, d.nominal_mass_kg) {
+            assert!(
+                n.residual().abs() < 1e-6,
+                "{} / {} declares {:.4} kg and its contents come to {:.4}",
+                d.name,
+                n.name,
+                n.declared,
+                n.declared - n.residual()
+            );
+        }
+    }
+}
+
+/// **Gate: a count and a total are never ambiguous.**
+///
+/// "chuck jaw x3 — 0.045 kg" could mean three jaws of 45 g or three jaws
+/// of 15 g. The report says which.
+#[test]
+fn a_line_says_how_many_and_how_much_each() {
+    let cat = standard_catalogue();
+    let mut s = String::new();
+    tree(&cat, cat.must("cordless drill"), 1.6, 0, &mut s);
+    assert!(
+        s.contains("3 x 0.015 kg = 0.045 kg"),
+        "the jaws line is still ambiguous:\n{s}"
+    );
+    // And every node shows its own arithmetic.
+    assert!(s.contains("declared") && s.contains("residual"));
+    assert!(s.contains("direct bulk"), "direct material is indistinguishable from a part");
+}
+
+// =====================================================================
+// what the validator is entitled to claim
+// =====================================================================
+
+/// **Gate: a declared mass is an expectation with a provenance, not a
+/// measurement.**
+///
+/// "Zero content errors" means internally consistent. It does not mean
+/// externally calibrated, and the catalogue says which of its figures are
+/// which.
+#[test]
+fn a_nominal_mass_knows_how_firm_it_is() {
+    use scale_sim::bom::{MassProvenance, NominalMass};
+    let cat = standard_catalogue();
+
+    for d in cat.iter() {
+        assert!((d.mass.expected - d.nominal_mass_kg).abs() < 1e-9);
+        assert!(d.mass.tolerance > 0.0, "{} admits no variation at all", d.name);
+    }
+
+    // A measured figure is held far tighter than a designed one, which is
+    // the whole point of recording where it came from.
+    let measured = NominalMass::of(70.0, MassProvenance::Measured);
+    let guessed = NominalMass::of(70.0, MassProvenance::DesignedPlaceholder);
+    assert!(measured.tolerance < guessed.tolerance / 3.0);
+    assert!(measured.within(70.5) && !measured.within(78.0));
+    assert!(guessed.within(78.0), "a placeholder was held to a measurement tolerance");
+
+    // And an instance weighs what is actually in it, not the nominal.
+    let mut one = ItemInstance::one(&cat, cat.must("washing machine"));
+    one.mass_kg += 2.4; // a hose still full of water
+    assert!(one.mass_kg > cat.get(cat.must("washing machine")).unwrap().nominal_mass_kg);
+}
+
+/// **Gate: what is technically possible is not what happens.**
+///
+/// Five questions, and only the last of them decides the outcome: can it
+/// be done at all, is there a facility, is it legal, is it worth it, and
+/// what actually happened.
+#[test]
+fn an_ending_depends_on_more_than_the_object() {
+    use scale_sim::bom::{what_happens_to_it, Available};
+    let cat = standard_catalogue();
+    let washer = cat.get(cat.must("washing machine")).unwrap();
+    let possible = &washer.end_of_life;
+
+    assert!(possible.contains(&EndOfLife::Remanufacture), "a washing machine cannot be rebuilt");
+    assert!(possible.contains(&EndOfLife::Recycling));
+
+    // In a village with nothing, it goes in the ground — and the
+    // technically possible routes are unchanged by that.
+    let village = Available::default();
+    assert_eq!(
+        what_happens_to_it(possible, &village, 0.9, 0.0),
+        EndOfLife::Disposal,
+        "with nothing paying, it goes in the ground"
+    );
+
+    // Somebody paying for scrap is not enough without a foundry.
+    let scrap_only = Available {
+        facilities: vec![],
+        forbidden: vec![],
+        worth: vec![(EndOfLife::Recycling, 0.2)],
+    };
+    assert_eq!(
+        what_happens_to_it(possible, &scrap_only, 0.9, 0.0),
+        EndOfLife::Disposal,
+        "it was recycled with no foundry within reach"
+    );
+
+    let town = Available {
+        facilities: vec!["a foundry", "a workshop"],
+        forbidden: vec![],
+        worth: vec![(EndOfLife::Recycling, 0.2), (EndOfLife::Reuse, 0.5)],
+    };
+    assert_eq!(what_happens_to_it(possible, &town, 0.9, 0.0), EndOfLife::Reuse);
+    // A wreck is not reused however much reuse pays.
+    assert_eq!(what_happens_to_it(possible, &town, 0.05, 0.0), EndOfLife::Recycling);
+    // And the law can forbid the profitable one.
+    let regulated = Available { forbidden: vec![EndOfLife::Reuse], ..town.clone() };
+    assert_eq!(what_happens_to_it(possible, &regulated, 0.9, 0.0), EndOfLife::Recycling);
+}
+
+/// **Gate: `Industrial` is debt, not a portal.**
+///
+/// A thing whose only route is an unwritten industrial process can be
+/// found, imported, salvaged or held as world stock. It **cannot be
+/// manufactured here**, and once the stock is gone it stays gone until the
+/// chain exists.
+#[test]
+fn an_unwritten_process_cannot_make_anything() {
+    let cat = standard_catalogue();
+    let board = cat.get(cat.must("circuit board")).unwrap();
+    assert!(board.origin.iter().all(|o| !o.can_be_made_locally()));
+    assert!(board.origin.iter().any(|o| o.is_debt()));
+
+    // Whereas a chair has a plan and a board is felled.
+    assert!(cat
+        .get(cat.must("wooden chair"))
+        .unwrap()
+        .origin
+        .iter()
+        .any(|o| o.can_be_made_locally()));
+    assert!(cat
+        .get(cat.must("oak board"))
+        .unwrap()
+        .origin
+        .iter()
+        .any(|o| o.can_be_made_locally()));
+
+    // **Coverage is reported by what it is for**, because "125 remaining"
+    // says far less than which parts of life are covered.
+    let coverage = scale_sim::bom::plan_coverage(&cat);
+    assert!(coverage.len() > 5);
+    let food = coverage.iter().find(|c| c.0 == Family::Foodstuff).unwrap();
+    assert!(food.1 > 0, "nothing edible can be made at all");
+    let spares = coverage.iter().find(|c| c.0 == Family::SparePart).unwrap();
+    assert_eq!(spares.1, 0, "a spare part gained a plan without anybody writing one");
+}
+
+/// **Gate: the cycle rule is about the bill of materials only.**
+///
+/// A rifle cannot contain itself. But steel becomes an appliance, the
+/// appliance becomes scrap, and the scrap becomes steel — and forbidding
+/// that would forbid recycling.
+#[test]
+fn a_production_loop_is_not_a_bill_of_materials_loop() {
+    let cat = standard_catalogue();
+    let book = standard_recipes(&cat);
+    assert!(validate(&cat, &plans(&book)).iter().all(|f| f.flaw != Flaw::Cycle));
+
+    // And the material loop is real and allowed: a washing machine is made
+    // of steel, and taking it apart gives steel back to make another.
+    let washer = ItemInstance::one(&cat, cat.must("washing machine"));
+    let back = take_apart(&washer, Teardown::Recycle, &cat, 0.9, 1);
+    assert!(
+        back.material(Material::MildSteel) > 1.0,
+        "recycling an appliance yielded no steel to make another one from"
+    );
+    assert!(cat
+        .get(cat.must("washing machine"))
+        .unwrap()
+        .materials
+        .fraction_of(Material::MildSteel)
+        > 0.0);
+}
+
+/// **Gate: a leaf is opened when its inside has a consequence, not to
+/// record how it was forged.**
+///
+/// A bolt body stays a leaf — its alloy, its heat treatment and its
+/// coating are properties, and manufacturing history is not physical
+/// composition. A sealed battery does not, because its cells, its casing
+/// and its electrolyte fail, are replaced and are recovered on their own.
+#[test]
+fn a_bolt_is_a_leaf_and_a_battery_is_not() {
+    use scale_sim::bom::should_be_opened;
+    let cat = standard_catalogue();
+
+    let bolt = cat.must("bolt body");
+    assert!(cat.get(bolt).unwrap().bill.components.is_empty(), "a bolt body was opened up");
+    assert_eq!(should_be_opened(&cat, bolt), None, "a bolt body was asked to come apart");
+
+    // The battery is now opened, and its contents are the reason.
+    let pack = cat.get(cat.must("battery pack")).unwrap();
+    assert!(!pack.bill.components.is_empty(), "a battery pack is still a leaf");
+    let inner: Vec<&str> = pack
+        .bill
+        .components
+        .iter()
+        .filter_map(|c| cat.get(c.def).map(|d| d.name))
+        .collect();
+    assert!(inner.contains(&"battery cell"), "a pack with no cells in it: {inner:?}");
+    assert!(pack.bill.formed.iter().any(|f| f.name == "pack casing"));
+
+    // And the hazardous part is real and declared.
+    let cell = cat.get(cat.must("battery cell")).unwrap();
+    assert!(
+        cell.bill.fluids.iter().any(|f| f.0 == Material::Electrolyte),
+        "a cell with no electrolyte in it"
+    );
 }

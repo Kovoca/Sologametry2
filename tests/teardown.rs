@@ -466,3 +466,67 @@ fn a_thing_with_no_record_can_only_be_weighed() {
     assert!(r.fuel_kg() > 0.0 || !r.materials.is_empty(), "it yielded nothing whatever");
     assert!((r.accounted_kg() - anonymous.mass_kg).abs() < 1e-6);
 }
+
+/// **Gate: how many came back and what state they are in are two
+/// questions.**
+///
+/// A brick off a lime-mortared wall comes away bonded and wants cleaning;
+/// one cut out of cement comes away chipped; a smashed one is aggregate.
+/// A single "recovered" count cannot say which, and what a reclamation
+/// yard will pay for turns entirely on it.
+#[test]
+fn a_recovered_brick_has_a_grade_as_well_as_a_count() {
+    use scale_sim::fitted::WallAssembly;
+    use scale_sim::teardown::RecoveryGrade;
+
+    let cat = standard_catalogue();
+    let store = scale_sim::item::Store::new();
+    let lime = WallAssembly::brick(30, &cat, JointMethod::LimeMortared);
+    let cement = WallAssembly::brick(31, &cat, JointMethod::CementMortared);
+
+    let grades = |w: &WallAssembly, how: Teardown| {
+        let mut seen: Vec<RecoveryGrade> = Vec::new();
+        for event in 0..30u64 {
+            for c in &w.take_down(how, &cat, &store, 0.85, event).components {
+                if !seen.contains(&c.grade) {
+                    seen.push(c.grade);
+                }
+            }
+        }
+        seen
+    };
+
+    // Lime gives bricks back, and they come away still bonded — which is
+    // a cleaning job somebody has to pay for rather than a free brick.
+    let careful = grades(&lime, Teardown::Deconstruct);
+    assert!(
+        careful.contains(&RecoveryGrade::IntactBonded),
+        "lime-mortared brick came off with no mortar on it: {careful:?}"
+    );
+    assert!(
+        !careful.contains(&RecoveryGrade::IntactClean),
+        "a mortared joint gave back a clean brick"
+    );
+
+    // Cement has to be cut out, so what survives is chipped.
+    let cut = grades(&cement, Teardown::Deconstruct);
+    assert!(
+        cut.contains(&RecoveryGrade::Chipped),
+        "cement-mortared brick came away undamaged: {cut:?}"
+    );
+
+    // A screwed timber frame gives back clean studs, which is the
+    // contrast: the grade follows the joint and not the material.
+    let door = ItemInstance::one(&cat, cat.must("car door"));
+    let apart = take_apart(&door, Teardown::Disassemble, &cat, 0.9, 1);
+    assert!(
+        apart.components.iter().any(|c| c.grade == RecoveryGrade::IntactClean),
+        "nothing bolted came off clean"
+    );
+
+    // And the grades are ordered from best to worst, so a buyer can sort
+    // on them.
+    assert!(RecoveryGrade::IntactClean < RecoveryGrade::IntactBonded);
+    assert!(RecoveryGrade::Chipped < RecoveryGrade::Broken);
+    assert!(RecoveryGrade::Broken < RecoveryGrade::Contaminated);
+}

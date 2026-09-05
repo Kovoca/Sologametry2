@@ -5,7 +5,7 @@
 use scale_sim::craft::{
     hand_tools, machine_shop, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace,
 };
-use scale_sim::bom::{depth_of, explode, tree, validate, Origin};
+use scale_sim::bom::{audit, depth_of, explode, plan_coverage, tree, validate, Origin};
 use scale_sim::item::{standard_catalogue, Catalogue, Family, ItemInstance};
 use scale_sim::teardown::{heat_mj, take_apart, Teardown};
 
@@ -49,7 +49,7 @@ fn main() {
 
     println!("\nHOW DEEP THE TREES GO");
     for name in ["oak board", "wooden chair", "toaster", "cordless drill", "rifle",
-                 "washing machine"] {
+                 "car door", "washing machine"] {
         let id = cat.must(name);
         let d = cat.get(id).unwrap();
         let flat = explode(&cat, id, d.nominal_mass_kg);
@@ -60,6 +60,24 @@ fn main() {
             d.bill.components.iter().map(|c| c.count).sum::<u32>(),
             flat.len()
         );
+    }
+
+    println!("
+WHAT IS IN A CAR DOOR");
+    let cd = cat.must("car door");
+    let mut s = String::new();
+    tree(&cat, cd, cat.get(cd).unwrap().nominal_mass_kg, 1, &mut s);
+    print!("{s}");
+    let worst = audit(&cat, cd, 28.1)
+        .iter()
+        .map(|n| n.residual().abs())
+        .fold(0.0f64, f64::max);
+    println!("  worst residual anywhere in the tree: {worst:.6} kg");
+
+    println!("
+WHAT ANYBODY HERE CAN ACTUALLY MAKE");
+    for (family, made, all) in plan_coverage(&cat) {
+        println!("  {:<12?} {made:>3} / {all:<3}  {:>5.0}%", family, 100.0 * made as f64 / all as f64);
     }
 
     let findings = validate(&cat, &book.recipes.iter().map(|r| r.name).collect::<Vec<_>>());

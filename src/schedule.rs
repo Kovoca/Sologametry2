@@ -42,12 +42,24 @@ pub struct Station {
     pub capacity: u32,
     /// Continuous draw while it is working.
     pub kw: f64,
+    /// **Whose it is.** Ownership decides who may use it. It does not
+    /// decide whether it is there, whether it works, or whether somebody
+    /// else has already taken it.
+    pub owner: Option<u64>,
+    /// Whether it is actually usable right now — a reserved drill can
+    /// still be stolen, dropped, or run flat.
+    pub serviceable: bool,
 }
 
 impl Station {
     pub fn new(name: &'static str, provides: Vec<Provides>) -> Self {
         let kw = provides.iter().map(|p| p.kw).fold(0.0f64, f64::max);
-        Station { name, provides, capacity: 1, kw }
+        Station { name, provides, capacity: 1, kw, owner: None, serviceable: true }
+    }
+
+    pub fn owned_by(mut self, person: u64) -> Self {
+        self.owner = Some(person);
+        self
     }
 
     pub fn holding(mut self, capacity: u32) -> Self {
@@ -205,7 +217,58 @@ impl Shop {
     }
 
     fn station_for(&self, n: Need) -> Option<usize> {
-        self.stations.iter().position(|s| s.can(n, self.powered))
+        self.stations.iter().position(|s| s.can(n, self.powered) && s.serviceable)
+    }
+
+    /// **Ownership grants permission, not availability.**
+    ///
+    /// Being allowed to use the lathe and the lathe being free are two
+    /// different facts, and a model that conflates them cannot say that
+    /// the owner has to wait his turn like anybody else.
+    pub fn may_use(&self, person: u64, station: usize) -> bool {
+        self.stations
+            .get(station)
+            .map(|s| s.owner.is_none() || s.owner == Some(person))
+            .unwrap_or(false)
+    }
+
+    /// **A reservation is a plan, not a lock on reality.**
+    ///
+    /// Between booking the drill and picking it up, somebody can steal it,
+    /// break it or run the battery flat. What was reserved is checked
+    /// again when the work is due to start, and what comes back is the
+    /// slots that can no longer be worked.
+    pub fn revalidate(&self, plan: &Plan, at: f64) -> Vec<usize> {
+        plan.slots
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| !s.done && s.end > at)
+            .filter(|(_, s)| match s.station {
+                Some(k) => self.stations.get(k).map(|st| !st.serviceable).unwrap_or(true),
+                None => false,
+            })
+            .map(|(i, _)| i)
+            .collect()
+    }
+
+    /// **What the work cost, in the two senses that are not the same.**
+    ///
+    /// Accounting profit charges what was paid out; economic profit
+    /// charges what the time was worth. An owner-operator draws no wage
+    /// and still spends the hours, which is exactly the cost that goes
+    /// missing when a business looks profitable and is not.
+    pub fn hours_worked(&self, plan: &Plan) -> LabourCost {
+        let mut paid = 0.0;
+        let mut unpaid = 0.0;
+        for s in &plan.slots {
+            let Some(w) = s.worker else { continue };
+            match self.workers.get(w) {
+                Some(worker) if worker.paid => paid += s.labour_min,
+                Some(_) => unpaid += s.labour_min,
+                None => {}
+            }
+        }
+        LabourCost { paid_minutes: paid, owner_minutes: unpaid }
     }
 
     /// **Doing the work costs the person doing it.**
@@ -244,41 +307,105 @@ impl Shop {
 // what an interruption does
 // =====================================================================
 
-/// **A blackout does not have one universal result.**
+/// **A blackout does not have one universal result, and the shop does not
+/// decide what it costs.**
 ///
-/// An electric saw stops and picks up where it left off. A kiln cools and
-/// has to be brought back. Food in an oven goes on changing whether or not
-/// the element is on. A weld interrupted half way is a weld that has to be
-/// done again. Glue does not care.
+/// The resource supplies the state — power gone, temperature falling, how
+/// long for — and **the operation decides what that state does to the
+/// work**. An electric saw stops and picks up where it stopped; a weld
+/// half done may need cleaning and inspecting rather than doing again; a
+/// kiln loses heat at a rate that depends on its insulation and its
+/// thermal mass; curing may be indifferent or may depend on being held at
+/// a temperature. None of that is a rule about blackouts.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum OnInterruption {
-    /// Stops, and resumes from where it stopped.
-    Resume,
-    /// Carries on regardless — curing, proving, cooling.
-    Unaffected,
-    /// Has to be started again from the beginning of the operation.
-    Restart,
-    /// The equipment loses its state and needs bringing back before the
-    /// work can go on.
-    LosesState { recovery_min: f64 },
-    /// The workpiece goes on changing while nobody is doing anything to
-    /// it, and after a while it is spoiled.
-    ContinuesChanging { spoils_after_min: f64 },
+    /// Stops, and resumes from where it stopped. An electric saw.
+    PauseResume,
+    /// Resumes, after setting up again. A machine that loses its
+    /// registration.
+    ResumeWithSetup { setup_min: f64 },
+    /// The operation again from the beginning.
+    RestartOperation,
+    /// Look at it first, and then usually carry on. An interrupted weld
+    /// wants cleaning and inspecting far more often than it wants doing
+    /// again.
+    InspectThenResume { inspect_min: f64, restart_chance: f64 },
+    /// Carries on regardless — curing, proving, cooling, settling.
+    ContinuePassively,
+    /// **A thermal process, and the figures are the kiln's, not the
+    /// scheduler's.** How much is lost depends on the outage, on how fast
+    /// this particular thing loses heat, and on what it has to be brought
+    /// back to.
+    ThermalProcess { loss_per_hour: f64, recovery_min_per_degree: f64, holds_at_c: f64 },
+    /// The workpiece goes on changing while nothing is being done to it,
+    /// and after a while it is spoiled.
+    SpoilAfter { minutes: f64 },
+    /// Stopping is dangerous. Whatever is in there is a loss and possibly
+    /// worse.
+    UnsafeAbort,
 }
 
 impl OnInterruption {
-    /// What a step's kind implies, before anybody says otherwise. A
-    /// resting step is unaffected; a joining step has to be redone; an
-    /// oven loses its heat.
+    /// **A default from the kind of operation, and no more than a
+    /// default.** A step may say otherwise, and the calibrated figures
+    /// belong to the step rather than here.
     pub fn of(step: &Step) -> Self {
+        if let Some(p) = step.interruption {
+            return p;
+        }
         use crate::craft::Operation::*;
         match step.operation {
-            Rest => OnInterruption::Unaffected,
-            Bake => OnInterruption::ContinuesChanging { spoils_after_min: 45.0 },
-            Weld | Solder | Cast | Forge => OnInterruption::Restart,
-            HeatTreat => OnInterruption::LosesState { recovery_min: 40.0 },
-            _ => OnInterruption::Resume,
+            Rest => OnInterruption::ContinuePassively,
+            // A domestic oven at 220 C in a cold kitchen loses roughly
+            // 150 degrees an hour with the door shut, and comes back at
+            // about a degree every eight seconds.
+            Bake => OnInterruption::ThermalProcess {
+                loss_per_hour: 150.0,
+                recovery_min_per_degree: 0.13,
+                holds_at_c: 220.0,
+            },
+            Weld | Solder => OnInterruption::InspectThenResume {
+                inspect_min: 6.0,
+                restart_chance: 0.35,
+            },
+            Cast | Forge => OnInterruption::RestartOperation,
+            HeatTreat => OnInterruption::ThermalProcess {
+                loss_per_hour: 260.0,
+                recovery_min_per_degree: 0.09,
+                holds_at_c: 850.0,
+            },
+            Mill | Turn => OnInterruption::ResumeWithSetup { setup_min: 8.0 },
+            _ => OnInterruption::PauseResume,
         }
+    }
+
+    /// What an outage of a given length costs this operation: minutes to
+    /// be made up, and whether the work is spoiled.
+    pub fn cost_of(self, outage_min: f64, progress_min: f64) -> (f64, bool) {
+        match self {
+            OnInterruption::PauseResume | OnInterruption::ContinuePassively => (0.0, false),
+            OnInterruption::ResumeWithSetup { setup_min } => (setup_min, false),
+            OnInterruption::RestartOperation => (progress_min, false),
+            OnInterruption::InspectThenResume { inspect_min, restart_chance } => {
+                // The inspection always happens; whether it sends the job
+                // back is a chance the caller settles.
+                (inspect_min + progress_min * restart_chance, false)
+            }
+            OnInterruption::ThermalProcess {
+                loss_per_hour,
+                recovery_min_per_degree,
+                holds_at_c,
+            } => {
+                let lost_degrees = (loss_per_hour * outage_min / 60.0).min(holds_at_c);
+                (lost_degrees * recovery_min_per_degree, false)
+            }
+            OnInterruption::SpoilAfter { minutes } => (0.0, outage_min > minutes),
+            OnInterruption::UnsafeAbort => (progress_min, true),
+        }
+    }
+
+    pub fn is_indifferent(self) -> bool {
+        matches!(self, OnInterruption::ContinuePassively)
     }
 }
 
@@ -403,7 +530,7 @@ fn try_book(
     // time and it needs a person.
     if recipe.setup_minutes > 0.0 {
         let slot = fit(shop, order.id, usize::MAX, 0, recipe.setup_minutes, 0.0, &[], t, true,
-                       OnInterruption::Resume)?;
+                       OnInterruption::PauseResume)?;
         t = slot.end;
         plan.slots.push(slot);
     }
@@ -558,15 +685,9 @@ pub fn interrupt(plan: &mut Plan, at: f64, until: f64) -> Vec<Interrupted> {
         }
         let progress = at - s.start;
         let outage = until - at;
-        let (lost, spoiled) = match s.policy {
-            OnInterruption::Resume => (0.0, false),
-            OnInterruption::Unaffected => (0.0, false),
-            OnInterruption::Restart => (progress, false),
-            OnInterruption::LosesState { recovery_min } => (recovery_min, false),
-            OnInterruption::ContinuesChanging { spoils_after_min } => {
-                (0.0, outage > spoils_after_min)
-            }
-        };
+        // **The operation decides what the outage costs it**, from the
+        // state the resource lost and how far through the work was.
+        let (lost, spoiled) = s.policy.cost_of(outage, progress);
         hit.push(Interrupted {
             order: s.order,
             step: s.step,
@@ -577,7 +698,7 @@ pub fn interrupt(plan: &mut Plan, at: f64, until: f64) -> Vec<Interrupted> {
         });
         // **Unaffected work keeps its slot; everything else is pushed
         // out by the outage plus whatever it lost.**
-        if s.policy != OnInterruption::Unaffected {
+        if !s.policy.is_indifferent() {
             s.end += outage + lost;
         }
     }
@@ -686,6 +807,36 @@ pub fn batch_cost(book_of_recipes: &RecipeBook, recipe: usize, units: u32) -> Op
         per_unit_labour_min: total / units.max(1) as f64,
         setup_min: r.setup_minutes,
     })
+}
+
+/// **Hours somebody was paid for, and hours somebody spent.**
+///
+/// The second is not a subset of the first, and the difference between
+/// them is the difference between a business that looks profitable and one
+/// that is.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LabourCost {
+    pub paid_minutes: f64,
+    /// Worked by an owner who takes no wage for it. **A real cost**, and
+    /// the one accounting profit leaves out.
+    pub owner_minutes: f64,
+}
+
+impl LabourCost {
+    pub fn total_minutes(&self) -> f64 {
+        self.paid_minutes + self.owner_minutes
+    }
+
+    /// What the books show as the cost of the work.
+    pub fn accounting_cost(&self, wage_per_hour: f64) -> f64 {
+        self.paid_minutes / 60.0 * wage_per_hour
+    }
+
+    /// What it actually cost, charging the owner's time at what he could
+    /// have earned doing something else.
+    pub fn economic_cost(&self, wage_per_hour: f64, owners_time_worth: f64) -> f64 {
+        self.accounting_cost(wage_per_hour) + self.owner_minutes / 60.0 * owners_time_worth
+    }
 }
 
 /// **A batch has two kinds of fault, and they are not the same kind.**
