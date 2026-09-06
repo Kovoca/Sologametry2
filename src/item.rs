@@ -1082,6 +1082,82 @@ pub fn standard_catalogue() -> Catalogue {
     c.add(def("loaf", Family::Foodstuff, Form::Rigid, d(0.28, 0.12, 0.12), 0.8,
               &[(Flour, 0.62), (Water, 0.38)]));
 
+    // ---- what is actually in a house ---------------------------------
+    // **A household does not buy "retail goods".** It buys the things that
+    // do the jobs a house has to have done, and each of them is a real
+    // object with a real mass. Figures are ordinary domestic ones.
+    let mut stove = def("cooking stove", Family::Appliance, Form::Assembly,
+                        d(0.6, 0.65, 0.9), 55.0,
+                        &[(MildSteel, 0.62), (Stainless, 0.18), (Glass, 0.09),
+                          (Ceramic, 0.06), (Copper, 0.03), (Silicon, 0.02)]);
+    stove.repair_with = vec![MildSteel, Copper];
+    c.add(stove);
+
+    // **21 kg of it is the compressor and the sheet steel**, and the foam
+    // and plastic liner are most of the volume.
+    let mut fridge = def("refrigerator", Family::Appliance, Form::Assembly,
+                         d(0.6, 0.65, 1.7), 62.0,
+                         &[(MildSteel, 0.44), (Abs, 0.24), (Polyethylene, 0.14),
+                           (Copper, 0.08), (Aluminium, 0.06), (Glass, 0.04)]);
+    fridge.repair_with = vec![Copper, MildSteel];
+    c.add(fridge);
+
+    c.add(def("space heater", Family::Appliance, Form::Assembly, d(0.4, 0.2, 0.5), 6.0,
+              &[(MildSteel, 0.55), (Nichrome, 0.06), (Abs, 0.28), (Copper, 0.08),
+                (Mica, 0.03)]));
+
+    c.add(def("electric light", Family::Appliance, Form::Assembly, d(0.2, 0.2, 0.3), 0.9,
+              &[(Glass, 0.42), (Abs, 0.34), (MildSteel, 0.16), (Copper, 0.08)]));
+
+    // A double bed frame and a sprung mattress. The mattress is most of it.
+    let mut bed = def("bed", Family::Furniture, Form::Assembly, d(2.0, 1.5, 0.6), 48.0,
+                      &[(Pine, 0.36), (MildSteel, 0.28), (Cotton, 0.18),
+                        (Polyester, 0.15), (Adhesive, 0.03)]);
+    bed.repair_with = vec![Pine, MildSteel];
+    c.add(bed);
+
+    let mut bicycle = def("bicycle", Family::Machine, Form::Assembly, d(1.8, 0.6, 1.1), 13.0,
+                          &[(MildSteel, 0.58), (Aluminium, 0.22), (Rubber, 0.14),
+                            (Abs, 0.04), (Lubricant, 0.02)]);
+    bicycle.repair_with = vec![Rubber, MildSteel, Lubricant];
+    c.add(bicycle);
+
+    // The pre-appliance answers, which is what a household without money
+    // uses and what most of the world used until living memory.
+    c.add(def("cooking pot", Family::Container, Form::Rigid, d(0.3, 0.3, 0.2), 2.2,
+              &[(Stainless, 0.94), (Abs, 0.06)]));
+    c.add(def("wash tub", Family::Container, Form::Rigid, d(0.7, 0.7, 0.4), 4.5,
+              &[(Polyethylene, 0.88), (MildSteel, 0.12)]));
+    c.add(def("water butt", Family::Container, Form::Rigid, d(0.6, 0.6, 1.0), 11.0,
+              &[(Polyethylene, 0.95), (MildSteel, 0.05)]));
+
+    let mut clothes = def("work clothes", Family::Clothing, Form::Fabric, d(1.0, 0.6, 0.04), 1.9,
+                          &[(Cotton, 0.88), (Polyester, 0.08), (Thread, 0.03),
+                            (MildSteel, 0.01)]);
+    clothes.repair_with = vec![Cotton, Thread];
+    c.add(clothes);
+
+    // **A car is the second-largest thing a household buys**, and in a real
+    // American budget transport is 17% of all expenditure against food's
+    // 12.9 — purchase, fuel, insurance and repairs together. Real kerb
+    // weight and real composition: about 900 kg of steel in a 1,500 kg car.
+    let mut car = def("motor car", Family::Machine, Form::Assembly, d(4.5, 1.8, 1.5), 1_500.0,
+                      &[(MildSteel, 0.58), (Aluminium, 0.09), (Abs, 0.11),
+                        (Polyethylene, 0.04), (Rubber, 0.06), (Glass, 0.04),
+                        (Copper, 0.03), (Polyester, 0.02), (Lubricant, 0.02),
+                        (Lead, 0.01)]);
+    car.repair_with = vec![MildSteel, Rubber, Lubricant, Copper];
+    car.attachment_points = vec![Fitting::Bracket, Fitting::BatteryRail];
+    c.add(car);
+
+    c.add(def("telephone", Family::Appliance, Form::Rigid, d(0.16, 0.08, 0.01), 0.19,
+              &[(Glass, 0.34), (Aluminium, 0.24), (Abs, 0.18), (Silicon, 0.09),
+                (Copper, 0.09), (Lithium, 0.04), (Electrolyte, 0.02)]));
+
+    c.add(def("radio set", Family::Appliance, Form::Assembly, d(0.35, 0.2, 0.18), 2.4,
+              &[(Abs, 0.46), (MildSteel, 0.22), (Copper, 0.14), (Ferrite, 0.08),
+                (Silicon, 0.06), (Paperboard, 0.04)]));
+
     // ---- components and spares ---------------------------------------
     let mut alt = def("alternator", Family::SparePart, Form::Assembly, d(0.2, 0.16, 0.16), 5.5,
                       &[(MildSteel, 0.5), (Copper, 0.32), (Aluminium, 0.13), (Abs, 0.05)]);

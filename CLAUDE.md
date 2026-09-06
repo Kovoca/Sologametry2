@@ -1780,6 +1780,131 @@ leaves work in progress**: what was finished is finished, what was booked
 on the broken machine is stranded and rescheduled, and no output is
 created twice.
 
+## What a household actually buys (`src/basket.rs`)
+
+`cargo run --release --bin basket`
+
+**A household does not want a washing machine. It wants clean clothes.**
+That is the whole module, and everything awkward in it follows from taking
+it seriously. `RetailGoods` at one tonne a head a year could not say that a
+working machine stops a purchase, that a broken one creates a *repair* job
+before it creates a sale, that a second-hand one does the same work, or
+that somebody with no machine and no money washes by hand and loses the
+evening.
+
+```text
+need -> service -> what it already has + its own hands
+     -> repair / reuse / second-hand / substitute / make / scavenge
+     -> buy new -> and if nobody sells it, unmet demand
+```
+
+**Unmet demand is a real state**, not a purchase that quietly happens
+anyway. A country with no cookers has households cooking on fires.
+
+### The order is the content
+
+Every branch is a real behaviour and the *ordering* is what makes the model
+say anything: check what you have, mend it if you can, look second-hand,
+buy new, make one, find one, do it by hand, pay somebody each time, go
+without. Needs are considered most-urgent first and the money runs out
+where it runs out — so **Engel's law is an output**. Nothing writes down a
+share of spending; the poorest household simply never reaches the bottom of
+its list. Measured: 28-38% of spending on food for a labourer against 30%
+for an office couple, and the gap widens sharply as income falls.
+
+### A wash tub is not a small washing machine
+
+The distinction the first version collapsed, and it matters because a tub
+is a twentieth of the price. **Owning a tub is not having clean clothes; it
+is having the means to spend Monday getting them.** Rank on price alone and
+nobody in the world ever buys an appliance.
+
+- **A machine has a throughput; an aid has only your time.** One tub washes
+  a family's clothes and takes longer; one heater in a Minnesota winter is
+  not a warm house. So coverage accumulates and must reach the requirement
+  for an appliance, while an aid always covers it and the hours carry the
+  load.
+- **A machine leaves a residue of the work, it does not subtract hours.**
+  You still load it, hang the washing out and put it away. Measured: a
+  family of four is 12.9 h a week of laundry by hand and 1.9 h with a
+  machine, which is the real historical fact and the reason they sold.
+- **Domestic work does not scale with heads.** You wash a bigger load, not
+  four separate loads. Taking it as linear gave a family of four
+  twenty-eight hours of laundry a week.
+
+### A durable runs on a flow
+
+The half that was missing and which nothing worked without: **an appliance
+is not free once bought.** A stove burns fuel, a fridge runs day and night,
+and a car costs more in insurance and repairs than in petrol. Without it,
+Miami and Minneapolis came out spending exactly the same, because the
+heater cost the same in both and nothing ran it.
+
+Real annual consumption, turned into a week: a refrigerator 400-500 kWh a
+year, an electric range 500-700, a washing machine about 150, and **home
+heating dwarfs all of it** at something like 11,700 kWh a year of delivered
+heat in an average American house. The bill arrives *before* the shopping,
+because that is what a bill does — and a household that cannot pay it is
+cut off, at which point everything electric stops and it falls back on its
+hands exactly as if it had never owned any of it.
+
+### Some needs are about the house and some about the people
+
+Feeding four costs four times feeding one; heating the room for four costs
+barely more. That asymmetry is most of why sharing a roof is cheaper per
+head, and it is the same equivalence the household model already applies to
+rent. Measured against 1 adult: food 4.00x, cooked food 2.05x, warmth
+1.36x.
+
+### What a repair is weighed against
+
+**A replacement for *this*, not the cheapest thing in the shop that touches
+the same need.** Comparing against the whole candidate list meant a
+washing machine was never worth mending because a tub is thirty pounds.
+
+Real repair economics otherwise: labour is most of the bill, a repair worth
+doing costs well under half a replacement, and **a worn-out machine is not
+worth mending however small the fault** — which is why real repair shops
+turn the work away. A town with a repairer mends what a town without one
+throws out, which is the same fault and a different place.
+
+### Retail headcount follows customers, not tonnage
+
+The error `census.rs` found and could not fix from inside the commodity
+model. A supermarket runs on transactions and floor to keep: a checkout
+serves ~25 customers an hour, and grocery runs roughly one employee per
+500-800 sq ft of selling area.
+
+| | customers/day | FTE | people |
+|---|---|---|---|
+| corner shop | 260 | 4 | 5 |
+| convenience store | 900 | 17 | 22 |
+| **supermarket**, 3,700 m² | 2,857 | 67 | **88** |
+| supercentre, 17,000 m² | 7,000 | 276 | 364 |
+
+**And the unit is the whole point.** The median US supermarket employs
+about **89 people** — but most of them part-time, so its hours are far
+fewer than its payroll. "200-300 staff" is a Walmart Supercenter at
+17,000 m², not a supermarket, and quoting it against a supermarket is the
+denominator error `census.rs` exists to stop wearing a different hat.
+
+### Known gaps, named rather than smoothed
+
+- **No car finance, so transport is near zero** against a real 30% of the
+  budget this module covers. A car is in the catalogue at a real 1,500 kg
+  and a real composition, and households here mostly cannot reach one
+  because real households borrow for them. That single absence is most of
+  the remaining distance between these shares and the published ones.
+- **Shelter is somebody else's line.** `person::Housing` prices rent, so
+  the categories here cover about 57% of a real budget and food and
+  utilities are correspondingly overweight within it. The diagnostic prints
+  the real comparator normalised over the same subset rather than against
+  the whole, because comparing a part to a whole is how the last two
+  denominator errors happened.
+- One energy price covers fuel, power and a car's running costs. Real motor
+  fuel is cheaper per kWh than electricity and insurance is not energy at
+  all; the figures are money-equivalents and are recorded as such.
+
 ## Money, and who has it (`src/money.rs`)
 
 The economy priced everything and paid for nothing. Households took goods
