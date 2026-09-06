@@ -230,14 +230,14 @@ impl Material {
 
 /// Every material there is, in a fixed order. A roster rather than a
 /// derive, because it is also what a save file walks.
-pub const ALL_MATERIALS: [Material; 39] = {
+pub const ALL_MATERIALS: [Material; 40] = {
     use Material::*;
     [
         MildSteel, ToolSteel, Stainless, Aluminium, Copper, Brass, Lead, Zinc, Lithium,
         Electrolyte, Oak, Pine, Plywood, Particleboard, Glass, Cotton, Wool, Polyester,
         Polyethylene, Abs, Rubber, Leather, Concrete, Brick, Mortar, Ceramic, Gypsum,
         Paperboard, Silicon, Nichrome, Mica, Ferrite, Lubricant, Propellant, Adhesive, Solder,
-        Thread, Paint, Flour,
+        Thread, Paint, Flour, Water,
     ]
 };
 

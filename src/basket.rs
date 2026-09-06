@@ -1218,6 +1218,15 @@ pub struct Outcome {
     pub discarded: Vec<(Id<ItemInstance>, crate::wip::Disposition)>,
     /// **They could not pay it.** Everything electric stopped.
     pub cut_off: bool,
+    /// A disconnection notice was served. **Which is where most people find
+    /// the money**, and is why utilities serve far more notices than they
+    /// act on.
+    pub notice_served: bool,
+    /// It would have been cut off, and the season forbade it. The debt goes
+    /// on growing instead.
+    pub protected_by_the_season: bool,
+    /// What is owed to the utility at the end of it.
+    pub arrears: f64,
     pub spent: f64,
     pub hours: f64,
     /// **What was left at the end of it**, which is the whole reason
@@ -1294,6 +1303,13 @@ pub struct Household {
     /// Needs it could not meet, and for how long. **Kept**, because a
     /// shortage that is forgotten every period is not a shortage.
     pub going_without: Vec<(Need, u32)>,
+    /// **Its account with the utility.** A bill is monthly, in arrears, and
+    /// nobody is cut off the week they cannot pay it — see `utility.rs`.
+    /// `None` where there is no supply to be had, which is a fifth of the
+    /// world.
+    pub supply: Option<crate::utility::Account>,
+    /// Where in the year it is, because the winter rules turn on it.
+    pub day_of_year: u32,
 }
 
 impl Household {
@@ -1308,6 +1324,8 @@ impl Household {
             home,
             can_make: Vec::new(),
             going_without: Vec::new(),
+            supply: Some(crate::utility::Account::new(crate::utility::Tariff::ordinary())),
+            day_of_year: 0,
         }
     }
 
@@ -1372,36 +1390,64 @@ pub fn a_period(
 
     let mut hours_left = home.free_hours;
 
-    // **The bill arrives first**, because that is what a bill does. A
-    // household pays for the power it used last week before it decides
-    // whether it can afford anything this week — and a household that
-    // cannot pay loses the supply, which is a real and terrible thing that
-    // happens to people and not a rounding error.
-    let kwh = running_kwh(&home.owns, store, cat, &wanted) * days as f64 / 7.0;
-    let bill = kwh * market.power_price();
+    // **The bill is monthly, in arrears, and nobody is cut off the week
+    // they cannot pay it.** A month of usage, a bill, three weeks to pay,
+    // a reminder, a formal notice, and only then a crew — and in a cold
+    // state in winter, not even then. Which is where energy debt comes
+    // from: a household that cannot pay in January is not disconnected in
+    // January, it is *in arrears*, and the reckoning arrives in April.
     let mut supply = true;
-    if bill > 0.0 {
-        if bill <= means.income + means.savings {
-            let from_income = bill.min(means.income);
-            means.income -= from_income;
-            means.savings = (means.savings - (bill - from_income)).max(0.0);
-            out.spent += bill;
-            out.utilities += bill;
-            out.bought.push((
-                Order {
-                    need: Need::Light,
-                    intent: Intent::PayForTheService,
-                    price: bill,
-                    covers: 1.0,
-                },
-                bill,
-            ));
-        } else {
-            // **Cut off.** Everything that runs on it stops.
-            supply = false;
-            out.cut_off = true;
+    if let Some(mut account) = home.supply {
+        let per_day = running_kwh(&home.owns, store, cat, &wanted) / 7.0;
+        for d in 0..days {
+            // **A household pays its energy bill high up the list**, with
+            // the rent rather than with the shopping — and pays what it can
+            // when it cannot pay all of it, which is what people do.
+            let owed = account.arrears;
+            let pay = if owed > 0.0 {
+                let can = means.income * 0.5 + means.savings * 0.5;
+                owed.min(can.max(0.0))
+            } else {
+                0.0
+            };
+            if pay > 0.0 {
+                let from_income = pay.min(means.income);
+                means.income -= from_income;
+                means.savings = (means.savings - (pay - from_income)).max(0.0);
+                out.spent += pay;
+                out.utilities += pay;
+                out.bought.push((
+                    Order {
+                        need: Need::Light,
+                        intent: Intent::PayForTheService,
+                        price: pay,
+                        covers: 1.0,
+                    },
+                    pay,
+                ));
+            }
+            let e = crate::utility::a_day(
+                &mut account,
+                per_day,
+                pay,
+                home.where_,
+                home.day_of_year + d,
+            );
+            if e.cut_off {
+                out.cut_off = true;
+            }
+            if e.notice {
+                out.notice_served = true;
+            }
+            if e.protected {
+                out.protected_by_the_season = true;
+            }
         }
+        supply = account.standing.supplied();
+        out.arrears = account.arrears;
+        home.supply = Some(account);
     }
+    home.day_of_year = (home.day_of_year + days) % 365;
 
     for req in &wanted {
         let need = req.need;

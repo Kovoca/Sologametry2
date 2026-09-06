@@ -1844,9 +1844,9 @@ Real annual consumption, turned into a week: a refrigerator 400-500 kWh a
 year, an electric range 500-700, a washing machine about 150, and **home
 heating dwarfs all of it** at something like 11,700 kWh a year of delivered
 heat in an average American house. The bill arrives *before* the shopping,
-because that is what a bill does — and a household that cannot pay it is
-cut off, at which point everything electric stops and it falls back on its
-hands exactly as if it had never owned any of it.
+because that is what a bill does — and a household that cannot pay it goes
+into arrears rather than straight into the dark, which is `utility.rs`'s
+job and is described there.
 
 ### A standing load and a following load are different bills
 
@@ -1922,6 +1922,183 @@ denominator error `census.rs` exists to stop wearing a different hat.
 - One energy price covers fuel, power and a car's running costs. Real motor
   fuel is cheaper per kWh than electricity and insurance is not energy at
   all; the figures are money-equivalents and are recorded as such.
+
+## The bill comes monthly (`src/utility.rs`)
+
+**Nobody is cut off the day they cannot pay.** The household model charged
+for power weekly and disconnected anybody who came up short, which is
+neither how a utility bills nor how it collects. Real practice is a month
+of usage, a bill, three weeks to pay it, a reminder, a formal notice, and
+only then a crew — and in a cold state in winter, **not even then.**
+
+That gap is not a detail. It is the difference between a bad month and
+destitution, and it is where energy debt comes from.
+
+| | |
+|---|---|
+| average US residential bill | **~$137 a month**, ~855 kWh |
+| fixed customer charge | $8-15 before a single unit |
+| payment due | 21 days after the bill |
+| disconnection notice | 10-15 days after that, served separately |
+| reconnection | $20-75, plus the arrears, plus often a deposit |
+| households disconnected a year | **~3.5 million** |
+| households behind on energy | ~20 million, about $20bn owed |
+| low-income energy burden | **8.6% of income** against 3% |
+
+- **A tariff is not a price per unit.** There is a standing charge before a
+  single kilowatt-hour, which is regressive and is exactly why a household
+  using almost nothing still has a bill worth worrying about; and above a
+  threshold the rate rises, because an inclining block is how a regulator
+  makes heavy use pay for itself.
+- **The winter rule is a statute, not a kindness.** Minnesota's Cold
+  Weather Rule runs October to April and about thirty states have one.
+  Measured: the same household paying nothing from 1 November is cut off on
+  day 78 in a mild state and **day 180 in Minnesota, owing three times as
+  much** — which is why arrears peak in spring.
+- **A notice is where people find the money**, which is why utilities serve
+  far more of them than they act on.
+- **Getting back on costs more than staying on** — the arrears in full, a
+  reconnection charge and a deposit — so being cut off is self-sustaining
+  in the same way homelessness is.
+- **Budget billing changes nothing about the total and everything about
+  whether January is payable.** It is the single most useful thing a
+  struggling household can be signed up to and it costs the company
+  nothing.
+- **A disconnected meter records nothing.** Being cut off is not a discount.
+
+The threshold for the winter rule is derived from the climate, which is a
+**proxy for a policy** and is recorded as one: 4,000 heating degree-days is
+the US *average*, so a threshold anywhere near it protects the whole
+country and the rule stops meaning anything.
+
+## Not everything is reusable (`src/scrap.rs`)
+
+`material.rs` has said since it was written what each material can come
+back as, and `teardown.rs` has been producing piles of it. Neither could
+say whether anybody would **take** the pile — because that is not a
+property of the material. It is the spread between what a mill pays and
+what it costs to collect, sort and haul, and that spread is why steel is
+recycled everywhere and mixed plastics almost nowhere.
+
+Real US prices, per tonne, and the range is four orders of magnitude:
+copper $8,500, brass $4,500, aluminium $1,400, lead $1,000, ferrous $350,
+cardboard $120, glass $20, mixed plastics nothing, **tyres a gate fee of
+$100-200**. The recycling rates follow almost exactly *(EPA)*: lead-acid
+batteries **99%**, steel cans 71%, paper 68%, aluminium 50%, glass 31%,
+**plastics 8.7%**. Nobody is being virtuous about lead.
+
+### A motor is not copper
+
+**You get the clean price only if you have clean metal**, and the whole
+trade lives in that gap. The same copper: bare bright wire $8,500 a tonne,
+insulated $1,500-2,500, **electric motors $350-500**, mixed appliance scrap
+$150-250. Pricing an unsorted object at the sum of its clean fractions
+valued a dead washing machine at $42 against a real $10-20.
+
+| at the yard down the road | as found | stripped |
+|---|---|---|
+| a washing machine | **12.02** | 41.74 |
+| a refrigerator | **-6.83** | 33.68 |
+
+**A scrap fridge costs money**, and that falls out of the rule rather than
+being typed in: its refrigerant must be recovered by a certified technician
+*(EPA Section 608)* before the shell can be shredded, and that is worth
+more than the steel. Which is exactly why fridges get fly-tipped, and why
+a household doing the right thing pays and one that does not, does not.
+
+Whether to strip it is then a real decision about somebody's time —
+45 minutes for $30 is worth it and a whole day is not, which is why a yard
+shreds and a man with a Saturday strips.
+
+- **Distance decides whether a material is recycled at all** — the rule
+  `logistics.rs` already applies to freight, arriving at waste. Copper goes
+  anywhere on earth; glass will not cross a county.
+- **Contamination is a discount, then a loss, then a refusal.** Real
+  single-stream runs at 15-25% and a MRF rejects over about 10%. China's
+  **National Sword** set 0.5% in 2018 and collapsed the world market for
+  mixed recyclate overnight — modelled as a shock by moving one number.
+- **Hazardous content is checked, not taken on trust.** A yard that finds a
+  lithium cell in a bale has a fire, not a discrepancy, and US facilities
+  report hundreds a year. An unlicensed yard turns the load away, which is
+  how it ends up in a hedge.
+- **A shredded car gives back 77% as metal and 339 kg of fluff.**
+  Automotive shredder residue is 20-25% of a real end-of-life vehicle and
+  goes in the ground almost everywhere.
+
+### Paying somebody is one of a dozen answers
+
+Three or four routes is not enough, and the missing ones are not exotic —
+they are the *commonest* ones. A great deal of what leaves a household is
+taken away by the shop that delivered the new one, given to somebody who
+wants it, put on the pavement and gone by morning, or simply put in the
+loft and never dealt with at all.
+
+| a dead fridge, 62 kg, worth less than nothing | what they do | cost |
+|---|---|---|
+| buying a new one, delivered | **the shop takes the old one** | - |
+| the council still owes a collection | put it out | - |
+| somewhere to put it | **the loft** | - |
+| no truck, no room, in town | pay somebody | 35 |
+| a truck, and one fridge | **pay somebody anyway** | 35 |
+| a truck, and a yard full of junk | take it to the tip | **27** |
+| the same, on 300 an hour | pay somebody | 35 |
+| it still works and somebody wants it | give it away | - |
+
+- **Nobody drives one thing to the tip.** The minimum gate charge, the fuel
+  and the afternoon are costs of the *trip*, so one item carries all of them
+  and a load divides them — which is exactly why things pile up in a yard
+  before anybody goes anywhere, and why a truck is worth nothing for a
+  single fridge and a great deal for five.
+- **Whose afternoon it is decides it.** The same truck and the same load:
+  worth doing on fifteen an hour and not on three hundred.
+- **A deposit beats everything**, because it is money for doing what you
+  were going to do anyway. A US car battery carries a $10-22 core charge
+  and **99% of lead-acid batteries come back** — the highest recovery rate
+  of anything, and nothing whatever to do with conscience. Bottle-bill
+  states get 60-90% against about 25% elsewhere.
+- **Take-back at delivery is the commonest route for a big appliance** —
+  $20-35 or free with delivery in the US, a legal duty in the EU — which
+  means most large appliances never become a disposal problem at all.
+- **Reuse before recycling**, and not as a slogan: a working radio is worth
+  more to somebody who wants one than to a smelter. Twenty-four cents of
+  scrap is also not a reason to drive anywhere, so a scrap value has to beat
+  the bother of realising it.
+- **A charity refuses a great deal** — no mattresses, no upholstery without
+  fire labels, nothing broken — because donating junk is a cost transfer,
+  and thrift operations spend real money disposing of what they are given.
+- **Put it on the pavement and it goes**, but only if there is metal in it,
+  because it is the scrappers who take it.
+- **Keeping it is a real answer and mostly a free one**, which is why lofts
+  are full. The US self-storage industry is about $44bn and roughly one
+  household in nine rents a unit.
+
+### And the ways round it
+
+Doing it properly costs money and an afternoon; a bonfire and the woods
+cost neither. What deters is being seen — the rule `custom.rs` already
+carries, that certainty deters and severity mostly does not — and **the
+distance to the tip is itself a cause**, which is why rural fly-tipping is
+worse. Measured: of 300 people with no scruples and no truck, **46% leave
+it in the woods out in the country against 16% in town.**
+
+- **The gain is relative to the person.** Sixty dollars is nothing to
+  somebody comfortable and two days' work to somebody who is not, and it is
+  the second who leaves it in a ditch.
+- **A propensity is not a decision.** `will_bend` says how likely such a
+  person is; a keyed draw says whether this one did, so a reload cannot make
+  somebody a fly-tipper who was not one.
+- **What gets burnt is what burns.** A bonfire in a yard nobody overlooks is
+  easier than a drive to the woods — and nobody sets fire to a fridge.
+- **Cannibalising is not an alternative to disposal**, and putting it in the
+  list made it a free escape from every decision: strip the motor out and
+  you still have the carcass in the yard.
+
+**And adding the prices found a hole in the save format.** The
+`price_a_tonne` match is exhaustive over `Material`, and the compiler
+immediately said `Water` was not covered — which meant `ALL_MATERIALS` was
+missing it too, so a save containing water would have failed to load. The
+table-driven codec gate could not see it, because **it walked the same
+incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
 ## Money, and who has it (`src/money.rs`)
 

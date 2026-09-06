@@ -203,6 +203,243 @@ fn main() {
         );
     }
 
+    // ---- the bill ----------------------------------------------------
+    println!("\nWHEN THEY CANNOT PAY THE BILL");
+    println!("  a household using 40 kWh a day and paying nothing at all, from 1 November\n");
+    println!(
+        "  {:<24} {:>10} {:>10} {:>10} {:>12}",
+        "", "notice", "cut off", "owed", "protected"
+    );
+    for (name, climate) in
+        [("a mild state", Climate::temperate()), ("Minnesota", Climate::cold())]
+    {
+        let mut account = scale_sim::utility::Account::new(scale_sim::utility::Tariff::ordinary());
+        let (mut noticed, mut cut, mut protected) = (None, None, 0u32);
+        for d in 0..365u32 {
+            let e = scale_sim::utility::a_day(&mut account, 40.0, 0.0, climate, 305 + d);
+            if e.notice && noticed.is_none() {
+                noticed = Some(d);
+            }
+            if e.cut_off && cut.is_none() {
+                cut = Some(d);
+            }
+            if e.protected {
+                protected += 1;
+            }
+        }
+        println!(
+            "  {:<24} {:>10} {:>10} {:>10.0} {:>12}",
+            name,
+            noticed.map(|d| format!("day {d}")).unwrap_or_else(|| "-".into()),
+            cut.map(|d| format!("day {d}")).unwrap_or_else(|| "-".into()),
+            account.arrears,
+            if protected > 0 { format!("{protected} days") } else { "-".into() },
+        );
+    }
+    let t = scale_sim::utility::Tariff::ordinary();
+    println!(
+        "\n  a month of nothing at all costs {:.0}; 855 kWh costs {:.0}; 1,600 kWh costs {:.0}",
+        t.bill_for(0.0),
+        t.bill_for(855.0),
+        t.bill_for(1_600.0)
+    );
+
+    // ---- and what it is worth when it is finished ----------------------
+    println!("\nWHAT IT IS WORTH AT THE SCRAPYARD");
+    println!("  {:<22} {:>12} {:>16}", "", "$/tonne", "worth hauling");
+    for m in [
+        scale_sim::material::Material::Copper,
+        scale_sim::material::Material::Aluminium,
+        scale_sim::material::Material::Lead,
+        scale_sim::material::Material::MildSteel,
+        scale_sim::material::Material::Paperboard,
+        scale_sim::material::Material::Glass,
+        scale_sim::material::Material::Abs,
+        scale_sim::material::Material::Rubber,
+        scale_sim::material::Material::Lithium,
+    ] {
+        let range = scale_sim::scrap::economic_range_km(m);
+        println!(
+            "  {:<22} {:>12.0} {:>16}",
+            m.name(),
+            scale_sim::scrap::price_a_tonne(m),
+            if range <= 0.0 {
+                "nowhere".to_string()
+            } else if scale_sim::scrap::goes_anywhere(m) {
+                "anywhere".to_string()
+            } else {
+                format!("{range:.0} km")
+            }
+        );
+    }
+
+    println!("\n  and a whole thing, at a yard five kilometres away:");
+    let washer = [
+        (scale_sim::material::Material::MildSteel, 0.0315),
+        (scale_sim::material::Material::Concrete, 0.0210),
+        (scale_sim::material::Material::Abs, 0.0084),
+        (scale_sim::material::Material::Copper, 0.0035),
+    ];
+    let fridge = [
+        (scale_sim::material::Material::MildSteel, 0.0273),
+        (scale_sim::material::Material::Abs, 0.0149),
+        (scale_sim::material::Material::Polyethylene, 0.0087),
+        (scale_sim::material::Material::Copper, 0.0050),
+    ];
+    println!("  {:<22} {:>12} {:>12} {:>16}", "", "as found", "stripped", "worth stripping?");
+    for (what, bill) in [("a washing machine", &washer[..]), ("a refrigerator", &fridge[..])] {
+        let name = if what.contains("frig") { "refrigerator" } else { "washing machine" };
+        println!(
+            "  {:<22} {:>12.2} {:>12.2} {:>16}",
+            what,
+            scale_sim::scrap::worth_as_scrap(name, bill, 5.0, false),
+            scale_sim::scrap::worth_as_scrap(name, bill, 5.0, true),
+            // Three quarters of an hour with a spanner, at an ordinary wage.
+            if scale_sim::scrap::worth_stripping(bill, 0.75, 22.0) { "yes" } else { "no" }
+        );
+    }
+
+    // A car through the shredder.
+    let car = scale_sim::scrap::Load::of(&[
+        (scale_sim::material::Material::MildSteel, 0.870),
+        (scale_sim::material::Material::Aluminium, 0.135),
+        (scale_sim::material::Material::Abs, 0.165),
+        (scale_sim::material::Material::Polyethylene, 0.060),
+        (scale_sim::material::Material::Rubber, 0.090),
+        (scale_sim::material::Material::Glass, 0.060),
+        (scale_sim::material::Material::Copper, 0.045),
+        (scale_sim::material::Material::Polyester, 0.030),
+        (scale_sim::material::Material::Lubricant, 0.030),
+        (scale_sim::material::Material::Lead, 0.015),
+    ]);
+    let total = car.tonnes();
+    let (back, fluff) = scale_sim::scrap::shred(&car);
+    let recovered: f64 = back.iter().map(|b| b.1).sum();
+    println!(
+        "\n  a {:.1} t car through a shredder: {:.0}% back as metal, {:.0} kg of fluff to landfill",
+        total,
+        recovered / total * 100.0,
+        fluff * 1000.0
+    );
+
+    // And the same load with a cell left in it.
+    let mut with_a_cell = car.clone();
+    with_a_cell.materials.push((scale_sim::material::Material::Lithium, 0.010));
+    for (what, yard) in [
+        ("the yard down the road", scale_sim::scrap::Yard::ordinary(1, 5.0)),
+        ("a licensed processor", scale_sim::scrap::Yard::licensed(2, 90.0)),
+    ] {
+        let s = scale_sim::scrap::weigh_in(&with_a_cell, &yard, 1_000.0);
+        let said = match s {
+            scale_sim::scrap::Settlement::Taken { paid, .. } => format!("took it, paid {paid:.0}"),
+            scale_sim::scrap::Settlement::Refused(r) => format!("turned it away: {}", r.name()),
+        };
+        println!("  the same car with a cell left in it, {what:<24} {said}");
+    }
+    // ---- and how they actually get rid of it --------------------------
+    use scale_sim::scrap::{Carrying, Circumstances, Council};
+    use scale_sim::material::Material as M;
+
+    println!("\nHOW A DEAD FRIDGE ACTUALLY LEAVES THE HOUSE");
+    println!("  62 kg, and worth less than nothing at the yard once the refrigerant is out\n");
+    let dead_fridge = [
+        (M::MildSteel, 0.0273),
+        (M::Abs, 0.0149),
+        (M::Polyethylene, 0.0087),
+        (M::Copper, 0.0050),
+    ];
+    let town = Council::a_town();
+    let country = Council::out_in_the_country();
+    let base = Circumstances {
+        name: "refrigerator",
+        materials: &dead_fridge,
+        kg: 62.0,
+        bulky: true,
+        still_works: false,
+        carrying: Carrying::ACar,
+        council: &town,
+        collections_used: 9,
+        others_going: 0,
+        hourly_worth: 15.0,
+        scruple: 0.6,
+        room_to_store: false,
+        somebody_wants_it: false,
+        charity_nearby: false,
+        being_replaced: false,
+        scrappers_about: false,
+        somewhere_to_burn: false,
+        event: 7,
+    };
+    println!("  {:<42} {:>28} {:>7}", "", "what they do", "cost");
+    for k in 0..8 {
+        let mut c = base;
+        let what = match k {
+            0 => {
+                c.being_replaced = true;
+                "buying a new one, delivered"
+            }
+            1 => {
+                c.collections_used = 0;
+                "the council still owes them a collection"
+            }
+            2 => {
+                c.room_to_store = true;
+                "somewhere to put it and forget about it"
+            }
+            3 => "no truck, no room, in town",
+            4 => {
+                c.carrying = Carrying::ATruck;
+                "a truck, and one fridge"
+            }
+            5 => {
+                c.carrying = Carrying::ATruck;
+                c.others_going = 5;
+                "a truck, and a yard full of junk"
+            }
+            6 => {
+                c.carrying = Carrying::ATruck;
+                c.others_going = 5;
+                c.hourly_worth = 300.0;
+                "the same, for somebody on 300 an hour"
+            }
+            _ => {
+                c.still_works = true;
+                c.somebody_wants_it = true;
+                "it still works, and somebody wants it"
+            }
+        };
+        let did = scale_sim::scrap::how_to_get_rid_of_it(&c);
+        println!(
+            "  {:<42} {:>28} {:>7}",
+            what,
+            did.name(),
+            if did.cost().abs() < 0.005 { "-".to_string() } else { format!("{:.0}", did.cost()) }
+        );
+    }
+
+    // The fly-tipping case is a rate over many people, not one man.
+    let rate = |council: &Council| {
+        let mut tipped = 0;
+        for k in 0..300u64 {
+            let mut c = base;
+            c.council = council;
+            c.scruple = -0.9;
+            c.event = 40_000 + k;
+            if !scale_sim::scrap::how_to_get_rid_of_it(&c).legal() {
+                tipped += 1;
+            }
+        }
+        tipped * 100 / 300
+    };
+    println!(
+        "\n  of 300 people with no scruples and no truck, {}% leave it in the woods out in the",
+        rate(&country)
+    );
+    println!(
+        "  country against {}% in town — and what makes the difference is being seen",
+        rate(&town)
+    );
+
     // ---- a broken machine --------------------------------------------
     println!("\nWHEN THE MACHINE BREAKS");
     let mut store = Store::new();
