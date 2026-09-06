@@ -514,7 +514,16 @@ pub struct Substitution {
 /// out — as particleboard, and damaged at that.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct AssemblyRecord {
+    /// **What the design expects.** A door expects a regulator, a latch
+    /// and glass, and that is true of the definition whether or not any
+    /// particular door has them in it.
     pub components: Vec<Installed>,
+    /// **What is actually in this one.** Real objects, installed inside
+    /// it, each still itself — so their mass is theirs and is not counted
+    /// again here. A spawned instance has the design bill and no
+    /// as-built list; one that was assembled has the as-built list and a
+    /// direct account of only the joining material.
+    pub as_built: Vec<Id<ItemInstance>>,
     /// **Pressed, drawn and machined pieces.** Not components and not
     /// stuff: a door skin separated carefully is a bent door skin, and it
     /// only becomes sheet after somebody cuts or crushes it.
@@ -1862,6 +1871,10 @@ pub struct ItemInstance {
     /// a pressed shell or a coated panel, which are real things with a
     /// geometry and a history and no catalogue entry of their own.
     pub shape: Option<crate::wip::Shape>,
+    /// **Where the metal came from**, for anything that has been through a
+    /// furnace. The objects that were charged have ended; their
+    /// composition, contamination, hazard and recycled content have not.
+    pub heat: Option<crate::wip::Heat>,
 }
 
 impl ItemInstance {
@@ -1890,6 +1903,7 @@ impl ItemInstance {
             ownership: Ownership::default(),
             given_name: None,
             shape: None,
+            heat: None,
         }
     }
 
@@ -2191,6 +2205,29 @@ impl Store {
     pub fn available(&self, thing: Id<ItemInstance>) -> bool {
         self.placement(thing).map(|p| p.reachable()).unwrap_or(false)
             && self.status(thing).free()
+    }
+
+    /// **What is standing on a machine.**
+    ///
+    /// A finished thing nobody has come for is still occupying the bay it
+    /// was made in, which is exactly what makes a blocked delivery cost
+    /// the shop its next job rather than costing it nothing. Asked of the
+    /// store rather than of the calendar, because the object being there
+    /// is a physical fact and the booking is only a plan about it.
+    pub fn occupants_of(&self, resource: u32) -> Vec<Id<ItemInstance>> {
+        self.where_
+            .iter()
+            .filter(|(_, p)| p.occupying() == Some(resource))
+            .map(|(&bits, _)| Id::from_bits(bits))
+            .collect()
+    }
+
+    /// Whether a particular position on a machine is clear.
+    pub fn slot_free(&self, resource: u32, slot: u32) -> bool {
+        !self.where_.values().any(|p| {
+            matches!(p, Placement::Fixtured { resource: r, slot: s, .. }
+                     if *r == resource && *s == slot)
+        })
     }
 
     /// What it is spoken for. `Available` for anything nobody has claimed.

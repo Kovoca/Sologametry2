@@ -793,6 +793,7 @@ impl WallAssembly {
             ownership: Default::default(),
             given_name: None,
             shape: None,
+            heat: None,
         };
         wall.materials = record.actual_materials();
         wall.assembly = Some(record);

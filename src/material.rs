@@ -228,6 +228,42 @@ impl Material {
     }
 }
 
+/// Every material there is, in a fixed order. A roster rather than a
+/// derive, because it is also what a save file walks.
+pub const ALL_MATERIALS: [Material; 39] = {
+    use Material::*;
+    [
+        MildSteel, ToolSteel, Stainless, Aluminium, Copper, Brass, Lead, Zinc, Lithium,
+        Electrolyte, Oak, Pine, Plywood, Particleboard, Glass, Cotton, Wool, Polyester,
+        Polyethylene, Abs, Rubber, Leather, Concrete, Brick, Mortar, Ceramic, Gypsum,
+        Paperboard, Silicon, Nichrome, Mica, Ferrite, Lubricant, Propellant, Adhesive, Solder,
+        Thread, Paint, Flour,
+    ]
+};
+
+impl Material {
+    /// **What must not be quietly melted, buried or shredded.**
+    ///
+    /// A property of the material, so nothing has to keep a list of
+    /// dangerous *objects*: lead is a toxic heavy metal wherever it turns
+    /// up, a lithium cell and its electrolyte are a fire in a furnace, and
+    /// propellant is an explosion. It follows the metal through every
+    /// remelt, which is exactly why a scrapyard cares what was in a
+    /// charge.
+    pub fn hazardous(self) -> bool {
+        matches!(
+            self,
+            Material::Lead | Material::Lithium | Material::Electrolyte | Material::Propellant
+        )
+    }
+
+    /// **Read back by name**, which is self-describing in a hex dump and
+    /// immune to somebody inserting a variant in the middle.
+    pub fn from_name(name: &str) -> Option<Material> {
+        ALL_MATERIALS.iter().copied().find(|m| m.name() == name)
+    }
+}
+
 /// **What a thing is made of, by mass.**
 ///
 /// Proportions rather than a single material, because almost nothing real

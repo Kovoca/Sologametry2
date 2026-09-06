@@ -1016,11 +1016,18 @@ different goals. On one chair:
 
 | | parts back | material | to burn | lost |
 |---|---|---|---|---|
-| disassemble | 10 | 0.008 | 4.04 | 0.78 |
-| deconstruct | 8 | 0.015 | 3.51 | 1.31 |
-| salvage | 7 | 0.015 | 2.85 | 1.98 |
-| recycle | 0 | 0.027 | 2.20 | 2.66 |
-| smash | 0 | 0.005 | 0.44 | **4.44** |
+| disassemble | 10 | 0.013 | **0.00** | 0.05 |
+| deconstruct | 10 | 0.011 | **0.00** | 0.05 |
+| salvage | 8 | 0.015 | 0.00 | 0.06 |
+| recycle | 0 | 0.027 | 2.20 | 2.67 |
+| cut up | 0 | 0.016 | 1.32 | 3.56 |
+| smash | 0 | 0.005 | 0.44 | **4.45** |
+
+**A careful teardown burns nothing**, because the timber leaves as a
+component rather than as fuel — which is the whole difference between a
+chair somebody can rebuild and a barrow of firewood. The figures moved
+when the chair stopped being a slab of oak and became a chair with *chair
+parts* inside it; the table above is what it measures now.
 
 **A field strip reaches what unclips and unbolts, and stops.** On a rifle
 it takes the bolt carrier, the stock and the magazine; the pressed-and-
@@ -1576,6 +1583,82 @@ taken for something else, or is simply abandoned. `Disposition` carries
 the five, and only when none of them applies is destroying it the answer —
 which is what the household basket will need before it can model repair,
 replacement and the second-hand trade.
+
+### Melting ends the objects; it does not end the metal
+
+A billet is not the swarf it came off, and that much was right. What was
+wrong was concluding that therefore nothing survives: what melting ends is
+**identity of form**, and the thing that must not be lost at the furnace
+door is **material provenance** — which lots were charged, what the
+composition came out at, what tramp elements got in, whether anything
+hazardous went in, and how much of the heat is scrap rather than ore.
+
+- **Hazard is a property of the material, not of the object.** Lead is a
+  toxic heavy metal wherever it appears, a lithium cell and its
+  electrolyte are a fire in a furnace, and propellant is an explosion. So
+  it is asked of `Material` and nothing has to keep a list of dangerous
+  *things*.
+- **And it survives being remelted.** A charge of scrap that had a cell in
+  it produces metal whose record still says so, however many times it goes
+  round — which is exactly why a scrapyard cares what is in a load, and
+  why a laundering step would be the whole bug.
+- **Recycled content is arithmetic, not a flag.** A heat of pure scrap
+  comes out at 1.0 and a heat of ore at 0; a mix comes out in between,
+  weighted by mass, and reading it off the inputs' own heats is what makes
+  it compound correctly through a chain.
+
+### A component of an assembly is not the contents of a box
+
+`join` placed its parts as `Contained`, which is reachable — so anybody
+could help themselves to the regulator out of a welded door without
+dismantling anything. A latch in a toolbox can be picked up; a latch bolted
+into a door has to be got out by taking the door apart. They are
+`Installed { host: Item(door) }` now, which the placement rules already
+refuse to hand over, and teardown walks the **as-built list** rather than a
+container's contents.
+
+### The design bill and the as-built list are two accounts
+
+Both are needed and neither can stand in for the other. The definition has
+to say what a car door is made of whether or not any particular door has
+ever been built; the instance has to say which actual objects are in *this*
+one. So `AssemblyRecord` carries `components` — what the design expects —
+alongside `as_built`, the handles of the real children.
+
+**And the instance's own bill is the joining material and nothing else.**
+Its components are real objects with their own mass, so listing them again
+counts them twice — which is what returned 9.76 kg out of a 5.94 kg door.
+
+### An offcut is at the machine until somebody carries it back
+
+Stock is created where the work was done. A model in which the offcut
+reappears on the rack it came off is teleporting stock past its own
+resource calendar, so `carry_back` moves it and returns the minutes it
+took: a minute or two for a part-sheet, more for anything over about 25 kg
+being moved by one person.
+
+### What a save actually preserves
+
+**"Pure data mutation" proves repeatability, not preservation.** It says a
+given state advances the same way twice; it says nothing about whether a
+hand-written codec wrote all of that state down, and **an enum variant no
+test happens to exercise is exactly the one that silently does not come
+back**. So the WIP types are round-tripped by a table-driven gate that
+names every variant: nine kinds of progress, five placements including a
+clamped fixture, four work statuses, every feature, geometry, material
+state, surface, and all thirty-nine materials by name.
+
+Each value is written part way through rather than at either end, because
+**a zero survives a codec that drops the field**.
+
+### A cure runs on chemistry, not on the mains
+
+The old note said a cure "does not know the power is off", which is true
+and too strong. It goes at whatever rate the temperature and humidity
+allow — so an outage that takes the heating with it slows the glue without
+stopping it, and below freezing most adhesives do not go off at all.
+**Ten degrees doubles it**, the chemist's rule of thumb and close enough
+for a glue line.
 
 ## Who has the bench, and when (`src/schedule.rs`)
 

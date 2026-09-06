@@ -263,7 +263,11 @@ impl Recovered {
     }
 
     pub fn fuel_kg(&self) -> f64 {
-        self.fuel.iter().map(|f| f.1).sum()
+        // **A mass never carries a minus sign.** Rust sums floats from
+        // `-0.0` — deliberately, so a sum of negative zeroes keeps its
+        // sign — which means an empty pile of firewood reports itself as
+        // `-0.000 kg`. Adding zero normalises it and changes nothing else.
+        self.fuel.iter().map(|f| f.1).sum::<f64>() + 0.0
     }
 
     /// Original mass, all destinations counted.

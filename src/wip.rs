@@ -118,6 +118,75 @@ impl Shape {
     }
 }
 
+/// **What went into a heat.**
+///
+/// Melting ends the *objects*: a chair leg and a car panel stop existing
+/// and a billet begins. It must not end the *material provenance*, because
+/// that is what carries alloy composition, contamination, whether anything
+/// radioactive or hazardous went in, how much of it is recycled content,
+/// which lots it came from, and who is answerable for a defective heat.
+///
+/// Deep ancestry can be compacted later into composition, hazard and
+/// source summaries; what may never happen is losing it at the furnace
+/// door.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Heat {
+    /// The objects that were charged. Their identities have ended; this
+    /// is the record that they were in it.
+    pub merged_from: Vec<Id<ItemInstance>>,
+    /// What the certificate would say.
+    pub composition: Composition,
+    /// What got in that should not have. A tramp element in scrap steel is
+    /// the reason secondary metal is not the same as primary.
+    pub contamination: Vec<(Material, f64)>,
+    /// Whether anything in the charge was hazardous, which follows the
+    /// metal for ever.
+    pub hazardous: bool,
+    /// How much of it was scrap rather than ore.
+    pub recycled_fraction: f64,
+    pub process: &'static str,
+}
+
+impl Heat {
+    /// Everything that has ever been melted into this metal, however many
+    /// times it has been round.
+    pub fn ancestry(&self) -> usize {
+        self.merged_from.len()
+    }
+}
+
+/// **Every stage name a workpiece can be at.**
+///
+/// A stage is authored text, so a save writes the words and a load has to
+/// find the same static back. A roster rather than a leaked allocation:
+/// a name this build does not know comes back as `unrecorded` and says so,
+/// which is honest, and a gate asserts that everything the plans actually
+/// use is in the list.
+pub const STAGE_NAMES: &[&str] = &[
+    "unrecorded",
+    "blank",
+    "offcut",
+    "door blank",
+    "outer blank",
+    "inner blank",
+    "outer skin",
+    "inner frame",
+    "intrusion beam",
+    "stamped shell",
+    "drilled shell",
+    "coated shell",
+    "malformed",
+    "reworked",
+    "finished",
+    "melted",
+    "cut to size",
+];
+
+/// Find the authored static for a name read back off disk.
+pub fn intern_stage(name: &str) -> &'static str {
+    STAGE_NAMES.iter().copied().find(|s| *s == name).unwrap_or("unrecorded")
+}
+
 // =====================================================================
 // progress is physical
 // =====================================================================
@@ -134,7 +203,10 @@ pub enum Progress {
     Cut { done_mm: f64, total_mm: f64 },
     Heat { celsius: f64, target_c: f64, ambient_c: f64 },
     Dry { moisture: f64, target: f64 },
-    Cure { reacted: f64 },
+    /// **A cure runs on chemistry, not on the mains.** How fast it goes
+    /// depends on the temperature and the humidity it is being held at —
+    /// which the power failing may change, and may not.
+    Cure { reacted: f64, at_c: f64, wants_c: f64 },
     Weld { done: u32, segments: u32 },
     Coat { microns: f64, target_microns: f64, layers: u32 },
     Assemble { joints_done: u32, joints: u32 },
@@ -159,7 +231,7 @@ impl Progress {
                     (1.0 - moisture) / (1.0 - target).max(1e-9)
                 }
             }
-            Progress::Cure { reacted } => reacted,
+            Progress::Cure { reacted, .. } => reacted,
             Progress::Weld { done, segments } => done as f64 / segments.max(1) as f64,
             Progress::Coat { microns, target_microns, .. } => {
                 microns / target_microns.max(1e-9)
@@ -192,7 +264,9 @@ impl Progress {
             Progress::Dry { moisture, target } => {
                 *moisture = (*moisture - (*moisture - *target) * share.min(1.0)).max(*target)
             }
-            Progress::Cure { reacted } => *reacted = (*reacted + share).min(1.0),
+            Progress::Cure { reacted, at_c, wants_c } => {
+                *reacted = (*reacted + share * arrhenius(*at_c, *wants_c)).min(1.0)
+            }
             Progress::Weld { done, segments } => {
                 *done = ((*done as f64) + (*segments as f64) * share).round().min(*segments as f64)
                     as u32
@@ -225,12 +299,29 @@ impl Progress {
             Progress::Heat { celsius, ambient_c, .. } => {
                 *celsius = (*celsius - 150.0 * minutes / 60.0).max(*ambient_c)
             }
-            // A cure does not know the power is off.
-            Progress::Cure { reacted } => *reacted = (*reacted + minutes / 720.0).min(1.0),
+            // **A cure does not stop because the lights went out** — but
+            // it does not carry on regardless either. It goes at the speed
+            // the conditions allow, and if the power was what was holding
+            // the room warm then the conditions have changed and the
+            // caller has already said so.
+            Progress::Cure { reacted, at_c, wants_c } => {
+                *reacted = (*reacted + (minutes / 720.0) * arrhenius(*at_c, *wants_c)).min(1.0)
+            }
             // Everything else simply waits.
             _ => {}
         }
     }
+}
+
+/// **Ten degrees doubles it**, which is the chemist's rule of thumb for a
+/// reaction rate near room temperature and close enough for a glue line.
+/// Cold enough and it effectively stops; warm enough and it races.
+pub fn arrhenius(at_c: f64, wants_c: f64) -> f64 {
+    if at_c <= 0.0 {
+        // Below freezing most adhesives simply do not go off.
+        return 0.0;
+    }
+    2.0f64.powf((at_c - wants_c) / 10.0).clamp(0.0, 8.0)
 }
 
 // =====================================================================
@@ -348,6 +439,9 @@ pub fn cut(
     kerf_kg: f64,
     at: (f64, u32),
 ) -> Option<(Id<ItemInstance>, Option<Id<ItemInstance>>, Transformation)> {
+    // **Both pieces land where the work was done.** An offcut originates
+    // at the saw, not on the rack it came off, and putting it back is a
+    // movement somebody has to make — see `carry_back`.
     let (whole, comp, def, where_) = {
         let i = store.get(source)?;
         (i.mass_kg, i.materials.clone(), i.definition, store.placement(source)?)
@@ -538,6 +632,10 @@ pub fn join(
     // here as well would count them twice when it comes apart.
     let mut record = crate::item::AssemblyRecord::default();
     record.consumed = consumed.to_vec();
+    // **As built**: the actual objects that went in, by handle. The
+    // design still says what a door expects; this says what is in this
+    // one, and their mass is theirs rather than being counted twice.
+    record.as_built = parts.to_vec();
     record.joints = vec![crate::item::Joint {
         method,
         joins: (0, 0),
@@ -548,9 +646,14 @@ pub fn join(
     assembly.shape = None;
     let id = store.add(assembly, where_);
 
-    // **The parts go inside it and stay themselves.**
-    for &p in parts {
-        store.place(p, Placement::Contained { container: id });
+    // **The parts go inside it and stay themselves — and a component of
+    // an assembly is not the contents of a box.** A latch in a toolbox can
+    // be picked up; a latch welded into a door cannot, and has to be got
+    // out by taking the door apart. `Contained` said the first of those
+    // about both, so anybody could help themselves to the regulator out of
+    // a finished door without dismantling anything.
+    for (k, &p) in parts.iter().enumerate() {
+        store.place(p, Placement::Installed { host: crate::item::Host::Item(id), mount: k });
         store.set_status(p, WorkStatus::Available);
     }
     Some((
@@ -594,12 +697,55 @@ pub fn melt(
     let out = mass - burnt;
     let material = Composition::of(&comp).chiefly().unwrap_or(Material::MildSteel);
 
+    // **The objects end; the metal remembers.** Which lots were charged,
+    // what the composition came out at, whether anything hazardous went
+    // in, and how much of it is scrap rather than ore — all of that
+    // follows the heat, and losing it at the furnace door is how recycled
+    // content, tramp elements and a defective cast stop being anybody's
+    // responsibility.
+    let recycled: f64 = inputs
+        .iter()
+        .filter_map(|&i| store.get(i))
+        .map(|x| {
+            let was_scrap = x.heat.as_ref().map(|h| h.recycled_fraction).unwrap_or(1.0);
+            x.mass_kg * was_scrap
+        })
+        .sum::<f64>()
+        / mass.max(1e-9);
+    let hazardous = inputs
+        .iter()
+        .filter_map(|&i| store.get(i))
+        .any(|x| {
+            x.heat.as_ref().map(|h| h.hazardous).unwrap_or(false)
+                || x.materials.parts().iter().any(|&(m, f)| f > 0.0 && m.hazardous())
+        });
+    let mut ancestry: Vec<Id<ItemInstance>> = Vec::new();
+    for &i in inputs {
+        if let Some(h) = store.get(i).and_then(|x| x.heat.as_ref()) {
+            ancestry.extend(h.merged_from.iter().copied());
+        }
+        ancestry.push(i);
+    }
+
     let mut lot = ItemInstance::fresh(cat, into, Quantity::Mass { kg: out });
     lot.mass_kg = out;
     lot.materials = Composition::of(&comp);
     lot.bare_bill(out);
-    // **No lineage.** That is the point of melting.
+    // **No shape and no lineage of form.** A billet does not remember
+    // being a panel, which is what melting *does* end.
     lot.shape = None;
+    lot.heat = Some(Heat {
+        merged_from: ancestry,
+        composition: Composition::of(&comp),
+        contamination: comp
+            .iter()
+            .copied()
+            .filter(|(m, _)| *m != material)
+            .collect(),
+        hazardous,
+        recycled_fraction: recycled.clamp(0.0, 1.0),
+        process: "melted",
+    });
     let id = store.add(lot, where_);
     for &i in inputs {
         store.end(i, ItemEnd::Consumed, day);
@@ -619,6 +765,29 @@ pub fn melt(
         }
         .noted(Operation::Cast, None, at, "melted down"),
     ))
+}
+
+/// **Stock does not walk back to the rack by itself.**
+///
+/// An offcut is created at the machine that made it. Getting it back into
+/// the racking is a real movement by a real person, and a model in which
+/// it simply reappears where the sheet used to live is teleporting stock
+/// past its own resource calendar.
+///
+/// Real: putting a part-sheet back on a rack is a minute or two of
+/// somebody's time, more if it wants two people.
+pub fn carry_back(
+    store: &mut Store,
+    piece: Id<ItemInstance>,
+    to: Placement,
+    hands: u32,
+) -> Option<f64> {
+    let kg = store.get(piece)?.mass_kg;
+    store.place(piece, to);
+    // A light piece is a minute; anything over about 25 kg is a two-man
+    // lift and takes longer whoever is doing it.
+    let minutes = 1.0 + kg / 20.0 + if kg > 25.0 && hands < 2 { 3.0 } else { 0.0 };
+    Some(minutes)
 }
 
 /// **Completion promotes the workpiece; it does not make a second
@@ -749,7 +918,15 @@ pub fn dismantle(
     let r = joint.recovery();
     let survives = r.components * how.care() * (0.55 + 0.45 * skill.clamp(0.0, 1.0));
 
-    for (k, &part) in host.contents.iter().enumerate() {
+    // **What is actually in it**, which the record knows by handle. An
+    // assembly built by `join` holds its children as fitted components
+    // rather than as loose contents; anything spawned or filled some other
+    // way still keeps them in `contents`.
+    let children: Vec<Id<ItemInstance>> = match host.assembly.as_ref() {
+        Some(a) if !a.as_built.is_empty() => a.as_built.clone(),
+        _ => host.contents.clone(),
+    };
+    for (k, &part) in children.iter().enumerate() {
         let Some(p) = store.get(part).cloned() else { continue };
         let u = crate::rng::Rng::new(crate::save::channel(event, k as u64, "part separability"))
             .next_f32() as f64;

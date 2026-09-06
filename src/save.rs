@@ -720,6 +720,441 @@ pub fn channel(seed: u64, event: u64, name: &str) -> u64 {
     mix(mix(seed, event), h)
 }
 
+
+// =====================================================================
+// work in progress
+// =====================================================================
+//
+// **"Pure data mutation" proves repeatability given the same data.** It
+// says nothing about whether a hand-written codec preserved all of it,
+// and an enum variant nothing happens to write is exactly the one that
+// silently does not come back. Every variant of every type below is
+// round-tripped by a table-driven gate.
+
+impl Store for crate::material::Material {
+    fn store(&self, w: &mut Writer) {
+        w.str(self.name());
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let n = r.str()?;
+        crate::material::Material::from_name(&n)
+            .ok_or(SaveError::UnknownCode("Material", n.len() as u32))
+    }
+}
+
+impl Store for crate::material::Dims {
+    fn store(&self, w: &mut Writer) {
+        w.f64(self.length_m);
+        w.f64(self.width_m);
+        w.f64(self.height_m);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(crate::material::Dims {
+            length_m: r.f64()?,
+            width_m: r.f64()?,
+            height_m: r.f64()?,
+        })
+    }
+}
+
+impl Store for crate::item::DefId {
+    fn store(&self, w: &mut Writer) {
+        w.u32(self.0);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(crate::item::DefId(r.u32()?))
+    }
+}
+
+impl Store for crate::id::Id<crate::item::ItemInstance> {
+    fn store(&self, w: &mut Writer) {
+        w.u64(self.bits());
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(crate::id::Id::from_bits(r.u64()?))
+    }
+}
+
+coded!(crate::bom::MaterialState, "MaterialState",
+    crate::bom::MaterialState::AsRolled => 1,
+    crate::bom::MaterialState::Annealed => 2,
+    crate::bom::MaterialState::Normalised => 3,
+    crate::bom::MaterialState::WorkHardened => 4,
+    crate::bom::MaterialState::QuenchedAndTempered => 5,
+    crate::bom::MaterialState::Cured => 6,
+);
+
+coded!(crate::bom::Surface, "Surface",
+    crate::bom::Surface::Bare => 1,
+    crate::bom::Surface::Galvanised => 2,
+    crate::bom::Surface::Primed => 3,
+    crate::bom::Surface::Painted => 4,
+    crate::bom::Surface::Anodised => 5,
+    crate::bom::Surface::Plated => 6,
+);
+
+impl Store for crate::bom::Geometry {
+    fn store(&self, w: &mut Writer) {
+        use crate::bom::Geometry::*;
+        match self {
+            Sheet { mm } => {
+                w.u16(1);
+                w.f64(*mm);
+            }
+            Bar { mm } => {
+                w.u16(2);
+                w.f64(*mm);
+            }
+            Stamping => w.u16(3),
+            Shell => w.u16(4),
+            Casting => w.u16(5),
+            Extrusion => w.u16(6),
+            Machined => w.u16(7),
+            Woven => w.u16(8),
+            Wound => w.u16(9),
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::bom::Geometry::*;
+        Ok(match r.u16()? {
+            1 => Sheet { mm: r.f64()? },
+            2 => Bar { mm: r.f64()? },
+            3 => Stamping,
+            4 => Shell,
+            5 => Casting,
+            6 => Extrusion,
+            7 => Machined,
+            8 => Woven,
+            9 => Wound,
+            other => return Err(SaveError::UnknownCode("Geometry", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::wip::Feature {
+    fn store(&self, w: &mut Writer) {
+        use crate::wip::Feature::*;
+        match self {
+            Hole { count, mm } => {
+                w.u16(1);
+                w.u32(*count);
+                w.f64(*mm);
+            }
+            Cut { length_mm } => {
+                w.u16(2);
+                w.f64(*length_mm);
+            }
+            Bend { degrees } => {
+                w.u16(3);
+                w.f64(*degrees);
+            }
+            Weld { segments } => {
+                w.u16(4);
+                w.u32(*segments);
+            }
+            Coating { layer, microns } => {
+                w.u16(5);
+                layer.store(w);
+                w.f64(*microns);
+            }
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::wip::Feature::*;
+        Ok(match r.u16()? {
+            1 => Hole { count: r.u32()?, mm: r.f64()? },
+            2 => Cut { length_mm: r.f64()? },
+            3 => Bend { degrees: r.f64()? },
+            4 => Weld { segments: r.u32()? },
+            5 => Coating {
+                layer: crate::bom::Surface::load(r)?,
+                microns: r.f64()?,
+            },
+            other => return Err(SaveError::UnknownCode("Feature", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::wip::Progress {
+    fn store(&self, w: &mut Writer) {
+        use crate::wip::Progress::*;
+        match self {
+            Cut { done_mm, total_mm } => {
+                w.u16(1);
+                w.f64(*done_mm);
+                w.f64(*total_mm);
+            }
+            Heat { celsius, target_c, ambient_c } => {
+                w.u16(2);
+                w.f64(*celsius);
+                w.f64(*target_c);
+                w.f64(*ambient_c);
+            }
+            Dry { moisture, target } => {
+                w.u16(3);
+                w.f64(*moisture);
+                w.f64(*target);
+            }
+            Cure { reacted, at_c, wants_c } => {
+                w.u16(4);
+                w.f64(*reacted);
+                w.f64(*at_c);
+                w.f64(*wants_c);
+            }
+            Weld { done, segments } => {
+                w.u16(5);
+                w.u32(*done);
+                w.u32(*segments);
+            }
+            Coat { microns, target_microns, layers } => {
+                w.u16(6);
+                w.f64(*microns);
+                w.f64(*target_microns);
+                w.u32(*layers);
+            }
+            Assemble { joints_done, joints } => {
+                w.u16(7);
+                w.u32(*joints_done);
+                w.u32(*joints);
+            }
+            Machine { features_done, features, allowance_mm } => {
+                w.u16(8);
+                w.u32(*features_done);
+                w.u32(*features);
+                w.f64(*allowance_mm);
+            }
+            Elapsed { minutes, total } => {
+                w.u16(9);
+                w.f64(*minutes);
+                w.f64(*total);
+            }
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::wip::Progress::*;
+        Ok(match r.u16()? {
+            1 => Cut { done_mm: r.f64()?, total_mm: r.f64()? },
+            2 => Heat { celsius: r.f64()?, target_c: r.f64()?, ambient_c: r.f64()? },
+            3 => Dry { moisture: r.f64()?, target: r.f64()? },
+            4 => Cure { reacted: r.f64()?, at_c: r.f64()?, wants_c: r.f64()? },
+            5 => Weld { done: r.u32()?, segments: r.u32()? },
+            6 => Coat { microns: r.f64()?, target_microns: r.f64()?, layers: r.u32()? },
+            7 => Assemble { joints_done: r.u32()?, joints: r.u32()? },
+            8 => Machine {
+                features_done: r.u32()?,
+                features: r.u32()?,
+                allowance_mm: r.f64()?,
+            },
+            9 => Elapsed { minutes: r.f64()?, total: r.f64()? },
+            other => return Err(SaveError::UnknownCode("Progress", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::item::Host {
+    fn store(&self, w: &mut Writer) {
+        use crate::item::Host::*;
+        match self {
+            Item(id) => {
+                w.u16(1);
+                id.store(w);
+            }
+            Vehicle(n) => {
+                w.u16(2);
+                w.u32(*n);
+            }
+            Building(n) => {
+                w.u16(3);
+                w.u32(*n);
+            }
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::item::Host::*;
+        Ok(match r.u16()? {
+            1 => Item(crate::id::Id::load(r)?),
+            2 => Vehicle(r.u32()?),
+            3 => Building(r.u32()?),
+            other => return Err(SaveError::UnknownCode("Host", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::item::Placement {
+    fn store(&self, w: &mut Writer) {
+        use crate::item::Placement::*;
+        match self {
+            Ground { locality, x, y } => {
+                w.u16(1);
+                w.u32(*locality);
+                w.i64(*x as i64);
+                w.i64(*y as i64);
+            }
+            Carried { person } => {
+                w.u16(2);
+                w.u64(*person);
+            }
+            Contained { container } => {
+                w.u16(3);
+                container.store(w);
+            }
+            Installed { host, mount } => {
+                w.u16(4);
+                host.store(w);
+                w.u32(*mount as u32);
+            }
+            Fixtured { resource, slot, clamped } => {
+                w.u16(5);
+                w.u32(*resource);
+                w.u32(*slot);
+                w.bool(*clamped);
+            }
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::item::Placement::*;
+        Ok(match r.u16()? {
+            1 => Ground { locality: r.u32()?, x: r.i64()? as i32, y: r.i64()? as i32 },
+            2 => Carried { person: r.u64()? },
+            3 => Contained { container: crate::id::Id::load(r)? },
+            4 => Installed {
+                host: crate::item::Host::load(r)?,
+                mount: r.u32()? as usize,
+            },
+            5 => Fixtured { resource: r.u32()?, slot: r.u32()?, clamped: r.bool()? },
+            other => return Err(SaveError::UnknownCode("Placement", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::item::WorkStatus {
+    fn store(&self, w: &mut Writer) {
+        use crate::item::WorkStatus::*;
+        match self {
+            Available => w.u16(1),
+            Reserved { order } => {
+                w.u16(2);
+                w.u64(*order);
+            }
+            Wip { order, operation } => {
+                w.u16(3);
+                w.u64(*order);
+                w.u32(*operation as u32);
+            }
+            AwaitingUnload { order } => {
+                w.u16(4);
+                w.u64(*order);
+            }
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::item::WorkStatus::*;
+        Ok(match r.u16()? {
+            1 => Available,
+            2 => Reserved { order: r.u64()? },
+            3 => Wip { order: r.u64()?, operation: r.u32()? as usize },
+            4 => AwaitingUnload { order: r.u64()? },
+            other => return Err(SaveError::UnknownCode("WorkStatus", other as u32)),
+        })
+    }
+}
+
+impl Store for crate::wip::Shape {
+    fn store(&self, w: &mut Writer) {
+        self.becoming.store(w);
+        w.str(self.stage);
+        self.geometry.store(w);
+        self.state.store(w);
+        self.surface.store(w);
+        self.dims.store(w);
+        w.len(self.features.len());
+        for f in &self.features {
+            f.store(w);
+        }
+        w.len(self.lineage.len());
+        for l in &self.lineage {
+            l.store(w);
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let becoming = crate::item::DefId::load(r)?;
+        // **A stage name is authored text**, so it is interned rather than
+        // held as an owned string on every workpiece in the world.
+        let stage = crate::wip::intern_stage(&r.str()?);
+        let geometry = crate::bom::Geometry::load(r)?;
+        let state = crate::bom::MaterialState::load(r)?;
+        let surface = crate::bom::Surface::load(r)?;
+        let dims = crate::material::Dims::load(r)?;
+        let n = r.count()?;
+        let mut features = Vec::with_capacity(n);
+        for _ in 0..n {
+            features.push(crate::wip::Feature::load(r)?);
+        }
+        let n = r.count()?;
+        let mut lineage = Vec::with_capacity(n);
+        for _ in 0..n {
+            lineage.push(crate::id::Id::load(r)?);
+        }
+        Ok(crate::wip::Shape {
+            becoming,
+            stage,
+            geometry,
+            state,
+            surface,
+            dims,
+            features,
+            lineage,
+        })
+    }
+}
+
+impl Store for crate::wip::Heat {
+    fn store(&self, w: &mut Writer) {
+        w.len(self.merged_from.len());
+        for i in &self.merged_from {
+            i.store(w);
+        }
+        w.len(self.composition.parts().len());
+        for &(m, f) in self.composition.parts() {
+            m.store(w);
+            w.f64(f);
+        }
+        w.len(self.contamination.len());
+        for &(m, kg) in &self.contamination {
+            m.store(w);
+            w.f64(kg);
+        }
+        w.bool(self.hazardous);
+        w.f64(self.recycled_fraction);
+        w.str(self.process);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let n = r.count()?;
+        let mut merged_from = Vec::with_capacity(n);
+        for _ in 0..n {
+            merged_from.push(crate::id::Id::load(r)?);
+        }
+        let n = r.count()?;
+        let mut parts = Vec::with_capacity(n);
+        for _ in 0..n {
+            parts.push((crate::material::Material::load(r)?, r.f64()?));
+        }
+        let n = r.count()?;
+        let mut contamination = Vec::with_capacity(n);
+        for _ in 0..n {
+            contamination.push((crate::material::Material::load(r)?, r.f64()?));
+        }
+        Ok(crate::wip::Heat {
+            merged_from,
+            composition: crate::material::Composition::of(&parts),
+            contamination,
+            hazardous: r.bool()?,
+            recycled_fraction: r.f64()?,
+            process: crate::wip::intern_stage(&r.str()?),
+        })
+    }
+}
+
 /// **Where a journal entry sits in the order of things.**
 ///
 /// Canonical bytes are not causal order. A map keyed by event id writes
