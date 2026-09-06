@@ -705,6 +705,124 @@ fn with_no_shops_left_they_mend_make_and_scavenge() {
 }
 
 // =====================================================================
+// running it, and getting rid of it
+// =====================================================================
+
+/// **A second radiator does not double the heating bill. A second fridge
+/// does.**
+///
+/// Two kinds of running cost, and collapsing them is what put a man with
+/// three heaters on a power bill larger than his food. A demand-following
+/// load runs to the weather and shares itself over whatever is installed; a
+/// standing load runs day and night whether anybody wants it or not.
+#[test]
+fn two_radiators_in_a_mild_house_each_run_at_part_load() {
+    let cat = standard_catalogue();
+    let mut store = Store::new();
+    let mut home = home_of(Roster::of(2));
+    let wanted = home.wants();
+
+    give(&mut home, &mut store, &cat, "space heater");
+    let one = running_kwh(&home.owns, &store, &cat, &wanted);
+    give(&mut home, &mut store, &cat, "space heater");
+    let two = running_kwh(&home.owns, &store, &cat, &wanted);
+    give(&mut home, &mut store, &cat, "space heater");
+    let three = running_kwh(&home.owns, &store, &cat, &wanted);
+
+    assert!(two > one, "a second heater made no difference to a house that was short of one");
+    assert!(
+        two < one * 1.6,
+        "two heaters cost {two:.0} kWh against one at {one:.0} — they are running flat out"
+    );
+    assert!(
+        (three - two).abs() < 1e-6,
+        "a third heater in the same house cost another {:.0} kWh",
+        three - two
+    );
+
+    // **A fridge is the other kind**, and a second one really does double
+    // the bill, because it runs whether or not anybody opens it.
+    let mut cold = home_of(Roster::of(2));
+    give(&mut cold, &mut store, &cat, "refrigerator");
+    let one_fridge = running_kwh(&cold.owns, &store, &cat, &wanted);
+    give(&mut cold, &mut store, &cat, "refrigerator");
+    let two_fridges = running_kwh(&cold.owns, &store, &cat, &wanted);
+    assert!(
+        (two_fridges - one_fridge * 2.0).abs() < 1e-6,
+        "a second fridge cost {:.1} kWh against the first at {one_fridge:.1}",
+        two_fridges - one_fridge
+    );
+
+    // **And the weather decides.** The same two heaters in Minnesota and in
+    // Miami are not the same bill.
+    let cold_house = Household::new(Roster::of(2), Climate::cold(), home.home);
+    let hot_house = Household::new(Roster::of(2), Climate::hot(), home.home);
+    let in_cold = running_kwh(&home.owns, &store, &cat, &cold_house.wants());
+    let in_hot = running_kwh(&home.owns, &store, &cat, &hot_house.wants());
+    assert!(
+        in_cold > in_hot * 1.5,
+        "Minneapolis {in_cold:.0} kWh against Miami {in_hot:.0} — the weather did nothing"
+    );
+
+    // A broken one draws nothing at all.
+    let dead = home.owns[0];
+    store.get_mut(dead).unwrap().condition.damage = 0.9;
+    let with_a_dead_one = running_kwh(&home.owns, &store, &cat, &wanted);
+    assert!(with_a_dead_one <= two + 1e-9, "a broken heater was still on the bill");
+}
+
+/// **What is past mending goes, and the household stops paying to run it.**
+///
+/// Without this a household accumulates dead appliances for ever — which is
+/// exactly how one came to own three heaters, one of them broken, and to be
+/// charged for all of them.
+#[test]
+fn a_dead_machine_does_not_sit_in_the_corner_for_ever() {
+    let cat = standard_catalogue();
+    let mut store = Store::new();
+    let mut market = a_town(&cat);
+    let mut home = home_of(Roster::of(2));
+
+    let dead = give(&mut home, &mut store, &cat, "refrigerator");
+    store.get_mut(dead).unwrap().condition.damage = 0.9;
+    store.get_mut(dead).unwrap().condition.wear = 0.97;
+    let sound = give(&mut home, &mut store, &cat, "radio set");
+
+    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 40);
+
+    assert!(
+        out.discarded.iter().any(|(id, _)| *id == dead),
+        "a scrap fridge stayed on the books"
+    );
+    assert!(!home.owns.contains(&dead), "it still owns the fridge it got rid of");
+    assert!(home.owns.contains(&sound), "it threw out a working radio");
+    // **And it is a disposition, not destruction.** Something became of it.
+    let fate = out.discarded.iter().find(|(id, _)| *id == dead).unwrap().1;
+    assert_ne!(fate, scale_sim::wip::Disposition::InUse, "a scrap fridge was still in use");
+    // A dead fridge waiting for the scrap man is still a whole fridge —
+    // which is the point of `Disposition` — but it is no longer theirs and
+    // it no longer costs them anything to run.
+    let still_paying = running_kwh(&home.owns, &store, &cat, &home.wants());
+    let with_it_back = {
+        let mut owns = home.owns.clone();
+        owns.push(dead);
+        running_kwh(&owns, &store, &cat, &home.wants())
+    };
+    assert!(
+        (still_paying - with_it_back).abs() < 1e-9,
+        "the fridge was drawing power after it was scrapped"
+    );
+
+    // **A sound one somebody has finished with reaches the second-hand
+    // trade**, which is where used stock comes from.
+    let mut seller = home_of(Roster::of(2));
+    let spare = give(&mut seller, &mut store, &cat, "washing machine");
+    store.get_mut(spare).unwrap().condition.wear = 0.4;
+    let offers = offered_for_sale(&seller, &store, &cat, &market, 55);
+    assert!(offers.iter().any(|s| s.def == cat.must("washing machine") && s.used));
+}
+
+// =====================================================================
 // and the shape of the whole thing
 // =====================================================================
 

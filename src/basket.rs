@@ -435,11 +435,19 @@ pub struct Serves {
     /// machine takes laundry from most of a day to something under an hour,
     /// which is a fraction and not a subtraction.
     pub leaves: f64,
-    /// **What it costs to run, in kWh a week.** A durable is not free once
-    /// bought, and this is where the utility bill comes from — the whole
-    /// reason a cold country is expensive to live in even when everybody
-    /// already owns a heater.
+    /// **What it costs to run, in kWh a week at full output.** A durable is
+    /// not free once bought, and this is where the utility bill comes from
+    /// — the whole reason a cold country is expensive to live in even when
+    /// everybody already owns a heater.
     pub kwh_a_week: f64,
+    /// **Whether it draws whether or not you are using it.**
+    ///
+    /// A refrigerator runs day and night and a second one really does
+    /// double the bill. A heater runs as hard as the weather makes it, so
+    /// two radiators in a mild house each run at part load — and counting
+    /// them the way a fridge is counted put a man with three heaters on a
+    /// bill larger than his food.
+    pub standing: bool,
     /// **Whether owning it means the job is done, or only that it can be
     /// done.**
     ///
@@ -460,16 +468,24 @@ pub struct Serves {
 /// *is*; this layer knows what it is *for*.
 pub fn what_it_does(name: &str) -> &'static [Serves] {
     use Need::*;
+    // Draws as hard as the demand makes it.
     macro_rules! does {
         ($($n:expr, $c:expr, $l:expr, $k:expr);* $(;)?) => {
             &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: $k,
-                         hands_on: false }),*]
+                         standing: false, hands_on: false }),*]
+        };
+    }
+    // Draws whether or not anybody is using it.
+    macro_rules! always_on {
+        ($($n:expr, $c:expr, $l:expr, $k:expr);* $(;)?) => {
+            &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: $k,
+                         standing: true, hands_on: false }),*]
         };
     }
     macro_rules! helps {
         ($($n:expr, $c:expr, $l:expr);* $(;)?) => {
             &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: 0.0,
-                         hands_on: true }),*]
+                         standing: false, hands_on: true }),*]
         };
     }
     // Real annual consumption, turned into a week: a refrigerator runs
@@ -479,10 +495,10 @@ pub fn what_it_does(name: &str) -> &'static [Serves] {
     match name {
         // Things that do the job.
         "washing machine" => does![CleanClothes, 4.0, 0.15, 3.0],
-        "cooking stove" => does![CookedFood, 4.0, 0.35, 13.0],
-        "refrigerator" => does![FoodKeeping, 4.0, 0.10, 9.0],
+        "cooking stove" => does![CookedFood, 4.0, 0.35, 26.0],
+        "refrigerator" => always_on![FoodKeeping, 4.0, 0.10, 9.0],
         "space heater" => does![Warmth, 1.0, 0.05, 110.0],
-        "electric light" => does![Light, 3.0, 0.05, 5.0],
+        "electric light" => always_on![Light, 3.0, 0.05, 5.0],
         "bed" => does![Rest, 1.0, 0.00, 0.0],
         "bicycle" => does![Mobility, 1.0, 0.60, 0.0],
         // **The running figure for a car is not only its fuel.** Insurance,
@@ -492,8 +508,8 @@ pub fn what_it_does(name: &str) -> &'static [Serves] {
         // price covers the household, which is a simplification and is
         // recorded as one.
         "motor car" => does![Mobility, 4.0, 0.10, 300.0],
-        "telephone" => does![Contact, 4.0, 0.10, 0.4],
-        "radio set" => does![Diversion, 3.0, 0.20, 1.5],
+        "telephone" => always_on![Contact, 4.0, 0.10, 0.4],
+        "radio set" => always_on![Diversion, 3.0, 0.20, 1.5],
         "coat" => does![Clothed, 1.0, 0.00, 0.0],
         "work clothes" => does![Clothed, 1.0, 0.00, 0.0],
         // Things that make the job possible, and it is still your Monday.
@@ -630,29 +646,46 @@ pub fn running_kwh(
     cat: &Catalogue,
     wanted: &[Requirement],
 ) -> f64 {
-    owned
-        .iter()
-        .filter_map(|&id| {
-            let item = store.get(id)?;
-            if !in_service(item) {
-                return None;
+    // Gather what is installed against each need, because **the demand is a
+    // property of the household and the capacity is a property of the
+    // things**, and the bill is where the two meet. Adding up nameplates
+    // one appliance at a time cannot express that.
+    let mut per_need: Vec<(Need, f64, f64, f64)> = Vec::new(); // need, capacity, following, standing
+    for &id in owned {
+        let Some(item) = store.get(id) else { continue };
+        if !in_service(item) {
+            continue;
+        }
+        let Some(def) = cat.get(item.definition) else { continue };
+        for s in what_it_does(def.name) {
+            if s.kwh_a_week <= 0.0 && s.covers <= 0.0 {
+                continue;
             }
-            let def = cat.get(item.definition)?;
-            Some(
-                what_it_does(def.name)
-                    .iter()
-                    .map(|s| {
-                        // **Running cost follows the demand, not the
-                        // nameplate.** A heater in Miami is idle.
-                        let level = wanted
-                            .iter()
-                            .find(|r| r.need == s.need)
-                            .map(|r| r.level)
-                            .unwrap_or(1.0);
-                        s.kwh_a_week * level.min(s.covers.max(1.0))
-                    })
-                    .sum::<f64>(),
-            )
+            let slot = match per_need.iter_mut().find(|x| x.0 == s.need) {
+                Some(x) => x,
+                None => {
+                    per_need.push((s.need, 0.0, 0.0, 0.0));
+                    per_need.last_mut().unwrap()
+                }
+            };
+            slot.1 += s.covers;
+            if s.standing {
+                slot.3 += s.kwh_a_week;
+            } else {
+                slot.2 += s.kwh_a_week;
+            }
+        }
+    }
+    per_need
+        .iter()
+        .map(|&(need, capacity, following, standing)| {
+            let level = wanted.iter().find(|r| r.need == need).map(|r| r.level).unwrap_or(1.0);
+            // **A demand-following load runs to the demand**, shared over
+            // whatever is installed: two radiators in a mild house each run
+            // at part load, and a third one changes nothing but the
+            // purchase price.
+            let served = if capacity > 0.0 { (level / capacity).clamp(0.0, 1.0) } else { 0.0 };
+            following * served + standing
         })
         .sum()
 }
@@ -1180,6 +1213,9 @@ pub struct Outcome {
     /// The bill for running what it owns, which is the utility line and is
     /// not discretionary.
     pub utilities: f64,
+    /// What it got rid of, and what became of each. **Not destruction**:
+    /// most of these are sold, stored or robbed for parts.
+    pub discarded: Vec<(Id<ItemInstance>, crate::wip::Disposition)>,
     /// **They could not pay it.** Everything electric stopped.
     pub cut_off: bool,
     pub spent: f64,
@@ -1555,6 +1591,40 @@ pub fn a_period(
         *d = (*d - days as f64).max(0.0);
     }
     wear_and_failure(home, store, cat, days, event);
+
+    // **And what is past mending goes.** `dispose_of` existed from the
+    // first commit and nothing ever called it, so a household accumulated
+    // dead appliances for ever — which is how a man came to own three
+    // heaters, one of them broken, and to be charged for running all of
+    // them. What it lets go of is also where a second-hand market gets its
+    // stock, which is the other half of the same omission.
+    let doomed: Vec<Id<ItemInstance>> = home
+        .owns
+        .iter()
+        .copied()
+        .filter(|&id| {
+            store
+                .get(id)
+                .map(|i| !in_service(i) || i.condition.wear > 0.95)
+                .unwrap_or(true)
+        })
+        .collect();
+    for id in doomed {
+        let fate = dispose_of(home, store, id, market, false);
+        out.discarded.push((id, fate));
+        home.owns.retain(|&x| x != id);
+        match fate {
+            crate::wip::Disposition::OfferedForSale => {
+                if let Some(stall) = offered_for_sale_one(store, cat, id, market, 0) {
+                    market.stock(stall);
+                }
+                store.end(id, crate::item::ItemEnd::Consumed, days);
+            }
+            _ => {
+                store.end(id, crate::item::ItemEnd::Destroyed, days);
+            }
+        }
+    }
     // **What is not spent is put by.** Real saving is exactly this: the
     // residue of a week, and it is how a poor household eventually reaches
     // something it could never buy out of a wage.
@@ -1681,6 +1751,24 @@ pub fn dispose_of(
     let a_buyer = market.stalls.iter().any(|s| s.used) || somebody_wants_it;
     let worth_robbing = sound > 0.15;
     crate::wip::what_becomes_of_it(sound, still_used, a_buyer, worth_robbing, true)
+}
+
+/// One thing, priced for the second-hand trade.
+pub fn offered_for_sale_one(
+    store: &Store,
+    cat: &Catalogue,
+    id: Id<ItemInstance>,
+    market: &Market,
+    seller: u64,
+) -> Option<Stall> {
+    let i = store.get(id)?;
+    let d = cat.get(i.definition)?;
+    let sound = 1.0 - i.condition.wear.max(i.condition.damage);
+    if sound < 0.35 {
+        return None;
+    }
+    let new = market.price_new(i.definition)?;
+    Some(Stall::second_hand(d.id, new * (0.18 + sound * 0.25), 1, seller))
 }
 
 /// **What a household puts back into the second-hand market**, which is

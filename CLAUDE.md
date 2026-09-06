@@ -1848,6 +1848,24 @@ because that is what a bill does — and a household that cannot pay it is
 cut off, at which point everything electric stops and it falls back on its
 hands exactly as if it had never owned any of it.
 
+### A standing load and a following load are different bills
+
+**A second radiator does not double the heating bill; a second fridge
+does.** A demand-following load runs to the weather and shares itself over
+whatever is installed; a standing load runs day and night whether anybody
+wants it or not. Counting them the same way put a man with three heaters on
+a power bill larger than his food.
+
+**And nothing was ever thrown away.** `dispose_of` was written in the same
+commit as the rest and nothing called it, so a household accumulated dead
+appliances for ever and went on being charged to run them — the same shape
+of omission as `running_kwh` existing and no bill being raised against it.
+What a household lets go of is also where a second-hand market gets its
+stock, which is the other half of it.
+
+Measured, one man over a year: 230 kWh a week and three heaters became
+137 kWh and two.
+
 ### Some needs are about the house and some about the people
 
 Feeding four costs four times feeding one; heating the room for four costs
