@@ -2100,6 +2100,101 @@ missing it too, so a save containing water would have failed to load. The
 table-driven codec gate could not see it, because **it walked the same
 incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
+## Where the electricity comes from (`src/power.rs`)
+
+The economy had one way to make power: burn coal. So a country with a great
+river and a country with none paid the same for electricity, and the fields
+the world generator has produced since it was written — elevation, flow
+accumulation, latitude, volcanism — had no consumer.
+
+### Merit order, which is what makes a mix mean anything
+
+Dispatch the cheapest marginal cost first and **let the last unit you need
+set the price for everybody**. That is how a real wholesale market clears,
+and it is the least intuitive fact in one: a wind farm with no fuel bill is
+paid exactly what the gas turbine that happened to be last is paid.
+
+Which gives the two results everybody finds surprising — a windy night
+clears at almost nothing and a still cold evening clears at the cost of the
+worst plant on the system, from the same fleet, at the same capital cost.
+
+- **Marginal cost and levelised cost rank differently**, and that is the
+  whole difference between a wind farm and a gas turbine: they may cost the
+  same over thirty years and behave completely differently on a Tuesday.
+  Nuclear is the dearest thing to build and nearly the cheapest to run.
+- **A megawatt is not a megawatt.** Real capacity factors run 23% for solar
+  to 93% for nuclear, so a megawatt of one is four times the other over a
+  year.
+- **A plant that is not available is not capacity.** A dam in a drought and
+  a wind farm on a still day are the same problem.
+- **A shortage is a different thing from a high price.** Real markets set an
+  administrative cap: ERCOT's was $9,000/MWh in the February 2021 Texas
+  freeze and it sat there for four days, which bankrupted several retailers.
+
+### What the ground offers, read off fields nothing had asked
+
+- **Hydro is the real equation**, `P = ρgQHη`, which collapses to 8.83 kW
+  per cumec per metre of head — so a hundred metres and a hundred cubic
+  metres a second is 88 MW. Head and flow are both already generated.
+- **Wind is derived rather than simulated**, and recorded as an inference:
+  the world has a prevailing direction and no wind speed. It follows the
+  things that really govern it — the westerly belt at 35-60°, exposure to
+  open water, height, and roughness.
+  **And the calm bands are as real as the windy one.** A broad parabola made
+  the horse latitudes near 30° windier than the trade winds, which is
+  exactly backwards: 30° is where sailing ships were becalmed for weeks.
+- **Sunshine is latitude and cloud**, and the spread is a factor of two: the
+  US Southwest gets ~2,000 kWh/m² a year against Germany's ~1,000.
+- **Young rock is hot rock.** Geothermal is almost entirely volcanic and
+  tectonic ground — Iceland 30% of its electricity, Kenya 47%, the
+  Philippines 15%, the United States 0.4%.
+
+A nation then builds what the ground offers and fills the gap with whatever
+burns, because somebody still has to be able to meet the evening. Measured:
+a hydro country spends less than 40% of what a coal country spends running
+its grid for a year.
+
+### Cheap power does not make cheap steel
+
+The correction that mattered, and it came from being told so. A blast
+furnace uses coal as a **reductant** and only 250 kWh of electricity a
+tonne, so halving the power price barely touches it. What cheap power
+changes is **which route is worth building**.
+
+| route | electricity a tonne | what it really needs |
+|---|---|---|
+| blast furnace + BOF | 0.25 MWh | 1.4 t ore, 0.8 t coal as reductant |
+| electric arc furnace | 0.45 MWh | ~1.1 t of **scrap**, no coke at all |
+| charcoal blast furnace | 0.20 MWh | 0.7 t charcoal — and 4-7 t of wood to make it |
+| aluminium, primary | **14 MWh** | there is no non-electric route |
+| aluminium, remelted | 0.70 MWh | **5% of primary** |
+
+**And what decides steel is scrap, not the power price** — which falls out
+of that table rather than contradicting it. The two steel routes differ by
+0.2 MWh a tonne, so even a punishing $120/MWh is $24 against ~$460 of ore,
+coal, scrap and conversion. An arc furnace has dearer inputs and far cheaper
+conversion, and the balance tips on how much scrap there is to melt. The
+United States runs 70% electric arc after a century of accumulating it, the
+world runs 70% blast furnace, Brazil still makes pig iron on charcoal, and a
+country industrialising today **cannot simply pick the modern route because
+there is nothing in it to melt**. A gate runs the power price from 15 to 250
+and the answer does not move.
+
+Aluminium is the opposite and is decided by nothing else: 14 MWh a tonne,
+about 40% of the cost, and a potline stops being viable much above $40/MWh.
+Which is why there are so few, and why remelting at 5% of primary is what
+makes scrap aluminium worth $1,400 a tonne.
+
+### A smelter is sited by contract, not by proximity
+
+Grid losses over a few hundred kilometres are about 5%, so nobody needs to
+be bolted to the dam — Iceland's smelters are 50-70 km from their hydro.
+What a potline needs is a **forty-year power purchase agreement at a price
+nobody else gets**, which it can have because it is a 300-700 MW continuous
+load and that is the cheapest load a generator can serve. The load is its
+own argument: it cannot be off for more than about four hours or the metal
+freezes in the pots and the plant is destroyed.
+
 ## A bank does not lend out deposits (`src/bank.rs`)
 
 **Making a loan creates one.** This is the most misunderstood mechanism in
