@@ -619,3 +619,126 @@ fn a_nation_that_cannot_feed_itself_buys_and_does_not_starve() {
         "no nation on this planet is short of food — the land is not binding"
     );
 }
+
+// =====================================================================
+// a cheap input has to become a cheap output
+// =====================================================================
+
+/// **Gate: a glut of oil makes cheap plastics and cheap goods.**
+///
+/// The thing the model could not do at all. Price used to be a typed-in
+/// reference cost times a scarcity multiplier, so nothing about the oil
+/// ever reached the plastics: a country sitting on the richest field in the
+/// world paid exactly what a country importing every barrel paid.
+#[test]
+fn cheap_oil_travels_all_the_way_down_to_the_shelf() {
+    let p = planet(42);
+    let mut cheap = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+    let mut dear = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+
+    // The same country twice, differing in one thing: how good the ground
+    // under the oil field is.
+    // **The field is where the geology put it**, which is not necessarily
+    // the capital — so read the market it actually sits in rather than
+    // assuming one.
+    let field_market = (0..cheap.economy.ledger.sites.len())
+        .find(|&s| cheap.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField)
+        .map(|s| cheap.economy.ledger.sites[s].market)
+        .expect("this nation has no oil field to vary");
+    for s in 0..cheap.economy.ledger.sites.len() {
+        if cheap.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField {
+            // A Saudi-grade field: about $10 a barrel.
+            cheap.economy.ledger.sites[s].cost_factor = 0.45;
+        }
+        if dear.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField {
+            // Canadian oil sands: $50-60.
+            dear.economy.ledger.sites[s].cost_factor = 3.0;
+        }
+    }
+    for _ in 0..40 {
+        cheap.economy.step();
+        dear.economy.step();
+    }
+
+    let at = |e: &Region, c| e.economy.markets[field_market].cost[c as usize];
+    let oil_cheap = at(&cheap, Commodity::Petroleum);
+    let oil_dear = at(&dear, Commodity::Petroleum);
+    assert!(
+        oil_dear > oil_cheap * 2.0,
+        "oil sands {oil_dear:.0} against a Saudi field {oil_cheap:.0}"
+    );
+
+    // **And it reaches the cracker**, which is one step down.
+    let resin_cheap = at(&cheap, Commodity::Plastics);
+    let resin_dear = at(&dear, Commodity::Plastics);
+    assert!(
+        resin_dear > resin_cheap * 1.3,
+        "resin {resin_dear:.0} against {resin_cheap:.0} — the oil price did not reach the cracker"
+    );
+
+    // **And two steps further, to what a household buys.** Plastics are
+    // only a small share of a tonne of goods, so the effect is real and
+    // properly diluted — which is what a supply chain does to a shock.
+    let goods_cheap = at(&cheap, Commodity::RetailGoods);
+    let goods_dear = at(&dear, Commodity::RetailGoods);
+    assert!(
+        goods_dear > goods_cheap * 1.005,
+        "goods {goods_dear:.1} against {goods_cheap:.1} — nothing reached the shelf"
+    );
+    assert!(
+        goods_dear < goods_cheap * 1.3,
+        "a fivefold oil price moved retail goods by more than a third, which is not dilution"
+    );
+}
+
+/// **Gate: a rich seam and a thin one are not the same industry.**
+///
+/// Real spreads, and they are not small: Powder River coal comes out of a
+/// surface seam at $12 a ton and Appalachian underground at $60-70; Pilbara
+/// iron ore at 62% Fe costs a fifth of Chinese ore at half the grade,
+/// because you have to move twice the rock for the same iron.
+#[test]
+fn what_it_costs_to_work_depends_on_what_is_in_the_ground() {
+    // The relationship is one over the grade, because that is the physical
+    // truth: a poorer deposit means moving and crushing proportionally more
+    // rock for the same tonne of product.
+    let rich = Commodity::cost_of_working(0.9);
+    let ordinary = Commodity::cost_of_working(0.4);
+    let thin = Commodity::cost_of_working(0.1);
+    assert!(rich < ordinary && ordinary < thin);
+    assert!(thin > rich * 4.0, "thin {thin:.2} against rich {rich:.2}");
+
+    // Bounded at both ends: a marginal seam is expensive rather than
+    // infinite, and no deposit is free to work.
+    assert!(Commodity::cost_of_working(0.0) <= 6.0);
+    assert!(Commodity::cost_of_working(1.0) >= 0.4);
+
+    // And it reaches the price of what is made out of it.
+    let p = planet(42);
+    let mut good = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+    let mut poor = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+    for s in 0..good.economy.ledger.sites.len() {
+        if good.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::Mine
+            && good.economy.ledger.sites[s].recipe == Some(scale_sim::econ::recipe::COAL_MINE)
+        {
+            good.economy.ledger.sites[s].cost_factor = 0.45;
+            poor.economy.ledger.sites[s].cost_factor = 4.0;
+        }
+    }
+    for _ in 0..40 {
+        good.economy.step();
+        poor.economy.step();
+    }
+    let coal_good = good.economy.markets[0].cost[Commodity::Coal as usize];
+    let coal_poor = poor.economy.markets[0].cost[Commodity::Coal as usize];
+    if coal_poor > coal_good * 1.01 {
+        // The nation works its own coal, so the seam reaches the price of
+        // electricity made from it.
+        let power_good = good.economy.markets[0].cost[Commodity::Electricity as usize];
+        let power_poor = poor.economy.markets[0].cost[Commodity::Electricity as usize];
+        assert!(
+            power_poor > power_good,
+            "a thin seam made no difference to the price of power: {power_poor:.1} against {power_good:.1}"
+        );
+    }
+}

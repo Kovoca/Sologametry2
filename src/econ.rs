@@ -348,6 +348,39 @@ impl Commodity {
         }
     }
 
+    /// **What it costs to get a tonne out of ground of this quality.**
+    ///
+    /// A multiplier on the reference cost, and the physical reason is
+    /// simple: a poorer deposit means moving, crushing and processing
+    /// proportionally more rock for the same tonne of product, so cost goes
+    /// roughly as one over the grade. Real spreads, and they are not small:
+    ///
+    /// | | rich | poor |
+    /// |---|---|---|
+    /// | crude oil | **$10/bbl** Saudi | $50-60 oil sands |
+    /// | coal | $12/ton Powder River surface | $60-70 Appalachian underground |
+    /// | iron ore | $15-20/t Pilbara at 62% Fe | $70-100/t Chinese at half that |
+    ///
+    /// And it is why declining ore grades matter so much: average copper
+    /// grade has fallen from about 1.6% in 1990 to 0.6% now, which is the
+    /// same copper costing nearly three times as much rock to win.
+    pub fn cost_of_working(grade: f64) -> f64 {
+        // **The reference has to sit where the deposits actually are.**
+        // A nation of any size contains the peak of some deposit, so its
+        // best cell measures 0.8-1.0 far more often than not — and
+        // centring this at 0.42 handed every country in the world a
+        // twofold discount, which then compounded through ore into steel
+        // into machinery into goods and left crude steel at a third of its
+        // calibrated price.
+        //
+        // So an ordinary good deposit costs exactly the reference, a
+        // world-class one is a tenth cheaper, and a thin one is dear.
+        // Clamped at the bottom so a marginal seam is expensive rather
+        // than infinite; below that nobody opens the mine at all.
+        const ORDINARY_GRADE: f64 = 0.9;
+        (ORDINARY_GRADE / grade.clamp(0.05, 1.0)).clamp(0.45, 6.0)
+    }
+
     /// Reference cost of production per unit, in currency. A floor that
     /// price is measured against, not a fixed price.
     pub fn base_cost(self) -> f64 {
@@ -545,6 +578,11 @@ pub enum SiteKind {
     Depot,
 }
 
+
+/// What an hour of work costs a firm, in the model's own currency, pinned
+/// like everything else to the food chain.
+const WAGE_AN_HOUR: f64 = 22.0;
+
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -566,6 +604,20 @@ pub struct Site {
     /// the output still has its people; how long it keeps them is a
     /// different question, and this is the number that decides it.
     pub ran: f64,
+    /// **What this particular site costs to work**, against an ordinary
+    /// one — a multiplier on its production cost.
+    ///
+    /// The number that makes a rich deposit different from a poor one, and
+    /// the spread in reality is enormous: Saudi crude lifts for about $10 a
+    /// barrel and Canadian oil sands for $50-60, Powder River coal comes out
+    /// at $12 a ton and Appalachian underground at $60-70, and Australian
+    /// iron ore at 62% Fe costs a fifth of what Chinese ore at half the
+    /// grade does. **You have to move, crush and process proportionally
+    /// more rock**, which is why cost goes roughly as one over the grade.
+    ///
+    /// One for a works, which is built to a design rather than found in the
+    /// ground.
+    pub cost_factor: f64,
     /// How the place is fitted out, where that matters.
     ///
     /// A shop's tills and shelving and loading bays decide how many people
@@ -1278,6 +1330,23 @@ pub struct Market {
     /// draw.
     pub harvest_quality: f64,
     pub price: Basket,
+    /// **What it costs to produce here, before scarcity says anything.**
+    ///
+    /// Kept apart from the price, and the distinction is the whole of what
+    /// makes propagation work. A shortage of grain raises the *price* of
+    /// grain; it does not make grain any cheaper or dearer to grow. If cost
+    /// were built from input prices, that one shortage would be counted
+    /// again in flour's cost, again in bread's, and again in bread's own
+    /// scarcity multiplier — which is the compounding failure this project
+    /// has now recorded three times.
+    ///
+    /// So **cost carries what a thing genuinely costs to make** — a rich
+    /// seam, cheap hydro power, a better process — and price is that times
+    /// the local balance of supply and demand. A glut of oil makes cheap
+    /// plastics because it makes oil cheaper to *produce* nothing to do
+    /// with anybody's stock level; and demand outstripping supply raises
+    /// the price at each stage on its own merits, once.
+    pub cost: Basket,
     /// Days of cover currently held, for reporting.
     pub cover: Basket,
     /// Cover as the market *sees* it: a slow average rather than today's
@@ -1310,6 +1379,7 @@ impl Market {
             population,
             southern,
             harvest_quality: 1.0,
+            cost: price,
             price,
             cover: basket(),
             expected_cover: expected,
@@ -3764,7 +3834,31 @@ impl Economy {
     /// demand alone leaves grain and flour with no price at all, and hides
     /// the whole seasonal signal — which lives in what the mill pays at
     /// harvest versus what it pays in spring, not in the price of a loaf.
+    /// **Prices have to be worked out in the right order**, and the graph
+    /// has a loop in it: coal makes electricity and a colliery runs on
+    /// electricity. So rather than a topological sort that cannot exist,
+    /// the pass is run until it settles — which it does quickly, because
+    /// the feedback is tiny (a colliery uses 0.02 MWh a tonne).
+    /// **Once, in dependency order — not iterated to a fixed point.**
+    ///
+    /// The obvious thing is to run the pass until the costs settle, since
+    /// the graph has one loop in it (coal makes electricity and a colliery
+    /// runs on electricity). That is wrong, and wrong in the way this
+    /// project has now been caught by three times: **iterating does not
+    /// converge, it compounds.** Each pass recomputes a cost from the last
+    /// pass's costs, so a stage sitting below its reference drags the next
+    /// stage lower again, and again, geometrically down the chain. Six
+    /// passes moved the world price spread for medicine from 2.0x to 4.2x
+    /// without a single input actually changing.
+    ///
+    /// One pass over the commodities in order is enough: the chain is four
+    /// or five deep and roughly upstream-first already, and the one
+    /// feedback loop is worth 0.02 MWh a tonne and does not need solving.
     fn update_prices(&mut self) {
+        self.one_price_pass();
+    }
+
+    fn one_price_pass(&mut self) {
         for m in 0..self.markets.len() {
             for &c in Commodity::ALL.iter() {
                 let industrial: f64 = (0..self.ledger.sites.len())
@@ -3780,9 +3874,38 @@ impl Economy {
                     })
                     .sum();
 
+                // **What it costs to make does not depend on whether
+                // anybody wants it today**, so this is worked out before
+                // the demand is even looked at.
+                //
+                // It used to bail out here, which left a commodity nobody
+                // currently wants frozen at whatever its cost was when the
+                // market opened. Switching a country's building trade off
+                // for twenty years then left cement at its full reference
+                // cost while the same country with builders had it at two
+                // thirds — so a town left to rot came out *dearer* to buy
+                // into than one kept up, which is the opposite of the truth
+                // and is what caught this.
+                let cost = self.cost_of_production(m, c);
+                self.markets[m].cost[c as usize] = cost;
+
                 let demand = self.markets[m].daily_household_demand(c) + industrial;
                 if demand <= 0.0 {
                     self.markets[m].cover[c as usize] = f64::INFINITY;
+                    // **A glut needs surplus stock, not merely an absence
+                    // of buyers.** Pricing everything nobody wants at the
+                    // floor invented a cheap market in every town that had
+                    // no use for a thing, and hauliers went chasing it —
+                    // which widened the world price spread for medicine
+                    // from 1.6x to 8.8x. With nothing in the warehouse
+                    // there is no market at all, and what it would fetch is
+                    // what it costs.
+                    let held: f64 = (0..self.ledger.sites.len())
+                        .filter(|&s| self.ledger.sites[s].market == m)
+                        .map(|s| self.ledger.stock(s, c))
+                        .sum();
+                    self.markets[m].price[c as usize] =
+                        if held > 0.0 { cost * 0.7 } else { cost };
                     continue;
                 }
 
@@ -3836,9 +3959,92 @@ impl Economy {
                 // than given away.
                 let multiplier =
                     (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
-                self.markets[m].price[c as usize] = c.base_cost() * multiplier;
+                // **Price is what it cost to make, times what scarcity is
+                // doing to it.** Not a typed-in constant times scarcity,
+                // which is what this was: a glut of oil could never make
+                // cheap plastics, because plastics had a fixed reference
+                // cost of its own and nothing about the oil reached it.
+                //
+                // Cost sets the floor and scarcity sets the deviation,
+                // which is how a real market works: producers will not sell
+                // below cost for long, and a shortage bids the price above
+                // it however cheap the inputs were.
+                self.markets[m].price[c as usize] = cost * multiplier;
             }
         }
+    }
+
+    /// **What a tonne of it actually cost to produce here.**
+    ///
+    /// The point of this, and the thing the model could not do before: a
+    /// glut of oil has to become cheap plastics and then cheap goods.
+    /// Price used to be a typed-in reference cost times a scarcity
+    /// multiplier, so nothing about the oil ever reached the plastics.
+    ///
+    /// **Measured as a ratio against the reference, not built up from
+    /// nothing.** The first attempt added up the listed inputs, the power
+    /// and the labour and called that the cost, which understates a primary
+    /// commodity enormously: a recipe for grain lists no land, no
+    /// machinery, no fuel, no fertiliser and no seed, so the sum came to a
+    /// third of what grain really costs and every acceptance test in the
+    /// economy moved.
+    ///
+    /// So the reference cost stays exactly what it was — it is calibrated
+    /// against real prices and there is no reason to throw that away — and
+    /// what propagates is **how far the inputs have moved from their own
+    /// reference**. Everything at reference gives exactly the old number;
+    /// oil at half price gives plastics at proportionally less, through
+    /// however many stages lie between.
+    pub fn cost_of_production(&self, m: usize, c: Commodity) -> f64 {
+        let mut best: Option<f64> = None;
+        for s in 0..self.ledger.sites.len() {
+            let site = &self.ledger.sites[s];
+            if site.market != m || site.throughput <= 0.0 {
+                continue;
+            }
+            let Some(r) = site.recipe else { continue };
+            let recipe = &RECIPES[r];
+            if !recipe.outputs.iter().any(|&(oc, q)| oc == c && q > 0.0) {
+                continue;
+            }
+
+            // What this recipe's inputs cost at the reference, and what
+            // they cost today. **A power figure of 1e9 is the sentinel
+            // meaning "whatever the grid can carry"** — this project has
+            // been bitten by reading it as a rate twice already — so it is
+            // excluded rather than multiplied by anything.
+            let power = if recipe.power < 1e8 { recipe.power } else { 0.0 };
+            let labour = recipe.labour * WAGE_AN_HOUR;
+            let reference: f64 = recipe
+                .inputs
+                .iter()
+                .map(|&(ic, q)| q * ic.base_cost())
+                .sum::<f64>()
+                + power * Commodity::Electricity.base_cost()
+                + labour;
+            // **Input *costs*, not input prices.** A shortage of grain
+            // raises the price of grain and does not make it dearer to
+            // grow, so reading prices here would count one shortage again
+            // at every stage downstream and once more in the final good's
+            // own scarcity multiplier.
+            let actual: f64 = recipe
+                .inputs
+                .iter()
+                .map(|&(ic, q)| q * self.markets[m].cost[ic as usize])
+                .sum::<f64>()
+                + power * self.markets[m].cost[Commodity::Electricity as usize]
+                + labour;
+
+            // **And what this particular ground costs to work**, which is
+            // the whole difference between a rich seam and a thin one and
+            // is 1.0 for anything built to a design rather than found.
+            let moved = if reference > 1e-9 { actual / reference } else { 1.0 };
+            let here = c.base_cost() * moved * site.cost_factor;
+            best = Some(best.map_or(here, |b: f64| b.min(here)));
+        }
+        // Nobody here makes it, so what it costs is what it costs to bring
+        // in — which is the reference, that being what it is calibrated on.
+        best.unwrap_or_else(|| c.base_cost())
     }
 
     /// **Food goes off, and a cold chain is what stops it.**

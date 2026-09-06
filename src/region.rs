@@ -101,6 +101,15 @@ const YIELD_PRIME_T_PER_HA: f64 = 8.0;
 struct Endowment {
     coal_cells: usize,
     ore_cells: usize,
+    /// **How good the best of it is**, which decides what it costs to
+    /// work rather than merely whether it can be. The real spread is
+    /// enormous: Powder River coal comes out of a surface seam at $12 a
+    /// ton and Appalachian underground at $60-70, and Pilbara iron ore at
+    /// 62% Fe costs a fifth of Chinese ore at half the grade.
+    coal_grade: f32,
+    ore_grade: f32,
+    oil_grade: f32,
+    timber_grade: f32,
     /// Cell of the richest coal ground, so the colliery can be sited at
     /// whichever modelled town is nearest it.
     best_coal: Option<usize>,
@@ -451,6 +460,10 @@ fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endow
     let mut e = Endowment {
         coal_cells: 0,
         ore_cells: 0,
+        coal_grade: 0.0,
+        ore_grade: 0.0,
+        oil_grade: 0.0,
+        timber_grade: 0.0,
         best_coal: None,
         best_ore: None,
         oil_cells: 0,
@@ -500,6 +513,15 @@ fn endowment(world: &World, pol: &Polities, polity: u16, workable: f32) -> Endow
             }
         }
     }
+    // **How rich the best of it is**, which is what a mine costs to work
+    // rather than merely whether there is one.
+    e.coal_grade = best;
+    e.ore_grade = best_o;
+    e.oil_grade = best_p;
+    // Timber is in cubic metres a hectare rather than a 0..1 concentration;
+    // a working forest is 40+ and a managed temperate one 150-350, so this
+    // puts it on the same scale as the rest.
+    e.timber_grade = (best_t / 300.0).min(1.0);
     e
 }
 
@@ -586,7 +608,8 @@ impl Region {
                     food_day + goods_day,
                     4.0,
                 )),
-            });
+            cost_factor: 1.0,
+        });
         }
 
         let total_pop: f64 = markets.iter().map(|m| m.population).sum();
@@ -671,7 +694,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
 
@@ -713,7 +737,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
             }
 
             // **A nation whose ground will not carry stock imports meat**,
@@ -735,7 +760,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
             }
 
             let cuts = meat_day * share * 1.1;
@@ -759,7 +785,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
             }
         }
 
@@ -802,7 +829,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
             sites.push(Site {
                 name: format!("{name} cannery"),
                 kind: SiteKind::Factory,
@@ -826,7 +854,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
         let mill_rate = total_mill;
         let cannery_rate = total_cannery;
@@ -878,7 +907,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
         if imported > 0.5 {
             notes.push(format!(
@@ -1058,7 +1088,11 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                // **A thick surface seam and a thin deep one are not the same
+                    // industry.** Real: Powder River coal comes out at $12 a
+                    // ton and Appalachian underground at $60-70.
+                cost_factor: Commodity::cost_of_working(endow.coal_grade as f64),
+            });
                 sites.push(Site {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
@@ -1070,7 +1104,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
                 notes.push(format!(
                     "{} coalfield cells in the nation; nearest workings {:.0} km from {}, \
                      with a mine-mouth station on them",
@@ -1096,7 +1131,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
                 sites.push(Site {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
@@ -1111,7 +1147,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
                 notes.push(format!(
                     "no workable coal in this nation — every tonne it burns is landed at {} \
                      {}. Cut that and the lights go out with nothing to mine instead.",
@@ -1173,7 +1210,11 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                // **Grade is the whole of it.** Pilbara ore at 62% Fe costs a
+                    // fifth of Chinese ore at half that, because you have to
+                    // move twice the rock for the same iron.
+                cost_factor: Commodity::cost_of_working(endow.ore_grade as f64),
+            });
                 notes.push(format!(
                     "{} ore cells in the nation; the workings are {:.0} km from {steel_name} \
                      and railed in",
@@ -1196,7 +1237,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
                 notes.push(format!(
                     "no workable ore — every tonne of iron is landed at {steel_name}"
                 ));
@@ -1230,7 +1272,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
             notes.push(format!(
                 "steelworks at {steel_name}: {:.0} t/day on {:.0} t of ore and {:.0} t of coal, \
                  {:.0}% of what the country works",
@@ -1302,7 +1345,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         // --- Timber, oil, plastic and machines ---
@@ -1357,7 +1401,14 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            // A stand carrying 300 m3/ha is cheap to work and scrub is
+                // not. An importer pays a world price and does no felling.
+            cost_factor: if recipe == recipe::FORESTRY {
+                    Commodity::cost_of_working(endow.timber_grade as f64)
+                } else {
+                    1.0
+                },
+        });
             notes.push(note);
         }
 
@@ -1405,7 +1456,16 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            // **The largest cost spread of any commodity there is.** Saudi
+                // crude lifts for about $10 a barrel and Canadian oil sands
+                // for $50-60, and that difference is most of the
+                // geopolitics of oil.
+            cost_factor: if recipe == recipe::OIL_FIELD {
+                    Commodity::cost_of_working(endow.oil_grade as f64)
+                } else {
+                    1.0
+                },
+        });
             notes.push(note);
 
             // **A cracker stands on the oil**, which is why refineries are
@@ -1427,7 +1487,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         // **Machine works follow the steel**, for the same reason the
@@ -1463,7 +1524,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
             }
         }
 
@@ -1507,7 +1569,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
         if cement_day > 0.01 {
             notes.push(format!(
@@ -1560,7 +1623,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         if chemicals_day > 0.01 {
@@ -1577,7 +1641,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         // **A pharmaceutical works stands in a chemical cluster**, on the
@@ -1605,7 +1670,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
             notes.push(format!(
                 "pharmaceutical works at {name}: {:.1} t/day of medicines on \
                  {:.1} t of oil and {:.1} t of plastic",
@@ -1629,7 +1695,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         // **A hospital in every town**, covering its own people. A
@@ -1658,7 +1725,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            });
+            cost_factor: 1.0,
+        });
         }
 
         // **A stockholder in every town.** Steel does not spoil and a
@@ -1723,7 +1791,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                });
+                cost_factor: 1.0,
+            });
             }
         }
 
@@ -1747,7 +1816,8 @@ impl Region {
             powered: true,
             ran: 0.0,
             fitted: None,
-        });
+        cost_factor: 1.0,
+    });
 
         // --- Routes, following the roads the country actually built ---
         //

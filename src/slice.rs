@@ -72,7 +72,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Ashford mill".into(),
             kind: SiteKind::Mill,
@@ -84,7 +85,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Ashford cannery".into(),
             kind: SiteKind::Factory,
@@ -106,7 +108,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Kelling power station".into(),
             kind: SiteKind::PowerPlant,
@@ -118,7 +121,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             // **Two towns do not smelt their own steel.** A slice this
             // size buys plate and bar from a stockholder, which is what
@@ -134,7 +138,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Ashford depot".into(),
             kind: SiteKind::Depot,
@@ -146,7 +151,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Ashford market hall".into(),
             kind: SiteKind::Shop,
@@ -158,7 +164,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
         Site {
             name: "Bexley general store".into(),
             kind: SiteKind::Shop,
@@ -170,7 +177,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        },
+        cost_factor: 1.0,
+    },
     ];
 
     let markets = vec![
