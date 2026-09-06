@@ -1,0 +1,21 @@
+[package]
+name = "scale-sim"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "scale_sim"
+path = "src/lib.rs"
+
+[[bin]]
+name = "worldgen"
+path = "src/main.rs"
+
+[dependencies]
+# Only for writing PNG map images. Pure Rust, no system libraries.
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+# opt-level 3 makes generation ~10-30x faster than a debug build. LTO is left
+# off deliberately -- it roughly triples compile time and we iterate a lot.
+[profile.release]
+opt-level = 3
