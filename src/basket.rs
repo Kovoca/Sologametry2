@@ -440,6 +440,15 @@ pub struct Serves {
     /// — the whole reason a cold country is expensive to live in even when
     /// everybody already owns a heater.
     pub kwh_a_week: f64,
+    /// **Whether it comes on a bill from the utility, or is paid for where
+    /// it is used.**
+    ///
+    /// A car's fuel is not a utility bill: it is bought at a pump, forty
+    /// dollars at a time, and it belongs to transport rather than to the
+    /// house. Running it through the meter tripled the utility line and
+    /// left transport looking like nothing — exactly the kind of
+    /// misclassification a category share exists to expose.
+    pub metered: bool,
     /// **Whether it draws whether or not you are using it.**
     ///
     /// A refrigerator runs day and night and a second one really does
@@ -472,20 +481,28 @@ pub fn what_it_does(name: &str) -> &'static [Serves] {
     macro_rules! does {
         ($($n:expr, $c:expr, $l:expr, $k:expr);* $(;)?) => {
             &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: $k,
-                         standing: false, hands_on: false }),*]
+                         metered: true, standing: false, hands_on: false }),*]
         };
     }
     // Draws whether or not anybody is using it.
     macro_rules! always_on {
         ($($n:expr, $c:expr, $l:expr, $k:expr);* $(;)?) => {
             &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: $k,
-                         standing: true, hands_on: false }),*]
+                         metered: true, standing: true, hands_on: false }),*]
+        };
+    }
+    // Filled at a pump and paid for there, which is why it is transport
+    // and not a utility.
+    macro_rules! at_the_pump {
+        ($($n:expr, $c:expr, $l:expr, $k:expr);* $(;)?) => {
+            &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: $k,
+                         metered: false, standing: false, hands_on: false }),*]
         };
     }
     macro_rules! helps {
         ($($n:expr, $c:expr, $l:expr);* $(;)?) => {
             &[$(Serves { need: $n, covers: $c, leaves: $l, kwh_a_week: 0.0,
-                         standing: false, hands_on: true }),*]
+                         metered: true, standing: false, hands_on: true }),*]
         };
     }
     // Real annual consumption, turned into a week: a refrigerator runs
@@ -507,7 +524,7 @@ pub fn what_it_does(name: &str) -> &'static [Serves] {
         // expenses. Expressed in the same units as everything else so one
         // price covers the household, which is a simplification and is
         // recorded as one.
-        "motor car" => does![Mobility, 4.0, 0.10, 300.0],
+        "motor car" => at_the_pump![Mobility, 4.0, 0.10, 300.0],
         "telephone" => always_on![Contact, 4.0, 0.10, 0.4],
         "radio set" => always_on![Diversion, 3.0, 0.20, 1.5],
         "coat" => does![Clothed, 1.0, 0.00, 0.0],
@@ -646,6 +663,27 @@ pub fn running_kwh(
     cat: &Catalogue,
     wanted: &[Requirement],
 ) -> f64 {
+    running(owned, store, cat, wanted, true)
+}
+
+/// **What is bought where it is used** rather than billed monthly — a
+/// tankful at a time, and it belongs to transport.
+pub fn running_unmetered(
+    owned: &[Id<ItemInstance>],
+    store: &Store,
+    cat: &Catalogue,
+    wanted: &[Requirement],
+) -> f64 {
+    running(owned, store, cat, wanted, false)
+}
+
+fn running(
+    owned: &[Id<ItemInstance>],
+    store: &Store,
+    cat: &Catalogue,
+    wanted: &[Requirement],
+    metered: bool,
+) -> f64 {
     // Gather what is installed against each need, because **the demand is a
     // property of the household and the capacity is a property of the
     // things**, and the bill is where the two meet. Adding up nameplates
@@ -659,6 +697,9 @@ pub fn running_kwh(
         let Some(def) = cat.get(item.definition) else { continue };
         for s in what_it_does(def.name) {
             if s.kwh_a_week <= 0.0 && s.covers <= 0.0 {
+                continue;
+            }
+            if s.metered != metered {
                 continue;
             }
             let slot = match per_need.iter_mut().find(|x| x.0 == s.need) {
@@ -728,6 +769,13 @@ pub enum Intent {
     /// Free, worn out, and what a household with no money and no market
     /// actually does.
     Scavenge(DefId),
+    /// **Borrow for it.**
+    ///
+    /// The route that was missing, and it is not a minor one: real US
+    /// transport is 17% of household expenditure and almost all of it is
+    /// financed. A household that can only buy what it can pay for outright
+    /// never owns a car, which is why transport read as nearly zero.
+    BuyOnCredit { def: DefId, monthly: f64, months: u32, rate: f64 },
     /// Do it by hand instead. Free of money and expensive in hours.
     ByHand { hours_a_week: f64 },
     /// Buy the service each time rather than the machine once. What people
@@ -745,6 +793,7 @@ impl Intent {
             Intent::Repair(_) => "mend it",
             Intent::BuyUsed(_) => "buy one second-hand",
             Intent::BuyNew(_) => "buy a new one",
+            Intent::BuyOnCredit { .. } => "buy one on credit",
             Intent::MakeIt(_) => "make one",
             Intent::Scavenge(_) => "find one",
             Intent::ByHand { .. } => "do it by hand",
@@ -755,7 +804,7 @@ impl Intent {
 
     /// Whether it puts an order into a market.
     pub fn is_a_purchase(self) -> bool {
-        matches!(self, Intent::BuyUsed(_) | Intent::BuyNew(_))
+        matches!(self, Intent::BuyUsed(_) | Intent::BuyNew(_) | Intent::BuyOnCredit { .. })
     }
 }
 
@@ -836,6 +885,23 @@ pub struct Market {
     /// supply at all — which is most of the world for most of history, and
     /// still a fifth of it.
     pub power: Option<f64>,
+    /// **Whether anybody here lends.** `None` is a real answer: a town with
+    /// no bank is a town where nobody buys a car, because almost nobody
+    /// buys one outright.
+    pub finance: Option<Finance>,
+}
+
+/// **What credit is available in this town, and on what terms.**
+///
+/// Kept as terms rather than as a handle on a bank, so that deciding
+/// whether to borrow stays a pure question. The money is actually created
+/// where the balance sheet is, which is `bank::System::advance`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Finance {
+    pub rates: crate::bank::Rates,
+    /// Whether the bank has capital to spare. A credit crunch is exactly
+    /// this going false while nothing else changes.
+    pub lending: bool,
 }
 
 impl Market {
@@ -996,16 +1062,90 @@ pub fn what_to_do(
     // **A used one at half the price wins**, which is what a second-hand
     // market is. A new one wins when the gap is small, because people
     // prefer new at the same money.
-    match (best_used, best_new) {
+    let outright = match (best_used, best_new) {
         (Some((ud, up)), Some((nd, np))) => {
             if up < np * 0.75 {
-                return Intent::BuyUsed(ud);
+                Some(Intent::BuyUsed(ud))
+            } else {
+                Some(Intent::BuyNew(nd))
             }
-            return Intent::BuyNew(nd);
         }
-        (Some((ud, _)), None) => return Intent::BuyUsed(ud),
-        (None, Some((nd, _))) => return Intent::BuyNew(nd),
-        (None, None) => {}
+        (Some((ud, _)), None) => Some(Intent::BuyUsed(ud)),
+        (None, Some((nd, _))) => Some(Intent::BuyNew(nd)),
+        (None, None) => None,
+    };
+    // **Nobody finances what they can afford.** If what they can pay for
+    // outright actually does the job, that is the end of it.
+    if let Some(bought) = outright {
+        let d = match bought {
+            Intent::BuyUsed(d) | Intent::BuyNew(d) => d,
+            _ => unreachable!(),
+        };
+        if covers_it(d, need, level, cat) {
+            return bought;
+        }
+    }
+
+    // 4b. **Borrow for it**, which is how a household actually gets hold of
+    //     anything large. Considered only once paying outright has failed,
+    //     because nobody finances what they can afford — and only for
+    //     things worth financing: real credit is for cars and houses, not
+    //     for a wash tub.
+    if let Some(f) = market.finance.filter(|f| f.lending) {
+        let mut best: Option<(DefId, f64, u32, f64)> = None;
+        for &d in &candidates {
+            let Some(name) = cat.get(d).map(|x| x.name) else { continue };
+            let Some(sv) = what_it_does(name).iter().find(|s| s.need == need) else { continue };
+            if sv.hands_on || sv.covers < level {
+                continue;
+            }
+            let Some(price) = market.price_new(d).or_else(|| market.price_used(d)) else {
+                continue;
+            };
+            // **Nobody finances a kettle.** Real consumer finance starts at
+            // something worth more than a month of what you earn.
+            let monthly_income = means.income * 4.33;
+            if price < monthly_income.max(400.0) {
+                continue;
+            }
+            let kind = if market.price_new(d).is_some() {
+                crate::bank::Credit::CarLoan
+            } else {
+                crate::bank::Credit::UsedCarLoan
+            };
+            let rate = f.rates.quoted(kind, home.standing);
+            let months = kind.typical_term_months();
+            // The deposit still has to be found, and for most people that
+            // is the barrier rather than the monthly payment.
+            let ltv = kind.max_loan_to_value();
+            let deposit = (price - price * ltv).max(0.0);
+            if deposit > means.savings {
+                continue;
+            }
+            let principal = price - deposit;
+            let monthly = crate::bank::Loan::level_payment(principal, rate, months);
+            // **Debt to income**, the first thing an underwriter looks at.
+            if monthly_income <= 0.0 {
+                continue;
+            }
+            let dti = (home.committed_monthly + monthly) / monthly_income;
+            if dti > crate::bank::MAX_DEBT_TO_INCOME {
+                continue;
+            }
+            if best.map(|(_, m, _, _)| monthly < m).unwrap_or(true) {
+                best = Some((d, monthly, months, rate));
+            }
+        }
+        if let Some((def, monthly, months, rate)) = best {
+            return Intent::BuyOnCredit { def, monthly, months, rate };
+        }
+    }
+
+    // **And if nobody will lend, the half-measure is better than nothing.**
+    // Which is what a bicycle is: not what they wanted, and it gets them to
+    // work.
+    if let Some(bought) = outright {
+        return bought;
     }
 
     // 5. **Make one.** Only if somebody here knows how and has the tools,
@@ -1159,6 +1299,19 @@ fn anything_better(
         || best_offer(need, level, &candidates, cat, purse, |d| market.price_new(d)).is_some()
 }
 
+/// Whether one of these actually does the whole job, as against getting
+/// part of the way there. **A bicycle is not a small car**, and the
+/// difference decides whether somebody borrows.
+fn covers_it(def: DefId, need: Need, level: f64, cat: &Catalogue) -> bool {
+    cat.get(def)
+        .map(|d| {
+            what_it_does(d.name)
+                .iter()
+                .any(|s| s.need == need && !s.hands_on && s.covers >= level)
+        })
+        .unwrap_or(false)
+}
+
 /// Whether the household owns the equipment the hand route wants.
 fn has_the_kit(need: Need, owned: &[Id<ItemInstance>], store: &Store, cat: &Catalogue) -> bool {
     owned.iter().any(|&id| {
@@ -1210,6 +1363,11 @@ pub struct Outcome {
     pub to_make: Vec<(Need, DefId)>,
     /// Things taken that nobody owned.
     pub scavenged: Vec<(Need, DefId)>,
+    /// **What was bought on credit**, and what it will cost every month for
+    /// years. The caller advances the money against a real balance sheet —
+    /// see `bank::System::advance` — because this is where money is
+    /// created and it may not happen by accident.
+    pub borrowed: Vec<(Need, DefId, f64, u32, f64)>,
     /// The bill for running what it owns, which is the utility line and is
     /// not discretionary.
     pub utilities: f64,
@@ -1227,6 +1385,13 @@ pub struct Outcome {
     pub protected_by_the_season: bool,
     /// What is owed to the utility at the end of it.
     pub arrears: f64,
+    /// What went out on loan payments before anything was bought.
+    pub debt_service: f64,
+    /// Fuel and the running of a vehicle, bought where it is used.
+    pub fuel: f64,
+    /// **They could not find the payment**, which is where repossession
+    /// starts.
+    pub missed_a_payment: bool,
     pub spent: f64,
     pub hours: f64,
     /// **What was left at the end of it**, which is the whole reason
@@ -1310,6 +1475,13 @@ pub struct Household {
     pub supply: Option<crate::utility::Account>,
     /// Where in the year it is, because the winter rules turn on it.
     pub day_of_year: u32,
+    /// **What a lender thinks of them**, 0 to 1 — a US credit score
+    /// flattened, so 0.67 is the prime line and 0.51 gets an FHA mortgage.
+    pub standing: f64,
+    /// **What they already have to find every month**, which is what stops
+    /// somebody borrowing for a third thing. Debt to income is the first
+    /// number an underwriter looks at and real lenders stop at 43%.
+    pub committed_monthly: f64,
 }
 
 impl Household {
@@ -1326,6 +1498,8 @@ impl Household {
             going_without: Vec::new(),
             supply: Some(crate::utility::Account::new(crate::utility::Tariff::ordinary())),
             day_of_year: 0,
+            standing: 0.70,
+            committed_monthly: 0.0,
         }
     }
 
@@ -1448,6 +1622,45 @@ pub fn a_period(
         home.supply = Some(account);
     }
     home.day_of_year = (home.day_of_year + days) % 365;
+
+    // **The fuel is bought at the pump**, not billed by the electricity
+    // company, and it is transport rather than utilities.
+    let pump = running_unmetered(&home.owns, store, cat, &wanted) * market.power_price()
+        * days as f64
+        / 7.0;
+    if pump > 0.0 {
+        let paid = pump.min(means.income + means.savings);
+        let from_income = paid.min(means.income);
+        means.income -= from_income;
+        means.savings = (means.savings - (paid - from_income)).max(0.0);
+        out.spent += paid;
+        out.fuel += paid;
+        out.bought.push((
+            Order {
+                need: Need::Mobility,
+                intent: Intent::PayForTheService,
+                price: paid,
+                covers: 1.0,
+            },
+            paid,
+        ));
+    }
+
+    // **What is already owed comes off the top.** A household with a car
+    // payment has that much less to live on, every month, for years — which
+    // is the whole reason borrowing is a decision rather than free money.
+    if home.committed_monthly > 0.0 {
+        let due = home.committed_monthly * days as f64 / 30.0;
+        let from_income = due.min(means.income);
+        means.income -= from_income;
+        let rest = (due - from_income).min(means.savings);
+        means.savings -= rest;
+        out.debt_service += from_income + rest;
+        out.spent += from_income + rest;
+        if from_income + rest + 1e-9 < due {
+            out.missed_a_payment = true;
+        }
+    }
 
     for req in &wanted {
         let need = req.need;
@@ -1574,6 +1787,41 @@ pub fn a_period(
                     }
                     None => {
                         out.unmet.push(order);
+                        home.note_without(need, days);
+                    }
+                }
+            }
+            Intent::BuyOnCredit { def, monthly, months, rate } => {
+                // **The deposit comes out of savings and the rest is
+                // borrowed.** The money for it is created where the balance
+                // sheet is; here the household simply acquires the thing
+                // and the obligation.
+                let price = market.price_new(def).or_else(|| market.price_used(def)).unwrap_or(0.0);
+                let ltv = crate::bank::Credit::CarLoan.max_loan_to_value();
+                let deposit = (price - price * ltv).max(0.0);
+                let used = market.price_new(def).is_none();
+                match market.take(def, used) {
+                    Some((seller, _)) => {
+                        means.savings = (means.savings - deposit).max(0.0);
+                        out.spent += deposit;
+                        out.paid_to.push((seller, price));
+                        out.borrowed.push((need, def, monthly, months, rate));
+                        home.committed_monthly += monthly;
+                        let mut thing = ItemInstance::one(cat, def);
+                        if used {
+                            thing.condition.wear = 0.45;
+                        }
+                        let id = store.add(thing, home.home);
+                        home.owns.push(id);
+                        home.note_met(need);
+                    }
+                    None => {
+                        out.unmet.push(Order {
+                            need,
+                            intent,
+                            price,
+                            covers: 1.0,
+                        });
                         home.note_without(need, days);
                     }
                 }

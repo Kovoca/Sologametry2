@@ -2100,6 +2100,125 @@ missing it too, so a save containing water would have failed to load. The
 table-driven codec gate could not see it, because **it walked the same
 incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
+## A bank does not lend out deposits (`src/bank.rs`)
+
+**Making a loan creates one.** This is the most misunderstood mechanism in
+economics and it is not a matter of opinion — the Bank of England published
+a paper saying so plainly *(McLeay, Radia & Thomas, 2014)*. The textbook
+story, savers deposit and banks lend the money on and a reserve ratio
+multiplies it up, is backwards.
+
+```text
+lend 20,000:   loans +20,000  (asset)      deposits +20,000  (liability)
+repay 500:     loans    -500               deposits    -500
+interest 120:  deposits -120               capital     +120
+```
+
+The first two lines change the money supply. The third does not.
+
+Measured: a bank with 550,000 of reserves writes a 9,000 car loan, its
+reserves **do not move by a cent**, no saver is worse off, and there is
+9,000 more money in the world than there was.
+
+### Which forced the conservation rule to change shape, and strengthened it
+
+`money.rs` said "the total never moves", which was only ever true because
+credit did not exist. It now says **the total is the opening stock plus
+everything lent less everything repaid**, and both of those have exactly
+one function that can change them. That is a stronger statement, not a
+weaker one: it still fails the instant somebody reaches past a named door,
+and it can now express an economy with banks in it. The old doc comment had
+already asked for exactly this — *anything that wants to model credit
+creation has to say so explicitly rather than arriving through the back
+door.*
+
+### The interest was never created alongside the principal
+
+The deepest consequence, and it falls out of the arithmetic rather than
+being asserted anywhere. A closed economy where every penny was borrowed
+into existence **cannot repay principal and interest out of what exists**,
+so somebody has to keep borrowing or somebody has to default. Both happen.
+The gate proves it by running a world with no money in it but the loan and
+watching the debt outlive the money.
+
+### What limits lending is not reserves
+
+- **Capital adequacy is what binds.** A bank with five million in reserves
+  and no capital cannot write another mortgage; one with capital and modest
+  reserves can. Basel III: 8% total, ~10.5% with the conservation buffer,
+  plus a 3-5% leverage backstop that exists because risk weights can be
+  gamed and were.
+- **The multiple is an outcome, not a cause.** Nobody sets it; it is
+  whatever profitable prudent lending produces.
+- **Reserves matter only when the money leaves.** A one-bank world can
+  never be illiquid, because what it creates has nowhere else to go. Add a
+  rival and every mortgage paid away takes the reserves with it.
+- **A bank that cannot settle borrows**, and that is a *liability* rather
+  than a hole in its capital. Getting it wrong broke the balance-sheet
+  identity outright, which is what asserting the identity is for.
+- **Illiquid before insolvent**, which is how banks actually fail: sound
+  loans, empty till. SVB lost $42bn in a day in 2023 and its loan book was
+  not the problem.
+- **A bank must lend its deposits out to make money**, because it pays
+  interest on all of them and earns it only on what it has lent. Real
+  loan-to-deposit is about 70%.
+
+### The poor pay more, and it is not a small difference
+
+Real used-car finance by credit tier, and the spread is **fourteen
+points**:
+
+| | real | model |
+|---|---|---|
+| super prime 781-850 | 7.1% | 9.3% |
+| prime 661-780 | 9.4% | 10.3% |
+| nonprime 601-660 | 13.9% | 12.9% |
+| subprime 501-600 | 18.9% | 15.4% |
+| deep subprime <500 | 21.6% | **20.7%** |
+
+- **`standing` is a credit score flattened**: FICO runs 300-850, so
+  `(score - 300) / 550`. The floors are real underwriting minimums — 0.51
+  for an FHA mortgage, and **0.08 for a used car**, because a
+  buy-here-pay-here lot will finance anybody at all. They can come and take
+  it back, and they do.
+- **A payday lender is not on the ladder.** Real APRs are about 400%, which
+  is not a risk premium but a two-week fee annualised, charged to people
+  with nowhere else to go — eighty times what a homeowner pays.
+- **Losing the car does not clear the debt.** A repossessed car fetches
+  about half the balance at auction, so the borrower loses the car *and*
+  owes the shortfall — and the shortfall comes out of the bank's capital,
+  which is what capital is for.
+- **Four different refusals**, because "no" is not one answer: cannot
+  afford it, nothing down, the record, or the bank is at its limit. And a
+  lender wants an address, which is one more way homelessness is
+  self-sustaining.
+
+### And the car finally arrives
+
+The hole this was built to close. Real US transport is 17% of household
+expenditure and almost all of it is borrowed, so a model where households
+buy only what they can pay for outright reads transport as nearly zero.
+
+| | before | after | real |
+|---|---|---|---|
+| food | 39% | 34% | 22% |
+| utilities | 15% | **13%** | 12% |
+| transport | **0%** | **23%** | 30% |
+
+- **A partial answer must not pre-empt a financed full one.** A bicycle at
+  400 was beating a car at 9,000, because the car was unaffordable and the
+  bicycle was not — so nobody ever borrowed. Nobody who needs a car buys a
+  bicycle instead merely because it is cheaper.
+- **Nobody finances what they can afford**, and nobody finances a kettle:
+  real consumer credit starts at something worth more than a month's wage.
+- **A credit crunch is one field going false.** Same wage, same savings,
+  same want; the bank stops lending and the car does not happen.
+- **Dear money is not no money** — nine points on the policy rate makes the
+  payment bigger, not the loan impossible.
+- **A car's petrol is not a utility bill.** Run through the meter it
+  tripled the utility line and left transport at 6%. It is bought at a
+  pump, forty dollars at a time, and it belongs to transport.
+
 ## Money, and who has it (`src/money.rs`)
 
 The economy priced everything and paid for nothing. Households took goods

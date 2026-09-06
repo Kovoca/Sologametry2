@@ -4,6 +4,7 @@
 //! fields, and biomes that emerge from how those fields interact. Nothing
 //! past biome classification lives here yet.
 
+pub mod bank;
 pub mod basket;
 pub mod befall;
 pub mod biota;

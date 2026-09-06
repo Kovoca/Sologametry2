@@ -31,6 +31,7 @@ fn a_town(cat: &Catalogue) -> Market {
     ] {
         m.stock(Stall::new(cat.must(name), price, 999, shop));
     }
+    m.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
     m.services = vec![
         (Need::Nutrition, 8.5),
         (Need::Health, 2.0),
@@ -78,13 +79,15 @@ fn main() {
 
     println!(
         "  {:<28} {:>8} {:>8} {:>8} {:>7} {:>10}",
-        "", "spent/wk", "food %", "power %", "hours", "short"
+        "", "spent/wk", "food %", "power %", "transport %", "short"
     );
     for (k, (name, who, where_, means)) in cases.iter().enumerate() {
         let mut home = Household::new(*who, *where_, Placement::Ground { locality: 1, x: 0, y: 0 });
         let mut market = a_town(&cat);
         let mut spent = 0.0;
         let mut food = 0.0;
+        let mut transport = 0.0;
+        let mut debt = 0.0;
         let mut power = 0.0;
         let mut hours = 0.0;
         let mut short = 0usize;
@@ -99,6 +102,8 @@ fn main() {
             purse = Means { income: means.income, ..out.left };
             spent += out.spent;
             power += out.utilities;
+            debt += out.debt_service;
+            transport += out.debt_service;
             hours += out.hours;
             short += out.without.len() + out.unmet.len();
             if out.cut_off {
@@ -107,6 +112,9 @@ fn main() {
             for (o, paid) in &out.bought {
                 if o.need.category() == Category::Food {
                     food += paid;
+                }
+                if o.need.category() == Category::Transport {
+                    transport += paid;
                 }
                 match cats.iter_mut().find(|c| c.0 == o.need.category()) {
                     Some(c) => c.1 += paid,
@@ -120,14 +128,14 @@ fn main() {
             .take(3)
             .map(|(c, v)| format!("{} {:.0}%", c.name(), v / spent.max(1.0) * 100.0))
             .collect();
-        let _ = (short, &top, dark);
+        let _ = (&top, dark, hours, debt);
         println!(
-            "  {:<28} {:>8.0} {:>7.0}% {:>7.0}% {:>7.0} {:>7}",
+            "  {:<28} {:>8.0} {:>7.0}% {:>7.0}% {:>11.0}% {:>7}",
             name,
             spent / 52.0,
             food / spent.max(1.0) * 100.0,
             power / spent.max(1.0) * 100.0,
-            hours / 52.0,
+            transport / spent.max(1.0) * 100.0,
             short,
         );
         if k == cases.len() - 1 {
@@ -336,6 +344,77 @@ fn main() {
         };
         println!("  the same car with a cell left in it, {what:<24} {said}");
     }
+    // ---- where the money for it came from ------------------------------
+    {
+        use scale_sim::bank::*;
+        use scale_sim::money::{Account, Treasury};
+
+        println!("\nWHERE THE MONEY FOR THE CAR CAME FROM");
+        let mut sys = System::new(Rates::ordinary());
+        let bk = sys.add_bank(400_000.0, 150_000.0);
+        let mut t = Treasury::new();
+        t.open(Account::Households(0), 20_000.0);
+        t.open(Account::Bank(bk), 400_000.0);
+
+        let before = (t.total(), sys.bank(bk).reserves, sys.bank(bk).deposits);
+        let who = Applicant {
+            account: Account::Households(0),
+            income: 6_100.0,
+            existing_payments: 0.0,
+            savings: 4_000.0,
+            standing: 0.72,
+            settled: true,
+        };
+        let offer = underwrite(sys.bank(bk), &sys.rates, &who, Credit::CarLoan, 9_000.0, 9_000.0)
+            .expect("refused");
+        sys.advance(bk, Account::Households(0), &offer, &mut t, 1, None);
+        let after = (t.total(), sys.bank(bk).reserves, sys.bank(bk).deposits);
+
+        println!("  {:<34} {:>12} {:>12}", "", "before", "after");
+        println!("  {:<34} {:>12.0} {:>12.0}", "money in the world", before.0, after.0);
+        println!("  {:<34} {:>12.0} {:>12.0}", "the bank's reserves", before.1, after.1);
+        println!("  {:<34} {:>12.0} {:>12.0}", "the bank's deposits", before.2, after.2);
+        println!(
+            "\n  the loan created {:.0} and moved no reserves at all, and no saver is a penny",
+            offer.principal
+        );
+        println!("  worse off — which is what a bank actually does, whatever the textbooks say");
+
+        println!(
+            "\n  {:.0} over {} months at {:.1}%, so {:.0} a month and {:.2} times over",
+            offer.principal,
+            offer.months,
+            offer.rate * 100.0,
+            offer.monthly,
+            offer.times_over()
+        );
+
+        println!("\n  AND WHAT THE SAME CAR COSTS DIFFERENT PEOPLE");
+        println!("  {:<26} {:>8} {:>10} {:>12}", "", "rate", "a month", "paid in all");
+        // The real credit tiers, at the midpoint of each FICO band
+        // flattened onto 0..1 by (score - 300) / 550.
+        for (what, standing) in [
+            ("super prime  781-850", 0.87),
+            ("prime        661-780", 0.81),
+            ("nonprime     601-660", 0.65),
+            ("subprime     501-600", 0.50),
+            ("deep subprime  <500", 0.18),
+        ] {
+            let a = Applicant { standing, ..who };
+            match underwrite(sys.bank(bk), &sys.rates, &a, Credit::UsedCarLoan, 9_000.0, 9_000.0) {
+                Ok(o) => println!(
+                    "  {:<26} {:>7.1}% {:>10.0} {:>12.0}",
+                    what,
+                    o.rate * 100.0,
+                    o.monthly,
+                    o.monthly * o.months as f64
+                ),
+                Err(e) => println!("  {:<26} {:>31}", what, e.name()),
+            }
+        }
+        println!("\n  real used-car finance runs 7.1% super prime to 21.6% deep subprime");
+    }
+
     // ---- and how they actually get rid of it --------------------------
     use scale_sim::scrap::{Carrying, Circumstances, Council};
     use scale_sim::material::Material as M;

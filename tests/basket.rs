@@ -823,6 +823,163 @@ fn a_dead_machine_does_not_sit_in_the_corner_for_ever() {
 }
 
 // =====================================================================
+// borrowing
+// =====================================================================
+
+/// **Gate: without credit nobody owns a car, and with it they do.**
+///
+/// The single biggest hole in the household shares, and it was not a
+/// tuning problem: real US transport is 17% of expenditure and almost all
+/// of it is borrowed, so a model where households can only buy what they
+/// can pay for outright reads transport as nearly zero. Which it did.
+#[test]
+fn a_car_is_bought_on_credit_or_not_at_all() {
+    let cat = standard_catalogue();
+    let mut store = Store::new();
+    let car = cat.must("motor car");
+
+    // A comfortable household, and a car at a real used-car price.
+    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let mut cash_only = a_town(&cat);
+    cash_only.finance = None;
+
+    let mut home = home_of(Roster::of(2));
+    let level = requirement_for(Need::Mobility, home.who, home.where_);
+    let outright = what_to_do(Need::Mobility, level, &home, &store, &cat, &cash_only, purse);
+    assert!(
+        !matches!(outright, Intent::BuyOnCredit { .. }),
+        "a town with no bank in it offered finance"
+    );
+    assert_ne!(outright, Intent::BuyNew(car), "somebody paid 9,000 cash out of 4,000 of savings");
+
+    // **The same household, the same money, a bank in the town.**
+    let mut with_a_bank = a_town(&cat);
+    with_a_bank.finance =
+        Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+    let financed = what_to_do(Need::Mobility, level, &home, &store, &cat, &with_a_bank, purse);
+    match financed {
+        Intent::BuyOnCredit { def, monthly, months, rate } => {
+            assert_eq!(def, car, "it financed something other than the car");
+            assert!(months >= 48, "a car loan over {months} months");
+            assert!((0.05..0.20).contains(&rate), "quoted at {:.1}%", rate * 100.0);
+            // Real US new-car payments average around $700 a month.
+            assert!((150.0..900.0).contains(&monthly), "{monthly:.0} a month for a car");
+        }
+        other => panic!("a household with a bank and a wage did not finance a car: {other:?}"),
+    }
+
+    // **And it turns up in the driveway, with an obligation attached.**
+    let out = a_period(&mut home, &mut store, &cat, &mut with_a_bank, purse, 7, 90);
+    assert!(!out.borrowed.is_empty(), "nothing was actually borrowed for");
+    assert!(home.committed_monthly > 100.0, "the payment did not attach to the household");
+    assert!(
+        home.owns.iter().any(|&id| store.get(id).map(|i| i.definition) == Some(car)),
+        "the loan was written and no car arrived"
+    );
+
+    // **The payment comes off the top for years afterwards**, which is the
+    // whole reason borrowing is a decision rather than free money.
+    let next = a_period(&mut home, &mut store, &cat, &mut with_a_bank, purse, 30, 91);
+    assert!(next.debt_service > 100.0, "the loan cost nothing the following month");
+}
+
+/// **Gate: a credit crunch is one field going false.**
+///
+/// Nothing about the household changes — the same wage, the same savings,
+/// the same want. The bank simply stops lending, and the car does not
+/// happen. Which is what a credit crunch is, and why it bites so fast.
+#[test]
+fn when_the_bank_stops_lending_the_car_stops_happening() {
+    let cat = standard_catalogue();
+    let store = Store::new();
+    let home = home_of(Roster::of(2));
+    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let level = requirement_for(Need::Mobility, home.who, home.where_);
+
+    let mut open = a_town(&cat);
+    open.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+    let mut shut = open.clone();
+    shut.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: false });
+
+    assert!(matches!(
+        what_to_do(Need::Mobility, level, &home, &store, &cat, &open, purse),
+        Intent::BuyOnCredit { .. }
+    ));
+    assert!(
+        !matches!(
+            what_to_do(Need::Mobility, level, &home, &store, &cat, &shut, purse),
+            Intent::BuyOnCredit { .. }
+        ),
+        "the bank stopped lending and somebody borrowed anyway"
+    );
+
+    // **And dear money is not the same as no money.** A high policy rate
+    // makes the payment bigger; it does not make the loan impossible.
+    let mut dear = open.clone();
+    dear.finance = Some(Finance {
+        rates: scale_sim::bank::Rates { policy: 0.14, on_deposits: 0.09 },
+        lending: true,
+    });
+    let cheap_deal = what_to_do(Need::Mobility, level, &home, &store, &cat, &open, purse);
+    let dear_deal = what_to_do(Need::Mobility, level, &home, &store, &cat, &dear, purse);
+    match (cheap_deal, dear_deal) {
+        (
+            Intent::BuyOnCredit { monthly: a, .. },
+            Intent::BuyOnCredit { monthly: b, .. },
+        ) => assert!(b > a * 1.1, "nine points on the policy rate cost {:.0} against {:.0}", b, a),
+        (_, other) => panic!("dear money made the loan impossible rather than dear: {other:?}"),
+    }
+}
+
+/// **Gate: what is already owed stops somebody borrowing again.**
+///
+/// Debt to income is the first number an underwriter looks at, and real
+/// lenders stop at 43%. It is also why a household that has borrowed once
+/// is not simply a household with more things.
+#[test]
+fn a_household_already_paying_for_a_car_cannot_borrow_for_another() {
+    let cat = standard_catalogue();
+    let store = Store::new();
+    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let level = requirement_for(Need::Mobility, Roster::of(2), Climate::temperate());
+    let mut market = a_town(&cat);
+    market.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+
+    let clear = home_of(Roster::of(2));
+    assert!(matches!(
+        what_to_do(Need::Mobility, level, &clear, &store, &cat, &market, purse),
+        Intent::BuyOnCredit { .. }
+    ));
+
+    let mut stretched = home_of(Roster::of(2));
+    // A mortgage and a car already, on a wage of about 6,000 a month.
+    stretched.committed_monthly = 2_500.0;
+    assert!(
+        !matches!(
+            what_to_do(Need::Mobility, level, &stretched, &store, &cat, &market, purse),
+            Intent::BuyOnCredit { .. }
+        ),
+        "somebody at 43% of income already was written another loan"
+    );
+
+    // **And a poor record makes it dearer rather than impossible**, which
+    // is the subprime market in one assertion.
+    let mut poor_record = home_of(Roster::of(2));
+    poor_record.standing = 0.38;
+    let mut good_record = home_of(Roster::of(2));
+    good_record.standing = 0.85;
+    match (
+        what_to_do(Need::Mobility, level, &good_record, &store, &cat, &market, purse),
+        what_to_do(Need::Mobility, level, &poor_record, &store, &cat, &market, purse),
+    ) {
+        (Intent::BuyOnCredit { rate: good, .. }, Intent::BuyOnCredit { rate: bad, .. }) => {
+            assert!(bad > good * 1.3, "prime {:.1}% against subprime {:.1}%", good * 100.0, bad * 100.0)
+        }
+        (_, other) => panic!("a subprime borrower was refused outright: {other:?}"),
+    }
+}
+
+// =====================================================================
 // and the shape of the whole thing
 // =====================================================================
 

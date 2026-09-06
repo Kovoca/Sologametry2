@@ -55,6 +55,10 @@ pub enum Account {
     /// needs somewhere to take money in and pay wages out of, or that
     /// third of the workforce earns nothing.
     ServiceSector(usize),
+    /// **A bank.** It holds money like anybody else — its own capital and
+    /// its retained earnings — and it is also where everybody else's money
+    /// actually sits, which is a different fact and lives in `bank.rs`.
+    Bank(usize),
     /// The state: one treasury, taxing and spending.
     State,
     /// **The rest of the world.** A country is not a closed system: it
@@ -68,6 +72,7 @@ impl Account {
     pub fn name(self) -> String {
         match self {
             Account::Firm(i) => format!("firm {i}"),
+            Account::Bank(i) => format!("bank {i}"),
             Account::Households(m) => format!("households {m}"),
             Account::ServiceSector(m) => format!("services {m}"),
             Account::State => "the state".into(),
@@ -98,6 +103,15 @@ pub enum Why {
     Profit,
     /// Bought from or sold to the rest of the world.
     Trade,
+    /// **Money created by a bank making a loan.** Not a transfer: there is
+    /// no payer, because the deposit did not come from anywhere. See
+    /// `bank.rs` — this is the door that doc comment on `open` said would
+    /// have to be built explicitly.
+    Lending,
+    /// **Money destroyed by repaying the principal.** The mirror of it.
+    Repayment,
+    /// Interest, which is an ordinary transfer and creates nothing.
+    Interest,
 }
 
 /// One movement of money. Conserving by construction: it always has a
@@ -129,6 +143,13 @@ pub struct Treasury {
     /// not pay a negative wage; it pays what it has, and the shortfall is
     /// recorded here because it is the thing worth knowing.
     pub unpaid: f64,
+    /// **Money brought into existence by lending**, and the amount taken
+    /// back out of it by repayment. Conservation is measured against the
+    /// opening stock *plus these*, because a banking system genuinely does
+    /// change how much money there is — and the whole point of recording
+    /// it here is that the change can only happen through a named door.
+    pub created: f64,
+    pub destroyed: f64,
 }
 
 impl Treasury {
@@ -139,6 +160,8 @@ impl Treasury {
             today: Vec::new(),
             flows: BTreeMap::new(),
             unpaid: 0.0,
+            created: 0.0,
+            destroyed: 0.0,
         }
     }
 
@@ -197,30 +220,79 @@ impl Treasury {
         capped
     }
 
+    /// **A bank writes a deposit into existence.**
+    ///
+    /// There is no payer, and that is not a bug: a loan creates the money
+    /// it lends. What makes this safe rather than a hole in the books is
+    /// that it is a named operation with a running total behind it, so
+    /// conservation still means something — it becomes *the stock of money
+    /// is the opening stock plus everything lent less everything repaid*,
+    /// which is a stronger statement than the old one and not a weaker
+    /// one, because the old one could not express a banking system at all.
+    pub fn create_credit(&mut self, to: Account, amount: f64, day: u64, why: Why) {
+        if amount <= 0.0 {
+            return;
+        }
+        *self.balances.entry(to).or_insert(0.0) += amount;
+        self.created += amount;
+        self.today.push(Transfer { day, from: to, to, amount, why });
+        *self.flows.entry(reason_name(why)).or_insert(0.0) += amount;
+    }
+
+    /// **And repaying the principal takes it out again.**
+    ///
+    /// Which is why a country cannot pay down its debts in aggregate
+    /// without the money supply shrinking, and why the interest was never
+    /// created alongside the principal in the first place.
+    pub fn destroy_credit(&mut self, from: Account, amount: f64, day: u64, why: Why) -> f64 {
+        if amount <= 0.0 {
+            return 0.0;
+        }
+        let taken = amount.min(self.balance(from).max(0.0));
+        if taken <= 1e-9 {
+            return 0.0;
+        }
+        *self.balances.entry(from).or_insert(0.0) -= taken;
+        self.destroyed += taken;
+        self.today.push(Transfer { day, from, to: from, amount: taken, why });
+        *self.flows.entry(reason_name(why)).or_insert(0.0) += taken;
+        taken
+    }
+
     /// Start of a new day.
     pub fn open_the_books(&mut self) {
         self.today.clear();
         self.unpaid = 0.0;
     }
 
-    /// **Nothing appears and nothing vanishes.**
+    /// **Nothing appears or vanishes except through a named door.**
     ///
-    /// The same guarantee `Ledger::assert_conserved` gives for tonnage.
-    /// Every transfer has a payer and a payee, so this can only fail if
-    /// somebody has reached past `pay` — which is exactly what it is here
-    /// to catch.
+    /// The same guarantee `Ledger::assert_conserved` gives for tonnage,
+    /// with one difference that a banking system forces: money genuinely
+    /// is created and destroyed, by lending and by repaying. So the
+    /// invariant is not "the total never moves" — that was only ever true
+    /// because credit did not exist — but **the total is the opening stock
+    /// plus everything created less everything destroyed**, and both of
+    /// those have exactly one function that can change them.
+    ///
+    /// That is a stronger statement than the old one, not a weaker one: it
+    /// still fails the instant somebody reaches past `pay`, and it can now
+    /// express an economy with banks in it.
     pub fn assert_conserved(&self) {
         let held = self.total();
-        let drift = (held - self.opening).abs();
+        let should_be = self.opening + self.created - self.destroyed;
+        let drift = (held - should_be).abs();
         // Measured against the stock of money, not against zero: a
         // currency that has changed hands a billion times accumulates
         // rounding.
-        let tolerance = (self.opening.abs() * 1e-9).max(1e-6);
+        let tolerance = ((self.opening.abs() + self.created) * 1e-9).max(1e-6);
         assert!(
             drift <= tolerance,
-            "money is not conserved: {held:.6} in existence against {:.6} issued, \
-             a drift of {drift:.6}",
-            self.opening
+            "money is not conserved: {held:.6} in existence against {should_be:.6} \
+             ({:.6} issued + {:.6} lent - {:.6} repaid), a drift of {drift:.6}",
+            self.opening,
+            self.created,
+            self.destroyed
         );
     }
 
@@ -247,5 +319,8 @@ fn reason_name(why: Why) -> &'static str {
         Why::Rent => "rent",
         Why::Profit => "profit",
         Why::Trade => "trade",
+        Why::Lending => "lending",
+        Why::Repayment => "repayment",
+        Why::Interest => "interest",
     }
 }
