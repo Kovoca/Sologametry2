@@ -245,8 +245,7 @@ fn what_crosses_a_border_is_what_is_worth_carrying() {
     let open = spread(&without, med);
     assert!(
         closed < open / 3.0,
-        "medicine should equalise sharply once there are hauliers: \
-         {closed:.2}x against {open:.2}x"
+        "medicine should equalise sharply once there are hauliers:          {closed:.2}x against {open:.2}x"
     );
     assert!(
         closed < 3.0,

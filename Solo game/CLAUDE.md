@@ -2100,6 +2100,72 @@ missing it too, so a save containing water would have failed to load. The
 table-driven codec gate could not see it, because **it walked the same
 incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
+## A cheap input has to become a cheap output (`src/econ.rs`)
+
+Price was `base_cost() * multiplier` — **a typed-in constant times
+scarcity**. So nothing about the oil ever reached the plastics: a country
+sitting on the richest field in the world paid what a country importing
+every barrel paid, and the ore, coal and petroleum concentrations
+`geology.rs` had been placing since it was written were never a *cost*.
+
+Two things now travel:
+
+- **What the ground is worth.** `cost_of_working(grade)` goes as one over
+  the grade, because that is the physical truth — a poorer deposit means
+  moving, crushing and processing proportionally more rock for the same
+  tonne. Real spreads: Saudi crude lifts at about $10 a barrel against
+  $50-60 for oil sands, Powder River coal is $12 a ton against $60-70 for
+  Appalachian underground, and Pilbara ore at 62% Fe costs a fifth of
+  Chinese ore at half the grade.
+- **What the inputs cost**, down however many stages lie between. Measured:
+  a Saudi-grade oil field against oil sands moves the resin price by a
+  third and still shows up at the shelf, properly diluted, because plastics
+  are a small share of a tonne of goods.
+
+### Cost is not price, and the distinction is the whole mechanism
+
+**A shortage of grain raises the price of grain. It does not make grain
+dearer to grow.** Building cost out of input *prices* counted one shortage
+again in flour's cost, again in bread's, and again in bread's own scarcity
+multiplier — and the economy's acceptance tests went to four thousand.
+
+So `Market` carries a `cost` alongside `price`. Cost propagates real
+production-cost differences — a rich seam, cheap power, a better process —
+and price is that times the local balance of supply and demand, applied
+once at each stage on its own merits.
+
+### Three things that were wrong, and all three were mine
+
+- **Cost cannot be built up from the listed inputs.** A recipe for grain
+  lists no land, no machinery, no fuel, no fertiliser and no seed, so
+  adding up what it does list came to a third of what grain really costs.
+  The reference costs are calibrated against real prices and there was no
+  reason to throw that away: what propagates is **how far the inputs have
+  moved from their own reference**, so everything at reference reproduces
+  the old number exactly.
+- **The reference grade has to sit where the deposits actually are.** A
+  nation of any size contains the peak of some deposit, so its best cell
+  measures 0.8-1.0 far more often than not — and centring the curve at 0.42
+  handed every country in the world a twofold discount that compounded down
+  the chain and left crude steel at a third of its calibrated price.
+- **Iterating to a fixed point compounds; it does not converge.** The graph
+  has one loop in it, so running the pass six times looked obviously right.
+  Each pass recomputes a cost from the last pass's costs, so a stage below
+  its reference drags the next stage lower again, geometrically — and the
+  world price spread for medicine went from 2.0x to 4.2x with no input
+  changing at all. **This is the same failure this file already records for
+  prices, for crafting multipliers and for personality loadings.** One pass
+  in dependency order is enough.
+
+And one that was not mine but had been waiting: **a commodity nobody
+currently wants was never priced at all.** `update_prices` bailed out on
+zero demand, so switching a country's building trade off for twenty years
+left cement frozen at its full reference cost while the same country with
+builders had it at two thirds — and a town left to rot came out *dearer* to
+buy into than one kept up. What a thing costs to make does not depend on
+whether anybody wants it today. A glut still needs surplus stock, though,
+rather than merely an absence of buyers.
+
 ## Where the electricity comes from (`src/power.rs`)
 
 The economy had one way to make power: burn coal. So a country with a great

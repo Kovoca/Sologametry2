@@ -1088,7 +1088,10 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
+                // **A thick surface seam and a thin deep one are not the same
+                    // industry.** Real: Powder River coal comes out at $12 a
+                    // ton and Appalachian underground at $60-70.
+                cost_factor: Commodity::cost_of_working(endow.coal_grade as f64),
             });
                 sites.push(Site {
                     name: format!("{name} power station"),
@@ -1207,7 +1210,10 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
+                // **Grade is the whole of it.** Pilbara ore at 62% Fe costs a
+                    // fifth of Chinese ore at half that, because you have to
+                    // move twice the rock for the same iron.
+                cost_factor: Commodity::cost_of_working(endow.ore_grade as f64),
             });
                 notes.push(format!(
                     "{} ore cells in the nation; the workings are {:.0} km from {steel_name} \
@@ -1395,7 +1401,13 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
+            // A stand carrying 300 m3/ha is cheap to work and scrub is
+                // not. An importer pays a world price and does no felling.
+            cost_factor: if recipe == recipe::FORESTRY {
+                    Commodity::cost_of_working(endow.timber_grade as f64)
+                } else {
+                    1.0
+                },
         });
             notes.push(note);
         }
@@ -1444,7 +1456,15 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
+            // **The largest cost spread of any commodity there is.** Saudi
+                // crude lifts for about $10 a barrel and Canadian oil sands
+                // for $50-60, and that difference is most of the
+                // geopolitics of oil.
+            cost_factor: if recipe == recipe::OIL_FIELD {
+                    Commodity::cost_of_working(endow.oil_grade as f64)
+                } else {
+                    1.0
+                },
         });
             notes.push(note);
 
