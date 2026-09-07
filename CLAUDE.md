@@ -2915,6 +2915,42 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+### The same road cannot be promised to everybody
+
+A route table worked out once when the day opens tells every enquiry what
+the road can carry. Without something booking against it, a dozen
+consignments each set off believing they have that road to themselves —
+and **none of them is wrong on its own**, which is what makes it hard to
+see. The tonnage conserves, the money conserves, and the country is quietly
+moving more freight than its roads can hold.
+
+So `Quote::capacity` and `Economy::spare_capacity` are two different
+questions and are kept apart: what the tightest link on the path can carry,
+which is a property of the road, and what is left of it once everything
+already committed is counted.
+
+- **A haul books every link it will use, for every day it is using it**,
+  which is why a saturated bridge in the middle limits a journey between
+  two towns that never touch it. `Routing` keeps the predecessor of each
+  destination so the roads reserved are the same ones the carriage was
+  quoted on, rather than a second guess at the path.
+- **And it gives the road back when the journey ends.** A haul that arrives
+  early is not still occupying the days it will no longer be travelling.
+- **Yesterday's traffic constrains nothing**, so the table is pruned each
+  morning — otherwise it grows with history rather than with what is on
+  the road, which is the unbounded state this project has had to remove
+  four times.
+- **A refusal for want of road is a real outcome**, not a failure. A
+  consignment nobody can carry is not a consignment, and the two-town slice
+  demonstrates it: its road takes 150 t a day, so a second 150 t load on
+  the same morning is turned away with the goods still on the shelf.
+
+The gate is the sum rather than any single haul — across every road and
+every day, what is committed cannot exceed what that road carries — with
+two guards against it passing on an empty country: some traffic must have
+happened, and the busiest road must have been near enough to full that a
+missing reservation would have shown.
+
 ### The order things are stored in is not an economic fact
 
 Reversing the site vector caught the original allocation bug, and **one

@@ -2050,6 +2050,7 @@ impl Region {
             opening: None,
             shipments: crate::registry::Registry::new(),
             routing: crate::quote::Routing::default(),
+            reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
             arrivals: Vec::new(),
             staff_today: Vec::new(),

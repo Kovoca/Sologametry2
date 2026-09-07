@@ -2654,6 +2654,13 @@ pub struct Economy {
     /// haul differently is how a price gap that nothing can close comes to
     /// exist.
     pub routing: crate::quote::Routing,
+    /// **What the roads have already been promised to carry.**
+    ///
+    /// A quote says what a road *can* take; this says what is left. A
+    /// daily route table that offers the same residual capacity to every
+    /// enquiry lets several shipments all claim the same lorry-load of
+    /// road, and none of them is wrong on its own.
+    pub reservations: crate::quote::Reservations,
     /// **Duty a nation charges on imports**, ad valorem, by nation id.
     ///
     /// Empty is free trade, which is what every world currently generates.
@@ -4806,6 +4813,48 @@ impl Economy {
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
 
+    /// **How much of the road is actually left**, over the days a haul
+    /// would be using it.
+    ///
+    /// Not the same question as `Quote::capacity`, which is what the
+    /// tightest link can carry and is a property of the road. This is that
+    /// less what has already been booked, and it is the figure a dispatcher
+    /// has to obey.
+    pub fn spare_capacity(&self, from: usize, to: usize, from_day: u64, to_day: u64) -> f64 {
+        if from == to {
+            return f64::INFINITY;
+        }
+        let mut least = f64::INFINITY;
+        for road in self.routing.path_edges(from, to) {
+            let Some(r) = self.routes.get(road) else {
+                return 0.0;
+            };
+            for day in from_day..=to_day {
+                least = least.min((r.capacity - self.reservations.booked(road, day)).max(0.0));
+            }
+        }
+        least
+    }
+
+    /// **Promise the road**, on every link the haul will use, for every
+    /// day it is using it.
+    fn book_the_road(&mut self, from: usize, to: usize, from_day: u64, to_day: u64, tonnes: f64) {
+        for road in self.routing.path_edges(from, to) {
+            for day in from_day..=to_day {
+                self.reservations.book(road, day, tonnes);
+            }
+        }
+    }
+
+    /// And give it back when the haul is over or was never made.
+    fn release_the_road(&mut self, from: usize, to: usize, from_day: u64, to_day: u64, tonnes: f64) {
+        for road in self.routing.path_edges(from, to) {
+            for day in from_day..=to_day {
+                self.reservations.release(road, day, tonnes);
+            }
+        }
+    }
+
     /// **What it would cost to get another tonne of `c` from `from` to
     /// `to`, today.** The marginal replacement quote, and the one number
     /// every mechanism that moves goods is required to use.
@@ -4889,9 +4938,24 @@ impl Economy {
         }
         let from_market = self.ledger.sites[consignor].market;
         let to_market = self.ledger.sites[consignee].market;
+        let day = self.ledger.day;
+        let due = day + days_on_the_road(km);
+
+        // **The road has to have room, and taking it takes it.**
+        //
+        // Without this a route table worked out once in the morning
+        // promises the same residual capacity to every enquiry all day,
+        // and a dozen consignments each set off believing they have a road
+        // to themselves. None of them is wrong on its own.
+        let spare = self.spare_capacity(from_market, to_market, day, due);
+        let take = take.min(spare);
+        if take <= 1e-9 {
+            return None;
+        }
+        self.book_the_road(from_market, to_market, day, due, take);
+
         let goods = self.markets[from_market].landed[commodity as usize] * take;
         let freight = self.freight_between(from_market, to_market) * take;
-        let day = self.ledger.day;
 
         let id = self.shipments.add(Shipment {
             commodity,
@@ -4901,7 +4965,7 @@ impl Economy {
             from_market,
             to_market,
             left: day,
-            due: day + days_on_the_road(km),
+            due,
             despatched: take,
             aboard: take,
             delivered: 0.0,
@@ -5028,6 +5092,17 @@ impl Economy {
             s.leg = if s.aboard > 1e-9 { Leg::Waiting } else { Leg::Delivered };
         }
         if self.shipments.get(id).map(|s| s.leg) == Some(Leg::Delivered) {
+            // **A finished haul is not still on the road.** Give back what
+            // it booked for the days it will no longer be travelling, or a
+            // route stays full of lorries that arrived days ago.
+            if let Some(sh) = self.shipments.get(id) {
+                let (a, b, t) = (sh.from_market, sh.to_market, sh.despatched);
+                let (left, due) = (sh.left, sh.due);
+                if due > day {
+                    self.release_the_road(a, b, day + 1, due, t);
+                }
+                let _ = left;
+            }
             self.shipments.end(id, day, "delivered");
         }
         off
@@ -5171,6 +5246,11 @@ impl Economy {
         // safe here precisely because `Registry` writes its counter down
         // rather than deriving it from the highest key present, so nothing
         // reissues the name of a cargo whose grave has gone.
+        // Yesterday's traffic constrains nothing, and keeping it would
+        // grow the table with history rather than with what is on the
+        // road.
+        self.reservations.forget_before(day);
+
         const REMEMBER_DELIVERIES_FOR: u64 = 90;
         self.shipments
             .forget_graves_before(day.saturating_sub(REMEMBER_DELIVERIES_FOR));

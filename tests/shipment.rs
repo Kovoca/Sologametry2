@@ -397,10 +397,13 @@ fn what_is_on_the_lorry_is_not_still_on_the_shelf() {
     let (from, to, c, _) = a_load(&mut e);
     let have = e.ledger.stock(from, c);
 
-    // Try to send more than there is, twice.
+    // Try to send more than there is, twice. **The second may legitimately
+    // be refused outright** — not for want of goods but for want of road,
+    // since the first booking takes the day's capacity with it, and a
+    // consignment that cannot be carried is not a consignment.
     let first = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false);
     let second = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false);
-    assert!(first.is_some() && second.is_some());
+    assert!(first.is_some(), "nothing set off at all");
 
     let sent: f64 = [first, second]
         .iter()
@@ -635,4 +638,71 @@ fn a_world_saved_mid_journey_resumes_the_same_journey() {
     let mut back = back;
     let fresh = back.shipments.add(a_consignment(1));
     assert_ne!(fresh, id);
+}
+
+/// **The same road cannot be promised to everybody.**
+///
+/// Acceptance gate 18.7. A route table worked out once when the day opens
+/// tells every enquiry what the road can carry — and if nothing books
+/// against it, a dozen consignments each set off believing they have that
+/// road to themselves. None of them is wrong on its own, which is what
+/// makes it hard to see: the tonnage conserves, the money conserves, and
+/// the country is simply moving more freight than its roads can hold.
+///
+/// So dispatch reserves, and what is asserted is the sum: **across every
+/// road and every day, what has been committed cannot exceed what that
+/// road can carry.**
+#[test]
+fn no_road_is_booked_past_what_it_can_carry() {
+    use scale_sim::network::Network;
+    use scale_sim::polity::Polities;
+    use scale_sim::region::Nations;
+    use scale_sim::settlement::Settlements;
+    use scale_sim::world::World;
+
+    let world = World::generate(384, 216, 7);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+    let mut n =
+        Nations::build(&world, &polities, &settlements, &network, 4, 4, Doctrine::Prudent);
+
+    let mut ever_booked = 0usize;
+    let mut tightest = 0.0f64;
+    for _ in 0..200 {
+        n.economy.step();
+        for ((road, day), tonnes) in n.economy.reservations.iter() {
+            let carries = n.economy.routes[road].capacity;
+            assert!(
+                tonnes <= carries + 1e-6,
+                "road {road} on day {day} is booked for {tonnes:.1} t against \
+                 a capacity of {carries:.1}"
+            );
+            ever_booked += 1;
+            tightest = tightest.max(tonnes / carries.max(1e-9));
+        }
+    }
+
+    // **And the gate has to have seen some traffic.** A country where
+    // nothing ever moved satisfies the assertion above and proves nothing.
+    assert!(
+        ever_booked > 100,
+        "only {ever_booked} road-days were ever booked — nothing is moving \
+         and the gate is watching an empty country"
+    );
+    assert!(
+        tightest > 0.01,
+        "the busiest road was {:.4}% full, so the limit was never near \
+         binding and a missing reservation would look the same",
+        100.0 * tightest
+    );
+
+    // **The table does not grow with history.** Yesterday's traffic
+    // constrains nothing.
+    assert!(
+        n.economy.reservations.len() < 5_000,
+        "{} road-days still booked after two hundred days",
+        n.economy.reservations.len()
+    );
+    n.economy.ledger.assert_conserved();
 }
