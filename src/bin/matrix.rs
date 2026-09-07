@@ -27,6 +27,14 @@ use scale_sim::world::World;
 const FOOD: Commodity = Commodity::ProcessedFood;
 const DAYS: usize = 400;
 
+/// **Several nations, because one is not evidence.**
+///
+/// `LM` was the best of all sixteen cases on the first nation measured and
+/// broke a gate on another — so a matrix run against a single country says
+/// what happens *there*, and a change shipped on it is a change shipped on
+/// a sample of one.
+const RANKS: [usize; 4] = [0, 2, 4, 6];
+
 struct Reading {
     label: String,
     lowest_cover: f64,
@@ -63,11 +71,27 @@ fn main() {
 
     let mut rows = Vec::new();
     for x in Experiments::matrix() {
-        let Some(r) = Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent) else {
-            eprintln!("no such nation");
-            return;
-        };
-        rows.push(run(r.economy, x));
+        let mut worst: Option<Reading> = None;
+        for rank in RANKS {
+            let id = pol.ranked()[rank].0;
+            let Some(r) = Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
+            else {
+                continue;
+            };
+            let got = run(r.economy, x);
+            // Worst is the one that would fail first: least cover, and a
+            // leak beats everything.
+            let replace = match &worst {
+                None => true,
+                Some(w) => !got.conserves && w.conserves
+                    || got.conserves == w.conserves && got.lowest_cover < w.lowest_cover,
+            };
+            if replace {
+                worst = Some(got);
+            }
+        }
+        let Some(w) = worst else { continue };
+        rows.push(w);
         let last = rows.last().unwrap();
         println!(
             "{:<6} {:>8.2} {:>8.2} {:>9.1} {:>9.1} {:>9.0} {:>7.2} {:>11.0} {:>5} {:>5} {:>7} {}",

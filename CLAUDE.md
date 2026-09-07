@@ -1906,6 +1906,27 @@ fewer than its payroll. "200-300 staff" is a Walmart Supercenter at
 17,000 m², not a supermarket, and quoting it against a supermarket is the
 denominator error `census.rs` exists to stop wearing a different hat.
 
+### There is no such thing as eating cheaply
+
+A household here has exactly two states: buy the basket, or go without and
+register unmet demand. There is no representation of **eating cheaply** —
+the cheapest calories per pound, cooking from scratch rather than anything
+prepared, using the whole of everything, no waste. That is the commonest
+economic behaviour in a low-income household and the model cannot express
+it at all.
+
+It matters because it is most of the distance between the model and life.
+Real anchor: the USDA **Thrifty Food Plan** — the American government's own
+*minimum adequate* estimate, not a comfortable one — runs about $3,000 a
+head a year for a family, so roughly $1,200-1,250 a month for two adults
+and three children. Households feed five on **half** that, routinely, and
+do it by shopping and cooking in ways this model has no way to describe.
+
+The consequence in the numbers: food comes out near 79% of a two-earner
+labourer household's income here where a real one at that income runs
+closer to 35%. The gap is not the price of food. It is that everybody in
+this simulation shops the same way.
+
 ### Known gaps, named rather than smoothed
 
 - **No car finance, so transport is near zero** against a real 30% of the
@@ -2951,12 +2972,36 @@ model does today — and the whole matrix was run on one nation for 400 days.
   L+S is worse than either alone (4.87 against 8.60), and M+T is worse than
   either alone (0.28 against 0.41).
 
-**What the matrix does not settle**, and this is why the switches stay off:
-`LM` is right on the nation it was measured on and breaks
-`a_works_that_is_not_running_does_not_set_the_price` on another — a cheap
-mill that ought to pull the market's flour cost down does not, and the
-mechanism is not yet understood. The last time something was pushed past
-that point it starved a country.
+### One nation is not evidence
+
+`LM` was the best of all sixteen cases above and broke a gate on a
+different country. So the matrix was run again across **four** nations,
+reporting the worst reading of the four — because a change is only safe if
+it is safe everywhere — and it contradicts the single-nation result on
+three of the four switches:
+
+| switch | one nation | four nations, worst |
+|---|---|---|
+| baseline | 17.44 | 8.95 |
+| `L` | 8.60 | 8.60 |
+| `M` | 17.44 *(benign)* | **6.20** |
+| `S` | 17.44 *(benign)* | **4.00** |
+| `LM` | **17.44** *(best of sixteen)* | 8.24 |
+| `T` | 0.41 | 0.41 |
+
+**M and S both looked harmless on one country and both cost real cover
+across four.** `LM` is still the best of the non-baseline options and it is
+a *loss* against the baseline rather than a gain, which is the opposite of
+what the first run said. The L+S interaction the first run flagged
+disappears; M+T survives.
+
+**So the switches stay off, and the conclusion is the method rather than
+the answer.** A four-part change measured on a sample of one produced a
+confident and wrong recommendation, and would have been shipped on it. The
+economics here vary enough between countries that a single fixture cannot
+settle anything — which is the same lesson as the symmetric fixture,
+arriving from the other direction: one world proves a mechanism is *broken*
+and cannot prove it is *right*.
 
 ## Nine numbers that had been two (`src/value.rs`)
 
