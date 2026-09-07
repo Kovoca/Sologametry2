@@ -635,6 +635,48 @@ pub fn demand_rate_of(site: &Site) -> f64 {
     site.throughput
 }
 
+/// **What the world looked like when the day opened.**
+///
+/// Taken once, before anything moves, and not written to again until the
+/// next day. Anybody deciding what to do today reads this; what they do
+/// changes the live state, and the live state becomes tomorrow's opening.
+///
+/// The rule it exists to enforce: **a cargo may not change the figures that
+/// authorised it.** A haulier plans against the prices and stocks it knew
+/// when it set off, because that is all it can possibly know — it cannot
+/// see the price its own delivery is about to create. Letting a decision
+/// read state its own consequences have already altered is how a day stops
+/// being a day and becomes an argument about ordering.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Opening {
+    pub day: u64,
+    /// What things were fetching in each market.
+    pub price: Vec<Basket>,
+    /// Days of cover in each market.
+    pub cover: Vec<Basket>,
+    /// What it cost to get hold of, in each market.
+    pub landed: Vec<Basket>,
+    /// **What was actually in the sheds when the day opened.** A dispatcher
+    /// plans on the morning's position, not on a figure that the morning's
+    /// own deliveries have already moved.
+    pub stock: Vec<Basket>,
+}
+
+impl Opening {
+    pub fn price(&self, m: usize, c: Commodity) -> f64 {
+        self.price.get(m).map(|b| b[c as usize]).unwrap_or(0.0)
+    }
+    pub fn cover(&self, m: usize, c: Commodity) -> f64 {
+        self.cover.get(m).map(|b| b[c as usize]).unwrap_or(0.0)
+    }
+    pub fn landed(&self, m: usize, c: Commodity) -> f64 {
+        self.landed.get(m).map(|b| b[c as usize]).unwrap_or(0.0)
+    }
+    pub fn stock(&self, m: usize, c: Commodity) -> f64 {
+        self.stock.get(m).map(|b| b[c as usize]).unwrap_or(0.0)
+    }
+}
+
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -2474,6 +2516,21 @@ pub struct Economy {
     /// does and this economy is counting its own days. Written through
     /// `step_at` rather than assigned, so there is one way in.
     pub told_the_day: Option<u64>,
+    /// **What the day opened on.** Read by anybody deciding what to do
+    /// today; never written to during it.
+    pub opening: Option<Opening>,
+    /// **What arrived today, and what it cost**, per market per commodity:
+    /// tonnes and total value.
+    ///
+    /// Accumulated as deliveries land and folded into the landed average
+    /// **once**, at the close. Blending each cargo as it arrived meant the
+    /// average a works read depended on which lorry got there first, and a
+    /// delivery late in the day moved a figure that the same day's price
+    /// pass had already used.
+    ///
+    /// Summing first and blending once is order-independent by
+    /// construction, because addition is.
+    pub arrivals: Vec<(Basket, Basket)>,
     /// Hands on today at each site, filled by `labour::update`. Payroll is
     /// paid by a particular employer, so it needs the breakdown.
     pub staff_today: Vec<f64>,
@@ -2528,6 +2585,25 @@ impl Economy {
     }
 
     pub fn step(&mut self) {
+        // **Photograph the world before anything moves in it.**
+        self.opening = Some(Opening {
+            day: self.told_the_day.unwrap_or(self.ledger.day + 1),
+            price: self.markets.iter().map(|m| m.price).collect(),
+            cover: self.markets.iter().map(|m| m.expected_cover).collect(),
+            landed: self.markets.iter().map(|m| m.landed).collect(),
+            stock: (0..self.markets.len())
+                .map(|m| {
+                    let mut b = basket();
+                    for &c in Commodity::ALL.iter() {
+                        b[c as usize] = (0..self.ledger.sites.len())
+                            .filter(|&s| self.ledger.sites[s].market == m)
+                            .map(|s| self.ledger.stock(s, c))
+                            .sum();
+                    }
+                    b
+                })
+                .collect(),
+        });
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
         // **Open the books at the start of the day, not wipe them at the
@@ -2602,9 +2678,16 @@ impl Economy {
         // entry point that does *not* count for itself, and using it is
         // what makes "everybody agrees what day it is" a real claim rather
         // than two counters that happen to increment together.
-        self.ledger.day = self.ledger.day.max(self.told_the_day.unwrap_or(0));
-        if self.told_the_day.take().is_none() {
-            self.ledger.day += 1;
+        // **Told means told.** This used to take the larger of its own date
+        // and the one it was given, which sounds defensive and is the
+        // opposite: a subsystem whose date had gone wrong in the *upward*
+        // direction — a stale load, a bad migration, anything that reached
+        // past the root — kept its wrong date for ever, and the root could
+        // not put it right. Correcting a subsystem is the whole reason
+        // something owns the clock.
+        match self.told_the_day.take() {
+            Some(day) => self.ledger.day = day,
+            None => self.ledger.day += 1,
         }
 
         #[cfg(debug_assertions)]
@@ -4061,6 +4144,38 @@ impl Economy {
         if qty <= 1e-9 {
             return;
         }
+        while self.arrivals.len() < self.markets.len() {
+            self.arrivals.push((basket(), basket()));
+        }
+        let a = &mut self.arrivals[market];
+        a.0[c as usize] += qty;
+        a.1[c as usize] += total;
+    }
+
+    /// **Fold the day's arrivals into what things cost to get hold of.**
+    ///
+    /// Once, at the close, over the whole day's deliveries at once — so the
+    /// answer does not depend on the order the lorries happened to arrive
+    /// in, and nothing that arrived today has moved a figure today's prices
+    /// were already computed from.
+    fn settle_arrivals(&mut self) {
+        for m in 0..self.markets.len() {
+            if m >= self.arrivals.len() {
+                break;
+            }
+            for &c in Commodity::ALL.iter() {
+                let qty = self.arrivals[m].0[c as usize];
+                if qty <= 1e-9 {
+                    continue;
+                }
+                let total = self.arrivals[m].1[c as usize];
+                self.blend_landed(m, c, qty, total);
+            }
+            self.arrivals[m] = (basket(), basket());
+        }
+    }
+
+    fn blend_landed(&mut self, market: usize, c: Commodity, qty: f64, total: f64) {
         let held: f64 = (0..self.ledger.sites.len())
             .filter(|&s| self.ledger.sites[s].market == market)
             .map(|s| self.ledger.stock(s, c))
@@ -4161,6 +4276,14 @@ impl Economy {
         best[to].min(LANDED_FREIGHT_CAP)
     }
 
+    /// What the day opened on, for anybody deciding what to do in it.
+    ///
+    /// Empty before the first step, which is the honest answer: a world
+    /// that has not had a day yet has no opening.
+    pub fn opening(&self) -> Option<&Opening> {
+        self.opening.as_ref()
+    }
+
     /// **How far short the grid is of what is being asked of it**, 0 to 1.
     ///
     /// Not a stock reading: generation against load. A grid that can meet
@@ -4190,6 +4313,10 @@ impl Economy {
     }
 
     fn one_price_pass(&mut self) {
+        // **Arrivals first, then prices**, which is the declared order and
+        // the reason a cargo cannot move the figures its own day's pricing
+        // has already used.
+        self.settle_arrivals();
         let order = Self::costing_order();
         for m in 0..self.markets.len() {
             for &c in order.iter() {

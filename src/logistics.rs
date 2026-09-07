@@ -249,12 +249,24 @@ impl Logistics {
             let mut cover: Vec<f64> = Vec::with_capacity(n);
             let mut held: Vec<f64> = Vec::with_capacity(n);
             let mut draw: Vec<f64> = Vec::with_capacity(n);
+            // **The morning's position, not the position this morning's own
+            // deliveries have already created.** A dispatcher plans on what
+            // was in the sheds when the day opened, because that is all
+            // anybody can know when the lorries leave — and a cargo that
+            // can move the figures which authorised it turns a day into an
+            // argument about ordering.
+            let opened = econ.opening().cloned();
             for m in 0..n {
                 let d = econ.daily_draw(m, commodity);
-                let h: f64 = (0..econ.ledger.sites.len())
-                    .filter(|&s| econ.ledger.sites[s].market == m)
-                    .map(|s| econ.ledger.stock(s, commodity))
-                    .sum();
+                let h: f64 = match opened.as_ref() {
+                    Some(o) => o.stock(m, commodity),
+                    // Before the first day there is no opening, and live
+                    // state is the only honest answer.
+                    None => (0..econ.ledger.sites.len())
+                        .filter(|&s| econ.ledger.sites[s].market == m)
+                        .map(|s| econ.ledger.stock(s, commodity))
+                        .sum(),
+                };
                 held.push(h);
                 draw.push(d);
                 cover.push(if d > 1e-9 { h / d } else { f64::INFINITY });
@@ -501,8 +513,29 @@ fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f
                 },
             );
             econ.pay_the_carrier(dst, carriage);
-            // **Known gap, and it is a control loop rather than an
-            // oversight.** The landed cost of what a carrier delivers is
+            // **Still deliberately not wired, and now for a narrower and
+            // better-evidenced reason than last time.**
+            //
+            // `econ.take_delivery(to_m, c, take, goods + carriage)` belongs
+            // here: what a carrier drops off did cost what was paid for it
+            // plus this carriage. Adding it destabilises food distribution
+            // — a country whose cover is dead level at 16.4 days in every
+            // town without hauliers, and level with them, goes to a spread
+            // of 8 to 32 as soon as their deliveries move the landed
+            // average.
+            //
+            // The first guess was that carriers were planning on state
+            // their own cargoes had altered. That is now fixed regardless:
+            // they plan on an opening snapshot, and arrivals fold into the
+            // average once at the close. **It did not fix this**, so the
+            // guess was wrong and the cause is somewhere else — most
+            // likely that food's landed cost diverging between markets is
+            // a real economic signal the rest of the model then chases,
+            // and that "even cover" may simply not survive contact with
+            // genuine cost differences.
+            //
+            // Which would make the *test* the thing to revisit rather than
+            // the model. Not shipped either way on a hunch. The landed cost of what a carrier delivers is
             // genuinely what was paid plus this carriage, and blending it
             // into the market average here is the obvious thing — but that
             // average feeds the price, and the price is what the carriers

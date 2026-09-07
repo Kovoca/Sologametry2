@@ -2007,6 +2007,8 @@ impl Region {
             logistics: None,
             treasury: crate::money::Treasury::new(),
             told_the_day: None,
+            opening: None,
+            arrivals: Vec::new(),
             staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,

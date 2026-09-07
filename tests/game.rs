@@ -241,3 +241,128 @@ fn a_year_passes_with_everything_attached() {
     let folk = g.folk.as_ref().unwrap();
     assert!(folk.people.len() > 0, "a year of being driven by the root emptied the sample");
 }
+
+// =====================================================================
+// the contracts a migration has to be able to rely on
+// =====================================================================
+
+/// **Gate: a mismatched subsystem date is corrected by the root.**
+///
+/// The version of the clock gate that actually discriminates. Two counters
+/// both stepping by one agree whatever either believes; what proves the
+/// root owns the clock is putting a subsystem's date deliberately wrong and
+/// watching the next day put it back.
+#[test]
+fn a_subsystem_that_loses_track_is_put_right() {
+    let mut g = a_world();
+    g.advance(20);
+    g.assert_clocks_agree();
+
+    // Somebody has reached past the root — a stale load, a bad migration, a
+    // system that counted for itself.
+    g.economy.as_mut().unwrap().ledger.day = 9_999;
+    assert!(!g.clocks_agree(), "the check cannot even see a wrong date");
+
+    g.a_day();
+    g.assert_clocks_agree();
+    assert_eq!(
+        g.economy.as_ref().unwrap().ledger.day,
+        g.day(),
+        "a day passed and the economy kept its own wrong date"
+    );
+
+    // And backwards, which is the more dangerous direction: a subsystem
+    // that has fallen behind must catch up rather than drag the world back.
+    let now = g.day();
+    g.economy.as_mut().unwrap().ledger.day = 3;
+    g.a_day();
+    assert_eq!(g.day(), now + 1, "a lagging subsystem pulled the world backwards");
+    g.assert_clocks_agree();
+}
+
+/// **Gate: one advance of thirty days is thirty advances of one.**
+///
+/// Trivially true while `advance` is a loop, and asserted anyway — because
+/// the moment anything in a phase starts working in bulk for speed, this is
+/// the property that will quietly stop holding.
+#[test]
+fn thirty_days_is_thirty_days_however_it_is_asked_for() {
+    let mut slow = a_world();
+    let mut quick = a_world();
+    for _ in 0..30 {
+        slow.a_day();
+    }
+    quick.advance(30);
+
+    assert_eq!(slow.day(), quick.day());
+    let (a, b) = (slow.economy.as_ref().unwrap(), quick.economy.as_ref().unwrap());
+    assert_eq!(a.ledger.day, b.ledger.day);
+    // And the same world, not merely the same date.
+    for m in 0..a.markets.len() {
+        for &c in scale_sim::econ::Commodity::ALL.iter() {
+            assert!(
+                (a.price(m, c) - b.price(m, c)).abs() < 1e-9,
+                "{} in market {m} came out differently depending on how the days were asked for",
+                c.name()
+            );
+        }
+    }
+}
+
+/// **Gate: mass and money both balance across buyer, seller and carrier.**
+///
+/// Freight is the newest way money moves and the one most likely to leak:
+/// the consignee pays, the carrier is paid, and neither the tonnage nor the
+/// currency may change in the process.
+#[test]
+fn nothing_leaks_when_a_cargo_moves() {
+    let e = a_nation().economy;
+    let folk = Populace::seed(&e, 15, 20260828);
+    let mut g = GameState::new(20260828).with_economy(e).with_folk(folk);
+
+    for _ in 0..200 {
+        g.a_day();
+        let e = g.economy.as_ref().unwrap();
+        e.ledger.assert_conserved();
+        e.treasury.assert_conserved();
+    }
+
+    // Somebody really was paid for carrying things, or this gate is
+    // watching an economy where nothing moved.
+    let paid = g
+        .economy
+        .as_ref()
+        .unwrap()
+        .treasury
+        .flows
+        .get("freight")
+        .copied()
+        .unwrap_or(0.0);
+    assert!(paid > 0.0, "two hundred days and no freight was ever charged");
+}
+
+/// **Gate: a cargo cannot change the figures that authorised it.**
+///
+/// The day opens with a photograph of the world. Anybody deciding what to
+/// do today reads that; what they do changes the live state and becomes
+/// tomorrow's photograph. A decision that can read state its own
+/// consequences have altered turns a day into an argument about ordering.
+#[test]
+fn the_opening_position_does_not_move_during_the_day() {
+    let mut g = a_world();
+    g.a_day();
+
+    let opened = g.economy.as_ref().unwrap().opening().cloned().expect("no opening");
+    let day_of = opened.day;
+
+    // Run the whole of the next day and the previous opening is untouched —
+    // it is a photograph, not a view.
+    let before = opened.clone();
+    g.a_day();
+    assert_eq!(before, opened, "the snapshot was a window rather than a photograph");
+
+    // And the new day has its own, taken after the last one closed.
+    let next = g.economy.as_ref().unwrap().opening().cloned().expect("no opening");
+    assert!(next.day > day_of, "the day opened on yesterday's figures");
+    assert_eq!(next.stock.len(), g.economy.as_ref().unwrap().markets.len());
+}

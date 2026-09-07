@@ -2128,6 +2128,29 @@ minds or utilities. The save carries three of the four things it holds, and
 shortfall has to go up rather than being argued about, and the gate on it
 fails the day it reaches parity.
 
+### The day opens with a photograph
+
+A day begins with an immutable snapshot — prices, cover, landed cost, and
+what was actually in the sheds — and anybody deciding what to do reads
+*that*. A haulier plans on the morning's position, because that is all
+anybody can know when the lorries leave: it cannot see the price its own
+delivery is about to create.
+
+**And the day's arrivals fold into the landed average once, at the close.**
+Blending each cargo as it landed meant the figure a works read depended on
+which lorry got there first, and a late delivery moved a number the same
+day's pricing had already used. Summing first and blending once is
+order-independent by construction, because addition is.
+
+### Told means told
+
+`step_at` took the larger of its own date and the one it was given. That
+sounds defensive and is the exact opposite: a subsystem whose date had gone
+wrong in the *upward* direction — a stale load, a bad migration, anything
+that reached past the root — kept its wrong date for ever and could not be
+put right. **Correcting a subsystem is the whole reason something owns the
+clock.**
+
 ### A gate with no teeth, found by deleting the mechanism
 
 The invariant is *everybody agrees what day it is*, and the first version of
