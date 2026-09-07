@@ -2136,13 +2136,41 @@ what was actually in the sheds — and anybody deciding what to do reads
 anybody can know when the lorries leave: it cannot see the price its own
 delivery is about to create.
 
-**Still partial, and the remaining half is named.** Carrier deliveries do
-not yet move the landed average. The reason has changed, though: it was
-"destabilises food cover and I cannot explain why", and the order
-dependence underneath that is now found and fixed — see *A world with no
-reason for anything to differ* below. What is left is to re-measure it
-against the corrected model rather than against the one that had the bug
-in it.
+**Still partial, and the remaining half is now specified rather than
+mysterious.** Carrier deliveries do not move the landed average, and it is
+no longer "destabilises food cover and I cannot explain why". The order
+dependence that used to be the suspect is found and fixed, and this
+survives it, so it was never that. Four discriminating experiments locate
+it: blending the goods value alone is stable, blending goods and carriage
+with `trade()` switched off is stable, switching the allocation auction off
+changes nothing, and clamping the scarcity multiplier to 1 levels three
+towns of five.
+
+**Two defects, and the first is arithmetic.** The scarcity multiplier is
+applied to carriage as well as to the cost of production, so with landed =
+goods + freight and price = cost x m:
+
+```text
+price_b - price_a = (cost_a + freight)m - cost_a m = freight x m
+arbitrage         = freight x m - freight         = freight x (m - 1)
+```
+
+The moment anything is scarce anywhere, **every remote market shows a false
+arbitrage of exactly `freight x (m-1)`** and pairwise trade chases it — a
+town made to look dear by the very carriage that got its goods there.
+**A haulier's bill does not rise because grain is short**: freight is a
+pass-through and must not be marked up.
+
+The second is plainer: **there are two different freight figures for the
+same haul.** `trade` and `arbitrage` price it at `Route::freight_cost`, the
+direct link, while a delivery is charged `freight_between`, the cheapest
+*path*. Wherever going round is cheaper than going straight the two
+disagree permanently and the gap never closes.
+
+Neither is a tuning problem. What they want is for a market to carry the
+carriage component of its landed cost apart from the goods component, so
+scarcity multiplies one and passes the other through — and for the two
+mechanisms to agree on what a haul costs.
 
 **And the day's arrivals fold into the landed average once, at the close.**
 Blending each cargo as it landed meant the figure a works read depended on

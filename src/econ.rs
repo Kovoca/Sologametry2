@@ -4872,9 +4872,57 @@ impl Economy {
         // Which is also why a haulier's money comes in later than the work
         // does, and is a real reason small ones run out of it.
         self.pay_the_carrier(consignee, freight);
-        // Deliberately still not folding this into the landed average —
-        // see `logistics::ship`. That is step 4 and wants the food
-        // equilibrium diagnosed first.
+        // **Still not folded into the landed average, and now for two
+        // named reasons rather than because it could not be explained.**
+        //
+        // `take_delivery(to_m, commodity, off, paid + freight)` belongs
+        // here: what a carrier drops off did cost what was paid for it
+        // plus this carriage. Turning it on takes a country whose food
+        // cover is dead level at 17.4 days in every town to a spread of
+        // 8.6 to 33.4. The order dependence that used to be the suspect is
+        // found and fixed — `slice::symmetric` proves it — and this
+        // survives it, so it was never that.
+        //
+        // Four discriminating experiments locate it exactly:
+        //
+        // | | |
+        // |---|---|
+        // | blend the goods value only, no carriage | **stable** |
+        // | blend goods + carriage, auction off | unchanged |
+        // | blend goods + carriage, `trade()` off | **stable** |
+        // | blend goods + carriage, scarcity clamped to 1 | 3 of 5 level |
+        //
+        // So it is pairwise arbitrage reading a price that its own freight
+        // bill created, and there are two defects behind it.
+        //
+        // **One: the scarcity multiplier is applied to carriage as well as
+        // to the cost of production.** With landed = goods + freight and
+        // price = cost x m,
+        //
+        // ```text
+        // price_b - price_a = (cost_a + freight)m - cost_a m = freight x m
+        // arbitrage         = freight x m - freight = freight x (m - 1)
+        // ```
+        //
+        // — so the moment anything is scarce anywhere, **every remote
+        // market shows a false arbitrage of exactly `freight x (m-1)`**,
+        // and `trade` chases it. That is arithmetic, not a hunch, and
+        // clamping m to 1 levels three of the five towns. A haulier's bill
+        // does not rise because grain is short: freight is a pass-through
+        // and must not be marked up.
+        //
+        // **Two: there are two different freight figures for the same
+        // haul.** `trade` and `arbitrage` price it at `Route::freight_cost`
+        // — the direct link — while a delivery is charged
+        // `freight_between`, the cheapest *path*. Wherever going round is
+        // cheaper than going straight, the two disagree permanently and
+        // the gap never closes.
+        //
+        // Both are fixable and neither is a tuning problem. What they want
+        // is for a market to carry the carriage component of its landed
+        // cost apart from the goods component, so scarcity multiplies one
+        // and passes the other through — and for the two mechanisms to
+        // agree on what a haul costs.
         let day = self.ledger.day;
         if let Some(s) = self.shipments.get_mut(id) {
             s.aboard -= off;
