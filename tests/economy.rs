@@ -64,10 +64,15 @@ fn undisturbed_economy_settles_at_cost() {
             "{}: settled at {price:.0}, expected about {base:.0}",
             econ.markets[m].name
         );
+        // **Against the target this market is actually aiming at**, which
+        // is the commodity's base cover plus however long it waits for a
+        // delivery. A shop next door to the cannery holds less than one
+        // six hundred kilometres away, and both are correct.
         let cover = econ.markets[m].cover[FOOD as usize];
+        let target = econ.target_cover(m, FOOD);
         assert!(
-            (cover - FOOD.target_cover_days()).abs() < 0.5,
-            "{}: cover settled at {cover:.1} days",
+            (cover - target).abs() < 0.5,
+            "{}: cover settled at {cover:.1} days against a target of {target:.1},",
             econ.markets[m].name
         );
     }

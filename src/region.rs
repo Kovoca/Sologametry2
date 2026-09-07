@@ -900,10 +900,29 @@ impl Region {
                 name: format!("{name} grain terminal"),
                 kind: SiteKind::Mine,
                 market: m,
-                stock: cap(&[(Commodity::Grain, short * 20.0)]),
-                capacity: cap(&[(Commodity::Grain, short * 60.0)]),
+                // **A country that imports its bread buys it in the
+                // lean season, not evenly through the year.**
+                //
+                // `short` is the shortfall against the *annual* harvest,
+                // and a harvest is not annual: most of the year's grain
+                // lands in about six weeks and the country lives on store
+                // and ships for the other forty-six. Terminals rated at
+                // 1.1x the mean ran at exactly 100% every single day,
+                // could never build a reserve, and left the leanest nation
+                // on the planet going hungry each year on the day before
+                // the harvest — while its ports worked flat out and the
+                // sea lanes were open.
+                //
+                // Real grain terminals are sized on peak-season vessel
+                // arrivals rather than on mean tonnage, and a food
+                // importer holds a strategic reserve: the IEA's 90 days of
+                // net imports is the precedent this model already uses for
+                // petroleum, and grain is the older example of the same
+                // idea.
+                stock: cap(&[(Commodity::Grain, short * 45.0)]),
+                capacity: cap(&[(Commodity::Grain, short * 90.0)]),
                 recipe: Some(recipe::GRAIN_IMPORTS),
-                throughput: short * 1.1,
+                throughput: short * 2.5,
                 powered: true,
                 ran: 0.0,
                 fitted: None,

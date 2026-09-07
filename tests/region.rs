@@ -588,6 +588,7 @@ fn a_nation_that_cannot_feed_itself_buys_and_does_not_starve() {
     // dependency there is.
     let p = planet(20260828);
     let mut found_importer = false;
+    let mut worst_without = 0.0f64;
     for rank in 0..8 {
         let Some(r) = region_of(&p, rank, Doctrine::Prudent) else {
             continue;
@@ -602,21 +603,89 @@ fn a_nation_that_cannot_feed_itself_buys_and_does_not_starve() {
             continue;
         }
         found_importer = true;
-        let mut e = r.economy;
-        for _ in 0..(scale_sim::econ::DAYS_PER_YEAR * 2) {
-            e.step();
-            assert!(
-                e.unmet_demand[FOOD as usize] == 0.0,
-                "a nation living on imported grain went hungry on day {} \
-                 with the sea lanes open",
-                e.ledger.day
-            );
-        }
-        e.ledger.assert_conserved();
+
+        // **Hold everything still and vary one thing: whether the ships
+        // come.**
+        //
+        // This used to assert `unmet_demand == 0.0` on every one of seven
+        // hundred and thirty days, which sounds strict and tests less than
+        // it looks. It never once checked that the imports were what was
+        // feeding anybody — a nation whose own farms happened to be
+        // adequate passes it without a grain ship ever docking — and being
+        // an exact equality it also failed on a shop running dry for a day,
+        // which is not a famine and is not what the sentence claims.
+        //
+        // So the claim is now the causal one, and it needs both halves.
+        let hunger = |lanes_open: bool| -> f64 {
+            // Rebuilt rather than cloned: `Economy` is not `Clone`, and
+            // the same seed and rank give the same country every time.
+            let mut e = region_of(&p, rank, Doctrine::Prudent)
+                .expect("the same nation stopped existing")
+                .economy;
+            if !lanes_open {
+                for i in 0..e.ledger.sites.len() {
+                    if e.ledger.sites[i].name.contains("grain terminal") {
+                        e.ledger.sites[i].throughput = 0.0;
+                    }
+                }
+            }
+            let mut went_without = 0.0;
+            let mut ate = 0.0;
+            for _ in 0..(scale_sim::econ::DAYS_PER_YEAR * 2) {
+                e.step();
+                went_without += e.unmet_demand[FOOD as usize];
+                ate += (0..e.markets.len())
+                    .map(|m| e.markets[m].daily_household_demand(FOOD))
+                    .sum::<f64>();
+            }
+            e.ledger.assert_conserved();
+            went_without / ate
+        };
+
+        let open = hunger(true);
+        let shut = hunger(false);
+
+        // **A famine bound, and loose on purpose.**
+        //
+        // A tenth of a per cent of two years' food is a shop empty for a
+        // day or two somewhere; a famine is orders of magnitude larger, as
+        // the closed-lanes figure shows. Said plainly because it was
+        // checked: reverting the harvest-curve scaling, the grain terminal
+        // sizing, the lead-time safety stock, or any pair of them, leaves
+        // this half green. **It is the counterfactual below that
+        // discriminates**, and a bound nothing can currently trip is worth
+        // labelling as such rather than tightening until it fires, which
+        // would be fitting a threshold to a sabotage.
+        assert!(
+            open < 0.001,
+            "a nation living on imported grain went {:.3}% short with the \
+             sea lanes open",
+            100.0 * open
+        );
+        // **And somewhere the ships have to be what is feeding
+        // somebody.**
+        //
+        // Not every nation with a terminal depends on it: several ride two
+        // years on their reserve and their own fields, and cutting their
+        // imports changes nothing whatever. That is a real distinction and
+        // worth keeping rather than asserting away — a country that *has*
+        // a grain trade is not the same as a country that would starve
+        // without one. So the counterfactual is asserted over the planet
+        // rather than over every importer.
+        worst_without = worst_without.max(shut);
     }
     assert!(
         found_importer,
         "no nation on this planet is short of food — the land is not binding"
+    );
+    // **The counterfactual, which the old gate never checked at all.**
+    // Somewhere there has to be a country that is fed by sea and would not
+    // be otherwise, or "buys and does not starve" is a sentence about
+    // nations that were never hungry in the first place.
+    assert!(
+        worst_without > 0.02,
+        "cutting every grain terminal on the planet left the worst-hit          nation only {:.2}% short — nobody here actually lives on imports,          so the gate is measuring the wrong thing",
+        100.0 * worst_without
     );
 }
 

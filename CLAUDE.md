@@ -2136,14 +2136,13 @@ what was actually in the sheds — and anybody deciding what to do reads
 anybody can know when the lorries leave: it cannot see the price its own
 delivery is about to create.
 
-**Partial, and the gap is named rather than implied.** The snapshot exists
-and carriers read it; two things behind it do not yet honour the contract.
-Carrier deliveries still do not move the landed average — turning that on
-destabilised food cover in a way I could not explain, so it is not shipped
-— and `distribute` still scans sites in index order, which this file
-already records as a real bug it had to fix once. Until both are done, "the
-day's decisions cannot depend on the order they were taken in" is a
-property of the *fold*, not of the day.
+**Still partial, and the remaining half is named.** Carrier deliveries do
+not yet move the landed average. The reason has changed, though: it was
+"destabilises food cover and I cannot explain why", and the order
+dependence underneath that is now found and fixed — see *A world with no
+reason for anything to differ* below. What is left is to re-measure it
+against the corrected model rather than against the one that had the bug
+in it.
 
 **And the day's arrivals fold into the landed average once, at the close.**
 Blending each cargo as it landed meant the figure a works read depended on
@@ -2804,6 +2803,192 @@ which are both `usize` and would both compile.
 transit was untestable because there was no transit to be halfway through;
 a cargo now goes through real bytes mid-journey and comes back the same
 cargo, with its contract, its consignee and its refrigeration intact.
+
+## A world with no reason for anything to differ (`src/slice.rs`, `src/econ.rs`)
+
+Two commits argued about whether a spread in days of cover between towns
+was a bug or a signal, and neither could settle it, because **"cover is
+level" is a claim about the world rather than about the model.** A mountain
+port 1,200 km from the grain belt is *supposed* to hold less and pay more,
+so asserting level cover in a real country tests something nobody has
+established — and the answer kept depending on which country you looked at.
+
+`slice::symmetric` removes the ambiguity. Three towns identical in every
+respect: same population, same works at the same rates, same opening stock,
+one nation so they share a season, and a **triangle** of identical roads so
+no town is better placed than any other. Under rotation the world maps onto
+itself, so any mechanism that respects the economics must give each town
+the same answer. **A spread is then not a signal. It is a bug.**
+
+Three rather than two, because two markets hide an asymmetry: with one road
+`a -> b` and `b -> a` are the same edge, and a rule favouring whichever end
+is scanned first cannot show itself.
+
+It found one on the first run:
+
+| food cover | Alpha | Beta | Gamma | spread |
+|---|---|---|---|---|
+| as built | 57.5 | 33.2 | **8.5** | **49.1** |
+| **the same world, site vector reversed** | 42.0 | 48.6 | 37.8 | 10.9 |
+
+A monotone gradient by market index, and reversing a `Vec` — which changes
+nothing whatever about the economics, since every site carries its own
+market — moved the answer completely. **An answer that depends on the order
+of a list was never an answer about the economy.** The cause was one line:
+`stock(src).min(short)` inside a loop over consumers in site-index order,
+so the first consumer to reach a supplier emptied it.
+
+### Three wrong rules, and each looked like the fix
+
+- **Blind pro-rata smooths away the thing the model exists to show.**
+  Sharing every shortage equally made the two towns of `slice` ration in
+  lockstep, so a blackout that stopped the cannery no longer opened a price
+  gap between them, no haul was ever worth making, and freight had no
+  reason to exist. **A shortage that falls on everybody identically is not
+  a shortage anybody trades on.**
+- **Absolute local priority is not "prefer local suppliers".** Serving
+  every local pair before considering anybody's imports sounds like the
+  rule this file already records and is a different and worse one: with two
+  mills in three shut, the surviving mill's own town took every sack and
+  the other two came out at **nothing at all**. A miller with three buyers
+  and one batch does not give it all to the nearest; the other two bid.
+- **And a merit order with no notion of lead time puts the stock in the
+  wrong towns.** Allocating by netback — the buyer's price less the cost of
+  getting it there — is right, and on its own it hands the whole country's
+  inventory to whichever town holds the works, because its carriage is
+  zero. Measured: a city of 20M sat on 22 days while three outlying towns
+  held exactly 4, and at the pre-harvest trough they ran down to **a fifth
+  of a day**. That is backwards. **Safety stock rises with lead time** —
+  the shop far from the cannery is the one that needs a buffer, because its
+  resupply is slow.
+
+### What it settled on
+
+```text
+today's running needs   shared out, everybody the same fraction
+tomorrow's stockpile    sold to the best netback, ties shared
+how much to stock       base cover + however long you wait for a delivery
+```
+
+- **Today's bread is not auctioned; the stockpile is.** The two passes were
+  always there and the second had no rule of its own. Running needs are
+  shared, because a town must not go without today's food since a richer
+  one bid for it — and a model in which it does starves whoever the price
+  signal has not reached yet, which here is anybody at all, since this
+  project deliberately prices a stored staple off a **slow** average of
+  cover. Merit order plus a damped price is a town starving while its own
+  scarcity is still working its way into its price.
+- **What is left after everybody has eaten is inventory**, and inventory is
+  exactly what a market should allocate: whoever values it most, net of
+  getting it there. That is the same merit order `power.rs` already
+  dispatches generation on.
+- **Pro-rata settles a tie; it does not replace the market.** Where three
+  towns are identical every netback is equal, the whole component is one
+  band, and the answer is the even one.
+- **An entitlement is a right to buy, not a delivery.** A buyer allocated
+  its share may be unable to take it — no room, or the only suppliers
+  within reach are empty — so a mop-up round offers round whatever nobody
+  took. Nobody can be starved by it, because every claim has already been
+  honoured before it runs. **It is walked worst-served first**, and that is
+  not a detail: the fair-share pass can be walked in any order, because
+  nobody can exceed their entitlement, while the mop-up is deliberately
+  uncapped, so visiting it in site-index order would put the original bug
+  straight back in the one place a symmetric fixture is least likely to
+  reach it.
+- **And the price model has to aim at the same figure the works do.**
+  Raising what a remote shop stocks without telling the pricing pass made
+  an ordinary shopkeeper's prudence read as a glut, and priced food at 630
+  against a cost of 900. `Economy::target_cover` is that one figure, and it
+  is public so that nothing can compare an observed cover against a
+  different notion of the target.
+
+### Two constants that read as calibrated and were not
+
+Both were turned up by this investigation and neither is about
+distribution. **Neither is load-bearing for any gate**, which is worth
+saying because it is easy to write up a find as though a test demanded it:
+with the allocation rules above in place, reverting either one — or both —
+leaves the suite green. They are corrected because they are wrong, not
+because something failed without them.
+
+- **The harvest curve integrated to 0.9312 while its own comment said
+  1.0.** *"Scaled so a full year integrates to roughly one year of rated
+  output"* — it did not, by 7%, so every farm on every planet quietly
+  delivered 93% of its rating. Nothing downstream could see it: `region.rs`
+  sizes a country's grain imports as milling need less what its farms
+  *grow*, reading that off rated throughput, so **every grain importer in
+  the world bought 7% too little for ever.** It survived because opening
+  stock covered it, and a marginal nation ran out in its second year.
+- **A grain terminal sized on the annual mean cannot cover a seasonal
+  trough.** Rated at 1.1x the mean shortfall, every terminal in a
+  food-importing nation ran at **exactly 100% every single day**, could
+  never build a reserve, and left the country hungry on the day before the
+  harvest while its ports worked flat out and the sea lanes were open. Real
+  grain terminals are sized on peak-season vessel arrivals, and a food
+  importer holds a strategic reserve — the IEA's 90 days of net imports is
+  the precedent this model already uses for petroleum, and grain is the
+  older example of the same idea.
+
+### And what the no-arbitrage gate says instead
+
+Level cover was the wrong assertion for an asymmetric world. The right one
+is that no gap survives that is wider than the cost of closing it, where
+the cheap end has stock to spare — money left on the table. Measured over
+four nations: **grain has none at all within a country.** Food and medical
+grade do, and the boundary is informative rather than embarrassing: grain
+is made in every town and wanted in every town, so `distribute` reaches it.
+Medical grade is made in one town and wanted in all of them, and the only
+thing that can move it end to end is a haulier — who decides on **days of
+cover** while `trade` decides on **price**, and only between adjacent
+towns. A price gap between two towns that are not neighbours has nothing
+looking at it. That is a named gap, not a mystery.
+
+### A famine bound is not a precision instrument
+
+`a_nation_that_cannot_feed_itself_buys_and_does_not_starve` used to assert
+`unmet_demand == 0.0` on every one of seven hundred and thirty days, which
+sounds strict and tests less than it looks. It never checked that the
+imports were feeding anybody — **a nation whose own farms happen to be
+adequate passes it without a grain ship ever docking** — and being an exact
+equality it failed on a shop running dry for a day, which is not a famine
+and is not what the sentence claims.
+
+It is now the causal pair: fed with the sea lanes open, and demonstrably
+short with them cut. And the two halves are not equally strong, which is
+recorded in the test rather than glossed:
+
+- **The "fed" half is a loose bound and nothing currently trips it.**
+  Reverting the harvest curve, the terminal sizing, the lead-time safety
+  stock, or any pair, leaves it green. Tightening it until a sabotage fires
+  would be fitting a threshold to the sabotage.
+- **The counterfactual is the half with teeth**, and stopping it from
+  actually shutting the lanes turns it red at once.
+
+**And not every nation with a grain terminal depends on it.** Several ride
+two years on their reserve and their own fields, so the counterfactual is
+asserted over the planet rather than over every importer — a country that
+*has* a grain trade is not the same as a country that would starve without
+one.
+
+### Test lessons, and three of them were mine
+
+- **Three of four sabotages left the gates green**, which is what the habit
+  is for. The doc comment I had written named pro-rata as the mechanism;
+  deleting pro-rata changed nothing, because in that fixture supply was
+  adequate and the fraction was always 1. What had actually fixed the bug
+  was the round ordering. **A mechanism that never binds in any test is not
+  evidence of anything**, whatever the comment above it says.
+- **I broke the symmetry and then asserted it — twice.** Shutting two mills
+  of three leaves one town with a mill and two without, which is not a
+  symmetric world any more, and the answer that follows is correct.
+  Throttling all three keeps them interchangeable. This is the same error
+  the whole fixture exists to prevent, made while building the fixture.
+- **A shortage gate where everybody ends at zero passes on an absence**,
+  which is this file's older rule about a test that never enters its
+  branch, wearing different clothes.
+- **A test comparing cover against "the target" must use the target the
+  model aims at.** Two different notions of normal is exactly the
+  discrepancy that priced prudence as a glut.
 
 ## People (`src/person.rs`)
 

@@ -2232,9 +2232,22 @@ pub fn harvest_curve(day: u64, southern: bool) -> f64 {
     let width = 26.0;
     let z = gap / width;
     let bell = (-z * z).exp();
-    // Scaled so a full year integrates to roughly one year of rated
-    // output, which keeps annual supply matched to annual demand.
-    0.06 + 6.9 * bell
+    // **Scaled so a full year really does integrate to one year of rated
+    // output**, which is what keeps annual supply matched to annual
+    // demand — and what the old constant did not do.
+    //
+    // At 6.9 the year came to **0.9312**, so every farm in the world
+    // quietly delivered 93% of its rating while the comment above said it
+    // delivered 100%. Nothing downstream could see that: `region.rs` sizes
+    // a country's grain imports as milling need less what its farms
+    // *grow*, reading `grows` off the rated throughput, so an importer
+    // bought 7% too little grain for ever. It survived because the opening
+    // stock covered it, and a marginal nation ran out in the second year.
+    //
+    // A constant that reads as calibrated and is not is the hardest thing
+    // in this model to see, which is why the fix is to make the arithmetic
+    // hold rather than to correct the sentence: 0.06 + k x mean(bell) = 1.
+    0.06 + 7.4409 * bell
 }
 
 // ---------------------------------------------------------------------------
@@ -3385,161 +3398,487 @@ impl Economy {
         // Two passes fix it, and it is what a real allocator does under
         // rationing: cover everyone's daily draw first, then let whoever
         // is short build inventory with what is left.
-        self.distribute_to_cover(1.0);
-        self.distribute_to_cover(3.0);
+        // **Today's bread is not auctioned; the stockpile is.**
+        //
+        // The two passes were always right and the second one had no rule
+        // of its own. Running needs are shared out — a town does not go
+        // without today's food because a richer one bid for it, and a
+        // model in which it does starves whoever the price signal has not
+        // reached yet, which here is anybody at all, because this project
+        // deliberately prices a stored staple off a *slow* average of
+        // cover. Merit order plus a damped price is a town starving while
+        // its own scarcity is still working its way into its price.
+        //
+        // What is left after everybody has eaten is inventory, and
+        // inventory is exactly what a market should allocate: whoever
+        // values it most, net of getting it there.
+        self.distribute_to_cover(1.0, false);
+        self.distribute_to_cover(3.0, true);
     }
 
-    fn distribute_to_cover(&mut self, days: f64) {
-        let day = self.ledger.day;
-        /// **What a firm pays for an input, against what the next one
-        /// down the chain sells it for.**
-        ///
-        /// Buying and selling at the same price gives every business in
-        /// the country a gross margin of exactly nothing, so no shop could
-        /// pay a cashier and no mill a miller: they took money in and paid
-        /// all of it straight out again. Real gross margins are 25-30% in
-        /// retail, 10-15% in wholesale and 20-35% in manufacturing, and a
-        /// quarter is the round number in the middle of that.
-        const WHOLESALE: f64 = 0.75;
-        // Which markets each market can be supplied from: everywhere the
-        // open route network reaches, not merely its direct neighbours.
-        // Goods transship — a town at the end of a chain is supplied
-        // through the towns between, and only becomes isolated when the
-        // network is actually severed. Restricting supply to one hop makes
-        // outlying towns starve for want of a road that exists.
-        let reach = self.market_components();
-
-        for dst in 0..self.ledger.sites.len() {
-            let kind = self.ledger.sites[dst].kind;
-            let market = self.ledger.sites[dst].market;
-
-            for &c in Commodity::ALL.iter() {
-                if !c.storable() {
-                    continue;
+    /// **What a site is trying to hold**, before anything has moved.
+    ///
+    /// A pure read, deliberately: the whole point of the pass below is
+    /// that everybody's claim is worked out from the morning's position
+    /// rather than from whatever is left after the sites earlier in the
+    /// list have helped themselves.
+    fn wants(&self, dst: usize, c: Commodity, days: f64, lead: &[f64]) -> f64 {
+        let site = &self.ledger.sites[dst];
+        let market = site.market;
+        let want = match site.kind {
+            SiteKind::Shop => {
+                let daily = self.markets[market].daily_household_demand(c);
+                if daily <= 0.0 {
+                    return 0.0;
                 }
-
-                // How much this site wants: a shop stocks to cover, a
-                // works keeps a few days of its own inputs.
-                let want = match kind {
-                    SiteKind::Shop => {
-                        let daily = self.markets[market].daily_household_demand(c);
-                        if daily <= 0.0 {
-                            continue;
-                        }
-                        daily * c.target_cover_days() * (days / 3.0)
-                    }
-                    _ => {
-                        let Some(r) = self.ledger.sites[dst].recipe else {
-                            continue;
-                        };
-                        let per = RECIPES[r]
-                            .inputs
-                            .iter()
-                            .find(|&&(ic, _)| ic == c)
-                            .map(|&(_, q)| q);
-                        let Some(per) = per else { continue };
-                        // **A power station's `throughput` is a sentinel**
-                        // meaning "whatever the grid can carry" (1e9), and
-                        // reading it as a rate here asked for 0.38 x 1e9 x
-                        // 3 — a billion tonnes of coal. The station then
-                        // took every tonne the pit raised and the
-                        // steelworks in the same town, on the same
-                        // coalfield, stood with nothing to smelt.
-                        //
-                        // This is the second time the sentinel has bitten:
-                        // read as a rate it once staffed one station with
-                        // 4.1M people. It only surfaced now because until
-                        // there was a steel industry nothing else in the
-                        // country wanted coal.
-                        let rate = if self.ledger.sites[dst].kind == SiteKind::PowerPlant {
-                            self.grid.capacity().min(self.power_demand())
-                        } else {
-                            self.ledger.sites[dst].throughput
-                        };
-                        per * rate * days
-                    }
+                // **Safety stock rises with lead time**, which is the
+                // oldest rule in inventory control and the one this model
+                // was missing. A shop next door to the cannery can be
+                // restocked this afternoon; one six hundred kilometres
+                // away cannot, so it is the far shop that needs the
+                // buffer — and without saying so, allocation by netback
+                // did the exact opposite. The town holding the works had
+                // the best netback by precisely the carriage, banked the
+                // whole country's inventory, and left three outlying towns
+                // on four days each that ran to a fifth of a day at the
+                // pre-harvest trough.
+                daily * (c.target_cover_days() + lead[market]) * (days / 3.0)
+            }
+            _ => {
+                let Some(r) = site.recipe else { return 0.0 };
+                let Some(per) = RECIPES[r]
+                    .inputs
+                    .iter()
+                    .find(|&&(ic, _)| ic == c)
+                    .map(|&(_, q)| q)
+                else {
+                    return 0.0;
                 };
+                // **A power station's `throughput` is a sentinel** meaning
+                // "whatever the grid can carry" (1e9), and reading it as a
+                // rate here asked for 0.38 x 1e9 x 3 — a billion tonnes of
+                // coal. The station then took every tonne the pit raised
+                // and the steelworks in the same town, on the same
+                // coalfield, stood with nothing to smelt.
+                let rate = if site.kind == SiteKind::PowerPlant {
+                    self.grid.capacity().min(self.power_demand())
+                } else {
+                    site.throughput
+                };
+                per * rate * (days + lead[market])
+            }
+        };
+        let short = want - self.ledger.stock(dst, c);
+        if short <= 1e-9 {
+            return 0.0;
+        }
+        let room = (site.capacity[c as usize] - self.ledger.stock(dst, c)).max(0.0);
+        short.min(room)
+    }
 
-                let mut short = want - self.ledger.stock(dst, c);
-                if short <= 1e-9 {
-                    continue;
-                }
-                let room = (self.ledger.sites[dst].capacity[c as usize]
-                    - self.ledger.stock(dst, c))
-                .max(0.0);
-                short = short.min(room);
-
-                // Draw from producers of this commodity: this market
-                // first, then anywhere an open route reaches. A town with
-                // no works of its own is supplied down the road, which is
-                // the ordinary case and is why cutting the road starves it.
-                // Local suppliers first, then anywhere the network reaches.
-                // Without the local pass, sites are drawn on in whatever
-                // order they happen to sit in the list, so every mill in
-                // the country empties the capital's granary before touching
-                // the one next door — and the capital reads as famine-struck
-                // while the provinces sit on full silos.
-                let order: Vec<usize> = (0..self.ledger.sites.len())
-                    .filter(|&s| self.ledger.sites[s].market == market)
-                    .chain(
-                        (0..self.ledger.sites.len())
-                            .filter(|&s| self.ledger.sites[s].market != market),
-                    )
-                    .collect();
-
-                for src in order {
-                    if short <= 1e-9 {
-                        break;
-                    }
-                    if src == dst || !reach[market].contains(&self.ledger.sites[src].market) {
-                        continue;
-                    }
-                    let Some(r) = self.ledger.sites[src].recipe else {
-                        continue;
-                    };
-                    if !RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c) {
-                        continue;
-                    }
-                    let qty = self.ledger.stock(src, c).min(short);
-                    if qty <= 1e-9 {
-                        continue;
-                    }
-                    let from_m = self.ledger.sites[src].market;
-                    let to_m = self.ledger.sites[dst].market;
-                    let paid = self.markets[from_m].landed[c as usize] * qty;
-                    let freight = self.freight_between(from_m, to_m) * qty;
-                    self.ledger.apply(
-                        &mut self.journal,
-                        Event::Shipped {
-                            from: src,
-                            to: dst,
-                            commodity: c,
-                            qty,
-                            paid,
-                            freight,
-                        },
-                    );
-                    self.take_delivery(to_m, c, qty, paid + freight);
-                    self.pay_the_carrier(dst, freight);
-                    // **And the buyer pays the seller.**
-                    //
-                    // Only shops took money from households, so every works
-                    // upstream of a counter — farm, mill, mine, steelworks
-                    // — had no income whatever. They drained their opening
-                    // capital, could not make payroll and shed their staff,
-                    // which is a supply chain with no revenue in it rather
-                    // than a recession.
-                    let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
-                    self.treasury.pay(
-                        day,
-                        crate::money::Account::Firm(dst),
-                        crate::money::Account::Firm(src),
-                        due,
-                        crate::money::Why::Supply,
-                    );
-                    short -= qty;
+    /// **How long a market waits for a delivery of `c`**, in days.
+    ///
+    /// An order has to be placed and made up before anything moves, which
+    /// is a day wherever you are; after that it is how long the lorry
+    /// takes. A town with its own works waits a day; one across a range
+    /// waits three.
+    fn lead_times(&self, c: Commodity, reach: &[Vec<usize>]) -> Vec<f64> {
+        let makers: Vec<usize> = (0..self.markets.len())
+            .filter(|&m| {
+                self.ledger.sites.iter().any(|s| {
+                    s.market == m
+                        && s.recipe
+                            .map(|r| RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c))
+                            .unwrap_or(false)
+                })
+            })
+            .collect();
+        // One pass out from each place that makes the stuff, rather than
+        // one per pair.
+        let mut nearest = vec![f64::INFINITY; self.markets.len()];
+        for &mk in makers.iter() {
+            let km = self.road_km_from(mk);
+            for m in 0..self.markets.len() {
+                if reach[m].contains(&mk) && km[m] < nearest[m] {
+                    nearest[m] = km[m];
                 }
             }
+        }
+        nearest
+            .into_iter()
+            .map(|km| {
+                let travel = if km.is_finite() {
+                    crate::shipment::days_on_the_road(km) as f64
+                } else {
+                    0.0
+                };
+                1.0 + travel
+            })
+            .collect()
+    }
+
+    /// **How many days of cover this market is actually aiming at.**
+    ///
+    /// The commodity's base target plus however long it waits for a
+    /// delivery. Public because it is the figure the works stock to *and*
+    /// the figure the price model calls normal, and anything comparing an
+    /// observed cover against "the target" has to use the same one — a
+    /// discrepancy between those two priced an ordinary shopkeeper's
+    /// prudence as a glut.
+    pub fn target_cover(&self, market: usize, c: Commodity) -> f64 {
+        let reach = self.market_components();
+        c.target_cover_days() + self.lead_times(c, &reach)[market]
+    }
+
+    fn distribute_to_cover(&mut self, days: f64, auction: bool) {
+        let reach = self.market_components();
+        for &c in Commodity::ALL.iter() {
+            if !c.storable() {
+                continue;
+            }
+            // **Everybody's claim is read off the same morning**, before
+            // anything has moved.
+            let lead = self.lead_times(c, &reach);
+            let need: Vec<f64> = (0..self.ledger.sites.len())
+                .map(|dst| self.wants(dst, c, days, &lead))
+                .collect();
+            if need.iter().sum::<f64>() <= 1e-9 {
+                continue;
+            }
+            self.share_out(c, &need, &reach, auction);
+        }
+    }
+
+    /// **Share out what there is, in proportion to what each is short.**
+    ///
+    /// The rule this replaces was `stock(src).min(short)` inside a loop
+    /// over consumers in site-index order, so **the first consumer to
+    /// reach a supplier emptied it** and whether a town ate depended on
+    /// where its shop happened to sit in a vector. It was invisible for a
+    /// long time because it only bites when supply is tight, and because a
+    /// real country is asymmetric enough that a spread in cover between
+    /// two towns looks like economics.
+    ///
+    /// `slice::symmetric` is what made it undeniable: three towns
+    /// identical in every respect, no reason whatever for one to differ
+    /// from another, and food cover came out at **57, 33 and 8 days**.
+    /// Reversing the site vector — which changes nothing about the
+    /// economics, since every site carries its own market — moved the
+    /// answer to 42, 49 and 38. An answer that depends on the order of a
+    /// `Vec` was never an answer about the economy.
+    ///
+    /// So nobody takes anything until everybody's entitlement is known,
+    /// and each claimant gets the same *fraction* of what it asked for.
+    /// That is what an allocator does under rationing and it is
+    /// order-independent by construction, because a sum does not care what
+    /// order it was added in.
+    ///
+    /// **Being next door is a cost advantage, not a right of first
+    /// refusal**, and getting that wrong was the second bug. Serving every
+    /// local pair before considering anybody's imports sounds like the
+    /// rule this file already records — prefer local suppliers — and is a
+    /// different and worse one: with two mills in three shut, the
+    /// surviving mill's own town took every sack and the other two came
+    /// out at **nothing at all**. A miller with three buyers and one batch
+    /// does not give it all to the nearest; the other two bid.
+    ///
+    /// **And blind pro-rata was the third.** Sharing every shortage out
+    /// equally is not what a seller does and it smooths away the thing the
+    /// model exists to show: with the two towns of `slice` rationed in
+    /// lockstep, a blackout that stopped the cannery no longer opened a
+    /// price gap between them, so no haul was ever worth making and
+    /// freight had no reason to exist. A shortage that falls on everybody
+    /// identically is not a shortage anybody trades on.
+    ///
+    /// What a seller short of goods actually does is sell to whoever pays
+    /// most **net of getting it there** — the netback — which is the same
+    /// merit order `power.rs` already dispatches generation on. So buyers
+    /// are served in netback order, and **pro-rata applies within a band
+    /// of buyers offering the same**, which is where it belongs: it
+    /// settles a tie rather than replacing the market. In a world where
+    /// three towns are identical every netback is equal, the whole
+    /// component is one band, and the answer is the even one. In a world
+    /// where one town is short its price rises, its netback rises, and it
+    /// is served first — which is exactly how a shortage is supposed to
+    /// pull goods toward itself.
+    fn share_out(
+        &mut self,
+        c: Commodity,
+        need: &[f64],
+        reach: &[Vec<usize>],
+        auction: bool,
+    ) {
+        let day = self.ledger.day;
+        /// **What a firm pays for an input, against what the next one down
+        /// the chain sells it for.** Buying and selling at the same price
+        /// gives every business in the country a gross margin of exactly
+        /// nothing, so no shop could pay a cashier and no mill a miller.
+        /// Real gross margins are 25-30% retail, 10-15% wholesale and
+        /// 20-35% manufacturing.
+        const WHOLESALE: f64 = 0.75;
+        let n = self.ledger.sites.len();
+
+        // Who has any of this to give away.
+        let suppliers: Vec<usize> = (0..n)
+            .filter(|&s| {
+                let Some(r) = self.ledger.sites[s].recipe else {
+                    return false;
+                };
+                RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c)
+                    && self.ledger.stock(s, c) > 1e-9
+            })
+            .collect();
+        if suppliers.is_empty() {
+            return;
+        }
+
+        // **The entitlement, worked out before anything moves**, one
+        // fraction per connected component of the road network. A town the
+        // roads never reached is a component of its own and is entitled to
+        // nothing from anywhere else — the honest answer, and why cutting
+        // a road starves a place.
+        let mut entitlement = vec![0.0f64; n];
+        // What each buyer has actually received, which is not the same as
+        // what it was entitled to.
+        let mut taken = vec![0.0f64; n];
+        let mut done = vec![false; self.markets.len()];
+        for m in 0..self.markets.len() {
+            if done[m] {
+                continue;
+            }
+            let component = &reach[m];
+            for &mm in component.iter() {
+                done[mm] = true;
+            }
+            let inside = |site: usize, ledger: &Ledger| {
+                component.contains(&ledger.sites[site].market)
+            };
+            let have: f64 = suppliers
+                .iter()
+                .filter(|&&s| inside(s, &self.ledger))
+                .map(|&s| self.ledger.stock(s, c))
+                .sum();
+            let asked: f64 = (0..n)
+                .filter(|&d| inside(d, &self.ledger))
+                .map(|d| need[d])
+                .sum();
+            if asked <= 1e-9 || have <= 1e-9 {
+                continue;
+            }
+            if have >= asked {
+                // Enough for everybody: nobody has to outbid anybody.
+                for d in 0..n {
+                    if inside(d, &self.ledger) {
+                        entitlement[d] = need[d];
+                    }
+                }
+                continue;
+            }
+
+            if !auction {
+                // **Running needs are shared, not sold to the highest
+                // bidder.** Everybody gets the same fraction of what they
+                // need to keep going today.
+                let share = (have / asked).min(1.0);
+                for d in 0..n {
+                    if inside(d, &self.ledger) {
+                        entitlement[d] = need[d] * share;
+                    }
+                }
+                continue;
+            }
+
+            // **Merit order.** What a buyer is offering the seller is its
+            // own market's price less the cost of getting the goods there,
+            // and the cheapest way of getting them there is the one that
+            // would actually be used.
+            let cheapest_reach = |dst: usize, ec: &Economy| -> f64 {
+                let m = ec.ledger.sites[dst].market;
+                suppliers
+                    .iter()
+                    .filter(|&&src| src != dst && component.contains(&ec.ledger.sites[src].market))
+                    .map(|&src| ec.freight_between(ec.ledger.sites[src].market, m))
+                    .fold(f64::INFINITY, f64::min)
+            };
+            let mut bidders: Vec<(usize, f64)> = (0..n)
+                .filter(|&d| inside(d, &self.ledger) && need[d] > 1e-9)
+                .map(|d| {
+                    let m = self.ledger.sites[d].market;
+                    let carriage = cheapest_reach(d, self);
+                    let carriage = if carriage.is_finite() { carriage } else { 0.0 };
+                    // **What a buyer will pay is not the posted price when
+                    // it is running out.**
+                    //
+                    // Without this the town with the works has the best
+                    // netback by exactly the carriage and banks the whole
+                    // country's inventory, while the outlying towns hold
+                    // nothing at all — which is backwards. Safety stock
+                    // rises with lead time: the shop that is far from the
+                    // cannery is the one that needs a buffer, because its
+                    // resupply is slow and uncertain. Measured, that error
+                    // left three towns of one nation on exactly four days
+                    // while the city holding the cannery sat on
+                    // twenty-two, and at the pre-harvest trough they went
+                    // down to a fifth of a day.
+                    //
+                    // A posted price cannot express it, because this model
+                    // deliberately prices a stored staple off a *slow*
+                    // average of cover — so the scarcity a buyer is
+                    // actually feeling has not reached its price yet. A
+                    // reservation price is a different number from a
+                    // market price, and it is the one procurement runs on.
+                    let target = c.target_cover_days();
+                    let held: f64 = (0..n)
+                        .filter(|&s| self.ledger.sites[s].market == m)
+                        .map(|s| self.ledger.stock(s, c))
+                        .sum();
+                    let draw = self.daily_draw(m, c);
+                    let cover = if draw > 1e-9 { held / draw } else { target };
+                    let urgency = if cover > 1e-9 {
+                        (target / cover).clamp(1.0, 4.0)
+                    } else {
+                        4.0
+                    };
+                    (d, self.markets[m].price[c as usize] * urgency - carriage)
+                })
+                .collect();
+            // Best netback first; index only ever breaks an exact tie, and
+            // an exact tie is resolved by sharing rather than by the index.
+            bidders.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+
+            // **A band is buyers offering the same thing.** Without a
+            // tolerance, float noise a millionth of a penny wide would
+            // split three identical towns into three bands and hand the
+            // whole shortage to whichever of them rounded up.
+            let scale = self.markets[0].price[c as usize].abs().max(1.0);
+            let tol = scale * 1e-6;
+            let mut left = have;
+            let mut i = 0;
+            while i < bidders.len() && left > 1e-9 {
+                let top = bidders[i].1;
+                let mut j = i;
+                while j < bidders.len() && (top - bidders[j].1) <= tol {
+                    j += 1;
+                }
+                let band_need: f64 = bidders[i..j].iter().map(|&(d, _)| need[d]).sum();
+                if band_need <= 1e-9 {
+                    i = j;
+                    continue;
+                }
+                let give = left.min(band_need);
+                let share = give / band_need;
+                for &(d, _) in &bidders[i..j] {
+                    entitlement[d] = need[d] * share;
+                }
+                left -= give;
+                i = j;
+            }
+        }
+
+        // Now fill them, then offer round whatever nobody took.
+        //
+        // **An entitlement is a right to buy, not a delivery.** A buyer
+        // can be allocated its share and be unable to take it — no room in
+        // the shed, or the only suppliers within reach of it are empty —
+        // and supply nobody claimed must not simply sit there. Capping and
+        // stopping cost one marginal nation 0.19% of its food production,
+        // which does not sound like much and was the difference between a
+        // country that fed itself and one that did not.
+        //
+        // So the fair share comes first and a mop-up comes second. Nobody
+        // can be starved by the mop-up, because everybody has already had
+        // their claim honoured before it runs.
+        for pass in 0..2 {
+            if pass == 1 {
+                for d in 0..n {
+                    // What is left to want, now that the fair share has
+                    // been handed out.
+                    entitlement[d] = (need[d] - taken[d]).max(0.0);
+                }
+            }
+            // **Who gets offered the leftovers is decided by need, not by
+            // position.**
+            //
+            // The fair-share pass can be walked in any order, because
+            // nobody can exceed their entitlement and the entitlements sum
+            // to no more than there is. The mop-up cannot: it is
+            // deliberately uncapped, so whoever is visited first takes what
+            // it can — and visiting in site-index order there would put
+            // back exactly the bug this whole function exists to remove,
+            // in the one place a symmetric fixture is least likely to
+            // reach it. Worst-served first, and the index only ever breaks
+            // a tie between two claimants who are equally short.
+            let mut order: Vec<usize> = (0..n).filter(|&d| entitlement[d] > 1e-9).collect();
+            if pass == 1 {
+                order.sort_by(|&a, &b| {
+                    let sa = if need[a] > 1e-9 { taken[a] / need[a] } else { 1.0 };
+                    let sb = if need[b] > 1e-9 { taken[b] / need[b] } else { 1.0 };
+                    sa.total_cmp(&sb).then(a.cmp(&b))
+                });
+            }
+        for dst in order {
+            let mut owed = entitlement[dst];
+            if owed <= 1e-9 {
+                continue;
+            }
+            let market = self.ledger.sites[dst].market;
+            // **Cheapest carriage first**, which is where locality lives:
+            // a supplier in the same town is free to reach, so a town with
+            // its own works is served by them before anything is fetched
+            // in. That is a preference and not a priority — it decides who
+            // supplies whom, never who goes without.
+            let mut order: Vec<usize> = suppliers
+                .iter()
+                .copied()
+                .filter(|&src| {
+                    src != dst && reach[market].contains(&self.ledger.sites[src].market)
+                })
+                .collect();
+            order.sort_by(|&a, &b| {
+                let fa = self.freight_between(self.ledger.sites[a].market, market);
+                let fb = self.freight_between(self.ledger.sites[b].market, market);
+                fa.total_cmp(&fb).then(a.cmp(&b))
+            });
+
+            for src in order {
+                if owed <= 1e-9 {
+                    break;
+                }
+                let qty = self.ledger.stock(src, c).min(owed);
+                if qty <= 1e-9 {
+                    continue;
+                }
+                let from_m = self.ledger.sites[src].market;
+                let paid = self.markets[from_m].landed[c as usize] * qty;
+                let freight = self.freight_between(from_m, market) * qty;
+                self.ledger.apply(
+                    &mut self.journal,
+                    Event::Shipped {
+                        from: src,
+                        to: dst,
+                        commodity: c,
+                        qty,
+                        paid,
+                        freight,
+                    },
+                );
+                self.take_delivery(market, c, qty, paid + freight);
+                self.pay_the_carrier(dst, freight);
+                // **And the buyer pays the seller.** Only shops took money
+                // from households, so every works upstream of a counter —
+                // farm, mill, mine, steelworks — had no income whatever.
+                let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
+                self.treasury.pay(
+                    day,
+                    crate::money::Account::Firm(dst),
+                    crate::money::Account::Firm(src),
+                    due,
+                    crate::money::Why::Supply,
+                );
+                owed -= qty;
+                taken[dst] += qty;
+            }
+        }
         }
     }
 
@@ -4334,6 +4673,51 @@ impl Economy {
     /// landed at twenty times its value and inflated the cost of cement
     /// fourfold in every nation that imports fuel. Two towns joined through
     /// a third are joined.
+    /// **How far by road**, along the route somebody would actually take.
+    ///
+    /// The same Dijkstra as `freight_between` over a different edge
+    /// weight, and it answers a different question: a haulier is paid per
+    /// tonne and a shopkeeper waits in days.
+    pub fn road_km_between(&self, from: usize, to: usize) -> f64 {
+        self.road_km_from(from)[to]
+    }
+
+    /// The same, to everywhere at once — which is what a caller wanting
+    /// distances to several places should ask for. One pass instead of one
+    /// per destination.
+    pub fn road_km_from(&self, from: usize) -> Vec<f64> {
+        let n = self.markets.len();
+        let mut best = vec![f64::INFINITY; n];
+        let mut done = vec![false; n];
+        best[from] = 0.0;
+        loop {
+            let mut here = None;
+            let mut lowest = f64::INFINITY;
+            for m in 0..n {
+                if !done[m] && best[m] < lowest {
+                    lowest = best[m];
+                    here = Some(m);
+                }
+            }
+            let Some(here) = here else { break };
+            done[here] = true;
+            for r in self.routes.iter().filter(|r| r.open) {
+                let next = if r.a == here {
+                    r.b
+                } else if r.b == here {
+                    r.a
+                } else {
+                    continue;
+                };
+                let through = best[here] + r.km;
+                if through < best[next] {
+                    best[next] = through;
+                }
+            }
+        }
+        best
+    }
+
     pub fn freight_between(&self, from: usize, to: usize) -> f64 {
         if from == to {
             return 0.0;
@@ -4693,8 +5077,14 @@ impl Economy {
         // has already used.
         self.settle_arrivals();
         let order = Self::costing_order();
+        let reach = self.market_components();
+        // How long each market waits for each commodity — the same figure
+        // the works aim their stockrooms at, so prudence does not read as
+        // a glut.
+        let leads: Vec<Vec<f64>> = order.iter().map(|&c| self.lead_times(c, &reach)).collect();
         for m in 0..self.markets.len() {
-            for &c in order.iter() {
+            for (ci, &c) in order.iter().enumerate() {
+                let lead = &leads[ci];
                 let industrial: f64 = (0..self.ledger.sites.len())
                     .filter(|&s| self.ledger.sites[s].market == m)
                     .filter_map(|s| {
@@ -4833,7 +5223,17 @@ impl Economy {
                     self.markets[m].cover[c as usize] = f64::INFINITY;
                     continue;
                 }
-                let target = c.target_cover_days().max(0.5);
+                // **What counts as well stocked depends on how far away
+                // the supplier is.**
+                //
+                // A shop six hundred kilometres from the cannery aims to
+                // hold more than one across the road, because that is what
+                // safety stock is for — and if the price model does not
+                // aim at the same figure the works do, an ordinary
+                // shopkeeper's prudence reads as a glut. Measured, that
+                // discrepancy priced food at 630 against a cost of 900 in
+                // a country doing nothing unusual whatever.
+                let target = (c.target_cover_days() + lead[m]).max(0.5);
                 let gap = (target - cover) / target;
                 // The floor is well above zero: a glut is a bad price, not
                 // a free good. Producers stop selling long before that, and
