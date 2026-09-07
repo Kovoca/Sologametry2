@@ -57,11 +57,20 @@ fn undisturbed_economy_settles_at_cost() {
     run(&mut econ, 60);
 
     for m in [slice::ASHFORD, slice::BEXLEY] {
+        // **At what it costs to obtain here, which is not the same in both
+        // towns.**
+        //
+        // This compared against the bare reference cost, which says food
+        // costs the same in the town that cans it and in one a hundred and
+        // seventy-three kilometres away. It does not: the second pays the
+        // carter. What settles at cost is the *marginal delivered* cost —
+        // production where it is made, plus what it takes to get it here.
         let price = econ.price(m, FOOD);
-        let base = FOOD.base_cost();
+        let (goods, carriage) = econ.marginal_source(m, FOOD);
+        let obtaining = goods + carriage;
         assert!(
-            (price - base).abs() / base < 0.05,
-            "{}: settled at {price:.0}, expected about {base:.0}",
+            (price - obtaining).abs() / obtaining < 0.05,
+            "{}: settled at {price:.0}, expected about {obtaining:.0}              ({goods:.0} to make, {carriage:.0} to carry)",
             econ.markets[m].name
         );
         // **Against the target this market is actually aiming at**, which

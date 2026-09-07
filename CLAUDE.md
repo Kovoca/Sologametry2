@@ -2915,6 +2915,49 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
+
+Four behaviours were introduced together and starved a country. Reverting
+was right; reintroducing them one at a time **by intuition** would not be,
+because the one that did the damage need not be the one that looks
+guiltiest and a pair can do something neither does alone.
+
+So they went behind switches — off by default, and off is exactly what the
+model does today — and the whole matrix was run on one nation for 400 days.
+
+| case | lo cover | food price | food cost | wage/yr | hse/inc | food made | hungry |
+|---|---|---|---|---|---|---|---|
+| `....` baseline | 17.44 | 875.4 | 875.4 | 1113 | 9.74 | 35.8M | 0 |
+| `L...` | 8.60 | 622.5 | 889.4 | 814 | 13.32 | 35.7M | 0 |
+| `.M..` | 17.44 | 875.5 | 875.5 | 1113 | 9.68 | 35.8M | 0 |
+| **`LM..`** | **17.44** | **892.9** | **892.9** | 1123 | 9.59 | 35.8M | 0 |
+| `..S.` | 17.44 | 862.1 | 862.1 | 1108 | 9.76 | 35.8M | 0 |
+| `...T` | **0.41** | **4146** | 889.4 | **5100** | **2.13** | **16.9M** | **370** |
+
+**Every guess was wrong.**
+
+- **T is the whole catastrophe, on its own.** Market-wide trade quantity
+  takes cover from 17.44 to 0.41, food to nearly five times its cost, wages
+  up 4.8x, production halved and the country hungry on 370 days in 400 —
+  and it was introduced as a *fix*, for a no-arbitrage gate.
+- **M is benign alone.** 875.4 to 875.5. The marginal-source decomposition
+  was the centrepiece of the review and of my own suspicion, and by itself
+  it does nothing at all.
+- **L needs M, and they are one change rather than two.** Carrier landed
+  cost alone puts food at 622 against a cost of 889 — a glut, because the
+  landed figure rises and the price model cannot use it. Add M and it lands
+  at 892.9 against a cost of 892.9, cover level, production untouched.
+- **And two interactions no amount of reasoning would have produced:**
+  L+S is worse than either alone (4.87 against 8.60), and M+T is worse than
+  either alone (0.28 against 0.41).
+
+**What the matrix does not settle**, and this is why the switches stay off:
+`LM` is right on the nation it was measured on and breaks
+`a_works_that_is_not_running_does_not_set_the_price` on another — a cheap
+mill that ought to pull the market's flour cost down does not, and the
+mechanism is not yet understood. The last time something was pushed past
+that point it starved a country.
+
 ## Nine numbers that had been two (`src/value.rs`)
 
 Every figure in the economy is money per tonne, so every one of them is an

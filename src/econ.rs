@@ -2584,6 +2584,85 @@ impl Response {
 // The running economy
 // ---------------------------------------------------------------------------
 
+/// **Four behaviours that were introduced together and starved a
+/// country.**
+///
+/// Food cover went from 17 days to 0.28, which drove the scarcity premium
+/// to its ceiling, which put food at five times its cost, which took wages
+/// with it, which halved the house-price-to-income ratio. Reverting was
+/// right. Reintroducing them one at a time *by intuition* would not be:
+/// four changes have six pairwise interactions, and the one that did the
+/// damage may not be the one that looks guiltiest.
+///
+/// So they go behind switches and the whole matrix is run. **Every flag is
+/// off by default and off is exactly what the model does today**, which is
+/// what makes the sixteenth case the current behaviour and the comparison
+/// meaningful.
+///
+/// These are scaffolding. They come out once the model is understood — a
+/// permanent flag is a permanent second model nobody tests.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Experiments {
+    /// A carrier's delivery folds goods + carriage into the receiving
+    /// market's landed average. This is the behaviour Phase 0 item 8
+    /// exists to restore.
+    pub carrier_landed_cost: bool,
+    /// Price is the marginal delivered cost plus a scarcity premium
+    /// charged on the goods alone, with the source chosen in merit order —
+    /// rather than the local production cost times the multiplier.
+    pub marginal_source_pricing: bool,
+    /// A buyer draws on whichever supplier is cheapest *delivered* rather
+    /// than on whichever is nearest, with ties broken by position.
+    pub cheapest_delivered_supplier: bool,
+    /// A trader sells the market's surplus, capped at the quantity that
+    /// closes the margin — rather than only what each warehouse holds
+    /// above the whole market's working cover.
+    pub market_wide_trade: bool,
+}
+
+impl Default for Experiments {
+    /// **Everything off, which is exactly what the model does today.**
+    ///
+    /// That is what makes the sixteenth case of the matrix the current
+    /// behaviour and the comparison meaningful. Turning any of them on is
+    /// a deliberate act with a measurement attached — see
+    /// `cargo run --release --bin matrix`.
+    fn default() -> Self {
+        Experiments {
+            carrier_landed_cost: false,
+            marginal_source_pricing: false,
+            cheapest_delivered_supplier: false,
+            market_wide_trade: false,
+        }
+    }
+}
+
+impl Experiments {
+    /// The sixteen combinations, in a fixed order so two runs of the
+    /// matrix are comparable.
+    pub fn matrix() -> Vec<Experiments> {
+        (0..16u8)
+            .map(|bits| Experiments {
+                carrier_landed_cost: bits & 1 != 0,
+                marginal_source_pricing: bits & 2 != 0,
+                cheapest_delivered_supplier: bits & 4 != 0,
+                market_wide_trade: bits & 8 != 0,
+            })
+            .collect()
+    }
+
+    pub fn label(self) -> String {
+        let f = |on: bool, c: char| if on { c } else { '.' };
+        format!(
+            "{}{}{}{}",
+            f(self.carrier_landed_cost, 'L'),
+            f(self.marginal_source_pricing, 'M'),
+            f(self.cheapest_delivered_supplier, 'S'),
+            f(self.market_wide_trade, 'T')
+        )
+    }
+}
+
 pub struct Economy {
     pub ledger: Ledger,
     pub journal: Journal,
@@ -2653,6 +2732,8 @@ pub struct Economy {
     /// whether a haul is worth making. Two mechanisms quoting the same
     /// haul differently is how a price gap that nothing can close comes to
     /// exist.
+    /// **Scaffolding**, off by default. See `Experiments`.
+    pub experiments: Experiments,
     pub routing: crate::quote::Routing,
     /// **What the roads have already been promised to carry.**
     ///
@@ -3943,10 +4024,24 @@ impl Economy {
                     src != dst && reach[market].contains(&self.ledger.sites[src].market)
                 })
                 .collect();
+            // **Experiment S.** Ranking on carriage alone leaves every
+            // supplier in the same town tied, and the tie is broken by
+            // position in a vector — so a mill three times the size of its
+            // neighbour and a fiftieth of the cost can sit with a full
+            // store while the works that happens to be earlier in the list
+            // satisfies the town. A cannery buys from the cheaper mill.
+            let cheapest = self.experiments.cheapest_delivered_supplier;
             order.sort_by(|&a, &b| {
-                let fa = self.freight_between(self.ledger.sites[a].market, market);
-                let fb = self.freight_between(self.ledger.sites[b].market, market);
-                fa.total_cmp(&fb).then(a.cmp(&b))
+                let delivered = |src: usize| -> f64 {
+                    let sm = self.ledger.sites[src].market;
+                    let carriage = self.freight_between(sm, market);
+                    if cheapest {
+                        self.site_cost(src, c).unwrap_or(c.base_cost()) + carriage
+                    } else {
+                        carriage
+                    }
+                };
+                delivered(a).total_cmp(&delivered(b)).then(a.cmp(&b))
             });
 
             for src in order {
@@ -4543,12 +4638,52 @@ impl Economy {
                 // this the two towns simply slosh stock back and forth.
                 // Measured against the market's own total draw, household
                 // and industrial, since for grain the mills are the buyers.
+                // **Experiment T.** The market's reserve applied per
+                // warehouse means a country whose grain sits in six farms
+                // has no farm individually clearing the bar, so almost
+                // nothing moves. `Economy::surplus` is the right pool —
+                // capped at the quantity that closes the margin, since the
+                // whole surplus in a day floods the buyer into a glut.
+                //
+                // ```text
+                // q* = (m_B - m_A) / (1/(draw_A x target_A x |e|)
+                //                   + 1/(draw_B x target_B x |e|))
+                // ```
                 let keep = self.daily_draw(from_m, c) * c.target_cover_days();
+                let mut sellable = if self.experiments.market_wide_trade {
+                    let elast = c.elasticity().abs().max(0.05);
+                    let prem = |mm: usize, e: &Economy| {
+                        let t = e.target_cover(mm, c).max(0.5);
+                        ((t - e.markets[mm].expected_cover[c as usize]) / t / elast)
+                            .clamp(-0.3, 7.0)
+                    };
+                    let slope = |mm: usize, e: &Economy| {
+                        let t = e.target_cover(mm, c).max(0.5);
+                        let d = e.daily_draw(mm, c);
+                        if d > 1e-9 { 1.0 / (d * t * elast) } else { 0.0 }
+                    };
+                    let d = slope(from_m, self) + slope(to_m, self);
+                    let closes = if d > 1e-12 {
+                        ((prem(to_m, self) - prem(from_m, self)) / d).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    self.surplus(from_m, c).min(closes)
+                } else {
+                    f64::INFINITY
+                };
+                if sellable <= 1e-9 {
+                    continue;
+                }
                 for src in source {
-                    if budget <= 1e-9 {
+                    if budget <= 1e-9 || sellable <= 1e-9 {
                         break;
                     }
-                    let spare = (self.ledger.stock(src, c) - keep).max(0.0);
+                    let spare = if self.experiments.market_wide_trade {
+                        self.ledger.stock(src, c).min(sellable)
+                    } else {
+                        (self.ledger.stock(src, c) - keep).max(0.0)
+                    };
                     let room = (self.ledger.sites[dst].capacity[c as usize]
                         - self.ledger.stock(dst, c))
                     .max(0.0);
@@ -4561,6 +4696,7 @@ impl Economy {
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
                     let freight = carriage * qty;
+                    sellable -= qty;
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -4819,6 +4955,85 @@ impl Economy {
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
 
+    /// **What a tonne of `c` costs at this particular works.**
+    ///
+    /// One definition, because three things need it and they must agree:
+    /// the market's weighted cost of production, a buyer choosing which
+    /// supplier to draw on, and anything comparing two works.
+    pub fn site_cost(&self, s: usize, c: Commodity) -> Option<f64> {
+        let site = &self.ledger.sites[s];
+        if site.throughput <= 0.0 {
+            return None;
+        }
+        let r = site.recipe?;
+        let recipe = &RECIPES[r];
+        if !recipe.outputs.iter().any(|&(oc, q)| oc == c && q > 0.0) {
+            return None;
+        }
+        let m = site.market;
+        let power = recipe.power;
+        let labour = recipe.labour * WAGE_AN_HOUR;
+        let reference: f64 = recipe
+            .inputs
+            .iter()
+            .map(|&(ic, q)| q * ic.base_cost())
+            .sum::<f64>()
+            + power * Commodity::Electricity.base_cost()
+            + labour;
+        let actual: f64 = recipe
+            .inputs
+            .iter()
+            .map(|&(ic, q)| q * self.markets[m].landed[ic as usize])
+            .sum::<f64>()
+            + power * self.markets[m].landed[Commodity::Electricity as usize]
+            + labour;
+        let moved = if reference > 1e-9 { actual / reference } else { 1.0 };
+        Some(c.base_cost() * moved * site.cost_factor)
+    }
+
+    /// **What the next tonne would cost here, and where it would come
+    /// from** — `(goods at the source, carriage to here)`.
+    ///
+    /// Merit order: cheapest delivered first, dispatched until the
+    /// market's call is covered, and **the one that closes it sets the
+    /// price**. Taking the cheapest outright was the first attempt and is
+    /// the mistake `power.rs` already records for generation — a low-cost
+    /// works has a capacity, and pricing a country off its best seam
+    /// collapsed cement, steel and timber together.
+    pub fn marginal_source(&self, m: usize, c: Commodity) -> (f64, f64) {
+        let mut offers: Vec<(f64, f64, f64, f64)> = Vec::new();
+        for s in 0..self.ledger.sites.len() {
+            let Some(goods) = self.site_cost(s, c) else { continue };
+            let p = self.ledger.sites[s].market;
+            let carriage = if p == m {
+                0.0
+            } else {
+                match self.quote(p, m, c) {
+                    Some(q) => q.carriage(),
+                    None => continue,
+                }
+            };
+            let rate = demand_rate_of(&self.ledger.sites[s]);
+            if rate > 1e-9 {
+                offers.push((goods + carriage, goods, carriage, rate));
+            }
+        }
+        if offers.is_empty() {
+            return (c.base_cost(), 0.0);
+        }
+        offers.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let call = self.daily_draw(m, c).max(0.0);
+        let mut got = 0.0;
+        for &(_, goods, carriage, rate) in offers.iter() {
+            got += rate;
+            if got >= call {
+                return (goods, carriage);
+            }
+        }
+        let last = offers[offers.len() - 1];
+        (last.1, last.2)
+    }
+
     /// **How much of the road is actually left**, over the days a haul
     /// would be using it.
     ///
@@ -5040,6 +5255,14 @@ impl Economy {
         // Which is also why a haulier's money comes in later than the work
         // does, and is a real reason small ones run out of it.
         self.pay_the_carrier(consignee, freight);
+        // **Experiment L.** What a carrier drops off did cost what was
+        // paid for it plus this carriage, and folding that in is Phase 0
+        // item 8. Off by default until the matrix says which of the four
+        // changes did the damage.
+        if self.experiments.carrier_landed_cost {
+            let to_m = self.ledger.sites[consignee].market;
+            self.take_delivery(to_m, commodity, off, paid + freight);
+        }
         // **Still not folded into the landed average, and now for two
         // named reasons rather than because it could not be explained.**
         //
@@ -5504,8 +5727,19 @@ impl Economy {
                 // Putting the real carriage in is Phase 0 item 8, and the
                 // point of doing this first is that it is then a one-line
                 // change with one thing to measure.
-                let goods = crate::value::ProductionCost::new(cost);
-                let quote = goods.delivered(crate::value::InboundCharges::NONE);
+                // **Experiment M.** Where the goods come from and what it
+                // costs to get them here, rather than the local cost with
+                // no carriage in it. Off by default, in which case the
+                // carriage is `NONE` and this is `cost x multiplier`
+                // exactly.
+                let (goods, carriage) = if self.experiments.marginal_source_pricing {
+                    let (g, f) = self.marginal_source(m, c);
+                    (g, crate::value::InboundCharges::freight(f))
+                } else {
+                    (cost, crate::value::InboundCharges::NONE)
+                };
+                let goods = crate::value::ProductionCost::new(goods);
+                let quote = goods.delivered(carriage);
                 let premium = goods.scarcity_premium(crate::value::Scarcity::new(multiplier));
                 self.markets[m].price[c as usize] = quote.plus_premium(premium).get();
             }

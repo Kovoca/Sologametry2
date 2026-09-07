@@ -2049,6 +2049,7 @@ impl Region {
             told_the_day: None,
             opening: None,
             shipments: crate::registry::Registry::new(),
+            experiments: Default::default(),
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
