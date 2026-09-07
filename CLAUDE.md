@@ -2122,6 +2122,60 @@ Two things now travel:
   third and still shows up at the shelf, properly diluted, because plastics
   are a small share of a tonne of goods.
 
+### And a cargo carries its own price
+
+`Event::Shipped` recorded a commodity and a quantity, so **tonnes crossed a
+border and their price did not**: a processor in the receiving market fell
+back on its own local cost, and a cheap producer abroad became invisible the
+moment the cargo moved. A shipment now carries what the goods were worth
+where they were picked up and what the haul was charged, which between them
+are the **landed cost** — kept as a weighted average over what a market
+holds, one of the three inventory methods real accounting permits and the
+only one cheap enough to run per market per commodity per day.
+
+**And somebody is paid for carrying it.** `Carrier::revenue` was being
+accumulated and paid to nobody — a statistic rather than an income, so a
+haulage firm could work all year with its account never moving. The
+consignee firm pays, which is the ordinary arrangement and is why delivered
+prices differ from ex-works ones. Charging it to the town's households was
+wrong twice over: a works buying ore does not bill the people who live near
+it, and doing so drained the very pockets the shops sell out of.
+
+**An idle plant no longer prices a market**, either. Taking the cheapest
+nominal producer let one tiny or permanently stopped works set the cost for
+every rival that was running; what a producer contributes is what it puts
+in.
+
+### Two faults of mine in one commit
+
+- **`freight_between` looked only at direct routes.** A country's roads are
+  a spanning tree, so most pairs of its own towns have no single link
+  between them — and the fallback put 2,000 a tonne on coal worth 90. It
+  landed at twenty times its value, inflated cement fourfold, and had
+  priced **half the kilns in the world out of buying their own fuel**.
+  They were standing idle. Freight is the cheapest *path* now.
+- **Blending every carrier delivery into the market average is a control
+  loop.** The average feeds the price and the price is what the carriers
+  plan tomorrow's hauls on, so closing it inside the day swung food cover
+  from 8 to 24 days across a country that was perfectly even with no
+  hauliers at all. Left out of the carrier path with the reason recorded:
+  the fix is a price snapshot the carriers read from, so a haulier plans
+  against what it knew when it set off rather than against the price its
+  own cargo is about to create. `distribute` and `trade` do update it,
+  because neither re-plans on the result within the same day.
+
+### Two gates that now say something truer
+
+- **Medicine's residual world spread is checked against carriage** rather
+  than asserted away. Trade equalises prices only up to what it costs to
+  move the stuff, and until a cargo carried a price there was nothing to
+  check that against.
+- **Cement's near-flat world price was an artefact.** It was true only
+  while every market shared one typed-in reference cost; now a country
+  burning dear imported fuel genuinely makes dearer cement — energy is
+  30-40% of it — so what is tested is the claim that was always the point:
+  **nobody ships it.**
+
 ### Cost is not price, and the distinction is the whole mechanism
 
 **A shortage of grain raises the price of grain. It does not make grain

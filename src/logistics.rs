@@ -481,6 +481,14 @@ fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f
             if take <= 1e-9 {
                 continue;
             }
+            // **What the goods were worth where they were picked up, and
+            // what this haulier charged to move them.** Between them they
+            // are the landed cost at the far end, which is what the
+            // consignee's works actually pays for its input.
+            let from_m = econ.ledger.sites[src].market;
+            let to_m = econ.ledger.sites[dst].market;
+            let goods = econ.markets[from_m].landed[c as usize] * take;
+            let carriage = econ.freight_between(from_m, to_m) * take;
             econ.ledger.apply(
                 &mut econ.journal,
                 Event::Shipped {
@@ -488,8 +496,27 @@ fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f
                     to: dst,
                     commodity: c,
                     qty: take,
+                    paid: goods,
+                    freight: carriage,
                 },
             );
+            econ.pay_the_carrier(dst, carriage);
+            // **Known gap, and it is a control loop rather than an
+            // oversight.** The landed cost of what a carrier delivers is
+            // genuinely what was paid plus this carriage, and blending it
+            // into the market average here is the obvious thing — but that
+            // average feeds the price, and the price is what the carriers
+            // plan tomorrow's hauls on. Closing the loop inside the day
+            // made food cover swing from 8 to 24 days across one country
+            // that was even without any hauliers at all.
+            //
+            // The fix is for a haulier to plan against the prices it knew
+            // when it set off, which is also what a real one does: it
+            // cannot see the price its own cargo is about to create. That
+            // wants a price snapshot the carriers read from, which is a
+            // change to how the day is ordered rather than a line here.
+            // `distribute` and `trade` do update it, because neither of
+            // them re-plans on the result within the same day.
             left -= take;
             moved += take;
         }

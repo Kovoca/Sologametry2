@@ -1914,6 +1914,11 @@ fn deliver(
     econ.ledger.apply(
         &mut journal,
         Event::Shipped {
+            // A man with a handcart charges nothing to himself; what he
+            // makes on the load is the arbitrage, which `person.rs` already
+            // settles separately.
+            paid: 0.0,
+            freight: 0.0,
             from: src,
             to: dst,
             commodity,

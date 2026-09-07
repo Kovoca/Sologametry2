@@ -844,3 +844,72 @@ fn no_sentinel_ever_becomes_a_quantity() {
         "a nation of {biggest:.0} people wants {coal_demand:.0} tonnes of coal a day"
     );
 }
+
+
+/// **Gate: an idle plant does not price a market.**
+///
+/// `cost_of_production` took the cheapest nominal producer, so one tiny or
+/// permanently stopped works set the cost for every rival that was actually
+/// running. What a producer contributes to a market's cost is what it puts
+/// into that market.
+#[test]
+fn a_works_that_is_not_running_does_not_set_the_price() {
+    let p = planet(42);
+    let mut r = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+    for _ in 0..40 {
+        r.economy.step();
+    }
+
+    // Find a market that mills its own flour, and the mill doing it.
+    let mill = (0..r.economy.ledger.sites.len())
+        .find(|&s| {
+            r.economy.ledger.sites[s].recipe == Some(scale_sim::econ::recipe::MILL)
+                && r.economy.ledger.sites[s].ran > 0.0
+        })
+        .expect("nobody is milling anything");
+    let m = r.economy.ledger.sites[mill].market;
+    let ordinary = r.economy.markets[m].cost[Commodity::Flour as usize];
+
+    // **Now put a miraculous mill next door and stop it dead.** It has a
+    // nameplate and it never runs, so it supplies nothing and must not
+    // price anything.
+    let real = &r.economy.ledger.sites[mill];
+    let ghost = scale_sim::econ::Site {
+        name: "a mill that never opened".into(),
+        kind: real.kind,
+        market: m,
+        stock: real.stock,
+        capacity: real.capacity,
+        recipe: real.recipe,
+        // A nameplate and nothing behind it: it never runs.
+        throughput: 0.0,
+        powered: true,
+        ran: 0.0,
+        // And it would be miraculously cheap if anybody let it price.
+        cost_factor: 0.02,
+        fitted: None,
+    };
+    r.economy.ledger.sites.push(ghost);
+    for _ in 0..10 {
+        r.economy.step();
+    }
+    let with_a_ghost = r.economy.markets[m].cost[Commodity::Flour as usize];
+    assert!(
+        with_a_ghost > ordinary * 0.9,
+        "a mill that never ran took flour from {ordinary:.1} to {with_a_ghost:.1}"
+    );
+
+    // **And a real cheap mill that does run moves it**, which is the other
+    // half: the rule is about supply, not about ignoring low costs.
+    let last = r.economy.ledger.sites.len() - 1;
+    r.economy.ledger.sites[last].throughput = r.economy.ledger.sites[mill].throughput * 3.0;
+    for _ in 0..40 {
+        r.economy.step();
+    }
+    let with_a_real_one = r.economy.markets[m].cost[Commodity::Flour as usize];
+    assert!(
+        with_a_real_one < ordinary * 0.95,
+        "a cheap mill running three times the town's flour changed the cost from \
+         {ordinary:.1} to {with_a_real_one:.1}"
+    );
+}

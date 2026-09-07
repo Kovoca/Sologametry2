@@ -468,11 +468,22 @@ pub enum Event {
         reason: Use,
     },
     /// Moved between sites. Conserving by construction.
+    ///
+    /// **And it carries what it cost.** A shipment recording only a
+    /// quantity cannot tell the receiver what the goods are worth to it: a
+    /// cheap producer abroad becomes invisible the moment the cargo crosses
+    /// a border, and the consignee falls back on its own local cost. What
+    /// travels with the tonnes is what was paid for them and what the haul
+    /// was charged, which between them are the landed cost.
     Shipped {
         from: usize,
         to: usize,
         commodity: Commodity,
         qty: f64,
+        /// What the goods were worth where they were picked up.
+        paid: f64,
+        /// What the carrier charged to move them.
+        freight: f64,
     },
     /// Could not be stored and was lost — a full shed, unsold electricity.
     Spoiled {
@@ -597,6 +608,11 @@ const WAGE_AN_HOUR: f64 = 22.0;
 /// asks the honest question, so the next place to read it has somewhere to
 /// look.
 pub const UNBOUNDED_THROUGHPUT: f64 = 1e9;
+
+/// A ceiling on the freight that can be attributed to one tonne when no
+/// direct route exists. Without it an unreachable market would land its
+/// imports at infinity and poison every average downstream.
+pub const LANDED_FREIGHT_CAP: f64 = 2_000.0;
 
 /// **What a site will actually get through in a day**, for working out how
 /// much of an input it will want.
@@ -784,6 +800,8 @@ impl Ledger {
                 self.consumed_total[c] += qty;
             }
             Event::Shipped {
+                paid: _,
+                freight: _,
                 from,
                 to,
                 commodity,
@@ -1383,6 +1401,21 @@ pub struct Market {
     /// with anybody's stock level; and demand outstripping supply raises
     /// the price at each stage on its own merits, once.
     pub cost: Basket,
+    /// **What a tonne of it cost to get hold of here**, which is a
+    /// different number from what it costs to make here.
+    ///
+    /// Landed cost: what was paid for the goods, plus the freight, plus
+    /// handling and loss on the way. A processor buying an imported input
+    /// pays this, not the exporter's technical cost and not the local
+    /// reference — and until it existed, a cheap producer in one country
+    /// gave a factory in another nothing whatever, because shipped stock
+    /// arrived carrying a quantity and no price.
+    ///
+    /// Kept as a **weighted average over what is held**, which is one of
+    /// the three inventory methods real accounting permits and the only one
+    /// that stays cheap at this scale. A delivery moves the average toward
+    /// its own landed cost in proportion to how much of the pile it is.
+    pub landed: Basket,
     /// Days of cover currently held, for reporting.
     pub cover: Basket,
     /// Cover as the market *sees* it: a slow average rather than today's
@@ -1416,6 +1449,7 @@ impl Market {
             southern,
             harvest_quality: 1.0,
             cost: price,
+            landed: price,
             price,
             cover: basket(),
             expected_cover: expected,
@@ -3262,6 +3296,10 @@ impl Economy {
                     if qty <= 1e-9 {
                         continue;
                     }
+                    let from_m = self.ledger.sites[src].market;
+                    let to_m = self.ledger.sites[dst].market;
+                    let paid = self.markets[from_m].landed[c as usize] * qty;
+                    let freight = self.freight_between(from_m, to_m) * qty;
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -3269,8 +3307,12 @@ impl Economy {
                             to: dst,
                             commodity: c,
                             qty,
+                            paid,
+                            freight,
                         },
                     );
+                    self.take_delivery(to_m, c, qty, paid + freight);
+                    self.pay_the_carrier(dst, freight);
                     // **And the buyer pays the seller.**
                     //
                     // Only shops took money from households, so every works
@@ -3843,6 +3885,10 @@ impl Economy {
                     if qty <= 1e-9 {
                         continue;
                     }
+                    let from_m = self.ledger.sites[src].market;
+                    let to_m = self.ledger.sites[dst].market;
+                    let paid = self.markets[from_m].landed[c as usize] * qty;
+                    let freight = self.routes[r].freight_cost * qty;
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -3850,8 +3896,12 @@ impl Economy {
                             to: dst,
                             commodity: c,
                             qty,
+                            paid,
+                            freight,
                         },
                     );
+                    self.take_delivery(to_m, c, qty, paid + freight);
+                    self.pay_the_carrier(dst, freight);
                     let carried = self.routes[r].moved.map_or(0.0, |(_, _, t)| t);
                     if qty > carried {
                         self.routes[r].moved = Some((c, to_m, qty));
@@ -3975,6 +4025,118 @@ impl Economy {
 
 
 
+    /// **A delivery arrives and the average moves.**
+    ///
+    /// Weighted-average cost, which is one of the three inventory methods
+    /// real accounting permits and the only one cheap enough to run per
+    /// market per commodity per day. A cargo moves the average toward its
+    /// own landed cost in proportion to how much of the pile it is — so a
+    /// single cheap import barely shifts a full silo and a country that
+    /// imports everything tracks the world price closely.
+    pub fn take_delivery(&mut self, market: usize, c: Commodity, qty: f64, total: f64) {
+        if qty <= 1e-9 {
+            return;
+        }
+        let held: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].market == market)
+            .map(|s| self.ledger.stock(s, c))
+            .sum::<f64>()
+            .max(0.0);
+        let was = self.markets[market].landed[c as usize];
+        let arriving = total / qty;
+        // The pile it is joining is what was there before this cargo.
+        let before = (held - qty).max(0.0);
+        let blended = if before + qty > 1e-9 {
+            (was * before + arriving * qty) / (before + qty)
+        } else {
+            arriving
+        };
+        self.markets[market].landed[c as usize] = blended;
+    }
+
+    /// **Somebody moved it, and somebody pays them.**
+    ///
+    /// `Carrier::revenue` was being accumulated and paid to nobody — a
+    /// statistic rather than an income, so a haulage firm could work all
+    /// year and its account never moved. The consignee pays the freight,
+    /// which is the ordinary arrangement and is why delivered prices differ
+    /// from ex-works ones.
+    /// **The consignee pays, and the consignee is a firm.**
+    ///
+    /// Charging it to the town's households was wrong twice over: a works
+    /// buying ore does not send the bill to the people who live near it,
+    /// and doing so drained the very pockets the shops sell out of — which
+    /// showed up as hauliers *unbalancing* the food supply they were
+    /// supposed to even out.
+    pub fn pay_the_carrier(&mut self, consignee: usize, freight: f64) {
+        if freight <= 1e-9 {
+            return;
+        }
+        let day = self.ledger.day;
+        let market = self.ledger.sites[consignee].market;
+        self.treasury.pay(
+            day,
+            crate::money::Account::Firm(consignee),
+            crate::money::Account::ServiceSector(market),
+            freight,
+            crate::money::Why::Freight,
+        );
+    }
+
+    /// What it costs to move a tonne between two markets, by the cheapest
+    /// open **path**. Zero within a market: a lorry across town is already
+    /// in the site's own costs.
+    ///
+    /// **Direct routes are not enough**, and assuming they were is what
+    /// broke this the first time. A country's roads are a spanning tree, so
+    /// most pairs of its own towns have no single link between them — and
+    /// falling back on a cap put 2,000 a tonne on coal worth 90, which
+    /// landed at twenty times its value and inflated the cost of cement
+    /// fourfold in every nation that imports fuel. Two towns joined through
+    /// a third are joined.
+    pub fn freight_between(&self, from: usize, to: usize) -> f64 {
+        if from == to {
+            return 0.0;
+        }
+        // Dijkstra over the open routes. Small graphs, run rarely.
+        let n = self.markets.len();
+        let mut best = vec![f64::INFINITY; n];
+        let mut done = vec![false; n];
+        best[from] = 0.0;
+        loop {
+            let mut here = None;
+            let mut lowest = f64::INFINITY;
+            for m in 0..n {
+                if !done[m] && best[m] < lowest {
+                    lowest = best[m];
+                    here = Some(m);
+                }
+            }
+            let Some(here) = here else { break };
+            if here == to {
+                break;
+            }
+            done[here] = true;
+            for r in self.routes.iter().filter(|r| r.open) {
+                let next = if r.a == here {
+                    r.b
+                } else if r.b == here {
+                    r.a
+                } else {
+                    continue;
+                };
+                let through = best[here] + r.freight_cost;
+                if through < best[next] {
+                    best[next] = through;
+                }
+            }
+        }
+        // **Nowhere to be reached from here.** Not free, and not infinite
+        // either: what it would cost to get it there some other way, capped
+        // so one unreachable market cannot poison every average downstream.
+        best[to].min(LANDED_FREIGHT_CAP)
+    }
+
     /// **How far short the grid is of what is being asked of it**, 0 to 1.
     ///
     /// Not a stock reading: generation against load. A grid that can meet
@@ -4035,6 +4197,33 @@ impl Economy {
                 // and is what caught this.
                 let cost = self.cost_of_production(m, c);
                 self.markets[m].cost[c as usize] = cost;
+
+                // **What is made here also lands here**, at what it cost to
+                // make and with no freight on it. Without this a market
+                // that produces its own steel kept whatever landed figure
+                // it opened with for ever, and only imports could move it —
+                // so a country with a cheap seam still bought its own coal
+                // at the world reference.
+                let made_here: f64 = (0..self.ledger.sites.len())
+                    .filter(|&s| self.ledger.sites[s].market == m)
+                    .filter_map(|s| {
+                        let site = &self.ledger.sites[s];
+                        let r = site.recipe?;
+                        let per: f64 = RECIPES[r]
+                            .outputs
+                            .iter()
+                            .filter(|&&(oc, _)| oc == c)
+                            .map(|&(_, q)| q)
+                            .sum();
+                        if per <= 0.0 {
+                            return None;
+                        }
+                        Some(per * site.ran)
+                    })
+                    .sum();
+                if made_here > 1e-9 {
+                    self.take_delivery(m, c, made_here, cost * made_here);
+                }
 
                 let demand = self.markets[m].daily_household_demand(c) + industrial;
                 if demand <= 0.0 {
@@ -4163,7 +4352,7 @@ impl Economy {
     /// oil at half price gives plastics at proportionally less, through
     /// however many stages lie between.
     pub fn cost_of_production(&self, m: usize, c: Commodity) -> f64 {
-        let mut best: Option<f64> = None;
+        let (mut weighted, mut supplied) = (0.0f64, 0.0f64);
         for s in 0..self.ledger.sites.len() {
             let site = &self.ledger.sites[s];
             if site.market != m || site.throughput <= 0.0 {
@@ -4193,17 +4382,28 @@ impl Economy {
                 .sum::<f64>()
                 + power * Commodity::Electricity.base_cost()
                 + labour;
-            // **Input *costs*, not input prices.** A shortage of grain
-            // raises the price of grain and does not make it dearer to
-            // grow, so reading prices here would count one shortage again
-            // at every stage downstream and once more in the final good's
-            // own scarcity multiplier.
+            // **What the inputs cost to acquire here**, which is the
+            // landed cost — what was paid for them plus the freight to get
+            // them here — and not the technical cost of making them
+            // somewhere else.
+            //
+            // Reading the upstream *technical* cost was the previous
+            // version and it was wrong in a specific way: a shortage of
+            // grain does not make grain dearer to grow, but it certainly
+            // makes it dearer for a mill to buy, and suppressing that
+            // handoff stopped freight, contracts and distance from ever
+            // reaching a downstream firm. A cheap producer abroad gave a
+            // factory here nothing at all.
+            //
+            // It is still not the *price*, which carries this market's own
+            // scarcity on top and would count one shortage again at every
+            // stage down the chain.
             let actual: f64 = recipe
                 .inputs
                 .iter()
-                .map(|&(ic, q)| q * self.markets[m].cost[ic as usize])
+                .map(|&(ic, q)| q * self.markets[m].landed[ic as usize])
                 .sum::<f64>()
-                + power * self.markets[m].cost[Commodity::Electricity as usize]
+                + power * self.markets[m].landed[Commodity::Electricity as usize]
                 + labour;
 
             // **And what this particular ground costs to work**, which is
@@ -4211,11 +4411,31 @@ impl Economy {
             // is 1.0 for anything built to a design rather than found.
             let moved = if reference > 1e-9 { actual / reference } else { 1.0 };
             let here = c.base_cost() * moved * site.cost_factor;
-            best = Some(best.map_or(here, |b: f64| b.min(here)));
+            // **Weighted by what it actually supplies**, not simply the
+            // cheapest nameplate in the market.
+            //
+            // Taking the minimum let one tiny or permanently idle plant
+            // price everything a country makes: a works standing still for
+            // want of inputs or power still set the cost for every rival
+            // that was running. What a producer contributes to a market's
+            // cost is what it puts into that market, which is why a
+            // marginal high-cost plant matters when it is the one running
+            // and does not when it is not.
+            //
+            // Rated throughput is the fallback for a site that has not run
+            // yet, so a country on its first morning is not costless.
+            let share = if site.ran > 1e-9 { site.ran } else { demand_rate_of(site) };
+            if share > 1e-9 {
+                supplied += share;
+                weighted += here * share;
+            }
+        }
+        if supplied > 1e-9 {
+            return weighted / supplied;
         }
         // Nobody here makes it, so what it costs is what it costs to bring
         // in — which is the reference, that being what it is calibrated on.
-        best.unwrap_or_else(|| c.base_cost())
+        c.base_cost()
     }
 
     /// **Food goes off, and a cold chain is what stops it.**
