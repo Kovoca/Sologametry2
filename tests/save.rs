@@ -787,3 +787,42 @@ fn four_hundred_daily_reloads_match_four_hundred_days() {
     }
     assert_eq!(ferried, straight, "four hundred reloads was not four hundred days");
 }
+
+/// **Gate: writing a loaded save back does not relabel what made it.**
+///
+/// The header carried the *current* generation schema and rules rather than
+/// `self.schema` and `self.rules`, so loading a world built by an older
+/// generator and saving it again silently claimed it was current — the
+/// exact opposite of what the field is for, and a direct contradiction of
+/// the comment on it saying the version is read and kept.
+///
+/// A save that lies about which generator built it cannot be rebased,
+/// diagnosed, or refused, which is the whole reason `patch.rs` fingerprints
+/// its base chunk.
+#[test]
+fn resaving_an_old_world_keeps_the_version_that_made_it() {
+    let mut old = Save { world_seed: 7, day: 900, ..Default::default() };
+    // A world built by something older than whatever is running now.
+    old.schema = scale_sim::scaling::GENERATION_SCHEMA - 1;
+    old.rules = RULES.saturating_sub(3);
+    assert_ne!(old.schema, scale_sim::scaling::GENERATION_SCHEMA);
+
+    let once = old.to_bytes();
+    let back = Save::from_bytes(&once).expect("an older world would not load");
+    assert_eq!(back.schema, old.schema, "the header forgot which generator made it");
+    assert_eq!(back.rules, old.rules, "the header forgot which rules it was played under");
+
+    // **And round again.** A save read and written twice is the commonest
+    // thing that happens to one, and it must not drift.
+    let twice = back.to_bytes();
+    let again = Save::from_bytes(&twice).expect("it would not load a second time");
+    assert_eq!(again.schema, old.schema);
+    assert_eq!(again.rules, old.rules);
+    assert_eq!(once, twice, "reading and writing a save changed the bytes");
+
+    // A *new* save is made by what is running now, which is the other half
+    // of the same claim.
+    let fresh = Save { world_seed: 1, day: 0, ..Default::default() };
+    assert_eq!(fresh.schema, scale_sim::scaling::GENERATION_SCHEMA);
+    assert_eq!(fresh.rules, RULES);
+}

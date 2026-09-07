@@ -2148,14 +2148,25 @@ once at each stage on its own merits.
   measures 0.8-1.0 far more often than not — and centring the curve at 0.42
   handed every country in the world a twofold discount that compounded down
   the chain and left crude steel at a third of its calibrated price.
-- **Iterating to a fixed point compounds; it does not converge.** The graph
-  has one loop in it, so running the pass six times looked obviously right.
-  Each pass recomputes a cost from the last pass's costs, so a stage below
-  its reference drags the next stage lower again, geometrically — and the
-  world price spread for medicine went from 2.0x to 4.2x with no input
-  changing at all. **This is the same failure this file already records for
-  prices, for crafting multipliers and for personality loadings.** One pass
-  in dependency order is enough.
+- **A wrong explanation for a real measurement.** Running the pass six
+  times moved the world price spread for medicine from 2.0x to 4.2x with no
+  input changing, and I wrote that down as *iterating compounds rather than
+  converging*. **That was the explanation I reached for, not one I
+  established**, and an external review was right to reject it: a normalised
+  cost system like this one is contractive and converges in as many passes
+  as the chain is deep. What actually moved the numbers was evaluating
+  stages out of order and re-reading a cover average that is deliberately
+  slow. An ordering fault, not a feedback one.
+- **And "one pass in dependency order" was simply false.**
+  `Commodity::ALL` is not a dependency order and never was: electricity
+  comes before coal, retail goods before the timber, petroleum, plastics
+  and machinery they are made from, and medicine before chemicals. Saying
+  otherwise in a comment did not make it so, and the commodities downstream
+  of those were reading yesterday's figures purely because of where a
+  variant sits in an enum. The order is now **derived from `RECIPES` by
+  Kahn's algorithm**, with the one real cycle — coal makes electricity and
+  a colliery runs on electricity — broken deterministically at its weakest
+  edge.
 
 And one that was not mine but had been waiting: **a commodity nobody
 currently wants was never priced at all.** `update_prices` bailed out on
@@ -2165,6 +2176,65 @@ builders had it at two thirds — and a town left to rot came out *dearer* to
 buy into than one kept up. What a thing costs to make does not depend on
 whether anybody wants it today. A glut still needs surplus stock, though,
 rather than merely an absence of buyers.
+
+### A sentinel read as a rate, for the third time
+
+`throughput: 1e9` on a power station means *whatever the grid can carry*.
+This file already records two occasions when it was read as a number of
+batches a day — it staffed one station with 4.1 million people, and it made
+`distribute` take every tonne of coal in the country. Both were fixed where
+they were found, **which is exactly why the third survived**: the price pass
+has been multiplying it by 0.38 and asking for **380 million tonnes of coal
+a day** for as long as the price pass has existed.
+
+Worse, the guard added against it in the previous commit checked
+`recipe.power` — the wrong field entirely, since the sentinel lives on the
+*site*. It never fired once, and a comment above it explained at length what
+it was protecting against. **Dead code that reads like a safeguard is worse
+than none, because it stops anybody looking.**
+
+The sentinel is one named constant now, with one function that asks the
+honest question — what a site will actually get through, which for a plant
+with no meaningful rate is what it dispatched — and the gate is on the
+property rather than on any one caller.
+
+### Electricity is not warehouse stock
+
+It declares zero days of target cover precisely because none of it is ever
+held, and the shared price formula then quietly put the target back to half
+a day and divided a stock reading by a demand. What sets the price of
+electricity is the marginal cost of the last plant dispatched, and a
+shortage is unserved load rather than an empty silo.
+
+`power.rs` has the merit-order model for that and **it is not yet wired into
+the ledger.** What is there now is the honest interim: cost, plus a premium
+only when generation genuinely falls short of the call.
+
+### Two tests of mine that could pass without testing anything
+
+Both were caught by review rather than by failing, which is the point.
+
+- `SiteKind::OilField` is worn by a real field *and* by an import terminal,
+  so selecting on the kind alone could manufacture "Saudi versus oil sands"
+  in a country that lifts no oil at all. The recipe is what says whether
+  anybody is drilling.
+- The coal test read market zero rather than the colliery's own and put its
+  only propagation assertion inside an `if`, so a run in which nothing
+  propagated skipped the branch and passed. **This file already records the
+  rule it broke:** *a test that never enters the branch is not evidence the
+  branch is rare.*
+
+### And two older ones the same review found
+
+- `social.rs` chose `FaceToFace` on both arms of `if publicly` — a parameter
+  doing nothing dressed up as one doing something. Publicness is an
+  audience, not a channel, and it was already carried on the delivery.
+- `save.rs` wrote the *current* generation schema and rules into the header
+  instead of the ones it had loaded, so reading an old world and saving it
+  back silently relabelled it as current. That is the opposite of what the
+  field is for and contradicted its own comment saying the version is read
+  and kept. A save that lies about what built it cannot be rebased,
+  diagnosed or refused.
 
 ## Where the electricity comes from (`src/power.rs`)
 

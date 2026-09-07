@@ -638,23 +638,29 @@ fn cheap_oil_travels_all_the_way_down_to_the_shelf() {
 
     // The same country twice, differing in one thing: how good the ground
     // under the oil field is.
-    // **The field is where the geology put it**, which is not necessarily
-    // the capital — so read the market it actually sits in rather than
-    // assuming one.
+    // **`SiteKind::OilField` is worn by two different things** — a real
+    // field running `OIL_FIELD` and an import terminal running
+    // `OIL_IMPORTS` — so selecting on the kind alone could manufacture
+    // "Saudi versus oil sands" in a country with no oil of its own. The
+    // recipe is what says whether anybody is lifting anything.
+    let domestic = |e: &Region, s: usize| {
+        e.economy.ledger.sites[s].recipe == Some(scale_sim::econ::recipe::OIL_FIELD)
+    };
     let field_market = (0..cheap.economy.ledger.sites.len())
-        .find(|&s| cheap.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField)
+        .find(|&s| domestic(&cheap, s))
         .map(|s| cheap.economy.ledger.sites[s].market)
-        .expect("this nation has no oil field to vary");
+        .expect("this nation lifts no oil of its own, so there is nothing to vary");
+    let mut varied = 0;
     for s in 0..cheap.economy.ledger.sites.len() {
-        if cheap.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField {
+        if domestic(&cheap, s) {
             // A Saudi-grade field: about $10 a barrel.
             cheap.economy.ledger.sites[s].cost_factor = 0.45;
-        }
-        if dear.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::OilField {
             // Canadian oil sands: $50-60.
             dear.economy.ledger.sites[s].cost_factor = 3.0;
+            varied += 1;
         }
     }
+    assert!(varied > 0, "nothing was actually varied");
     for _ in 0..40 {
         cheap.economy.step();
         dear.economy.step();
@@ -714,31 +720,127 @@ fn what_it_costs_to_work_depends_on_what_is_in_the_ground() {
     assert!(Commodity::cost_of_working(1.0) >= 0.4);
 
     // And it reaches the price of what is made out of it.
+    // **Resolve the mine and assert the precondition**, then make the
+    // propagation unconditional. The first version of this read market
+    // zero rather than the colliery's own, and put its only downstream
+    // assertion inside an `if` — so a run in which nothing propagated at
+    // all skipped the branch and passed. That is precisely the failure
+    // this project already records: *a test that never enters the branch
+    // is not evidence the branch is rare.*
     let p = planet(42);
     let mut good = region_of(&p, 0, Doctrine::Prudent).expect("no region");
     let mut poor = region_of(&p, 0, Doctrine::Prudent).expect("no region");
-    for s in 0..good.economy.ledger.sites.len() {
-        if good.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::Mine
-            && good.economy.ledger.sites[s].recipe == Some(scale_sim::econ::recipe::COAL_MINE)
-        {
-            good.economy.ledger.sites[s].cost_factor = 0.45;
-            poor.economy.ledger.sites[s].cost_factor = 4.0;
-        }
-    }
+
+    let pit = (0..good.economy.ledger.sites.len())
+        .find(|&s| good.economy.ledger.sites[s].recipe == Some(scale_sim::econ::recipe::COAL_MINE))
+        .expect("this nation works no coal of its own, so there is no seam to vary");
+    let pit_market = good.economy.ledger.sites[pit].market;
+    good.economy.ledger.sites[pit].cost_factor = 0.45;
+    poor.economy.ledger.sites[pit].cost_factor = 4.0;
+
+    // And it has to be a market that actually makes its own power from it,
+    // or there is nothing for the seam to reach.
+    assert!(
+        (0..good.economy.ledger.sites.len()).any(|s| {
+            good.economy.ledger.sites[s].market == pit_market
+                && good.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant
+        }),
+        "the colliery's market burns no coal, so this proves nothing"
+    );
+
     for _ in 0..40 {
         good.economy.step();
         poor.economy.step();
     }
-    let coal_good = good.economy.markets[0].cost[Commodity::Coal as usize];
-    let coal_poor = poor.economy.markets[0].cost[Commodity::Coal as usize];
-    if coal_poor > coal_good * 1.01 {
-        // The nation works its own coal, so the seam reaches the price of
-        // electricity made from it.
-        let power_good = good.economy.markets[0].cost[Commodity::Electricity as usize];
-        let power_poor = poor.economy.markets[0].cost[Commodity::Electricity as usize];
+    let at = |e: &Region, c| e.economy.markets[pit_market].cost[c as usize];
+    let coal_good = at(&good, Commodity::Coal);
+    let coal_poor = at(&poor, Commodity::Coal);
+    assert!(
+        coal_poor > coal_good * 1.5,
+        "a thin seam cost {coal_poor:.1} against a thick one at {coal_good:.1}"
+    );
+
+    // **Unconditional.** The seam reaches the price of the power made from
+    // it, or this whole exercise did nothing.
+    let power_good = at(&good, Commodity::Electricity);
+    let power_poor = at(&poor, Commodity::Electricity);
+    assert!(
+        power_poor > power_good,
+        "a thin seam made no difference to the price of power: \
+         {power_poor:.1} against {power_good:.1}"
+    );
+}
+
+/// **Gate: a sentinel may never be read as a rate.**
+///
+/// A power station's `throughput` means "whatever the grid can carry", and
+/// three separate places have now been caught reading it as a number of
+/// batches a day — it once staffed a station with 4.1 million people, it
+/// made `distribute` take every tonne of coal in the country, and it was
+/// quietly putting 380 million tonnes a day of coal demand into the price
+/// pass for as long as the price pass has existed.
+///
+/// Two of those were fixed where they were found, which is exactly why the
+/// third survived. This gate is on the property rather than on any one
+/// caller.
+#[test]
+fn no_sentinel_ever_becomes_a_quantity() {
+    use scale_sim::econ::{demand_rate_of, UNBOUNDED_THROUGHPUT};
+
+    let p = planet(42);
+    let mut r = region_of(&p, 0, Doctrine::Prudent).expect("no region");
+    for _ in 0..30 {
+        r.economy.step();
+    }
+
+    // The sentinel is really in there — otherwise this gate is watching
+    // nothing.
+    let unbounded: Vec<usize> = (0..r.economy.ledger.sites.len())
+        .filter(|&s| r.economy.ledger.sites[s].throughput >= UNBOUNDED_THROUGHPUT * 0.5)
+        .collect();
+    assert!(!unbounded.is_empty(), "no site carries the sentinel, so this proves nothing");
+
+    // **And nothing anywhere turns it into tonnes.** A country's entire
+    // coal demand has to be a plausible number of tonnes a day, not a
+    // fraction of a billion.
+    for &s in &unbounded {
+        let rate = demand_rate_of(&r.economy.ledger.sites[s]);
         assert!(
-            power_poor > power_good,
-            "a thin seam made no difference to the price of power: {power_poor:.1} against {power_good:.1}"
+            rate < UNBOUNDED_THROUGHPUT * 0.001,
+            "a site with an unbounded capacity reported a demand rate of {rate:.0}"
         );
     }
+
+    // Measured end to end: the daily coal draw of a whole nation.
+    for m in 0..r.economy.markets.len() {
+        let cover = r.economy.markets[m].expected_cover[Commodity::Coal as usize];
+        assert!(
+            cover.is_finite() || cover.is_infinite(),
+            "coal cover in market {m} is not a number at all"
+        );
+    }
+    let biggest = r
+        .economy
+        .markets
+        .iter()
+        .map(|x| x.population)
+        .fold(0.0f64, f64::max);
+    let coal_demand: f64 = (0..r.economy.ledger.sites.len())
+        .map(|s| {
+            let site = &r.economy.ledger.sites[s];
+            let Some(rc) = site.recipe else { return 0.0 };
+            scale_sim::econ::RECIPES[rc]
+                .inputs
+                .iter()
+                .find(|&&(ic, _)| ic == Commodity::Coal)
+                .map(|&(_, q)| q * demand_rate_of(site))
+                .unwrap_or(0.0)
+        })
+        .sum();
+    // Real: world coal is about 8bn tonnes a year across 8bn people, so
+    // even a heavy industrial economy is well under a tonne a head a day.
+    assert!(
+        coal_demand < biggest.max(1.0),
+        "a nation of {biggest:.0} people wants {coal_demand:.0} tonnes of coal a day"
+    );
 }

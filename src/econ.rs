@@ -583,6 +583,42 @@ pub enum SiteKind {
 /// like everything else to the food chain.
 const WAGE_AN_HOUR: f64 = 22.0;
 
+/// **The sentinel, named once.**
+///
+/// A power station's `throughput` is not a rate: it means "whatever the
+/// grid can carry". Three separate places have now been bitten by reading
+/// it as one — it staffed a station with 4.1 million people, it made
+/// `distribute` take every tonne of coal in the country, and it has been
+/// silently putting 380 million tonnes a day of coal demand into the price
+/// pass the whole time.
+///
+/// The first two were fixed locally, which is exactly why the third
+/// survived. It is a single named constant now, with one function that
+/// asks the honest question, so the next place to read it has somewhere to
+/// look.
+pub const UNBOUNDED_THROUGHPUT: f64 = 1e9;
+
+/// **What a site will actually get through in a day**, for working out how
+/// much of an input it will want.
+///
+/// Not its nameplate. A plant whose capacity is "whatever the grid can
+/// carry" has no meaningful rate at all, so asking one is a category error
+/// and the answer has to come from what it *did* — which for a power
+/// station is the electricity the grid actually dispatched.
+///
+/// An ordinary works keeps its rated figure, and that is right: a mill
+/// short of grain today still expects to buy its usual tomorrow, and a
+/// forecast built only on yesterday's output would never let anybody
+/// recover from a bad day.
+pub fn demand_rate_of(site: &Site) -> f64 {
+    if site.throughput >= UNBOUNDED_THROUGHPUT * 0.5 {
+        // It ran what it ran. With nothing dispatched, a station wants
+        // enough fuel to start — not a billion tonnes of it.
+        return site.ran.max(0.0);
+    }
+    site.throughput
+}
+
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -3839,7 +3875,86 @@ impl Economy {
     /// electricity. So rather than a topological sort that cannot exist,
     /// the pass is run until it settles — which it does quickly, because
     /// the feedback is tiny (a colliery uses 0.02 MWh a tonne).
-    /// **Once, in dependency order — not iterated to a fixed point.**
+    /// **Derived from the recipes, not asserted about an enum.**
+    ///
+    /// A cost can only be worked out after the costs of its inputs, so the
+    /// pass has to run in dependency order. `Commodity::ALL` is *not* that
+    /// order and never was: electricity comes before coal, retail goods
+    /// before the timber, petroleum, plastics and machinery they are made
+    /// from, and medicine before chemicals. Claiming otherwise in a comment
+    /// did not make it so, and the costs downstream of those three were
+    /// reading yesterday's figures purely because of where a variant sits
+    /// in an enum.
+    ///
+    /// So the order is computed from `RECIPES` by Kahn's algorithm, once,
+    /// and the one genuine cycle — coal makes electricity and a colliery
+    /// runs on electricity — is broken deterministically at the weakest
+    /// edge rather than pretended away. The loop is worth 0.02 MWh a tonne
+    /// and one day of lag on it is not worth solving simultaneously.
+    ///
+    /// **And this replaces a claim that iterating "compounds".** It does
+    /// not: a normalised cost system like this one is contractive and
+    /// converges in as many passes as the chain is deep. What actually
+    /// moved the numbers was evaluating stages out of order and re-reading
+    /// stale covers, which is an ordering fault rather than a feedback one.
+    /// The measurement was real; the explanation was not, and it is
+    /// corrected here.
+    pub fn costing_order() -> Vec<Commodity> {
+        // What each commodity is made from, over every recipe that makes it.
+        let mut needs: Vec<(Commodity, Vec<Commodity>)> = Vec::new();
+        for &c in Commodity::ALL.iter() {
+            let mut from: Vec<Commodity> = Vec::new();
+            for r in RECIPES.iter() {
+                if !r.outputs.iter().any(|&(oc, q)| oc == c && q > 0.0) {
+                    continue;
+                }
+                for &(ic, q) in r.inputs.iter() {
+                    if q > 0.0 && ic != c && !from.contains(&ic) {
+                        from.push(ic);
+                    }
+                }
+            }
+            needs.push((c, from));
+        }
+
+        let mut done: Vec<Commodity> = Vec::new();
+        // Kahn's algorithm: take anything whose inputs are all settled.
+        while done.len() < needs.len() {
+            let before = done.len();
+            for (c, from) in needs.iter() {
+                if done.contains(c) {
+                    continue;
+                }
+                if from.iter().all(|i| done.contains(i)) {
+                    done.push(*c);
+                }
+            }
+            if done.len() == before {
+                // **A cycle.** Break it at the commodity with the fewest
+                // unsettled inputs, and among ties by enum order so a seed
+                // rebuilds the same world. In this economy that is always
+                // the coal/electricity pair.
+                let mut pick: Option<(usize, Commodity)> = None;
+                for (c, from) in needs.iter() {
+                    if done.contains(c) {
+                        continue;
+                    }
+                    let waiting = from.iter().filter(|i| !done.contains(i)).count();
+                    if pick.map(|(w, _)| waiting < w).unwrap_or(true) {
+                        pick = Some((waiting, *c));
+                    }
+                }
+                if let Some((_, c)) = pick {
+                    done.push(c);
+                } else {
+                    break;
+                }
+            }
+        }
+        done
+    }
+
+    /// **Once, in dependency order.**
     ///
     /// The obvious thing is to run the pass until the costs settle, since
     /// the graph has one loop in it (coal makes electricity and a colliery
@@ -3858,19 +3973,51 @@ impl Economy {
         self.one_price_pass();
     }
 
+
+
+    /// **How far short the grid is of what is being asked of it**, 0 to 1.
+    ///
+    /// Not a stock reading: generation against load. A grid that can meet
+    /// the call has no scarcity premium however little is "in store",
+    /// because nothing is ever in store.
+    pub fn grid_shortfall(&self, m: usize) -> f64 {
+        let made: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| {
+                self.ledger.sites[s].market == m
+                    && self.ledger.sites[s].kind == SiteKind::PowerPlant
+            })
+            .map(|s| self.ledger.sites[s].ran)
+            .sum();
+        let wanted: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].market == m)
+            .filter_map(|s| {
+                let site = &self.ledger.sites[s];
+                let r = site.recipe?;
+                Some(RECIPES[r].power.min(1e6) * demand_rate_of(site))
+            })
+            .sum::<f64>()
+            + self.markets[m].daily_household_demand(Commodity::Electricity);
+        if wanted <= 0.0 {
+            return 0.0;
+        }
+        ((wanted - made) / wanted).clamp(0.0, 1.0)
+    }
+
     fn one_price_pass(&mut self) {
+        let order = Self::costing_order();
         for m in 0..self.markets.len() {
-            for &c in Commodity::ALL.iter() {
+            for &c in order.iter() {
                 let industrial: f64 = (0..self.ledger.sites.len())
                     .filter(|&s| self.ledger.sites[s].market == m)
                     .filter_map(|s| {
-                        let r = self.ledger.sites[s].recipe?;
+                        let site = &self.ledger.sites[s];
+                        let r = site.recipe?;
                         let per = RECIPES[r]
                             .inputs
                             .iter()
                             .find(|&&(ic, _)| ic == c)
                             .map(|&(_, q)| q)?;
-                        Some(per * self.ledger.sites[s].throughput)
+                        Some(per * demand_rate_of(site))
                     })
                     .sum();
 
@@ -3951,6 +4098,26 @@ impl Economy {
                 // real relationship. Raising scarcity to the power of
                 // 1/elasticity instead compounds to absurdity — an early
                 // version of this priced food at four thousand times cost.
+                // **Electricity is not warehouse stock**, and pricing it
+                // on days of cover was a category error: it declares zero
+                // target cover precisely because none of it is ever held,
+                // and the shared formula then quietly put the target back
+                // to half a day and divided a stock reading by a demand.
+                //
+                // What sets its price is the marginal cost of the last
+                // plant dispatched, and a shortage is unserved load rather
+                // than an empty silo. `power.rs` has the merit-order model
+                // for that; what is here is the honest interim — cost, and
+                // a premium only when the grid genuinely cannot meet the
+                // call. **Wiring the dispatch curve into the ledger is not
+                // done, and this says so rather than pretending a cover
+                // number means something.**
+                if c == Commodity::Electricity {
+                    let short = self.grid_shortfall(m);
+                    self.markets[m].price[c as usize] = cost * (1.0 + short * 4.0);
+                    self.markets[m].cover[c as usize] = f64::INFINITY;
+                    continue;
+                }
                 let target = c.target_cover_days().max(0.5);
                 let gap = (target - cover) / target;
                 // The floor is well above zero: a glut is a bad price, not
@@ -4009,11 +4176,15 @@ impl Economy {
             }
 
             // What this recipe's inputs cost at the reference, and what
-            // they cost today. **A power figure of 1e9 is the sentinel
-            // meaning "whatever the grid can carry"** — this project has
-            // been bitten by reading it as a rate twice already — so it is
-            // excluded rather than multiplied by anything.
-            let power = if recipe.power < 1e8 { recipe.power } else { 0.0 };
+            // they cost today.
+            //
+            // **This used to guard `recipe.power` against the sentinel,
+            // which is the wrong field entirely.** The sentinel lives on
+            // the *site's* throughput; a power-station recipe's own `power`
+            // is zero, so the guard never fired once and the comment above
+            // it was simply untrue. Dead code that reads like a safeguard
+            // is worse than none, because it stops anybody looking.
+            let power = recipe.power;
             let labour = recipe.labour * WAGE_AN_HOUR;
             let reference: f64 = recipe
                 .inputs

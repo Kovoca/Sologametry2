@@ -1697,7 +1697,7 @@ impl Store for Materialised {
 
 /// **A snapshot of what cannot be derived, and a journal of what
 /// happened.**
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Save {
     pub world_seed: u64,
     pub day: u64,
@@ -1725,6 +1725,25 @@ fn checksum(bytes: &[u8]) -> u64 {
     h
 }
 
+/// **A new save is made by the generator that is running now.** A loaded
+/// one carries whatever made *it*, which is the whole reason the fields
+/// exist — so the default cannot be zero and the writer cannot substitute
+/// today's constants for what it read.
+impl Default for Save {
+    fn default() -> Self {
+        Save {
+            world_seed: 0,
+            day: 0,
+            people: Vec::new(),
+            journal: Journal::new(),
+            checkpoint: Default::default(),
+            schema: crate::scaling::GENERATION_SCHEMA,
+            rules: RULES,
+            overlay: Default::default(),
+        }
+    }
+}
+
 impl Save {
     pub fn to_bytes(&self) -> Vec<u8> {
         let mut body = Writer::new();
@@ -1741,8 +1760,16 @@ impl Save {
         let mut out = Writer::new();
         out.bytes.extend_from_slice(MAGIC);
         out.u32(FORMAT);
-        out.u32(crate::scaling::GENERATION_SCHEMA);
-        out.u32(RULES);
+        // **What made this world, not what is making worlds today.**
+        //
+        // These wrote the current constants, so loading an old save and
+        // writing it back silently relabelled it as current — which is the
+        // exact opposite of what the field is for, and directly contradicts
+        // the comment above it saying the generator's version is "read and
+        // kept". A save that lies about which generator built it cannot be
+        // rebased, diagnosed, or refused.
+        out.u32(self.schema);
+        out.u32(self.rules);
         out.u64(checksum(&body.bytes));
         out.len(body.bytes.len());
         out.bytes.extend_from_slice(&body.bytes);
