@@ -60,6 +60,7 @@ pub mod slice;
 pub mod teardown;
 pub mod townplan;
 pub mod travel;
+pub mod value;
 pub mod utility;
 pub mod vehicle;
 pub mod wip;

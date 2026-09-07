@@ -4746,16 +4746,22 @@ impl Economy {
             .map(|s| self.ledger.stock(s, c))
             .sum::<f64>()
             .max(0.0);
-        let was = self.markets[market].landed[c as usize];
-        let arriving = total / qty;
+        // **Through the types, because the two sides are different
+        // quantities.** What is already in the sheds is an
+        // `InventoryBasis` — an accounting fact about the past. What has
+        // just turned up is a `LandedBasis` — what this particular cargo
+        // cost to get here. Blending the second into the first is the only
+        // operation between them that means anything, and it is the only
+        // one the types allow.
+        //
+        // Identical arithmetic to what it replaces; the point is that
+        // reaching for either of these as a *trade signal* is now a
+        // different type from the one a trade decision takes.
+        let was = crate::value::InventoryBasis::new(self.markets[market].landed[c as usize]);
+        let arriving = crate::value::LandedBasis::new(total / qty);
         // The pile it is joining is what was there before this cargo.
         let before = (held - qty).max(0.0);
-        let blended = if before + qty > 1e-9 {
-            (was * before + arriving * qty) / (before + qty)
-        } else {
-            arriving
-        };
-        self.markets[market].landed[c as usize] = blended;
+        self.markets[market].landed[c as usize] = arriving.blend_into(was, before, qty).get();
     }
 
     /// **Somebody moved it, and somebody pays them.**
@@ -5477,7 +5483,31 @@ impl Economy {
                 // which is how a real market works: producers will not sell
                 // below cost for long, and a shortage bids the price above
                 // it however cheap the inputs were.
-                self.markets[m].price[c as usize] = cost * multiplier;
+                // **The same arithmetic, through the types that keep it
+                // honest.**
+                //
+                // `cost * multiplier` is one line and it is the line that
+                // caused the worst defect this project has measured: with
+                // a freight-inclusive cost it makes the carriage generate
+                // its own scarcity markup, and every remote market shows a
+                // false arbitrage of exactly `freight x (m-1)`.
+                //
+                // Written through `value`, the illegal version does not
+                // compile: there is no route from a landed cost and a
+                // scarcity factor to a clearing price. Scarcity may only
+                // be taken on a `ProductionCost`, and carriage may only be
+                // added afterwards.
+                //
+                // **The carriage is `NONE` here on purpose.** This commit
+                // changes no behaviour: `cost.delivered(NONE)` is `cost`,
+                // and adding `cost x (m-1)` to it is `cost x m` exactly.
+                // Putting the real carriage in is Phase 0 item 8, and the
+                // point of doing this first is that it is then a one-line
+                // change with one thing to measure.
+                let goods = crate::value::ProductionCost::new(cost);
+                let quote = goods.delivered(crate::value::InboundCharges::NONE);
+                let premium = goods.scarcity_premium(crate::value::Scarcity::new(multiplier));
+                self.markets[m].price[c as usize] = quote.plus_premium(premium).get();
             }
         }
     }

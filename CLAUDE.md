@@ -2915,6 +2915,58 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+## Nine numbers that had been two (`src/value.rs`)
+
+Every figure in the economy is money per tonne, so every one of them is an
+`f64` and the machine cannot tell them apart. They are not the same
+quantity and they do not answer the same question, and collapsing them
+produced the worst defect measured here:
+
+```text
+price = landed x scarcity,  landed = goods + freight
+  =>  price_b - price_a = freight x m
+  =>  arbitrage         = freight x (m - 1)
+```
+
+Writing that is one obvious line. **So the purpose of the module is not to
+hold the numbers — `f64` did that perfectly well — but to make that line
+fail to compile.**
+
+| | question it answers |
+|---|---|
+| `ProductionCost` | what does it cost to *make* here, ex works |
+| `InventoryBasis` | what did the stock on hand cost — historical |
+| `SupplierAsk` | what is a seller asking |
+| `PurchasePrice` | what was actually agreed |
+| `InboundCharges` | freight, duty and handling to get it here |
+| `LandedBasis` | purchase plus inbound, per tonne held |
+| `ReplacementQuote` | what would the **next** tonne cost, now |
+| `ScarcityPremium` | what shortage adds on top |
+| `ClearingPrice` | what it changes hands at |
+
+**A works consumes the inventory basis of what is in its yard**, which is
+an accounting fact about the past. **Anybody deciding whether to move goods
+needs the replacement quote** — what obtaining another tonne would cost
+today. Using the first where the second belongs is the error underneath the
+whole business, and it is now a type error.
+
+The legal arithmetic is deliberately short, and what is missing from it is
+the point: **there is no route from a landed cost and a scarcity factor to
+a clearing price.** Scarcity may only be taken on a `ProductionCost`;
+carriage may only be added afterwards. Three `compile_fail` doctests hold
+it, each checked by running it as an ordinary doctest and reading the
+error — `cannot multiply LandedBasis by Scarcity` is the defect itself,
+refused.
+
+**No behaviour changed, and that was the requirement.** `cost.delivered(
+NONE).plus_premium(cost.scarcity_premium(m))` is `cost + cost x (m-1)`,
+which is `cost x m`. The carriage is `NONE` on purpose: putting the real
+figure in is one line, in one place, with one thing to measure — which
+after four coupled changes starved a country is the only sane way to
+attempt it again. *(Algebraically identical rather than bit-identical: the
+additive form can differ in the last ulp, so the suite is the evidence and
+not a byte comparison.)*
+
 ### The same road cannot be promised to everybody
 
 A route table worked out once when the day opens tells every enquiry what
