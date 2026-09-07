@@ -227,6 +227,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         told_the_day: None,
             opening: None,
             shipments: crate::registry::Registry::new(),
+            power_clearing: None,
             experiments: Default::default(),
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
@@ -420,6 +421,8 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         }
     }
 
+    // Provisional: the real figure is taken off the built economy below,
+    // because adding up the recipe draws by hand gets it wrong.
     let peak =
         (cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0) * TOWNS as f64;
 
@@ -442,6 +445,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         told_the_day: None,
         opening: None,
         shipments: crate::registry::Registry::new(),
+            power_clearing: None,
             experiments: Default::default(),
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
@@ -459,5 +463,19 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     // the top of every day, but a freshly built world is read before it
     // has had one.
     economy.resurvey();
+    // **And size the grid against the load it will actually see.**
+    //
+    // Adding up the recipe draws by hand got it wrong by half: this
+    // fixture ran at capacity 142 against a demand of 283, so every
+    // measurement taken on it — the allocation work, the permutation
+    // gates, the whole experiment matrix — was taken on a country in
+    // permanent fifty per cent blackout. It did not invalidate them,
+    // because it was the same in every case, and it is exactly the kind of
+    // thing that invalidates the next one.
+    //
+    // **A real system plans a reserve margin of 15-20% above peak**, which
+    // is what keeps the lights on when a unit trips or the weather turns.
+    let peak = economy.power_demand() * 1.20;
+    economy.grid = Grid::for_doctrine(doctrine, peak);
     economy
 }

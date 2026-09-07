@@ -2936,6 +2936,64 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+## The last plant dispatched sets the price (`src/econ.rs`)
+
+`power.rs` has held the merit-order model since it was written and the
+ledger had never used it. Electricity was priced on **days of cover**,
+which is a category error for something that is never stored — it declares
+zero target cover precisely because none of it is ever held.
+
+It is priced off the marginal generator now: whatever it cost to meet the
+last megawatt-hour of the call, **paid to everybody on the system**. That
+is the least intuitive fact in a real wholesale market and the reason a
+wind farm with no fuel bill earns exactly what the gas turbine that
+happened to be last earns.
+
+And a shortage is a different thing from a high price: real markets cap it
+administratively rather than letting it run away — ERCOT's was $9,000/MWh
+in the February 2021 Texas freeze, about two hundred times an ordinary
+wholesale price, and it sat there for four days and bankrupted several
+retailers.
+
+**Three defects came out of building it, and two of them had been quietly
+wrong for a long time.**
+
+- **`grid_shortfall` was per market and the grid is national.** It compared
+  what one town generated against what that town consumed, so **a town with
+  no power station of its own read as a hundred per cent short every day of
+  its life**. It only mattered once electricity was priced off it, at which
+  point those towns would have paid the shortage price for ever and a real
+  shortage could not have been told from an ordinary Tuesday.
+- **And it built its own demand figure off *rated* capacity**, which is the
+  error this file already records for the grid at large: an idle plant must
+  draw no power. `wanted` therefore exceeded `made` permanently and the
+  shortfall never fell below one whatever the system was doing. There is
+  one definition now, `power_demand`.
+- **Dispatch ignored a station's nameplate.** It read only the fuel on
+  hand, so every station on the system could carry the whole national load
+  alone — which means the cheapest always covers the call and no dearer
+  plant is ever on the margin. **A merit order whose margin is always the
+  cheapest unit is not a merit order**, it is a single supplier. That is
+  the fourth time `throughput`'s "whatever the grid can carry" sentinel has
+  bitten, and the first time it has been read correctly on purpose rather
+  than patched after the fact.
+
+**And the fixture had been in a permanent blackout.** `slice::symmetric`
+sized its grid by adding up recipe draws by hand and got it wrong by half —
+capacity 142 against a demand of 283 — so every measurement taken on it,
+the allocation work and the permutation gates and the whole experiment
+matrix, was taken on a country running at 50% unserved load. It did not
+invalidate them, because it was the same in every case. It is exactly the
+kind of thing that invalidates the next one. The grid is now sized off the
+load it will actually see, with the **15-20% reserve margin** a real system
+plans.
+
+**The gate had to be built twice.** The first version asserted that making
+the marginal plant dearer did not make electricity cheaper — which a
+weighted average also satisfies, so it passed with the mechanism deleted.
+What separates a clearing price from an average is that it is set by the
+*worst* unit running, so it must sit strictly **above** the average.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting

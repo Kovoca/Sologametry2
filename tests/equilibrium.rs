@@ -493,3 +493,127 @@ fn dispatch_runs_the_cheap_station_first() {
     );
     e.ledger.assert_conserved();
 }
+
+// =====================================================================
+// the last unit dispatched sets the price
+// =====================================================================
+
+/// **A cheap plant does not make cheap electricity if a dear one is still
+/// needed.**
+///
+/// The least intuitive fact in a real wholesale market, and the reason it
+/// has to be gated rather than assumed: everybody on the system is paid
+/// what it cost to meet the *last* megawatt-hour of the call. A wind farm
+/// with no fuel bill earns exactly what the gas turbine that happened to
+/// be last earns.
+///
+/// Electricity was priced on days of cover, which is a category error for
+/// something that is never stored — it declares zero target cover
+/// precisely because none of it is ever held. `power.rs` has held the
+/// merit-order model since it was written and the ledger had never used
+/// it.
+#[test]
+fn the_last_plant_dispatched_sets_the_price() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    let plants: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant)
+        .collect();
+    assert_eq!(plants.len(), 3, "the fixture no longer has three stations");
+
+    // **A cheap one, an ordinary one and a dear one, none of them big
+    // enough alone.** That last part is the whole test: if any station can
+    // carry the national load by itself, the cheapest always covers the
+    // call and no dearer plant is ever on the margin — which is not a
+    // merit order, it is a single supplier.
+    let call = e.power_demand();
+    for (i, factor) in [0.25f64, 1.00, 3.00].iter().enumerate() {
+        e.ledger.sites[plants[i]].cost_factor = *factor;
+        e.ledger.sites[plants[i]].throughput = call * 0.5;
+    }
+    for _ in 0..30 {
+        e.step();
+    }
+
+    // **The discriminating assertion**, and the first version of this gate
+    // did not have it: a weighted average of the running plants tracks the
+    // margin closely enough that "the price did not go down" passes with
+    // the mechanism deleted. What separates a clearing price from an
+    // average is that it is set by the *worst* plant on the system, so it
+    // must sit strictly above the average.
+    let price = e.price(0, Commodity::Electricity);
+    let average = e.markets[0].cost[Commodity::Electricity as usize];
+    assert!(
+        price > average * 1.10,
+        "electricity cleared at {price:.2} against an average production          cost of {average:.2} — that is an average, not a market. The last          plant dispatched is supposed to set the price for everybody."
+    );
+
+    // And every plant is paid it, including the cheap one — the least
+    // intuitive fact in a real wholesale market and the reason a wind farm
+    // with no fuel bill earns what the gas turbine earns.
+    assert!(
+        e.power_clearing.is_some(),
+        "nothing was dispatched, so nothing set a price"
+    );
+    assert!(
+        e.ledger.sites[plants[0]].ran > 1e-9,
+        "the cheapest station did not run"
+    );
+    e.ledger.assert_conserved();
+}
+
+/// **A shortage is a different thing from a high price.**
+///
+/// Real markets cap it administratively rather than letting it run away —
+/// ERCOT's was $9,000/MWh in the February 2021 Texas freeze, around two
+/// hundred times an ordinary wholesale price, and it sat there for four
+/// days and bankrupted several retailers.
+#[test]
+fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    for _ in 0..20 {
+        e.step();
+    }
+    let ordinary = e.price(0, Commodity::Electricity);
+
+    // **Take the coal away**, through the journal like every other change
+    // to a stockpile. The plants stand, the load does not go away, and
+    // nothing can be generated.
+    //
+    // Zeroing `throughput` does not work and it is worth saying why: on a
+    // power station that field is a sentinel meaning "whatever the grid
+    // can carry", so dispatch is limited by fuel and never reads it. That
+    // sentinel has now bitten four separate times.
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind != scale_sim::econ::SiteKind::PowerPlant {
+            continue;
+        }
+        let qty = e.ledger.stock(site, Commodity::Coal);
+        if qty > 0.0 {
+            e.ledger.apply(
+                &mut e.journal,
+                scale_sim::econ::Event::Consumed {
+                    site,
+                    commodity: Commodity::Coal,
+                    qty,
+                    reason: scale_sim::econ::Use::Input,
+                },
+            );
+        }
+    }
+    for _ in 0..10 {
+        e.step();
+    }
+    let short = e.price(0, Commodity::Electricity);
+
+    assert!(
+        short > ordinary * 5.0,
+        "a grid that can generate nothing priced at {short:.1} against an \
+         ordinary {ordinary:.1} — unserved load is not reaching the price"
+    );
+    assert!(
+        short <= Commodity::Electricity.base_cost() * 201.0,
+        "the price ran to {short:.1}, past the administrative cap that \
+         every real market has"
+    );
+    e.ledger.assert_conserved();
+}

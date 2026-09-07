@@ -2732,6 +2732,13 @@ pub struct Economy {
     /// whether a haul is worth making. Two mechanisms quoting the same
     /// haul differently is how a price gap that nothing can close comes to
     /// exist.
+    /// **What the last generator dispatched cost**, per MWh.
+    ///
+    /// The price everybody on the system pays, which is the least
+    /// intuitive fact in a real wholesale market: a wind farm with no fuel
+    /// bill is paid exactly what the gas turbine that happened to be last
+    /// is paid. `None` before the first day, or where nothing ran.
+    pub power_clearing: Option<f64>,
     /// **Scaffolding**, off by default. See `Experiments`.
     pub experiments: Experiments,
     pub routing: crate::quote::Routing,
@@ -3234,6 +3241,23 @@ impl Economy {
                 // Burns nothing: it is limited only by the wires.
                 feasible = carry;
             }
+            // **And by its own nameplate.**
+            //
+            // Dispatch read only the fuel on hand, so every station on the
+            // system could carry the whole national load by itself — which
+            // means the cheapest plant always covers the call alone and no
+            // dearer plant is ever on the margin. A merit order in which
+            // the margin is always the cheapest unit is not a merit order.
+            //
+            // `throughput` on a power station is a sentinel meaning
+            // "whatever the grid can carry", so it is only a limit when it
+            // is a real figure. That sentinel has bitten four times now
+            // and this is the first time it has been read correctly on
+            // purpose rather than fixed after the fact.
+            let rated = self.ledger.sites[site].throughput;
+            if rated < UNBOUNDED_THROUGHPUT {
+                feasible = feasible.min(rated);
+            }
             let marginal = marginal * self.ledger.sites[site].cost_factor;
             if feasible > 1e-9 {
                 fleet.push((site, marginal, feasible));
@@ -3243,6 +3267,14 @@ impl Economy {
 
         // Cheapest band first; within a band, in proportion to what each
         // can actually run.
+        //
+        // **And the last band to run sets the price**, which is what makes
+        // a merit order a market rather than a rota. Nothing here is paid
+        // its own cost: everybody is paid what it took to meet the last
+        // megawatt-hour of the call, so a windy night clears at almost
+        // nothing and a still cold evening clears at the cost of the worst
+        // plant on the system, from the same fleet and the same capital.
+        let mut clearing: Option<f64> = None;
         let mut allotted: Vec<(usize, f64)> = Vec::new();
         let mut i = 0;
         while i < fleet.len() && remaining > 1e-9 {
@@ -3263,8 +3295,10 @@ impl Economy {
                 allotted.push((site, feasible * share));
             }
             remaining -= take;
+            clearing = Some(cheapest);
             i = j;
         }
+        self.power_clearing = clearing;
 
         for (site, batches) in allotted {
             let Some(r) = self.ledger.sites[site].recipe else {
@@ -5503,23 +5537,35 @@ impl Economy {
     /// Not a stock reading: generation against load. A grid that can meet
     /// the call has no scarcity premium however little is "in store",
     /// because nothing is ever in store.
-    pub fn grid_shortfall(&self, m: usize) -> f64 {
+    /// **How far short the system is**, 0 to 1.
+    ///
+    /// **National, because the grid is.** This compared what one market
+    /// generated against what that market consumed — so a town with no
+    /// power station of its own read as a hundred per cent short every
+    /// day of its life, while the national grid supplied it perfectly
+    /// well. It only mattered once electricity was priced off it: those
+    /// towns then paid the shortage price permanently, and a real
+    /// shortage could not be told from an ordinary Tuesday.
+    ///
+    /// A fault that isolates a place is a different thing and is modelled
+    /// where it belongs, in `Grid` — a transmission circuit is built N-1
+    /// and losing one takes nobody off supply, which is exactly why a
+    /// pylon coming down is a news item and not a blackout.
+    pub fn grid_shortfall(&self, _m: usize) -> f64 {
         let made: f64 = (0..self.ledger.sites.len())
-            .filter(|&s| {
-                self.ledger.sites[s].market == m
-                    && self.ledger.sites[s].kind == SiteKind::PowerPlant
-            })
+            .filter(|&s| self.ledger.sites[s].kind == SiteKind::PowerPlant)
             .map(|s| self.ledger.sites[s].ran)
             .sum();
-        let wanted: f64 = (0..self.ledger.sites.len())
-            .filter(|&s| self.ledger.sites[s].market == m)
-            .filter_map(|s| {
-                let site = &self.ledger.sites[s];
-                let r = site.recipe?;
-                Some(RECIPES[r].power.min(1e6) * demand_rate_of(site))
-            })
-            .sum::<f64>()
-            + self.markets[m].daily_household_demand(Commodity::Electricity);
+        // **What was actually asked of the grid**, which is
+        // `power_demand` and nothing else.
+        //
+        // This built its own figure off *rated* capacity, and that is the
+        // error this file already records for the grid at large: an idle
+        // plant must draw no power, and pricing demand off a rating that
+        // nothing can meet is how a grid talks itself into a famine. Here
+        // it meant `wanted` permanently exceeded `made`, so the shortfall
+        // never fell below one whatever the system was doing.
+        let wanted = self.power_demand();
         if wanted <= 0.0 {
             return 0.0;
         }
@@ -5673,8 +5719,33 @@ impl Economy {
                 // done, and this says so rather than pretending a cover
                 // number means something.**
                 if c == Commodity::Electricity {
-                    let short = self.grid_shortfall(m);
-                    self.markets[m].price[c as usize] = cost * (1.0 + short * 4.0);
+                    // **Electricity is not warehouse stock**, and pricing
+                    // it on days of cover was a category error: it
+                    // declares zero target cover precisely because none of
+                    // it is ever held. What sets the price is the marginal
+                    // cost of the last plant dispatched, and a shortage is
+                    // unserved load rather than an empty silo.
+                    //
+                    // `power.rs` has held this model since it was written
+                    // and the ledger had never used it. It does now: the
+                    // clearing price is what it cost to meet the last
+                    // megawatt-hour of the call, and **everybody is paid
+                    // that** — the least intuitive fact in a real
+                    // wholesale market and the reason a wind farm with no
+                    // fuel bill earns what the gas turbine earns.
+                    let clearing = self.power_clearing.unwrap_or(cost);
+                    // **A shortage is a different thing from a high
+                    // price**, and real markets cap it administratively
+                    // rather than letting it run away: ERCOT's cap was
+                    // $9,000/MWh in the February 2021 Texas freeze, which
+                    // is around two hundred times an ordinary wholesale
+                    // price, and it sat there for four days and bankrupted
+                    // several retailers.
+                    const CAP: f64 = 200.0;
+                    let short = self.grid_shortfall(m).clamp(0.0, 1.0);
+                    let cap = c.base_cost() * CAP;
+                    self.markets[m].price[c as usize] =
+                        clearing + (cap - clearing).max(0.0) * short;
                     self.markets[m].cover[c as usize] = f64::INFINITY;
                     continue;
                 }
