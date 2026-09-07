@@ -34,7 +34,7 @@
 //! - An artic carries **24 t** and covers **550-700 km** in a legal day,
 //!   both of which `vehicle.rs` already knows.
 
-use crate::econ::{Commodity, Economy, Event};
+use crate::econ::{Commodity, Economy};
 
 /// **What a lorry costs to run for a day**, as a share of what it earns.
 /// Fuel, tyres, wear, the driver, the operator's licence and the depot.
@@ -345,7 +345,7 @@ impl Logistics {
                             continue;
                         }
 
-                        let moved = ship(econ, src, dst, commodity, take);
+                        let moved = ship(econ, src, dst, commodity, take, ci, km);
                         if moved <= 1e-9 {
                             continue;
                         }
@@ -393,7 +393,15 @@ impl Logistics {
 /// Move goods between two markets, through the journal like everything
 /// else — so conservation covers a haulier's work the way it covers a
 /// farm's.
-fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f64 {
+fn ship(
+    econ: &mut Economy,
+    from: usize,
+    to: usize,
+    c: Commodity,
+    qty: f64,
+    carrier: usize,
+    km: f64,
+) -> f64 {
     let mut left = qty;
     let mut moved = 0.0;
 
@@ -493,63 +501,26 @@ fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f
             if take <= 1e-9 {
                 continue;
             }
-            // **What the goods were worth where they were picked up, and
-            // what this haulier charged to move them.** Between them they
-            // are the landed cost at the far end, which is what the
-            // consignee's works actually pays for its input.
-            let from_m = econ.ledger.sites[src].market;
-            let to_m = econ.ledger.sites[dst].market;
-            let goods = econ.markets[from_m].landed[c as usize] * take;
-            let carriage = econ.freight_between(from_m, to_m) * take;
-            econ.ledger.apply(
-                &mut econ.journal,
-                Event::Shipped {
-                    from: src,
-                    to: dst,
-                    commodity: c,
-                    qty: take,
-                    paid: goods,
-                    freight: carriage,
-                },
-            );
-            econ.pay_the_carrier(dst, carriage);
-            // **Still deliberately not wired, and now for a narrower and
-            // better-evidenced reason than last time.**
-            //
-            // `econ.take_delivery(to_m, c, take, goods + carriage)` belongs
-            // here: what a carrier drops off did cost what was paid for it
-            // plus this carriage. Adding it destabilises food distribution
-            // — a country whose cover is dead level at 16.4 days in every
-            // town without hauliers, and level with them, goes to a spread
-            // of 8 to 32 as soon as their deliveries move the landed
-            // average.
-            //
-            // The first guess was that carriers were planning on state
-            // their own cargoes had altered. That is now fixed regardless:
-            // they plan on an opening snapshot, and arrivals fold into the
-            // average once at the close. **It did not fix this**, so the
-            // guess was wrong and the cause is somewhere else — most
-            // likely that food's landed cost diverging between markets is
-            // a real economic signal the rest of the model then chases,
-            // and that "even cover" may simply not survive contact with
-            // genuine cost differences.
-            //
-            // Which would make the *test* the thing to revisit rather than
-            // the model. Not shipped either way on a hunch. The landed cost of what a carrier delivers is
-            // genuinely what was paid plus this carriage, and blending it
-            // into the market average here is the obvious thing — but that
-            // average feeds the price, and the price is what the carriers
-            // plan tomorrow's hauls on. Closing the loop inside the day
-            // made food cover swing from 8 to 24 days across one country
-            // that was even without any hauliers at all.
-            //
-            // The fix is for a haulier to plan against the prices it knew
-            // when it set off, which is also what a real one does: it
-            // cannot see the price its own cargo is about to create. That
-            // wants a price snapshot the carriers read from, which is a
-            // change to how the day is ordered rather than a line here.
-            // `distribute` and `trade` do update it, because neither of
-            // them re-plans on the result within the same day.
+            // **Collected, not teleported.** What used to be one
+            // statement taking tonnes off a shed here and putting them on
+            // a shelf there is now a consignment with a name, a contract
+            // price, a carrier and a due date — because six hundred
+            // kilometres is not the same thing as across town, and a model
+            // that cannot say so has nowhere to put goods that are on the
+            // road at midnight.
+            let Some(id) = econ.consign(src, dst, carrier, c, take, km, c.needs_cold()) else {
+                continue;
+            };
+            // **A same-day haul is collected and tipped in the same day.**
+            // The average British road haul is about 94 km, which a lorry
+            // does and comes home from before tea, so most freight really
+            // is same-day — and making every delivery an overnight saga
+            // would be wrong about the common case in order to be right
+            // about the rare one. Anything that has to sleep somewhere is
+            // tipped by `roll_the_road` on the morning it is due.
+            if econ.shipments.get(id).map(|s| s.due) == Some(econ.ledger.day) {
+                econ.tip(id);
+            }
             left -= take;
             moved += take;
         }

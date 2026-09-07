@@ -226,6 +226,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         treasury: crate::money::Treasury::new(),
         told_the_day: None,
             opening: None,
+            shipments: crate::registry::Registry::new(),
             arrivals: Vec::new(),
         staff_today: Vec::new(),
         payroll_met: Vec::new(),

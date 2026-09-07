@@ -491,6 +491,39 @@ pub enum Event {
         commodity: Commodity,
         qty: f64,
     },
+    /// **Collected, and on its way.** Off the consignor's books and not
+    /// yet on the consignee's — which is a real place for goods to be and
+    /// had nowhere to go while freight was instantaneous.
+    ///
+    /// The tonnes are still the ledger's; they are simply not at a site.
+    Despatched {
+        shipment: crate::shipment::ShipmentId,
+        from: usize,
+        commodity: Commodity,
+        qty: f64,
+        /// The contract price of what set off. **Struck now**, and not
+        /// revisited when the market moves under the lorry.
+        paid: f64,
+        freight: f64,
+    },
+    /// **Tipped.** Out of transit and onto the consignee's shelf.
+    Landed {
+        shipment: crate::shipment::ShipmentId,
+        to: usize,
+        commodity: Commodity,
+        qty: f64,
+        paid: f64,
+        freight: f64,
+    },
+    /// **It did not arrive.** Destroyed on the road rather than at a site,
+    /// which is why it cannot be an ordinary `Spoiled`: there is no site
+    /// to take it off.
+    LostInTransit {
+        shipment: crate::shipment::ShipmentId,
+        commodity: Commodity,
+        qty: f64,
+        how: crate::shipment::Loss,
+    },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -732,6 +765,15 @@ pub struct Ledger {
     consumed_total: Basket,
     spoiled_total: Basket,
     opening_total: Basket,
+    /// **Tonnes on the road**: collected from a consignor and not yet
+    /// tipped at a consignee.
+    ///
+    /// It lives on the ledger rather than beside it because that is what
+    /// makes it real. `total` counts it, so the conservation assertion
+    /// covers goods in transit — and a cargo that quietly stopped existing
+    /// somewhere between two towns fails the same check that has caught
+    /// every leak in this model so far.
+    afloat: Basket,
 }
 
 impl Ledger {
@@ -794,6 +836,7 @@ impl Ledger {
             consumed_total: basket(),
             spoiled_total: basket(),
             opening_total: opening,
+            afloat: basket(),
         }
     }
 
@@ -812,7 +855,16 @@ impl Ledger {
 
     /// Total of a commodity held across every site.
     pub fn total(&self, c: Commodity) -> f64 {
-        self.sites.iter().map(|s| s.stock[c as usize]).sum()
+        let at_sites: f64 = self.sites.iter().map(|s| s.stock[c as usize]).sum();
+        // **What is on a lorry is still in the country.** Leaving it out
+        // would mean a haul that crosses midnight destroys its cargo and
+        // creates it again in the morning.
+        at_sites + self.afloat[c as usize]
+    }
+
+    /// Tonnes currently between two sites.
+    pub fn afloat(&self, c: Commodity) -> f64 {
+        self.afloat[c as usize].max(0.0)
     }
 
     /// **The only way stock changes.** Records the event and applies it.
@@ -852,6 +904,43 @@ impl Ledger {
                 let c = *commodity as usize;
                 self.sites[*from].stock[c] -= qty;
                 self.sites[*to].stock[c] += qty;
+            }
+            Event::Despatched {
+                shipment: _,
+                from,
+                commodity,
+                qty,
+                paid: _,
+                freight: _,
+            } => {
+                let c = *commodity as usize;
+                self.sites[*from].stock[c] -= qty;
+                self.afloat[c] += qty;
+            }
+            Event::Landed {
+                shipment: _,
+                to,
+                commodity,
+                qty,
+                paid: _,
+                freight: _,
+            } => {
+                let c = *commodity as usize;
+                self.afloat[c] -= qty;
+                self.sites[*to].stock[c] += qty;
+            }
+            Event::LostInTransit {
+                shipment: _,
+                commodity,
+                qty,
+                how: _,
+            } => {
+                let c = *commodity as usize;
+                self.afloat[c] -= qty;
+                // A cargo that rotted on the road was destroyed, and the
+                // books say so in the same column as anything else that
+                // spoils.
+                self.spoiled_total[c] += qty;
             }
             Event::Spoiled {
                 site,
@@ -2519,6 +2608,14 @@ pub struct Economy {
     /// **What the day opened on.** Read by anybody deciding what to do
     /// today; never written to during it.
     pub opening: Option<Opening>,
+    /// **Every consignment on the road**, by name.
+    ///
+    /// The first real consumer of `registry.rs`. A cargo has to keep one
+    /// identity across a save — a lorry that set off on Monday is the same
+    /// lorry on Thursday — and it must never be confused with the site it
+    /// left or the market it is bound for, which are both `usize` and both
+    /// would compile.
+    pub shipments: crate::registry::Registry<crate::shipment::Shipment>,
     /// **What arrived today, and what it cost**, per market per commodity:
     /// tonnes and total value.
     ///
@@ -2620,6 +2717,10 @@ impl Economy {
 
         self.turn_of_the_year();
         self.close_the_passes();
+        // **The lorries tip in the morning**, before anything runs on what
+        // they brought. A works that has been waiting three days for ore
+        // gets to use it today rather than tomorrow.
+        self.roll_the_road();
         self.run_response();
         self.generate_power();
         self.allocate_power();
@@ -4274,6 +4375,280 @@ impl Economy {
         // either: what it would cost to get it there some other way, capped
         // so one unreachable market cannot poison every average downstream.
         best[to].min(LANDED_FREIGHT_CAP)
+    }
+
+    /// **Collect a consignment and put it on the road.**
+    ///
+    /// The tonnes leave the consignor now; they reach the consignee when
+    /// they get there. What is fixed at this moment and never revisited is
+    /// the **contract**: what the goods were worth where they were picked
+    /// up and what the haul was agreed at. A price that moves while the
+    /// lorry is moving is not the buyer's problem and not the seller's
+    /// windfall, and a model that recomputed the price on arrival could
+    /// not say so.
+    pub fn consign(
+        &mut self,
+        consignor: usize,
+        consignee: usize,
+        carrier: usize,
+        commodity: Commodity,
+        tonnes: f64,
+        km: f64,
+        refrigerated: bool,
+    ) -> Option<crate::shipment::ShipmentId> {
+        use crate::shipment::{days_on_the_road, Leg, Shipment};
+        if tonnes <= 1e-9 {
+            return None;
+        }
+        let have = self.ledger.stock(consignor, commodity);
+        let take = tonnes.min(have);
+        if take <= 1e-9 {
+            return None;
+        }
+        let from_market = self.ledger.sites[consignor].market;
+        let to_market = self.ledger.sites[consignee].market;
+        let goods = self.markets[from_market].landed[commodity as usize] * take;
+        let freight = self.freight_between(from_market, to_market) * take;
+        let day = self.ledger.day;
+
+        let id = self.shipments.add(Shipment {
+            commodity,
+            consignor,
+            consignee,
+            carrier,
+            from_market,
+            to_market,
+            left: day,
+            due: day + days_on_the_road(km),
+            despatched: take,
+            aboard: take,
+            delivered: 0.0,
+            lost: 0.0,
+            how_lost: None,
+            goods,
+            freight,
+            refrigerated,
+            leg: Leg::OnTheRoad,
+        });
+        self.ledger.apply(
+            &mut self.journal,
+            Event::Despatched {
+                shipment: id,
+                from: consignor,
+                commodity,
+                qty: take,
+                paid: goods,
+                freight,
+            },
+        );
+        Some(id)
+    }
+
+    /// **Tip what will fit.** Returns the tonnage that actually came off.
+    ///
+    /// Room is checked *here*, not only when the load was planned — the
+    /// same rule `schedule.rs` had to learn about finished work, and for
+    /// the same reason: between the lorry leaving and the lorry arriving,
+    /// somebody may have filled the shed it was going into.
+    pub fn tip(&mut self, id: crate::shipment::ShipmentId) -> f64 {
+        use crate::shipment::Leg;
+        let Some(s) = self.shipments.get(id) else {
+            return 0.0;
+        };
+        if !s.in_transit() || s.aboard <= 1e-9 {
+            return 0.0;
+        }
+        let (commodity, consignee, aboard) = (s.commodity, s.consignee, s.aboard);
+        let c = commodity as usize;
+        let room = (self.ledger.sites[consignee].capacity[c]
+            - self.ledger.stock(consignee, commodity))
+        .max(0.0);
+        let off = aboard.min(room);
+        if off <= 1e-9 {
+            // Nothing doing. A lorry standing at a bay is a lorry not
+            // earning, which is exactly why demurrage is a thing.
+            if let Some(s) = self.shipments.get_mut(id) {
+                s.leg = Leg::Waiting;
+            }
+            return 0.0;
+        }
+        let (paid, freight) = self.shipments.get(id).map(|s| s.share(off)).unwrap_or((0.0, 0.0));
+        self.ledger.apply(
+            &mut self.journal,
+            Event::Landed {
+                shipment: id,
+                to: consignee,
+                commodity,
+                qty: off,
+                paid,
+                freight,
+            },
+        );
+        // **The carrier is paid for what arrived**, not for what set off.
+        // Which is also why a haulier's money comes in later than the work
+        // does, and is a real reason small ones run out of it.
+        self.pay_the_carrier(consignee, freight);
+        // Deliberately still not folding this into the landed average —
+        // see `logistics::ship`. That is step 4 and wants the food
+        // equilibrium diagnosed first.
+        let day = self.ledger.day;
+        if let Some(s) = self.shipments.get_mut(id) {
+            s.aboard -= off;
+            s.delivered += off;
+            s.leg = if s.aboard > 1e-9 { Leg::Waiting } else { Leg::Delivered };
+        }
+        if self.shipments.get(id).map(|s| s.leg) == Some(Leg::Delivered) {
+            self.shipments.end(id, day, "delivered");
+        }
+        off
+    }
+
+    /// **A day on the road.**
+    ///
+    /// What was already travelling spoils at the rate it spoils at — a
+    /// lorry is a store like any other — and whatever is due gets tipped.
+    /// Everything is walked in key order, so which cargo is dealt with
+    /// first is a fact about when it set off rather than about how the
+    /// registry happens to be laid out.
+    pub fn roll_the_road(&mut self) {
+        use crate::shipment::{Leg, Loss};
+        let day = self.ledger.day;
+        let travelling: Vec<crate::shipment::ShipmentId> = self
+            .shipments
+            .iter()
+            .filter(|(_, s)| s.in_transit())
+            .map(|(k, _)| k)
+            .collect();
+
+        for id in travelling.iter().copied() {
+            // Spoilage only for a load that has actually spent a night
+            // out. A same-day haul is collected and tipped between
+            // breakfast and tea.
+            let gone = match self.shipments.get(id) {
+                Some(s) if s.left < day => s.spoilage_today(),
+                _ => 0.0,
+            };
+            if gone > 1e-12 {
+                let commodity = self.shipments.get(id).unwrap().commodity;
+                self.ledger.apply(
+                    &mut self.journal,
+                    Event::LostInTransit {
+                        shipment: id,
+                        commodity,
+                        qty: gone,
+                        how: Loss::Spoiled,
+                    },
+                );
+                if let Some(s) = self.shipments.get_mut(id) {
+                    s.aboard = (s.aboard - gone).max(0.0);
+                    s.lost += gone;
+                    s.how_lost = Some(Loss::Spoiled);
+                }
+            }
+        }
+
+        for id in travelling.iter().copied() {
+            let due = match self.shipments.get(id) {
+                Some(s) => s.due <= day,
+                None => false,
+            };
+            if due {
+                self.tip(id);
+            }
+        }
+
+        // **A load nobody can take is not left on a lorry for a month.**
+        //
+        // Unbounded waiting is unbounded state, which this project has had
+        // to remove three times already. After a few days at a full shed a
+        // real carrier stops waiting: the goods go into whatever store in
+        // that town will have them, and if there is genuinely nowhere,
+        // they are written off, which is what happens to a rejected load
+        // of anything perishable.
+        const DAYS_AT_THE_BAY: u64 = 3;
+        let stuck: Vec<crate::shipment::ShipmentId> = self
+            .shipments
+            .iter()
+            .filter(|(_, s)| s.leg == Leg::Waiting && day >= s.due + DAYS_AT_THE_BAY)
+            .map(|(k, _)| k)
+            .collect();
+        for id in stuck {
+            let Some(s) = self.shipments.get(id) else { continue };
+            let (commodity, to_market, aboard) = (s.commodity, s.to_market, s.aboard);
+            let c = commodity as usize;
+            let mut left = aboard;
+            let elsewhere: Vec<usize> = (0..self.ledger.sites.len())
+                .filter(|&i| self.ledger.sites[i].market == to_market)
+                .collect();
+            for site in elsewhere {
+                if left <= 1e-9 {
+                    break;
+                }
+                let room = (self.ledger.sites[site].capacity[c]
+                    - self.ledger.stock(site, commodity))
+                .max(0.0);
+                let off = left.min(room);
+                if off <= 1e-9 {
+                    continue;
+                }
+                let (paid, freight) =
+                    self.shipments.get(id).map(|s| s.share(off)).unwrap_or((0.0, 0.0));
+                self.ledger.apply(
+                    &mut self.journal,
+                    Event::Landed {
+                        shipment: id,
+                        to: site,
+                        commodity,
+                        qty: off,
+                        paid,
+                        freight,
+                    },
+                );
+                self.pay_the_carrier(site, freight);
+                if let Some(s) = self.shipments.get_mut(id) {
+                    s.aboard -= off;
+                    s.delivered += off;
+                }
+                left -= off;
+            }
+            if left > 1e-9 {
+                self.ledger.apply(
+                    &mut self.journal,
+                    Event::LostInTransit {
+                        shipment: id,
+                        commodity,
+                        qty: left,
+                        how: Loss::Damaged,
+                    },
+                );
+                if let Some(s) = self.shipments.get_mut(id) {
+                    s.aboard = 0.0;
+                    s.lost += left;
+                    s.how_lost = Some(Loss::Damaged);
+                }
+            }
+            if let Some(s) = self.shipments.get_mut(id) {
+                s.leg = if s.delivered > 0.0 { Leg::Delivered } else { Leg::WrittenOff };
+            }
+            self.shipments.end(id, day, "could not be tipped");
+        }
+
+        // **Graves are pruned, and the counter is what makes that safe.**
+        //
+        // A registry that kept a tombstone for every consignment ever
+        // delivered would grow with history rather than with the world —
+        // the unbounded state this project has removed three times. It is
+        // safe here precisely because `Registry` writes its counter down
+        // rather than deriving it from the highest key present, so nothing
+        // reissues the name of a cargo whose grave has gone.
+        const REMEMBER_DELIVERIES_FOR: u64 = 90;
+        self.shipments
+            .forget_graves_before(day.saturating_sub(REMEMBER_DELIVERIES_FOR));
+    }
+
+    /// Tonnes of everything currently between two towns.
+    pub fn afloat(&self, c: Commodity) -> f64 {
+        self.ledger.afloat(c)
     }
 
     /// What the day opened on, for anybody deciding what to do in it.

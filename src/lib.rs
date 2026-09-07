@@ -52,6 +52,7 @@ pub mod scrap;
 pub mod schedule;
 pub mod scaling;
 pub mod settlement;
+pub mod shipment;
 pub mod social;
 pub mod state;
 pub mod slice;

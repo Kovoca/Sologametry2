@@ -332,6 +332,9 @@ fn the_journal_explains_every_change() {
             scale_sim::econ::Event::Produced { qty, .. }
             | scale_sim::econ::Event::Consumed { qty, .. }
             | scale_sim::econ::Event::Shipped { qty, .. }
+            | scale_sim::econ::Event::Despatched { qty, .. }
+            | scale_sim::econ::Event::Landed { qty, .. }
+            | scale_sim::econ::Event::LostInTransit { qty, .. }
             | scale_sim::econ::Event::Spoiled { qty, .. } => *qty,
         };
         assert!(qty > 0.0, "journalled a non-positive quantity: {qty}");

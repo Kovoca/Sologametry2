@@ -280,6 +280,23 @@ impl<T> Registry<T> {
         self.gone.iter().map(|(&n, t)| (Key { n, of: PhantomData }, t))
     }
 
+    /// **Forget the graves of things nobody will ask about again.**
+    ///
+    /// A registry that kept a tombstone for every consignment ever
+    /// delivered would grow with history rather than with the world, which
+    /// is the unbounded state this project has had to remove three times.
+    ///
+    /// **It is only safe because the counter is written down.** A loader
+    /// that derived it from the highest key present would start handing
+    /// out the names of the recently pruned; because it does not, a grave
+    /// can go without its name coming back. What the caller has to know is
+    /// that a key whose grave has been pruned reads as `Unknown` rather
+    /// than as `Gone` — so prune only when nothing can still be holding
+    /// one.
+    pub fn forget_graves_before(&mut self, day: u64) {
+        self.gone.retain(|_, t| t.day >= day);
+    }
+
     /// **Put back what a save wrote down**, keys and all.
     ///
     /// The counter is carried across rather than recomputed, or a world

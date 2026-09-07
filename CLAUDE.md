@@ -2737,6 +2737,74 @@ same work:
   every time and came out of a full year on **2.66 a day against a rate of
   5.18**.
 
+### A cargo is somewhere, and it takes time to get anywhere (`src/shipment.rs`)
+
+Freight was one statement: tonnes off a shed here, tonnes on a shelf there,
+in the same breath. That is a fair abstraction for a lorry across town and
+a poor one for six hundred miles, and it made four ordinary things
+inexpressible.
+
+- **Goods on the road are still somebody's.** They have left the seller and
+  not reached the buyer, and with nowhere to put them they either stop
+  existing for a day or exist twice. So in-transit tonnage lives **on the
+  ledger** and `total` counts it, which puts it inside the conservation
+  assertion that has caught every leak in this model so far.
+- **A contract is struck before it is performed.** What was agreed on
+  Monday is what is settled on Thursday, whatever the price did in
+  between — most of what a forward price *is*, and unsayable while buying
+  and delivering are one instruction. Triple the market under a moving
+  lorry and the consignment still lands at what was agreed.
+- **A cargo can be lost.** A lorry is a store like any other, so nothing
+  new is invented: perishables rot on it at the rate the model already
+  knows, and whether the vehicle is refrigerated is the whole difference —
+  which is why the meat trade did not exist before the *Dunedin*.
+- **And it can arrive at a full shed.** Between the lorry leaving and the
+  lorry arriving somebody may have filled the space. The same rule
+  `schedule.rs` had to learn about finished work: **room is checked on
+  arrival, not only at planning**, and what cannot be tipped waits at the
+  bay, which is exactly what demurrage is charged for.
+
+**Nought days is the ordinary journey and that is not a degenerate case.**
+The average British road haul is about 94 km, which a lorry does and comes
+home from before tea, so most freight really is same-day; a model making
+every delivery an overnight saga would be wrong about the common case in
+order to be right about the rare one. What the distance decides is whether
+the load sleeps somewhere.
+
+Measured on a generated planet — four nations, four months: **3,022
+consignments raised, 81% of them sleeping out, longest journey 7 days,
+peak 987,000 t afloat.** Four fifths overnight looks like a contradiction
+of the 94 km average and is not: local distribution never becomes a
+consignment at all, because a mill pulls grain from the silo down the
+street through `distribute`. What a carrier gets is what could not be had
+locally, which is the long end of the distribution **by construction**.
+
+- **The carrier is paid for what arrived**, not for what set off — which is
+  also why a haulier's money comes in later than the work does, and a real
+  reason small ones run out of it.
+- **A load nobody can take is not left on a lorry for a month.** Unbounded
+  waiting is unbounded state, which this project has had to remove three
+  times. After three days at a full bay the goods go into whatever store in
+  that town will have them, and if there is genuinely nowhere they are
+  written off — which is what happens to a rejected load of anything
+  perishable.
+- **Graves are pruned, and the counter is what makes that safe.** A
+  registry keeping a tombstone for every consignment ever delivered would
+  grow with history rather than with the world. It is safe here for exactly
+  one reason, and it is the one `registry.rs`'s own gate asserts: the
+  counter is written down rather than derived from the highest key present.
+
+The first real consumer of [`registry.rs`](#a-name-is-not-a-place-srcregistryrs),
+and the thing that motivated it: a consignment has to keep one name across a
+save — a lorry that set off on Monday is the same lorry on Thursday — and
+must never be confused with the site it left or the market it is bound for,
+which are both `usize` and would both compile.
+
+**And it closes a gate the previous commit could not write.** Saving during
+transit was untestable because there was no transit to be halfway through;
+a cargo now goes through real bytes mid-journey and comes back the same
+cargo, with its contract, its consignee and its refrigeration intact.
+
 ## People (`src/person.rs`)
 
 The first human in the simulation, and the smallest thing that makes this
