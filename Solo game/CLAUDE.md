@@ -2100,6 +2100,135 @@ missing it too, so a save containing water would have failed to load. The
 table-driven codec gate could not see it, because **it walked the same
 incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
+## One world, one clock, one update (`src/game.rs`)
+
+The first piece of the spine, and the problem it names is the one an
+external review put at the centre: **several good models, each holding its
+own copy of state the others also hold.**
+
+Nothing agreed what time it was. `econ::Ledger` advanced a day inside its
+own `step`; `scaling` advanced another; a household kept a day of the year;
+and `person::live_a_day` took the day as an **argument**, so whoever called
+it was responsible for passing the number the economy happened to be on.
+Nothing checked that they matched. A diagnostic binary composed a few
+systems by hand and kept them in step by being careful, and **being careful
+is not a contract.**
+
+So there is a root. It owns the clock — private, no setter, `advance` the
+only thing that moves it — and it owns the economy, the item store, the
+sampled people and the ground overlay. A day happens in a written order
+rather than in whatever order somebody called things, and two of the rules
+in that order were learned the hard way and are already in this file: the
+shops trade before anybody counts who worked, and a service is paid before
+wages fall due.
+
+**Deliberately small.** It does not own buildings, vehicles, work orders,
+minds or utilities. The save carries three of the four things it holds, and
+`saveable_parts` reports that as a number rather than a claim — so the
+shortfall has to go up rather than being argued about, and the gate on it
+fails the day it reaches parity.
+
+### The day opens with a photograph
+
+A day begins with an immutable snapshot — prices, cover, landed cost, and
+what was actually in the sheds — and anybody deciding what to do reads
+*that*. A haulier plans on the morning's position, because that is all
+anybody can know when the lorries leave: it cannot see the price its own
+delivery is about to create.
+
+**Still partial, and the remaining half is now specified rather than
+mysterious.** Carrier deliveries do not move the landed average, and it is
+no longer "destabilises food cover and I cannot explain why". The order
+dependence that used to be the suspect is found and fixed, and this
+survives it, so it was never that. Four discriminating experiments locate
+it: blending the goods value alone is stable, blending goods and carriage
+with `trade()` switched off is stable, switching the allocation auction off
+changes nothing, and clamping the scarcity multiplier to 1 levels three
+towns of five.
+
+**Two defects, and the second is now fixed.** `trade` priced a haul at
+`Route::freight_cost`, the direct link, while a delivery was charged
+`freight_between`, the cheapest *path* — two figures for the same haul, so
+wherever going round was cheaper the gap never closed. There is one
+quotation function now and everybody uses it.
+
+**The first is arithmetic and is not fixed.** The scarcity multiplier is
+applied to carriage as well as to the cost of production, so with landed =
+goods + freight and price = cost x m:
+
+```text
+price_b - price_a = (cost_a + freight)m - cost_a m = freight x m
+arbitrage         = freight x m - freight         = freight x (m - 1)
+```
+
+The moment anything is scarce anywhere, **every remote market shows a false
+arbitrage of exactly `freight x (m-1)`** and pairwise trade chases it — a
+town made to look dear by the very carriage that got its goods there.
+**A haulier's bill does not rise because grain is short**: freight is a
+pass-through and must not be marked up.
+
+The second is plainer: **there are two different freight figures for the
+same haul.** `trade` and `arbitrage` price it at `Route::freight_cost`, the
+direct link, while a delivery is charged `freight_between`, the cheapest
+*path*. Wherever going round is cheaper than going straight the two
+disagree permanently and the gap never closes.
+
+**And it was tried.** The decomposition is right and the implementation
+was not: `price = marginal delivered + goods x (m - 1)`, with the marginal
+replacement quote taken over producers in merit order, plus buyers
+preferring the cheapest *delivered* supplier rather than whichever sat
+earliest in a vector. Every piece of that is defensible and together they
+**starved a country** — food cover went from 17 days to **0.28**, which
+drove the scarcity premium to its ceiling, which put food at five times its
+cost, which took wages with it, which halved the house-price-to-income
+ratio from a real 9-18x to 2-4x.
+
+Not shipped, and the reason for the size of the wreck is worth more than
+the code was: it is four changes to how goods are allocated and priced,
+made in one go, at the end of a long change, with the measurement left to
+the end. **The order to do it in is one at a time with the food cover read
+after each.**
+
+**And the day's arrivals fold into the landed average once, at the close.**
+Blending each cargo as it landed meant the figure a works read depended on
+which lorry got there first, and a late delivery moved a number the same
+day's pricing had already used. Summing first and blending once is
+order-independent by construction, because addition is.
+
+### Told means told
+
+`step_at` took the larger of its own date and the one it was given. That
+sounds defensive and is the exact opposite: a subsystem whose date had gone
+wrong in the *upward* direction — a stale load, a bad migration, anything
+that reached past the root — kept its wrong date for ever and could not be
+put right. **Correcting a subsystem is the whole reason something owns the
+clock.**
+
+### A gate with no teeth, found by deleting the mechanism
+
+The invariant is *everybody agrees what day it is*, and the first version of
+it was worthless. Correcting the ledger's date after `step` looked like
+enforcement and enforced nothing: **both counters incremented by one, so
+they agreed by coincidence whatever either of them believed.** Deleting the
+correction left the test green.
+
+The economy is *told* the day now, through `step_at`, which sets rather than
+nudges — and the assertion that discriminates is that an economy told it is
+day 500 is on day 500 rather than counting on from its own 226. Sabotage
+that and the gate goes red, which is the whole point. A subsystem skipped,
+paused, or catching up after being unloaded arrives where the world is
+rather than where it left off.
+
+That is the third time in two days that a gate of mine passed without
+testing its claim. **The habit that catches it is deleting the mechanism and
+requiring the test to fail** — and it belongs beside this file's older rule
+that a test which never enters its branch is not evidence the branch is
+rare.
+
+Also fixed on the way: running the phases and *then* advancing the clock
+left every system a day behind the world for the whole of the day it was
+simulating. The clock moves to the day, and then the day happens.
+
 ## A cheap input has to become a cheap output (`src/econ.rs`)
 
 Price was `base_cost() * multiplier` — **a typed-in constant times
@@ -2121,6 +2250,60 @@ Two things now travel:
   a Saudi-grade oil field against oil sands moves the resin price by a
   third and still shows up at the shelf, properly diluted, because plastics
   are a small share of a tonne of goods.
+
+### And a cargo carries its own price
+
+`Event::Shipped` recorded a commodity and a quantity, so **tonnes crossed a
+border and their price did not**: a processor in the receiving market fell
+back on its own local cost, and a cheap producer abroad became invisible the
+moment the cargo moved. A shipment now carries what the goods were worth
+where they were picked up and what the haul was charged, which between them
+are the **landed cost** — kept as a weighted average over what a market
+holds, one of the three inventory methods real accounting permits and the
+only one cheap enough to run per market per commodity per day.
+
+**And somebody is paid for carrying it.** `Carrier::revenue` was being
+accumulated and paid to nobody — a statistic rather than an income, so a
+haulage firm could work all year with its account never moving. The
+consignee firm pays, which is the ordinary arrangement and is why delivered
+prices differ from ex-works ones. Charging it to the town's households was
+wrong twice over: a works buying ore does not bill the people who live near
+it, and doing so drained the very pockets the shops sell out of.
+
+**An idle plant no longer prices a market**, either. Taking the cheapest
+nominal producer let one tiny or permanently stopped works set the cost for
+every rival that was running; what a producer contributes is what it puts
+in.
+
+### Two faults of mine in one commit
+
+- **`freight_between` looked only at direct routes.** A country's roads are
+  a spanning tree, so most pairs of its own towns have no single link
+  between them — and the fallback put 2,000 a tonne on coal worth 90. It
+  landed at twenty times its value, inflated cement fourfold, and had
+  priced **half the kilns in the world out of buying their own fuel**.
+  They were standing idle. Freight is the cheapest *path* now.
+- **Blending every carrier delivery into the market average is a control
+  loop.** The average feeds the price and the price is what the carriers
+  plan tomorrow's hauls on, so closing it inside the day swung food cover
+  from 8 to 24 days across a country that was perfectly even with no
+  hauliers at all. Left out of the carrier path with the reason recorded:
+  the fix is a price snapshot the carriers read from, so a haulier plans
+  against what it knew when it set off rather than against the price its
+  own cargo is about to create. `distribute` and `trade` do update it,
+  because neither re-plans on the result within the same day.
+
+### Two gates that now say something truer
+
+- **Medicine's residual world spread is checked against carriage** rather
+  than asserted away. Trade equalises prices only up to what it costs to
+  move the stuff, and until a cargo carried a price there was nothing to
+  check that against.
+- **Cement's near-flat world price was an artefact.** It was true only
+  while every market shared one typed-in reference cost; now a country
+  burning dear imported fuel genuinely makes dearer cement — energy is
+  30-40% of it — so what is tested is the claim that was always the point:
+  **nobody ships it.**
 
 ### Cost is not price, and the distinction is the whole mechanism
 
@@ -2148,14 +2331,25 @@ once at each stage on its own merits.
   measures 0.8-1.0 far more often than not — and centring the curve at 0.42
   handed every country in the world a twofold discount that compounded down
   the chain and left crude steel at a third of its calibrated price.
-- **Iterating to a fixed point compounds; it does not converge.** The graph
-  has one loop in it, so running the pass six times looked obviously right.
-  Each pass recomputes a cost from the last pass's costs, so a stage below
-  its reference drags the next stage lower again, geometrically — and the
-  world price spread for medicine went from 2.0x to 4.2x with no input
-  changing at all. **This is the same failure this file already records for
-  prices, for crafting multipliers and for personality loadings.** One pass
-  in dependency order is enough.
+- **A wrong explanation for a real measurement.** Running the pass six
+  times moved the world price spread for medicine from 2.0x to 4.2x with no
+  input changing, and I wrote that down as *iterating compounds rather than
+  converging*. **That was the explanation I reached for, not one I
+  established**, and an external review was right to reject it: a normalised
+  cost system like this one is contractive and converges in as many passes
+  as the chain is deep. What actually moved the numbers was evaluating
+  stages out of order and re-reading a cover average that is deliberately
+  slow. An ordering fault, not a feedback one.
+- **And "one pass in dependency order" was simply false.**
+  `Commodity::ALL` is not a dependency order and never was: electricity
+  comes before coal, retail goods before the timber, petroleum, plastics
+  and machinery they are made from, and medicine before chemicals. Saying
+  otherwise in a comment did not make it so, and the commodities downstream
+  of those were reading yesterday's figures purely because of where a
+  variant sits in an enum. The order is now **derived from `RECIPES` by
+  Kahn's algorithm**, with the one real cycle — coal makes electricity and
+  a colliery runs on electricity — broken deterministically at its weakest
+  edge.
 
 And one that was not mine but had been waiting: **a commodity nobody
 currently wants was never priced at all.** `update_prices` bailed out on
@@ -2165,6 +2359,65 @@ builders had it at two thirds — and a town left to rot came out *dearer* to
 buy into than one kept up. What a thing costs to make does not depend on
 whether anybody wants it today. A glut still needs surplus stock, though,
 rather than merely an absence of buyers.
+
+### A sentinel read as a rate, for the third time
+
+`throughput: 1e9` on a power station means *whatever the grid can carry*.
+This file already records two occasions when it was read as a number of
+batches a day — it staffed one station with 4.1 million people, and it made
+`distribute` take every tonne of coal in the country. Both were fixed where
+they were found, **which is exactly why the third survived**: the price pass
+has been multiplying it by 0.38 and asking for **380 million tonnes of coal
+a day** for as long as the price pass has existed.
+
+Worse, the guard added against it in the previous commit checked
+`recipe.power` — the wrong field entirely, since the sentinel lives on the
+*site*. It never fired once, and a comment above it explained at length what
+it was protecting against. **Dead code that reads like a safeguard is worse
+than none, because it stops anybody looking.**
+
+The sentinel is one named constant now, with one function that asks the
+honest question — what a site will actually get through, which for a plant
+with no meaningful rate is what it dispatched — and the gate is on the
+property rather than on any one caller.
+
+### Electricity is not warehouse stock
+
+It declares zero days of target cover precisely because none of it is ever
+held, and the shared price formula then quietly put the target back to half
+a day and divided a stock reading by a demand. What sets the price of
+electricity is the marginal cost of the last plant dispatched, and a
+shortage is unserved load rather than an empty silo.
+
+`power.rs` has the merit-order model for that and **it is not yet wired into
+the ledger.** What is there now is the honest interim: cost, plus a premium
+only when generation genuinely falls short of the call.
+
+### Two tests of mine that could pass without testing anything
+
+Both were caught by review rather than by failing, which is the point.
+
+- `SiteKind::OilField` is worn by a real field *and* by an import terminal,
+  so selecting on the kind alone could manufacture "Saudi versus oil sands"
+  in a country that lifts no oil at all. The recipe is what says whether
+  anybody is drilling.
+- The coal test read market zero rather than the colliery's own and put its
+  only propagation assertion inside an `if`, so a run in which nothing
+  propagated skipped the branch and passed. **This file already records the
+  rule it broke:** *a test that never enters the branch is not evidence the
+  branch is rare.*
+
+### And two older ones the same review found
+
+- `social.rs` chose `FaceToFace` on both arms of `if publicly` — a parameter
+  doing nothing dressed up as one doing something. Publicness is an
+  audience, not a channel, and it was already carried on the delivery.
+- `save.rs` wrote the *current* generation schema and rules into the header
+  instead of the ones it had loaded, so reading an old world and saving it
+  back silently relabelled it as current. That is the opposite of what the
+  field is for and contradicted its own comment saying the version is read
+  and kept. A save that lies about what built it cannot be rebased,
+  diagnosed or refused.
 
 ## Where the electricity comes from (`src/power.rs`)
 
@@ -2527,6 +2780,338 @@ same work:
   income. It looked like three times the going rate, so a haulier took one
   every time and came out of a full year on **2.66 a day against a rate of
   5.18**.
+
+### A cargo is somewhere, and it takes time to get anywhere (`src/shipment.rs`)
+
+Freight was one statement: tonnes off a shed here, tonnes on a shelf there,
+in the same breath. That is a fair abstraction for a lorry across town and
+a poor one for six hundred miles, and it made four ordinary things
+inexpressible.
+
+- **Goods on the road are still somebody's.** They have left the seller and
+  not reached the buyer, and with nowhere to put them they either stop
+  existing for a day or exist twice. So in-transit tonnage lives **on the
+  ledger** and `total` counts it, which puts it inside the conservation
+  assertion that has caught every leak in this model so far.
+- **A contract is struck before it is performed.** What was agreed on
+  Monday is what is settled on Thursday, whatever the price did in
+  between — most of what a forward price *is*, and unsayable while buying
+  and delivering are one instruction. Triple the market under a moving
+  lorry and the consignment still lands at what was agreed.
+- **A cargo can be lost.** A lorry is a store like any other, so nothing
+  new is invented: perishables rot on it at the rate the model already
+  knows, and whether the vehicle is refrigerated is the whole difference —
+  which is why the meat trade did not exist before the *Dunedin*.
+- **And it can arrive at a full shed.** Between the lorry leaving and the
+  lorry arriving somebody may have filled the space. The same rule
+  `schedule.rs` had to learn about finished work: **room is checked on
+  arrival, not only at planning**, and what cannot be tipped waits at the
+  bay, which is exactly what demurrage is charged for.
+
+**Nought days is the ordinary journey and that is not a degenerate case.**
+The average British road haul is about 94 km, which a lorry does and comes
+home from before tea, so most freight really is same-day; a model making
+every delivery an overnight saga would be wrong about the common case in
+order to be right about the rare one. What the distance decides is whether
+the load sleeps somewhere.
+
+Measured on a generated planet — four nations, four months: **3,022
+consignments raised, 81% of them sleeping out, longest journey 7 days,
+peak 987,000 t afloat.** Four fifths overnight looks like a contradiction
+of the 94 km average and is not: local distribution never becomes a
+consignment at all, because a mill pulls grain from the silo down the
+street through `distribute`. What a carrier gets is what could not be had
+locally, which is the long end of the distribution **by construction**.
+
+- **The carrier is paid for what arrived**, not for what set off — which is
+  also why a haulier's money comes in later than the work does, and a real
+  reason small ones run out of it.
+- **A load nobody can take is not left on a lorry for a month.** Unbounded
+  waiting is unbounded state, which this project has had to remove three
+  times. After three days at a full bay the goods go into whatever store in
+  that town will have them, and if there is genuinely nowhere they are
+  written off — which is what happens to a rejected load of anything
+  perishable.
+- **Graves are pruned, and the counter is what makes that safe.** A
+  registry keeping a tombstone for every consignment ever delivered would
+  grow with history rather than with the world. It is safe here for exactly
+  one reason, and it is the one `registry.rs`'s own gate asserts: the
+  counter is written down rather than derived from the highest key present.
+
+The first real consumer of [`registry.rs`](#a-name-is-not-a-place-srcregistryrs),
+and the thing that motivated it: a consignment has to keep one name across a
+save — a lorry that set off on Monday is the same lorry on Thursday — and
+must never be confused with the site it left or the market it is bound for,
+which are both `usize` and would both compile.
+
+**And it closes a gate the previous commit could not write.** Saving during
+transit was untestable because there was no transit to be halfway through;
+a cargo now goes through real bytes mid-journey and comes back the same
+cargo, with its contract, its consignee and its refrigeration intact.
+
+## One quote, and everybody uses it (`src/quote.rs`)
+
+Four things had to decide whether a haul was worth making and they were
+getting different numbers. `trade` priced it at `Route::freight_cost` — the
+direct link — while a delivery was charged `freight_between`, the cheapest
+*path*. Wherever going round was cheaper than going straight the two
+disagreed permanently, which is a price gap nothing can close and goods
+chasing it for ever.
+
+`Quote` is one answer: the cheapest path, its distance, how many nights the
+load spends out, the tightest link's capacity, the carriage, the duty at a
+border, and the share expected not to arrive. `Routing` works out all pairs
+once a day — a Dijkstra per market rather than per enquiry, since the price
+pass alone used to ask thousands of times a day and ran a fresh search for
+every one.
+
+- **What rots on the way is not invented here.** It is the same spoilage
+  the model already applies to a store, over the days the load is actually
+  travelling — so `trade` now declines a haul whose losses eat the margin,
+  which is most of why perishables move short distances.
+- **Duty has a mechanism and a default of nothing.** Empty is free trade,
+  which is what every world currently generates; real applied MFN rates are
+  recorded next to it for whoever populates it.
+
+**And an accounting cost is not a trade signal**, which is the deeper point
+and the one the review named. Six numbers had been collapsed into two:
+
+| | what it is for |
+|---|---|
+| inventory cost basis | what the stock on hand cost — historical |
+| contract price | what was paid to the supplier |
+| inbound freight | what was paid to the carrier |
+| landed inventory cost | purchase + freight + losses, per tonne held |
+| **marginal replacement quote** | **what the next tonne would cost, now** |
+| market price | what it actually clears at |
+| scarcity premium | what shortage adds on top |
+
+A works consumes the cost basis of what is in its yard. Anybody deciding
+whether to *move* goods needs the marginal replacement quote, and using the
+warehouse's weighted-average history instead is what let a town be made to
+look dear by the carriage that had already got its goods there.
+
+### Two constants, corrected because they are wrong
+
+Neither is load-bearing for any gate — reverting either or both leaves the
+suite green — and both were turned up while chasing something else.
+
+- **The harvest curve integrated to 0.9312 while its own comment said
+  1.0**, so every farm on every planet quietly delivered 93% of its rating.
+  Nothing downstream could see it: `region.rs` sizes a country's grain
+  imports as milling need less what its farms *grow*, read off the rated
+  throughput, so **every grain importer in the world bought 7% too little
+  for ever**. The gate now sums all 365 daily factors against a named
+  `ANNUAL_HARVEST_TOTAL`, and checks the curve is still a harvest rather
+  than a trickle that happens to add up — so moving the peak or the width
+  forces the scale to move with it.
+- **A grain terminal rated at 1.1x the annual mean shortfall** ran at
+  exactly 100% every day and could never build a reserve. A harvest is not
+  annual. The replacement — 2.5x, 45 and 90 days — is **labelled a designed
+  placeholder**, because citing the IEA's 90 days was borrowed authority:
+  that obligation is about national *petroleum* emergency reserves, not
+  grain terminal capacity. What a real derivation needs is written next to
+  it, and none of those quantities are the same number: the maximum
+  cumulative seasonal deficit, the shipment lot size, the resupply lead
+  time, a policy reserve, and the physical berth.
+
+### Evenly starving is even
+
+The most useful thing to come out of a change that had to be thrown away.
+`carriers_even_out_a_country_that_pairwise_trade_cannot` asserted that food
+cover was *even* with hauliers and without — and a spread is a difference,
+which says nothing whatever about a level. A country in which every town
+holds a quarter of a day's food has a spread of zero.
+
+That is not hypothetical. An allocation change took this nation from 17
+days of cover to **0.28** and the entire suite stayed green, because the
+one gate watching it was measuring evenness. It asserts the level now.
+
+## A world with no reason for anything to differ (`src/slice.rs`, `src/econ.rs`)
+
+Two commits argued about whether a spread in days of cover between towns
+was a bug or a signal, and neither could settle it, because **"cover is
+level" is a claim about the world rather than about the model.** A mountain
+port 1,200 km from the grain belt is *supposed* to hold less and pay more,
+so asserting level cover in a real country tests something nobody has
+established — and the answer kept depending on which country you looked at.
+
+`slice::symmetric` removes the ambiguity. Three towns identical in every
+respect: same population, same works at the same rates, same opening stock,
+one nation so they share a season, and a **triangle** of identical roads so
+no town is better placed than any other. Under rotation the world maps onto
+itself, so any mechanism that respects the economics must give each town
+the same answer. **A spread is then not a signal. It is a bug.**
+
+Three rather than two, because two markets hide an asymmetry: with one road
+`a -> b` and `b -> a` are the same edge, and a rule favouring whichever end
+is scanned first cannot show itself.
+
+It found one on the first run:
+
+| food cover | Alpha | Beta | Gamma | spread |
+|---|---|---|---|---|
+| as built | 57.5 | 33.2 | **8.5** | **49.1** |
+| **the same world, site vector reversed** | 42.0 | 48.6 | 37.8 | 10.9 |
+
+A monotone gradient by market index, and reversing a `Vec` — which changes
+nothing whatever about the economics, since every site carries its own
+market — moved the answer completely. **An answer that depends on the order
+of a list was never an answer about the economy.** The cause was one line:
+`stock(src).min(short)` inside a loop over consumers in site-index order,
+so the first consumer to reach a supplier emptied it.
+
+### Three wrong rules, and each looked like the fix
+
+- **Blind pro-rata smooths away the thing the model exists to show.**
+  Sharing every shortage equally made the two towns of `slice` ration in
+  lockstep, so a blackout that stopped the cannery no longer opened a price
+  gap between them, no haul was ever worth making, and freight had no
+  reason to exist. **A shortage that falls on everybody identically is not
+  a shortage anybody trades on.**
+- **Absolute local priority is not "prefer local suppliers".** Serving
+  every local pair before considering anybody's imports sounds like the
+  rule this file already records and is a different and worse one: with two
+  mills in three shut, the surviving mill's own town took every sack and
+  the other two came out at **nothing at all**. A miller with three buyers
+  and one batch does not give it all to the nearest; the other two bid.
+- **And a merit order with no notion of lead time puts the stock in the
+  wrong towns.** Allocating by netback — the buyer's price less the cost of
+  getting it there — is right, and on its own it hands the whole country's
+  inventory to whichever town holds the works, because its carriage is
+  zero. Measured: a city of 20M sat on 22 days while three outlying towns
+  held exactly 4, and at the pre-harvest trough they ran down to **a fifth
+  of a day**. That is backwards. **Safety stock rises with lead time** —
+  the shop far from the cannery is the one that needs a buffer, because its
+  resupply is slow.
+
+### What it settled on
+
+```text
+today's running needs   shared out, everybody the same fraction
+tomorrow's stockpile    sold to the best netback, ties shared
+how much to stock       base cover + however long you wait for a delivery
+```
+
+- **Today's bread is not auctioned; the stockpile is.** The two passes were
+  always there and the second had no rule of its own. Running needs are
+  shared, because a town must not go without today's food since a richer
+  one bid for it — and a model in which it does starves whoever the price
+  signal has not reached yet, which here is anybody at all, since this
+  project deliberately prices a stored staple off a **slow** average of
+  cover. Merit order plus a damped price is a town starving while its own
+  scarcity is still working its way into its price.
+- **What is left after everybody has eaten is inventory**, and inventory is
+  exactly what a market should allocate: whoever values it most, net of
+  getting it there. That is the same merit order `power.rs` already
+  dispatches generation on.
+- **Pro-rata settles a tie; it does not replace the market.** Where three
+  towns are identical every netback is equal, the whole component is one
+  band, and the answer is the even one.
+- **An entitlement is a right to buy, not a delivery.** A buyer allocated
+  its share may be unable to take it — no room, or the only suppliers
+  within reach are empty — so a mop-up round offers round whatever nobody
+  took. Nobody can be starved by it, because every claim has already been
+  honoured before it runs. **It is walked worst-served first**, and that is
+  not a detail: the fair-share pass can be walked in any order, because
+  nobody can exceed their entitlement, while the mop-up is deliberately
+  uncapped, so visiting it in site-index order would put the original bug
+  straight back in the one place a symmetric fixture is least likely to
+  reach it.
+- **And the price model has to aim at the same figure the works do.**
+  Raising what a remote shop stocks without telling the pricing pass made
+  an ordinary shopkeeper's prudence read as a glut, and priced food at 630
+  against a cost of 900. `Economy::target_cover` is that one figure, and it
+  is public so that nothing can compare an observed cover against a
+  different notion of the target.
+
+### Two constants that read as calibrated and were not
+
+Both were turned up by this investigation and neither is about
+distribution. **Neither is load-bearing for any gate**, which is worth
+saying because it is easy to write up a find as though a test demanded it:
+with the allocation rules above in place, reverting either one — or both —
+leaves the suite green. They are corrected because they are wrong, not
+because something failed without them.
+
+- **The harvest curve integrated to 0.9312 while its own comment said
+  1.0.** *"Scaled so a full year integrates to roughly one year of rated
+  output"* — it did not, by 7%, so every farm on every planet quietly
+  delivered 93% of its rating. Nothing downstream could see it: `region.rs`
+  sizes a country's grain imports as milling need less what its farms
+  *grow*, reading that off rated throughput, so **every grain importer in
+  the world bought 7% too little for ever.** It survived because opening
+  stock covered it, and a marginal nation ran out in its second year.
+- **A grain terminal sized on the annual mean cannot cover a seasonal
+  trough.** Rated at 1.1x the mean shortfall, every terminal in a
+  food-importing nation ran at **exactly 100% every single day**, could
+  never build a reserve, and left the country hungry on the day before the
+  harvest while its ports worked flat out and the sea lanes were open. Real
+  grain terminals are sized on peak-season vessel arrivals, and a food
+  importer holds a strategic reserve — the IEA's 90 days of net imports is
+  the precedent this model already uses for petroleum, and grain is the
+  older example of the same idea.
+
+### And what the no-arbitrage gate says instead
+
+Level cover was the wrong assertion for an asymmetric world. The right one
+is that no gap survives that is wider than the cost of closing it, where
+the cheap end has stock to spare — money left on the table. Measured over
+four nations: **grain has none at all within a country.** Food and medical
+grade do, and the boundary is informative rather than embarrassing: grain
+is made in every town and wanted in every town, so `distribute` reaches it.
+Medical grade is made in one town and wanted in all of them, and the only
+thing that can move it end to end is a haulier — who decides on **days of
+cover** while `trade` decides on **price**, and only between adjacent
+towns. A price gap between two towns that are not neighbours has nothing
+looking at it. That is a named gap, not a mystery.
+
+### A famine bound is not a precision instrument
+
+`a_nation_that_cannot_feed_itself_buys_and_does_not_starve` used to assert
+`unmet_demand == 0.0` on every one of seven hundred and thirty days, which
+sounds strict and tests less than it looks. It never checked that the
+imports were feeding anybody — **a nation whose own farms happen to be
+adequate passes it without a grain ship ever docking** — and being an exact
+equality it failed on a shop running dry for a day, which is not a famine
+and is not what the sentence claims.
+
+It is now the causal pair: fed with the sea lanes open, and demonstrably
+short with them cut. And the two halves are not equally strong, which is
+recorded in the test rather than glossed:
+
+- **The "fed" half is a loose bound and nothing currently trips it.**
+  Reverting the harvest curve, the terminal sizing, the lead-time safety
+  stock, or any pair, leaves it green. Tightening it until a sabotage fires
+  would be fitting a threshold to the sabotage.
+- **The counterfactual is the half with teeth**, and stopping it from
+  actually shutting the lanes turns it red at once.
+
+**And not every nation with a grain terminal depends on it.** Several ride
+two years on their reserve and their own fields, so the counterfactual is
+asserted over the planet rather than over every importer — a country that
+*has* a grain trade is not the same as a country that would starve without
+one.
+
+### Test lessons, and three of them were mine
+
+- **Three of four sabotages left the gates green**, which is what the habit
+  is for. The doc comment I had written named pro-rata as the mechanism;
+  deleting pro-rata changed nothing, because in that fixture supply was
+  adequate and the fraction was always 1. What had actually fixed the bug
+  was the round ordering. **A mechanism that never binds in any test is not
+  evidence of anything**, whatever the comment above it says.
+- **I broke the symmetry and then asserted it — twice.** Shutting two mills
+  of three leaves one town with a mill and two without, which is not a
+  symmetric world any more, and the answer that follows is correct.
+  Throttling all three keeps them interchangeable. This is the same error
+  the whole fixture exists to prevent, made while building the fixture.
+- **A shortage gate where everybody ends at zero passes on an absence**,
+  which is this file's older rule about a test that never enters its
+  branch, wearing different clothes.
+- **A test comparing cover against "the target" must use the target the
+  model aims at.** Two different notions of normal is exactly the
+  discrepancy that priced prudence as a glut.
 
 ## People (`src/person.rs`)
 
@@ -4359,6 +4944,70 @@ used to `push` onto the people, households and represents arrays at once,
 which is only right while nothing is ever removed — once a death frees a
 slot the arena reuses it and a pushed household lands at the end, against
 nobody. Arrays that run alongside an arena follow the slot it chose.
+
+## A name is not a place (`src/registry.rs`)
+
+`id::Id<T>` is a **slot and a generation**, and that is the right primitive
+for reaching into an arena within one session. It is the wrong one for
+identity, and the difference matters at exactly the point this project is
+now at — moving entities under one root, where a handle has to survive a
+save, a reload, and being promoted from a statistic to somebody standing on
+a tile.
+
+A slot is a **position**: it says where a thing is kept. So the same entity
+gets a different handle if it is stored in a different order, and a freed
+slot is handed to the next arrival with only a counter standing between the
+two of them. A `Key<T>` is a number from a counter that only ever goes up.
+It has nothing to do with where anything is kept, it is never given to
+anything else, and it means the same thing tomorrow.
+
+Seven rules, seven gates, and **every one of them was checked by deleting
+its mechanism and requiring the test to go red** — the habit this file
+already records after three gates of mine passed without testing their
+claim:
+
+| | the sabotage that must fail it |
+|---|---|
+| a key is not a position, a name or a coordinate | hand out the lowest free number |
+| it survives a save and a reload | let the reload forget how many names have been used |
+| a dead key is never reissued | the same |
+| a definition and an instance are different types | **the compiler**, three ways |
+| what is destroyed leaves a tombstone | forget it instead |
+| storage order cannot reach the simulation | walk them backwards, or hashed |
+| one entity keeps one key at any fidelity | make reaching for a thing take it out and put it back |
+
+- **The counter is written down, not worked out.** Deriving it on load from
+  the highest key present is one line shorter and is the bug: prune the
+  tombstones of a world whose newest entity is dead — a legitimate thing to
+  do with an old grave — and it starts handing that name out again.
+- **A file naming one thing twice is broken, not newer.** The rule
+  `save.rs` already keeps for the journal, and here it decides more: a
+  silent overwrite would make which entity a key refers to depend on which
+  copy the reader saw last. Alive and buried at once is the same
+  contradiction.
+- **Three answers, not two.** Here it is, it is dead, and I have never
+  heard of it. `Lookup` keeps them apart because callers act on the
+  difference — a journal entry, a debt, a grievance and a memory all go on
+  referring to the dead, and "never heard of it" is almost always a bug.
+- **A `compile_fail` in an integration test is never run.** Cargo runs
+  doctests from the library only, so the first version of the rule-4 proof
+  proved nothing at all — it sat in `tests/` being ignored. They live in
+  `src/registry.rs` now, where the five in `social.rs` already were, and
+  each was checked by running it as an *ordinary* doctest and reading the
+  error: `expected Key<u32>, found DefKey<u32>`, `expected Key<Cargo>,
+  found Key<Person>`, `the type [{integer}] cannot be indexed by
+  Key<Cargo>`. A block that fails for a typo passes just as well as one
+  that fails for the reason claimed.
+- **The `usize` bug this replaces is already in the codebase.**
+  `region.rs` carries a `settlement_of_market` translation table precisely
+  because two index spaces had to be kept apart by hand, and `Site.market`
+  and a site's own position are the same type to the compiler.
+
+**Rule 6 is weaker than it looks and is worth saying so.** Iteration is in
+key order because the store is a `BTreeMap`, so the walk cannot depend on
+layout — but registration *history* still decides which key a thing gets,
+and that is correct: the same world built the same way must produce the
+same keys. What is ruled out is storage leaking, not history.
 
 ## A person is not one happiness number (`src/mind.rs`)
 

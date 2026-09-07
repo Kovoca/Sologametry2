@@ -407,7 +407,16 @@ pub fn perform(plan: &SpeakerPlan, skill: f64, publicly: bool, rng: &mut Rng) ->
         content,
         delivery,
         audience: Vec::new(),
-        channel: if publicly { Channel::FaceToFace } else { Channel::FaceToFace },
+        // **Publicness is an audience, not a channel.**
+        //
+        // This read `if publicly { FaceToFace } else { FaceToFace }` — a
+        // branch that chose the same thing either way, which is a
+        // parameter doing nothing dressed up as one doing something. The
+        // channel is how the words travelled: face to face, shouted across
+        // a yard, written, or carried by somebody. Who else was there to
+        // hear it is a different fact, and it is already carried on
+        // `delivery.publicly` just above.
+        channel: Channel::FaceToFace,
     }
 }
 

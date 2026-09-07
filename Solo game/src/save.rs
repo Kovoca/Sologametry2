@@ -1697,7 +1697,7 @@ impl Store for Materialised {
 
 /// **A snapshot of what cannot be derived, and a journal of what
 /// happened.**
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Save {
     pub world_seed: u64,
     pub day: u64,
@@ -1712,6 +1712,17 @@ pub struct Save {
     /// **What was done to the ground**, and the base each change was cut
     /// against.
     pub overlay: Overlay,
+    /// **Every consignment on the road, and the allocator that named
+    /// them.**
+    ///
+    /// Serialising a `Key<T>` is not the same as persisting the registry
+    /// that issued it, and only the second keeps the promise. What has to
+    /// survive is the *next unused number* and the graves — because a
+    /// world reloaded after some deaths, whose counter was recomputed from
+    /// whatever is still alive, starts handing out the names of the
+    /// recently dead. A journal entry, a debt and a grievance all go on
+    /// naming them.
+    pub shipments: crate::registry::Registry<crate::shipment::Shipment>,
 }
 
 /// A cheap checksum over the body, so a truncated or corrupted file says
@@ -1723,6 +1734,26 @@ fn checksum(bytes: &[u8]) -> u64 {
         h = h.wrapping_mul(0x1000_0000_01b3);
     }
     h
+}
+
+/// **A new save is made by the generator that is running now.** A loaded
+/// one carries whatever made *it*, which is the whole reason the fields
+/// exist — so the default cannot be zero and the writer cannot substitute
+/// today's constants for what it read.
+impl Default for Save {
+    fn default() -> Self {
+        Save {
+            world_seed: 0,
+            day: 0,
+            people: Vec::new(),
+            journal: Journal::new(),
+            checkpoint: Default::default(),
+            schema: crate::scaling::GENERATION_SCHEMA,
+            rules: RULES,
+            overlay: Default::default(),
+            shipments: crate::registry::Registry::new(),
+        }
+    }
 }
 
 impl Save {
@@ -1737,12 +1768,21 @@ impl Save {
         self.journal.store(&mut body);
         self.checkpoint.store(&mut body);
         self.overlay.store(&mut body);
+        self.shipments.store(&mut body);
 
         let mut out = Writer::new();
         out.bytes.extend_from_slice(MAGIC);
         out.u32(FORMAT);
-        out.u32(crate::scaling::GENERATION_SCHEMA);
-        out.u32(RULES);
+        // **What made this world, not what is making worlds today.**
+        //
+        // These wrote the current constants, so loading an old save and
+        // writing it back silently relabelled it as current — which is the
+        // exact opposite of what the field is for, and directly contradicts
+        // the comment above it saying the generator's version is "read and
+        // kept". A save that lies about which generator built it cannot be
+        // rebased, diagnosed, or refused.
+        out.u32(self.schema);
+        out.u32(self.rules);
         out.u64(checksum(&body.bytes));
         out.len(body.bytes.len());
         out.bytes.extend_from_slice(&body.bytes);
@@ -1786,9 +1826,20 @@ impl Save {
         let journal = Journal::load(&mut b)?;
         let checkpoint = Checkpoint::load(&mut b)?;
         let overlay = Overlay::load(&mut b)?;
+        let shipments = crate::registry::Registry::load(&mut b)?;
         if !b.done() {
             return Err(SaveError::TrailingBytes(b.left()));
         }
-        Ok(Save { world_seed, day, people, journal, checkpoint, schema, rules, overlay })
+        Ok(Save {
+            world_seed,
+            day,
+            people,
+            journal,
+            checkpoint,
+            schema,
+            rules,
+            overlay,
+            shipments,
+        })
     }
 }

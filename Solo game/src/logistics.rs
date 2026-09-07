@@ -34,7 +34,7 @@
 //! - An artic carries **24 t** and covers **550-700 km** in a legal day,
 //!   both of which `vehicle.rs` already knows.
 
-use crate::econ::{Commodity, Economy, Event};
+use crate::econ::{Commodity, Economy};
 
 /// **What a lorry costs to run for a day**, as a share of what it earns.
 /// Fuel, tyres, wear, the driver, the operator's licence and the depot.
@@ -249,12 +249,24 @@ impl Logistics {
             let mut cover: Vec<f64> = Vec::with_capacity(n);
             let mut held: Vec<f64> = Vec::with_capacity(n);
             let mut draw: Vec<f64> = Vec::with_capacity(n);
+            // **The morning's position, not the position this morning's own
+            // deliveries have already created.** A dispatcher plans on what
+            // was in the sheds when the day opened, because that is all
+            // anybody can know when the lorries leave — and a cargo that
+            // can move the figures which authorised it turns a day into an
+            // argument about ordering.
+            let opened = econ.opening().cloned();
             for m in 0..n {
                 let d = econ.daily_draw(m, commodity);
-                let h: f64 = (0..econ.ledger.sites.len())
-                    .filter(|&s| econ.ledger.sites[s].market == m)
-                    .map(|s| econ.ledger.stock(s, commodity))
-                    .sum();
+                let h: f64 = match opened.as_ref() {
+                    Some(o) => o.stock(m, commodity),
+                    // Before the first day there is no opening, and live
+                    // state is the only honest answer.
+                    None => (0..econ.ledger.sites.len())
+                        .filter(|&s| econ.ledger.sites[s].market == m)
+                        .map(|s| econ.ledger.stock(s, commodity))
+                        .sum(),
+                };
                 held.push(h);
                 draw.push(d);
                 cover.push(if d > 1e-9 { h / d } else { f64::INFINITY });
@@ -333,7 +345,7 @@ impl Logistics {
                             continue;
                         }
 
-                        let moved = ship(econ, src, dst, commodity, take);
+                        let moved = ship(econ, src, dst, commodity, take, ci, km);
                         if moved <= 1e-9 {
                             continue;
                         }
@@ -381,7 +393,15 @@ impl Logistics {
 /// Move goods between two markets, through the journal like everything
 /// else — so conservation covers a haulier's work the way it covers a
 /// farm's.
-fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f64 {
+fn ship(
+    econ: &mut Economy,
+    from: usize,
+    to: usize,
+    c: Commodity,
+    qty: f64,
+    carrier: usize,
+    km: f64,
+) -> f64 {
     let mut left = qty;
     let mut moved = 0.0;
 
@@ -481,15 +501,26 @@ fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64) -> f
             if take <= 1e-9 {
                 continue;
             }
-            econ.ledger.apply(
-                &mut econ.journal,
-                Event::Shipped {
-                    from: src,
-                    to: dst,
-                    commodity: c,
-                    qty: take,
-                },
-            );
+            // **Collected, not teleported.** What used to be one
+            // statement taking tonnes off a shed here and putting them on
+            // a shelf there is now a consignment with a name, a contract
+            // price, a carrier and a due date — because six hundred
+            // kilometres is not the same thing as across town, and a model
+            // that cannot say so has nowhere to put goods that are on the
+            // road at midnight.
+            let Some(id) = econ.consign(src, dst, carrier, c, take, km, c.needs_cold()) else {
+                continue;
+            };
+            // **A same-day haul is collected and tipped in the same day.**
+            // The average British road haul is about 94 km, which a lorry
+            // does and comes home from before tea, so most freight really
+            // is same-day — and making every delivery an overnight saga
+            // would be wrong about the common case in order to be right
+            // about the rare one. Anything that has to sleep somewhere is
+            // tipped by `roll_the_road` on the morning it is due.
+            if econ.shipments.get(id).map(|s| s.due) == Some(econ.ledger.day) {
+                econ.tip(id);
+            }
             left -= take;
             moved += take;
         }

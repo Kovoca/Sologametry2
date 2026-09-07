@@ -64,10 +64,15 @@ fn undisturbed_economy_settles_at_cost() {
             "{}: settled at {price:.0}, expected about {base:.0}",
             econ.markets[m].name
         );
+        // **Against the target this market is actually aiming at**, which
+        // is the commodity's base cover plus however long it waits for a
+        // delivery. A shop next door to the cannery holds less than one
+        // six hundred kilometres away, and both are correct.
         let cover = econ.markets[m].cover[FOOD as usize];
+        let target = econ.target_cover(m, FOOD);
         assert!(
-            (cover - FOOD.target_cover_days()).abs() < 0.5,
-            "{}: cover settled at {cover:.1} days",
+            (cover - target).abs() < 0.5,
+            "{}: cover settled at {cover:.1} days against a target of {target:.1},",
             econ.markets[m].name
         );
     }
@@ -332,6 +337,9 @@ fn the_journal_explains_every_change() {
             scale_sim::econ::Event::Produced { qty, .. }
             | scale_sim::econ::Event::Consumed { qty, .. }
             | scale_sim::econ::Event::Shipped { qty, .. }
+            | scale_sim::econ::Event::Despatched { qty, .. }
+            | scale_sim::econ::Event::Landed { qty, .. }
+            | scale_sim::econ::Event::LostInTransit { qty, .. }
             | scale_sim::econ::Event::Spoiled { qty, .. } => *qty,
         };
         assert!(qty > 0.0, "journalled a non-positive quantity: {qty}");
@@ -610,5 +618,56 @@ fn a_utility_borrows_from_its_neighbour_rather_than_waiting_a_year() {
         served,
         region.economy.markets.len(),
         "some towns are in nobody's licence area"
+    );
+}
+
+/// **A claim about a year is gated over a year.**
+///
+/// `harvest_curve`'s shape is a peak, a width and a floor, and its scale is
+/// whatever makes the year come to one year of rated output. That last part
+/// is what everything downstream depends on and the part nobody looking at
+/// the constant can check: at 6.9 the year came to **0.9312**, so every
+/// farm on every planet delivered 93% of its rating while the comment above
+/// it said 100% — and `region.rs`, sizing a country's grain imports as
+/// milling need less what its farms *grow*, had every importer in the world
+/// buying 7% too little for ever.
+///
+/// So the sum is asserted rather than the constant. Move the peak, the
+/// width or the floor and this is what says the scale has to move with it.
+#[test]
+fn harvest_curve_sums_to_a_year() {
+    for southern in [false, true] {
+        let total: f64 = (0..scale_sim::econ::DAYS_PER_YEAR)
+            .map(|d| scale_sim::econ::harvest_curve(d, southern))
+            .sum();
+        let year = total / scale_sim::econ::DAYS_PER_YEAR as f64;
+        assert!(
+            (year - scale_sim::econ::ANNUAL_HARVEST_TOTAL).abs() < 0.002,
+            "a year of harvest comes to {year:.4} of rated output, not {:.4} \
+             — every farm on the planet is delivering the wrong amount and \
+             nothing downstream can tell",
+            scale_sim::econ::ANNUAL_HARVEST_TOTAL
+        );
+    }
+
+    // **And it is a harvest, not a trickle.** A curve that summed correctly
+    // by being flat would pass the line above and would not be a harvest:
+    // most of a cereal year lands in about six weeks.
+    let day: Vec<f64> = (0..scale_sim::econ::DAYS_PER_YEAR)
+        .map(|d| scale_sim::econ::harvest_curve(d, false))
+        .collect();
+    let peak = day.iter().cloned().fold(0.0, f64::max);
+    assert!(
+        peak > 5.0,
+        "the harvest peaks at {peak:.2}x rated, which is not a harvest"
+    );
+    let mut sorted = day.clone();
+    sorted.sort_by(|a, b| b.total_cmp(a));
+    let six_weeks: f64 = sorted.iter().take(42).sum();
+    let all: f64 = day.iter().sum();
+    assert!(
+        six_weeks / all > 0.6,
+        "only {:.0}% of the year's crop lands in its best six weeks",
+        100.0 * six_weeks / all
     );
 }

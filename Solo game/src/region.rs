@@ -900,10 +900,50 @@ impl Region {
                 name: format!("{name} grain terminal"),
                 kind: SiteKind::Mine,
                 market: m,
-                stock: cap(&[(Commodity::Grain, short * 20.0)]),
-                capacity: cap(&[(Commodity::Grain, short * 60.0)]),
+                // **A country that imports its bread buys it in the
+                // lean season, not evenly through the year.**
+                //
+                // `short` is the shortfall against the *annual* harvest,
+                // and a harvest is not annual: most of the year's grain
+                // lands in about six weeks and the country lives on store
+                // and ships for the other forty-six. Terminals rated at
+                // 1.1x the mean ran at exactly 100% every single day,
+                // could never build a reserve, and left the leanest nation
+                // on the planet going hungry each year on the day before
+                // the harvest — while its ports worked flat out and the
+                // sea lanes were open.
+                //
+                // **These figures are a designed placeholder and are
+                // labelled as one.**
+                //
+                // Citing the IEA's 90 days was wrong: that obligation is
+                // about *national petroleum emergency reserves*, not about
+                // grain terminal capacity, and stretching it to cover this
+                // is the kind of borrowed authority this file exists to
+                // avoid. Real terminals are sized on peak-season vessel
+                // arrivals, which is the right shape of argument, and 2.5x
+                // / 45 / 90 is not derived from it.
+                //
+                // What the derivation needs, and none of these are the
+                // same number:
+                //
+                // - the **maximum cumulative seasonal deficit** — how far
+                //   behind domestic supply falls between harvests, summed,
+                //   which is what a store has to bridge;
+                // - the **shipment lot size**, since a terminal takes
+                //   whole cargoes and a Panamax is 60-80,000 t;
+                // - the **resupply lead time** for a cargo ordered today;
+                // - a **policy safety reserve**, which is a decision
+                //   somebody makes rather than a physical quantity;
+                // - and **physical terminal capacity**, which is a berth
+                //   and a silo and is not any of the above.
+                //
+                // Until that is worked out these stand as a placeholder
+                // that keeps importers fed, and no gate depends on them.
+                stock: cap(&[(Commodity::Grain, short * 45.0)]),
+                capacity: cap(&[(Commodity::Grain, short * 90.0)]),
                 recipe: Some(recipe::GRAIN_IMPORTS),
-                throughput: short * 1.1,
+                throughput: short * 2.5,
                 powered: true,
                 ran: 0.0,
                 fitted: None,
@@ -2006,6 +2046,12 @@ impl Region {
             government: None,
             logistics: None,
             treasury: crate::money::Treasury::new(),
+            told_the_day: None,
+            opening: None,
+            shipments: crate::registry::Registry::new(),
+            routing: crate::quote::Routing::default(),
+            import_duty: Default::default(),
+            arrivals: Vec::new(),
             staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,
@@ -2035,6 +2081,10 @@ impl Region {
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
         // And it has money, sized on what that trade is worth.
         economy.issue_currency();
+    // **Before anybody asks what a haul costs.** The table is rebuilt at
+    // the top of every day, but a freshly built world is read before it
+    // has had one.
+    economy.resurvey();
 
         // **Licence areas, not one national utility.**
         //
@@ -2286,6 +2336,10 @@ impl Nations {
         // hop on the way.
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
         economy.issue_currency();
+    // **Before anybody asks what a haul costs.** The table is rebuilt at
+    // the top of every day, but a freshly built world is read before it
+    // has had one.
+    economy.resurvey();
 
         let north = economy.markets.iter().filter(|m| !m.southern).count();
         notes.push(format!(
