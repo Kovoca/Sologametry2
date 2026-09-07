@@ -2100,6 +2100,59 @@ missing it too, so a save containing water would have failed to load. The
 table-driven codec gate could not see it, because **it walked the same
 incomplete list.** An exhaustive match is a test that a roster cannot fake.
 
+## One world, one clock, one update (`src/game.rs`)
+
+The first piece of the spine, and the problem it names is the one an
+external review put at the centre: **several good models, each holding its
+own copy of state the others also hold.**
+
+Nothing agreed what time it was. `econ::Ledger` advanced a day inside its
+own `step`; `scaling` advanced another; a household kept a day of the year;
+and `person::live_a_day` took the day as an **argument**, so whoever called
+it was responsible for passing the number the economy happened to be on.
+Nothing checked that they matched. A diagnostic binary composed a few
+systems by hand and kept them in step by being careful, and **being careful
+is not a contract.**
+
+So there is a root. It owns the clock — private, no setter, `advance` the
+only thing that moves it — and it owns the economy, the item store, the
+sampled people and the ground overlay. A day happens in a written order
+rather than in whatever order somebody called things, and two of the rules
+in that order were learned the hard way and are already in this file: the
+shops trade before anybody counts who worked, and a service is paid before
+wages fall due.
+
+**Deliberately small.** It does not own buildings, vehicles, work orders,
+minds or utilities. The save carries three of the four things it holds, and
+`saveable_parts` reports that as a number rather than a claim — so the
+shortfall has to go up rather than being argued about, and the gate on it
+fails the day it reaches parity.
+
+### A gate with no teeth, found by deleting the mechanism
+
+The invariant is *everybody agrees what day it is*, and the first version of
+it was worthless. Correcting the ledger's date after `step` looked like
+enforcement and enforced nothing: **both counters incremented by one, so
+they agreed by coincidence whatever either of them believed.** Deleting the
+correction left the test green.
+
+The economy is *told* the day now, through `step_at`, which sets rather than
+nudges — and the assertion that discriminates is that an economy told it is
+day 500 is on day 500 rather than counting on from its own 226. Sabotage
+that and the gate goes red, which is the whole point. A subsystem skipped,
+paused, or catching up after being unloaded arrives where the world is
+rather than where it left off.
+
+That is the third time in two days that a gate of mine passed without
+testing its claim. **The habit that catches it is deleting the mechanism and
+requiring the test to fail** — and it belongs beside this file's older rule
+that a test which never enters its branch is not evidence the branch is
+rare.
+
+Also fixed on the way: running the phases and *then* advancing the clock
+left every system a day behind the world for the whole of the day it was
+simulating. The clock moves to the day, and then the day happens.
+
 ## A cheap input has to become a cheap output (`src/econ.rs`)
 
 Price was `base_cost() * multiplier` — **a typed-in constant times

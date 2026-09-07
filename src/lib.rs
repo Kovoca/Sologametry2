@@ -19,6 +19,7 @@ pub mod custom;
 pub mod econ;
 pub mod field;
 pub mod fitted;
+pub mod game;
 pub mod geology;
 pub mod ground;
 pub mod growth;

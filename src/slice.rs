@@ -224,6 +224,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         government: None,
         logistics: None,
         treasury: crate::money::Treasury::new(),
+        told_the_day: None,
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,

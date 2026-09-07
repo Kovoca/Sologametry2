@@ -2470,6 +2470,10 @@ pub struct Economy {
     /// came from nowhere. A wage has to be an expense somebody bears
     /// before a firm can fail to bear it.
     pub treasury: crate::money::Treasury,
+    /// Set by whoever owns the clock, for one step. `None` means nobody
+    /// does and this economy is counting its own days. Written through
+    /// `step_at` rather than assigned, so there is one way in.
+    pub told_the_day: Option<u64>,
     /// Hands on today at each site, filled by `labour::update`. Payroll is
     /// paid by a particular employer, so it needs the breakdown.
     pub staff_today: Vec<f64>,
@@ -2512,6 +2516,17 @@ pub struct Economy {
 
 impl Economy {
     /// Advance one day.
+    /// **Run a day, and be told which day it is.**
+    ///
+    /// The root owns the clock; an economy driven by one does not count for
+    /// itself. Without this the root's date and the ledger's stayed equal
+    /// only because both incremented by one, so the invariant was true by
+    /// coincidence and a gate on it caught nothing at all.
+    pub fn step_at(&mut self, day: u64) {
+        self.told_the_day = Some(day);
+        self.step();
+    }
+
     pub fn step(&mut self) {
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
@@ -2581,7 +2596,16 @@ impl Economy {
         #[cfg(debug_assertions)]
         self.treasury.assert_conserved();
 
-        self.ledger.day += 1;
+        // **Advanced by whoever owns the clock**, which is the root when
+        // there is one. Left here for a standalone economy, because most of
+        // this project's gates drive one directly — but `step_at` is the
+        // entry point that does *not* count for itself, and using it is
+        // what makes "everybody agrees what day it is" a real claim rather
+        // than two counters that happen to increment together.
+        self.ledger.day = self.ledger.day.max(self.told_the_day.unwrap_or(0));
+        if self.told_the_day.take().is_none() {
+            self.ledger.day += 1;
+        }
 
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
