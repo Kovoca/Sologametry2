@@ -2136,6 +2136,15 @@ what was actually in the sheds — and anybody deciding what to do reads
 anybody can know when the lorries leave: it cannot see the price its own
 delivery is about to create.
 
+**Partial, and the gap is named rather than implied.** The snapshot exists
+and carriers read it; two things behind it do not yet honour the contract.
+Carrier deliveries still do not move the landed average — turning that on
+destabilised food cover in a way I could not explain, so it is not shipped
+— and `distribute` still scans sites in index order, which this file
+already records as a real bug it had to fix once. Until both are done, "the
+day's decisions cannot depend on the order they were taken in" is a
+property of the *fold*, not of the day.
+
 **And the day's arrivals fold into the landed average once, at the close.**
 Blending each cargo as it landed meant the figure a works read depended on
 which lorry got there first, and a late delivery moved a number the same
@@ -4559,6 +4568,70 @@ used to `push` onto the people, households and represents arrays at once,
 which is only right while nothing is ever removed — once a death frees a
 slot the arena reuses it and a pushed household lands at the end, against
 nobody. Arrays that run alongside an arena follow the slot it chose.
+
+## A name is not a place (`src/registry.rs`)
+
+`id::Id<T>` is a **slot and a generation**, and that is the right primitive
+for reaching into an arena within one session. It is the wrong one for
+identity, and the difference matters at exactly the point this project is
+now at — moving entities under one root, where a handle has to survive a
+save, a reload, and being promoted from a statistic to somebody standing on
+a tile.
+
+A slot is a **position**: it says where a thing is kept. So the same entity
+gets a different handle if it is stored in a different order, and a freed
+slot is handed to the next arrival with only a counter standing between the
+two of them. A `Key<T>` is a number from a counter that only ever goes up.
+It has nothing to do with where anything is kept, it is never given to
+anything else, and it means the same thing tomorrow.
+
+Seven rules, seven gates, and **every one of them was checked by deleting
+its mechanism and requiring the test to go red** — the habit this file
+already records after three gates of mine passed without testing their
+claim:
+
+| | the sabotage that must fail it |
+|---|---|
+| a key is not a position, a name or a coordinate | hand out the lowest free number |
+| it survives a save and a reload | let the reload forget how many names have been used |
+| a dead key is never reissued | the same |
+| a definition and an instance are different types | **the compiler**, three ways |
+| what is destroyed leaves a tombstone | forget it instead |
+| storage order cannot reach the simulation | walk them backwards, or hashed |
+| one entity keeps one key at any fidelity | make reaching for a thing take it out and put it back |
+
+- **The counter is written down, not worked out.** Deriving it on load from
+  the highest key present is one line shorter and is the bug: prune the
+  tombstones of a world whose newest entity is dead — a legitimate thing to
+  do with an old grave — and it starts handing that name out again.
+- **A file naming one thing twice is broken, not newer.** The rule
+  `save.rs` already keeps for the journal, and here it decides more: a
+  silent overwrite would make which entity a key refers to depend on which
+  copy the reader saw last. Alive and buried at once is the same
+  contradiction.
+- **Three answers, not two.** Here it is, it is dead, and I have never
+  heard of it. `Lookup` keeps them apart because callers act on the
+  difference — a journal entry, a debt, a grievance and a memory all go on
+  referring to the dead, and "never heard of it" is almost always a bug.
+- **A `compile_fail` in an integration test is never run.** Cargo runs
+  doctests from the library only, so the first version of the rule-4 proof
+  proved nothing at all — it sat in `tests/` being ignored. They live in
+  `src/registry.rs` now, where the five in `social.rs` already were, and
+  each was checked by running it as an *ordinary* doctest and reading the
+  error: `expected Key<u32>, found DefKey<u32>`, `expected Key<Cargo>,
+  found Key<Person>`, `the type [{integer}] cannot be indexed by
+  Key<Cargo>`. A block that fails for a typo passes just as well as one
+  that fails for the reason claimed.
+- **The `usize` bug this replaces is already in the codebase.**
+  `region.rs` carries a `settlement_of_market` translation table precisely
+  because two index spaces had to be kept apart by hand, and `Site.market`
+  and a site's own position are the same type to the compiler.
+
+**Rule 6 is weaker than it looks and is worth saying so.** Iteration is in
+key order because the store is a `BTreeMap`, so the walk cannot depend on
+layout — but registration *history* still decides which key a thing gets,
+and that is correct: the same world built the same way must produce the
+same keys. What is ruled out is storage leaking, not history.
 
 ## A person is not one happiness number (`src/mind.rs`)
 

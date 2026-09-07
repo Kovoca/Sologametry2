@@ -43,6 +43,7 @@ pub mod power;
 pub mod polity;
 pub mod populace;
 pub mod region;
+pub mod registry;
 pub mod relations;
 pub mod rng;
 pub mod services;
