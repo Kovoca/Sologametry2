@@ -1712,6 +1712,17 @@ pub struct Save {
     /// **What was done to the ground**, and the base each change was cut
     /// against.
     pub overlay: Overlay,
+    /// **Every consignment on the road, and the allocator that named
+    /// them.**
+    ///
+    /// Serialising a `Key<T>` is not the same as persisting the registry
+    /// that issued it, and only the second keeps the promise. What has to
+    /// survive is the *next unused number* and the graves — because a
+    /// world reloaded after some deaths, whose counter was recomputed from
+    /// whatever is still alive, starts handing out the names of the
+    /// recently dead. A journal entry, a debt and a grievance all go on
+    /// naming them.
+    pub shipments: crate::registry::Registry<crate::shipment::Shipment>,
 }
 
 /// A cheap checksum over the body, so a truncated or corrupted file says
@@ -1740,6 +1751,7 @@ impl Default for Save {
             schema: crate::scaling::GENERATION_SCHEMA,
             rules: RULES,
             overlay: Default::default(),
+            shipments: crate::registry::Registry::new(),
         }
     }
 }
@@ -1756,6 +1768,7 @@ impl Save {
         self.journal.store(&mut body);
         self.checkpoint.store(&mut body);
         self.overlay.store(&mut body);
+        self.shipments.store(&mut body);
 
         let mut out = Writer::new();
         out.bytes.extend_from_slice(MAGIC);
@@ -1813,9 +1826,20 @@ impl Save {
         let journal = Journal::load(&mut b)?;
         let checkpoint = Checkpoint::load(&mut b)?;
         let overlay = Overlay::load(&mut b)?;
+        let shipments = crate::registry::Registry::load(&mut b)?;
         if !b.done() {
             return Err(SaveError::TrailingBytes(b.left()));
         }
-        Ok(Save { world_seed, day, people, journal, checkpoint, schema, rules, overlay })
+        Ok(Save {
+            world_seed,
+            day,
+            people,
+            journal,
+            checkpoint,
+            schema,
+            rules,
+            overlay,
+            shipments,
+        })
     }
 }

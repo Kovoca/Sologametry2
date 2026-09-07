@@ -507,3 +507,132 @@ fn a_generated_world_actually_puts_things_on_the_road_overnight() {
     );
     n.economy.ledger.assert_conserved();
 }
+
+/// **Persisting a key is not persisting the allocator that issued it.**
+///
+/// The reviewer's gate, step for step: make some, end some, go through
+/// real bytes, come back, make more, and require that nothing is called by
+/// a name that is already taken or already buried.
+///
+/// The failure it exists to stop is quiet and total. A loader that derives
+/// its counter from the highest live key — one line shorter, and the
+/// obvious thing to write — hands the next arrival the name of whatever
+/// died most recently, and every journal entry, debt and grievance naming
+/// the dead now names the living instead. Nothing checks tonnage, so
+/// nothing notices.
+#[test]
+fn a_reloaded_world_never_reissues_a_name() {
+    use scale_sim::save::Save;
+
+    let mut save = Save::default();
+    // 1. Create.
+    let mut alive = Vec::new();
+    let mut buried = Vec::new();
+    for k in 0..40u64 {
+        let id = save.shipments.add(a_consignment(k));
+        // 2. End some of them.
+        if k % 3 == 0 {
+            save.shipments.end(id, k, "sank");
+            buried.push(id);
+        } else {
+            alive.push(id);
+        }
+    }
+    assert!(!buried.is_empty() && !alive.is_empty());
+
+    // 3 and 4. Through the real file, header, checksum and all.
+    let bytes = save.to_bytes();
+    let mut back = Save::from_bytes(&bytes).expect("the world would not load");
+
+    for &id in &alive {
+        assert!(back.shipments.get(id).is_some(), "{id:?} was lost in the save");
+    }
+    for &id in &buried {
+        assert!(
+            matches!(back.shipments.look(id), Lookup::Gone(_)),
+            "{id:?} came back from the dead"
+        );
+    }
+
+    // 5. Make more, and 6. require that none of them is a name already
+    // spoken for.
+    for k in 0..40u64 {
+        let fresh = back.shipments.add(a_consignment(1000 + k));
+        assert!(
+            !alive.contains(&fresh),
+            "{fresh:?} was handed out on top of a living consignment"
+        );
+        assert!(
+            !buried.contains(&fresh),
+            "{fresh:?} was handed out on top of a grave"
+        );
+    }
+}
+
+/// A consignment with something to tell apart from its neighbours.
+fn a_consignment(k: u64) -> Shipment {
+    Shipment {
+        commodity: Commodity::Grain,
+        consignor: 1,
+        consignee: 2,
+        carrier: 0,
+        from_market: 0,
+        to_market: 1,
+        left: k,
+        due: k + 2,
+        despatched: 100.0 + k as f64,
+        aboard: 100.0 + k as f64,
+        delivered: 0.0,
+        lost: 0.0,
+        how_lost: None,
+        goods: 900.0 * (100.0 + k as f64),
+        freight: 45.0 * (100.0 + k as f64),
+        refrigerated: k % 2 == 0,
+        leg: Leg::OnTheRoad,
+    }
+}
+
+/// **A world saved with a lorry halfway there comes back with it halfway
+/// there.**
+///
+/// The whole-root version, which the previous commit could not write
+/// because there was no transit to be halfway through. What has to survive
+/// is not just the tonnage: the same name, the same manifest, the same day
+/// it is due, the same contract, and the same consignee — because a cargo
+/// that reloads pointing at a different buyer is worse than one that
+/// reloads missing.
+#[test]
+fn a_world_saved_mid_journey_resumes_the_same_journey() {
+    use scale_sim::save::Save;
+
+    let mut e = world();
+    let (from, to, c, qty) = a_load(&mut e);
+    let id = e
+        .consign(from, to, 2, c, qty, 2_000.0, true)
+        .expect("nothing set off");
+    let before = e.shipments.get(id).cloned().expect("it did not exist");
+    assert_eq!(before.leg, Leg::OnTheRoad);
+    assert!(before.due > e.ledger.day, "the load is not actually in transit");
+
+    // Out to a file and back, through the header and the checksum.
+    let mut save = Save::default();
+    save.day = e.ledger.day;
+    save.shipments = e.shipments.clone();
+    let back = Save::from_bytes(&save.to_bytes()).expect("the world would not load");
+
+    let after = back.shipments.get(id).expect("the cargo was not in the save");
+    assert_eq!(&before, after, "the consignment changed on the way through a save");
+    assert_eq!(after.consignee, to, "it came back bound for somebody else");
+    assert_eq!(after.due, before.due, "it came back due on a different day");
+    assert!(
+        (after.goods - before.goods).abs() < 1e-9
+            && (after.freight - before.freight).abs() < 1e-9,
+        "the contract was rewritten by a save"
+    );
+    assert_eq!(back.day, e.ledger.day, "the world came back on a different day");
+
+    // **And the reloaded world does not hand its name to anybody else.**
+    let mut back = back;
+    let fresh = back.shipments.add(a_consignment(1));
+    assert_ne!(fresh, id);
+}

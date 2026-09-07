@@ -186,7 +186,7 @@ pub enum Lookup<'a, T> {
 ///
 /// Iteration is in key order rather than storage order, so nothing about
 /// how entries happen to be laid out can reach the simulation.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Registry<T> {
     /// Only ever goes up. **This is what makes a key never reused**, and it
     /// is deliberately not derived from how many things are alive.
