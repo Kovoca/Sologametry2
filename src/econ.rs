@@ -710,6 +710,7 @@ impl Opening {
     }
 }
 
+#[derive(Clone)]
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -1497,6 +1498,7 @@ pub mod recipe {
 // Markets
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct Market {
     pub name: String,
     /// Which nation this market belongs to. Weather is drawn per nation,
@@ -3100,11 +3102,31 @@ impl Economy {
         want
     }
 
+    /// **Merit order, and a tie is shared rather than settled by
+    /// position.**
+    ///
+    /// This walked the sites in index order and handed each station as
+    /// much of the day's call as it could take until the call ran out — so
+    /// the first plant in the vector ran flat out and the last never ran
+    /// at all. In a world of three identical towns one station burnt its
+    /// coal down to 9,235 tonnes and another finished the year on the full
+    /// 20,000 it started with, and which was which depended on nothing but
+    /// where they sat in a list.
+    ///
+    /// Real dispatch is by cost: cheapest runs first and the last unit
+    /// needed sets the price, which is the model `power.rs` already holds
+    /// and the reason a windy night clears at almost nothing. What decides
+    /// the order here is the marginal cost of fuel at the plant, and where
+    /// two plants are exactly as cheap the load is split between them —
+    /// because an exact tie broken by index is the original bug wearing a
+    /// cost function.
     fn generate_power(&mut self) {
         // Dispatch against load, capped by what the wires can carry.
         let carry = self.grid.capacity().min(self.power_demand());
         let mut remaining = carry;
 
+        // What each plant could run, and what its fuel would cost.
+        let mut fleet: Vec<(usize, f64, f64)> = Vec::new();
         for site in 0..self.ledger.sites.len() {
             if self.ledger.sites[site].kind != SiteKind::PowerPlant {
                 continue;
@@ -3113,17 +3135,54 @@ impl Economy {
                 continue;
             };
             let recipe = &RECIPES[r];
-            if remaining <= 0.0 {
-                break;
-            }
-
-            // Batches are limited by fuel on hand and by what can be
-            // delivered.
-            let mut batches = remaining;
+            let m = self.ledger.sites[site].market;
+            let mut feasible = f64::INFINITY;
+            let mut marginal = 0.0;
             for &(c, need) in recipe.inputs {
-                let have = self.ledger.stock(site, c);
-                batches = batches.min(have / need);
+                feasible = feasible.min(self.ledger.stock(site, c) / need);
+                marginal += need * self.markets[m].landed[c as usize];
             }
+            if !feasible.is_finite() {
+                // Burns nothing: it is limited only by the wires.
+                feasible = carry;
+            }
+            let marginal = marginal * self.ledger.sites[site].cost_factor;
+            if feasible > 1e-9 {
+                fleet.push((site, marginal, feasible));
+            }
+        }
+        fleet.sort_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)));
+
+        // Cheapest band first; within a band, in proportion to what each
+        // can actually run.
+        let mut allotted: Vec<(usize, f64)> = Vec::new();
+        let mut i = 0;
+        while i < fleet.len() && remaining > 1e-9 {
+            let cheapest = fleet[i].1;
+            let tol = cheapest.abs().max(1.0) * 1e-9;
+            let mut j = i;
+            while j < fleet.len() && (fleet[j].1 - cheapest) <= tol {
+                j += 1;
+            }
+            let band: f64 = fleet[i..j].iter().map(|x| x.2).sum();
+            if band <= 1e-9 {
+                i = j;
+                continue;
+            }
+            let take = remaining.min(band);
+            let share = take / band;
+            for &(site, _, feasible) in &fleet[i..j] {
+                allotted.push((site, feasible * share));
+            }
+            remaining -= take;
+            i = j;
+        }
+
+        for (site, batches) in allotted {
+            let Some(r) = self.ledger.sites[site].recipe else {
+                continue;
+            };
+            let recipe = &RECIPES[r];
             if batches <= 1e-9 {
                 continue;
             }

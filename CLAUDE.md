@@ -2915,6 +2915,44 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+### The order things are stored in is not an economic fact
+
+Reversing the site vector caught the original allocation bug, and **one
+reversal is one sample**: a rule that happens to be symmetric under
+reversal and biased under everything else sails straight through it. Six
+deterministic orderings now, including one drawn from a hash so it bears no
+relation to anything the model cares about — and all six permutations of
+the three markets, each fully remapped through every site's `market`, both
+ends of every road and the per-market vectors alongside.
+
+**Results are compared by name, not by slot.** Comparing two permuted runs
+index by index compares a farm against a cannery and calls the difference a
+defect.
+
+It found one immediately, in a place the old reversal test could not see:
+**`generate_power` dispatched in vector order.** It walked the sites and
+handed each station as much of the day's call as it could take until the
+call ran out, so the first plant in the list ran flat out and the last
+never ran at all. In a world of three identical towns one station burnt its
+coal to 9,235 tonnes while another finished on the full 20,000 it started
+with, and which was which depended on nothing whatever.
+
+Dispatch is now **merit order with ties shared**: cheapest fuel first, and
+where two plants are exactly as cheap the load is split between them. Both
+halves are needed and they are gated separately, because the symmetric
+fixture cannot test the first — three identical stations tie, the whole
+fleet is one band, and the cost comparison never discriminates.
+
+- **A tie broken by index is the original bug wearing a cost function.**
+  Deleting the tie-sharing turns the permutation gate red; deleting the
+  cost sort does not, because in that world nothing is cheaper than
+  anything else.
+- **And the gate for the cost sort had to be built so the two orders
+  disagree.** The first attempt made the *first* plant the cheapest, so
+  dispatching by position gave the same answer as dispatching by cost and
+  the test passed with the mechanism deleted. The cheapest station is
+  deliberately last in the vector now.
+
 ### Evenly starving is even
 
 The most useful thing to come out of a change that had to be thrown away.

@@ -277,3 +277,219 @@ fn a_country_does_not_leave_grain_money_on_the_table() {
         100.0 * worst / reference
     );
 }
+
+// =====================================================================
+// storage order is not an economic fact
+// =====================================================================
+
+/// What the world came to, keyed by something that survives a shuffle.
+///
+/// **Names, not indices.** Comparing two permuted runs slot by slot would
+/// compare a farm against a cannery and call the difference a defect;
+/// comparing them by index after a permutation is not a comparison at all.
+fn by_name(e: &Economy) -> std::collections::BTreeMap<String, (f64, f64)> {
+    let mut out = std::collections::BTreeMap::new();
+    for s in 0..e.ledger.sites.len() {
+        let site = &e.ledger.sites[s];
+        let stock: f64 = Commodity::ALL
+            .iter()
+            .filter(|c| c.storable())
+            .map(|&c| e.ledger.stock(s, c))
+            .sum();
+        out.insert(site.name.clone(), (stock, site.ran));
+    }
+    for m in 0..e.markets.len() {
+        let price: f64 = Commodity::ALL
+            .iter()
+            .map(|&c| e.markets[m].price[c as usize])
+            .sum();
+        let cover = cover(e, m, Commodity::ProcessedFood);
+        out.insert(format!("market:{}", e.markets[m].name), (price, cover));
+    }
+    out
+}
+
+/// Deterministic orderings of `n` things. Not random: a gate that shuffles
+/// differently every run cannot be reproduced when it fails.
+fn shufflings(n: usize) -> Vec<Vec<usize>> {
+    let ident: Vec<usize> = (0..n).collect();
+    let mut out = vec![ident.clone()];
+    out.push(ident.iter().rev().copied().collect());
+    out.push((0..n).map(|i| (i + 1) % n).collect());
+    out.push((0..n).map(|i| (i + n / 2) % n).collect());
+    // Evens then odds, which separates neighbours that were adjacent.
+    out.push((0..n).filter(|i| i % 2 == 0).chain((0..n).filter(|i| i % 2 == 1)).collect());
+    // A fixed hash, so the ordering has no relationship to anything the
+    // economy cares about and is the same every run.
+    let mut hashed: Vec<usize> = ident.clone();
+    hashed.sort_by_key(|&i| {
+        let mut z = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+        z ^= z >> 29;
+        z = z.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z ^ (z >> 32)
+    });
+    out.push(hashed);
+    out
+}
+
+/// **The order things are stored in is not an economic fact.**
+///
+/// Reversing the site vector caught the original allocation bug, and one
+/// reversal is one sample: a rule that happens to be symmetric under
+/// reversal and biased under everything else would sail through it. Six
+/// deterministic orderings, including one with no relationship to anything
+/// the model cares about.
+#[test]
+fn no_ordering_of_the_sites_changes_the_answer() {
+    let mut expected: Option<std::collections::BTreeMap<String, (f64, f64)>> = None;
+    for (which, order) in shufflings(21).into_iter().enumerate() {
+        let mut e = slice::symmetric(Doctrine::Prudent);
+        assert_eq!(e.ledger.sites.len(), order.len(), "the fixture changed size");
+        // Permute the storage. Nothing else in a freshly built economy
+        // holds a site index — `staff_today` and `payroll_met` are filled
+        // by the first day's work, and every site carries its own market.
+        let sites: Vec<_> = order.iter().map(|&i| e.ledger.sites[i].clone()).collect();
+        e.ledger.sites = sites;
+        for _ in 0..200 {
+            e.step();
+        }
+        e.ledger.assert_conserved();
+
+        let got = by_name(&e);
+        match &expected {
+            None => expected = Some(got),
+            Some(want) => {
+                for (name, &(a, b)) in want {
+                    let &(x, y) = got.get(name).unwrap_or_else(|| {
+                        panic!("ordering {which} lost {name} altogether")
+                    });
+                    let scale = a.abs().max(1.0);
+                    assert!(
+                        (a - x).abs() / scale < 1e-6,
+                        "ordering {which}: {name} holds {x} against {a} — the \
+                         answer depends on where things sit in a list"
+                    );
+                    let scale = b.abs().max(1.0);
+                    assert!(
+                        (b - y).abs() / scale < 1e-6,
+                        "ordering {which}: {name} ran {y} against {b}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// **And every ordering of the markets themselves.**
+///
+/// Harder than shuffling sites, because a market index is referenced from
+/// three places — every site's `market`, both ends of every road, and the
+/// per-market vectors that run alongside. All six orderings of the three,
+/// each fully remapped, which is what makes the fixture's symmetry a claim
+/// about the model rather than about the order the towns were declared in.
+#[test]
+fn no_ordering_of_the_markets_changes_the_answer() {
+    // All six permutations of three, written out: a gate whose own
+    // ordering is generated is a gate with a second thing to get wrong.
+    const ORDERS: [[usize; 3]; 6] = [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ];
+    let mut expected: Option<std::collections::BTreeMap<String, (f64, f64)>> = None;
+    for (which, order) in ORDERS.iter().enumerate() {
+        let mut e = slice::symmetric(Doctrine::Prudent);
+        assert_eq!(e.markets.len(), 3);
+        // `order[new] = old`, so `to_new[old] = new`.
+        let mut to_new = [0usize; 3];
+        for (new, &old) in order.iter().enumerate() {
+            to_new[old] = new;
+        }
+        e.markets = order.iter().map(|&old| e.markets[old].clone()).collect();
+        e.workforce = order.iter().map(|&old| e.workforce[old].clone()).collect();
+        for site in e.ledger.sites.iter_mut() {
+            site.market = to_new[site.market];
+        }
+        for r in e.routes.iter_mut() {
+            r.a = to_new[r.a];
+            r.b = to_new[r.b];
+        }
+        e.resurvey();
+
+        for _ in 0..200 {
+            e.step();
+        }
+        e.ledger.assert_conserved();
+
+        let got = by_name(&e);
+        match &expected {
+            None => expected = Some(got),
+            Some(want) => {
+                for (name, &(a, b)) in want {
+                    let &(x, y) = got
+                        .get(name)
+                        .unwrap_or_else(|| panic!("ordering {which} lost {name}"));
+                    let scale = a.abs().max(1.0);
+                    assert!(
+                        (a - x).abs() / scale < 1e-6,
+                        "ordering {which:?}: {name} is {x} against {a} — which \
+                         town is which depends on the order they were declared"
+                    );
+                    let scale = b.abs().max(1.0);
+                    assert!((b - y).abs() / scale < 1e-6, "ordering {which}: {name}");
+                }
+            }
+        }
+    }
+}
+
+/// **The cheap plant runs and the dear one waits.**
+///
+/// The other half of dispatch, and it needs saying separately because the
+/// symmetric fixture cannot test it: three identical stations tie, the
+/// whole fleet is one band, and the cost comparison never discriminates.
+/// Sorting by cost was therefore a mechanism no gate exercised — which
+/// this project has now caught in itself three times — so here is a world
+/// where the plants are not alike.
+///
+/// This is the same rule `power.rs` holds for generation and the reason a
+/// windy night clears at almost nothing: cheapest first, and the last unit
+/// needed sets the price. Nothing about it is a preference for tidiness —
+/// a grid that dispatched its most expensive plant first would burn a
+/// country's money for no reason.
+#[test]
+fn dispatch_runs_the_cheap_station_first() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    // One station on a rich, cheap seam; one on a poor one; one ordinary.
+    let mut plants: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant)
+        .collect();
+    assert_eq!(plants.len(), 3, "the fixture no longer has three stations");
+    plants.sort();
+    // **The cheapest is deliberately last in the vector.** Making the
+    // first plant the cheapest lets index order and cost order agree, so
+    // the gate passes with the cost comparison deleted -- which is exactly
+    // what happened on the first attempt at writing this.
+    e.ledger.sites[plants[0]].cost_factor = 2.0;
+    e.ledger.sites[plants[1]].cost_factor = 1.0;
+    e.ledger.sites[plants[2]].cost_factor = 0.5;
+
+    for _ in 0..30 {
+        e.step();
+    }
+
+    let ran: Vec<f64> = plants.iter().map(|&s| e.ledger.sites[s].ran).collect();
+    assert!(
+        ran[2] > ran[1] && ran[1] >= ran[0],
+        "dispatch ran {ran:?} for plants costing 2.0, 1.0 and 0.5 — the \
+         grid is not choosing on cost"
+    );
+    assert!(
+        ran[2] > 1e-9,
+        "the cheapest station on the system did not run at all"
+    );
+    e.ledger.assert_conserved();
+}
