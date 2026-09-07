@@ -227,6 +227,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
         told_the_day: None,
             opening: None,
             shipments: crate::registry::Registry::new(),
+            routing: crate::quote::Routing::default(),
+            import_duty: Default::default(),
             arrivals: Vec::new(),
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
@@ -237,6 +239,10 @@ pub fn build(doctrine: Doctrine) -> Economy {
     };
     // A hand-built slice needs money in it like anywhere else.
     economy.issue_currency();
+    // **Before anybody asks what a haul costs.** The table is rebuilt at
+    // the top of every day, but a freshly built world is read before it
+    // has had one.
+    economy.resurvey();
     economy
 }
 
@@ -434,6 +440,8 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         told_the_day: None,
         opening: None,
         shipments: crate::registry::Registry::new(),
+            routing: crate::quote::Routing::default(),
+            import_duty: Default::default(),
         arrivals: Vec::new(),
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
@@ -443,5 +451,9 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         services: None,
     };
     economy.issue_currency();
+    // **Before anybody asks what a haul costs.** The table is rebuilt at
+    // the top of every day, but a freshly built world is read before it
+    // has had one.
+    economy.resurvey();
     economy
 }

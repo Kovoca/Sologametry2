@@ -2247,8 +2247,31 @@ pub fn harvest_curve(day: u64, southern: bool) -> f64 {
     // A constant that reads as calibrated and is not is the hardest thing
     // in this model to see, which is why the fix is to make the arithmetic
     // hold rather than to correct the sentence: 0.06 + k x mean(bell) = 1.
-    0.06 + 7.4409 * bell
+    //
+    // **And a claim about a year is gated over a year.** The constant is
+    // only meaningful against `ANNUAL_HARVEST_TOTAL`, so
+    // `harvest_curve_sums_to_a_year` sums all 365 daily factors and
+    // requires them to come to it. That is what stops the next person
+    // adjusting the peak or the width and silently moving how much the
+    // world grows.
+    FLOOR + PEAK_SCALE * bell
 }
+
+/// The trickle from other produce outside the cereal harvest.
+pub const FLOOR: f64 = 0.06;
+
+/// Chosen so the year integrates to `ANNUAL_HARVEST_TOTAL`, not picked.
+pub const PEAK_SCALE: f64 = 7.4409;
+
+/// **What a year of `harvest_curve` is defined to come to.**
+///
+/// One year of rated output. Everything that sizes anything against a
+/// farm's rating depends on this being true — `region.rs` works out a
+/// country's grain imports as its milling need less what its farms grow,
+/// and reads "what they grow" off the rated throughput. When the curve
+/// quietly delivered 0.9312 instead, every grain importer in the world
+/// bought 7% too little for ever and nothing downstream could see it.
+pub const ANNUAL_HARVEST_TOTAL: f64 = 1.0;
 
 // ---------------------------------------------------------------------------
 // Incidents and response
@@ -2621,6 +2644,23 @@ pub struct Economy {
     /// **What the day opened on.** Read by anybody deciding what to do
     /// today; never written to during it.
     pub opening: Option<Opening>,
+    /// **What every haul in the country costs, worked out once a day.**
+    ///
+    /// Rebuilt when the day opens, because that is when passes shut and
+    /// roads change condition, and read by everybody who has to decide
+    /// whether a haul is worth making. Two mechanisms quoting the same
+    /// haul differently is how a price gap that nothing can close comes to
+    /// exist.
+    pub routing: crate::quote::Routing,
+    /// **Duty a nation charges on imports**, ad valorem, by nation id.
+    ///
+    /// Empty is free trade, which is what every world currently generates.
+    /// Real applied MFN rates for whoever populates it: agricultural goods
+    /// average around 15% worldwide and manufactures around 3%, with
+    /// enormous variation — Japan's rice tariff is several hundred per
+    /// cent and a great deal of trade moves duty-free inside customs
+    /// unions.
+    pub import_duty: std::collections::BTreeMap<u16, f64>,
     /// **Every consignment on the road**, by name.
     ///
     /// The first real consumer of `registry.rs`. A cargo has to keep one
@@ -2730,6 +2770,9 @@ impl Economy {
 
         self.turn_of_the_year();
         self.close_the_passes();
+        // **After the passes have been decided and before anybody plans a
+        // haul.** A route shut by snow must not be quoted.
+        self.resurvey();
         // **The lorries tip in the morning**, before anything runs on what
         // they brought. A works that has been waiting three days for ore
         // gets to use it today rather than tomorrow.
@@ -4370,22 +4413,37 @@ impl Economy {
                 continue;
             }
             let (a, b) = (self.routes[r].a, self.routes[r].b);
-            let freight = self.routes[r].freight_cost;
             let mut budget = self.routes[r].capacity;
 
             for &c in Commodity::ALL.iter() {
                 if !c.storable() || budget <= 1e-9 {
                     continue;
                 }
+                // **The same quote the delivery is charged.**
+                //
+                // This used to test the gap against `Route::freight_cost`
+                // — the direct link — while the cargo was billed
+                // `freight_between`, the cheapest *path*. Wherever going
+                // round was cheaper than going straight the two disagreed
+                // permanently, which is a price gap nothing can close and
+                // goods chasing it for ever.
+                //
+                // And what an arbitrageur must clear is not the carriage
+                // alone: duty is paid at the border, and a share of a
+                // perishable load does not arrive at all.
+                let Some(q) = self.quote(a, b, c) else { continue };
+                let carriage = q.carriage();
                 let (pa, pb) = (self.markets[a].price[c as usize], self.markets[b].price[c as usize]);
-                let (from_m, to_m, gap) = if pb - pa > freight {
-                    (a, b, pb - pa - freight)
-                } else if pa - pb > freight {
-                    (b, a, pa - pb - freight)
+                let (from_m, to_m, gap) = if pb - pa > carriage {
+                    (a, b, pb - pa - carriage)
+                } else if pa - pb > carriage {
+                    (b, a, pa - pb - carriage)
                 } else {
                     continue; // gap does not cover the haul
                 };
-                let _ = gap;
+                if gap <= pa.max(pb) * q.loss {
+                    continue;
+                }
 
                 // Ship from whoever in the surplus market holds the goods
                 // to whoever in the deficit market has room. Restricting
@@ -4435,7 +4493,8 @@ impl Economy {
                     let from_m = self.ledger.sites[src].market;
                     let to_m = self.ledger.sites[dst].market;
                     let paid = self.markets[from_m].landed[c as usize] * qty;
-                    let freight = self.routes[r].freight_cost * qty;
+                    // The same quote the gap was tested against.
+                    let freight = carriage * qty;
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -4673,92 +4732,72 @@ impl Economy {
     /// landed at twenty times its value and inflated the cost of cement
     /// fourfold in every nation that imports fuel. Two towns joined through
     /// a third are joined.
+    /// **Work out what every haul in the country costs.**
+    ///
+    /// One Dijkstra per market rather than one per enquiry: the price pass
+    /// alone asks thousands of times a day, and it used to run a fresh
+    /// search for every one of them.
+    pub fn resurvey(&mut self) {
+        let edges: Vec<(usize, usize, f64, f64, f64)> = self
+            .routes
+            .iter()
+            .filter(|r| r.usable())
+            .map(|r| (r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .collect();
+        self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
+    }
+
+    /// **What it would cost to get another tonne of `c` from `from` to
+    /// `to`, today.** The marginal replacement quote, and the one number
+    /// every mechanism that moves goods is required to use.
+    pub fn quote(&self, from: usize, to: usize, c: Commodity) -> Option<crate::quote::Quote> {
+        let duty = if from < self.markets.len() && to < self.markets.len() {
+            let (fa, fb) = (self.markets[from].nation, self.markets[to].nation);
+            if fa == fb {
+                0.0
+            } else {
+                self.import_duty.get(&fb).copied().unwrap_or(0.0) * c.base_cost()
+            }
+        } else {
+            0.0
+        };
+        self.routing.quote(from, to, c, duty)
+    }
+
     /// **How far by road**, along the route somebody would actually take.
     ///
     /// The same Dijkstra as `freight_between` over a different edge
     /// weight, and it answers a different question: a haulier is paid per
     /// tonne and a shopkeeper waits in days.
     pub fn road_km_between(&self, from: usize, to: usize) -> f64 {
-        self.road_km_from(from)[to]
+        self.routing.km(from, to)
     }
 
-    /// The same, to everywhere at once — which is what a caller wanting
-    /// distances to several places should ask for. One pass instead of one
-    /// per destination.
+    /// The same, to everywhere at once.
     pub fn road_km_from(&self, from: usize) -> Vec<f64> {
-        let n = self.markets.len();
-        let mut best = vec![f64::INFINITY; n];
-        let mut done = vec![false; n];
-        best[from] = 0.0;
-        loop {
-            let mut here = None;
-            let mut lowest = f64::INFINITY;
-            for m in 0..n {
-                if !done[m] && best[m] < lowest {
-                    lowest = best[m];
-                    here = Some(m);
-                }
-            }
-            let Some(here) = here else { break };
-            done[here] = true;
-            for r in self.routes.iter().filter(|r| r.open) {
-                let next = if r.a == here {
-                    r.b
-                } else if r.b == here {
-                    r.a
-                } else {
-                    continue;
-                };
-                let through = best[here] + r.km;
-                if through < best[next] {
-                    best[next] = through;
-                }
-            }
-        }
-        best
+        (0..self.markets.len())
+            .map(|to| self.routing.km(from, to))
+            .collect()
     }
 
     pub fn freight_between(&self, from: usize, to: usize) -> f64 {
         if from == to {
             return 0.0;
         }
-        // Dijkstra over the open routes. Small graphs, run rarely.
-        let n = self.markets.len();
-        let mut best = vec![f64::INFINITY; n];
-        let mut done = vec![false; n];
-        best[from] = 0.0;
-        loop {
-            let mut here = None;
-            let mut lowest = f64::INFINITY;
-            for m in 0..n {
-                if !done[m] && best[m] < lowest {
-                    lowest = best[m];
-                    here = Some(m);
-                }
-            }
-            let Some(here) = here else { break };
-            if here == to {
-                break;
-            }
-            done[here] = true;
-            for r in self.routes.iter().filter(|r| r.open) {
-                let next = if r.a == here {
-                    r.b
-                } else if r.b == here {
-                    r.a
-                } else {
-                    continue;
-                };
-                let through = best[here] + r.freight_cost;
-                if through < best[next] {
-                    best[next] = through;
-                }
-            }
+        // **One table, one answer.** This used to run its own Dijkstra,
+        // and `trade` ran a different calculation over the direct link —
+        // two figures for the same haul, which is a price gap nothing can
+        // close.
+        let f = self.routing.freight(from, to);
+        if f.is_finite() {
+            f
+        } else {
+            // **Nowhere to be reached from here.** Not free, and not
+            // infinite either: what it would cost to get it there some
+            // other way, capped so one unreachable market cannot poison
+            // every average downstream.
+            LANDED_FREIGHT_CAP
         }
-        // **Nowhere to be reached from here.** Not free, and not infinite
-        // either: what it would cost to get it there some other way, capped
-        // so one unreachable market cannot poison every average downstream.
-        best[to].min(LANDED_FREIGHT_CAP)
     }
 
     /// **Collect a consignment and put it on the road.**

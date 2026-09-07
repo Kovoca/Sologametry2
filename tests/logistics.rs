@@ -66,6 +66,22 @@ fn carriers_even_out_a_country_that_pairwise_trade_cannot() {
         "food cover should be even either way: {without:?} against {with:?}"
     );
 
+    // **And they have to be fed, not merely equally placed.**
+    //
+    // A spread is a difference and says nothing about a level, so a
+    // country in which every town holds a quarter of a day's food passes
+    // the line above with a spread of zero. That is not a hypothetical: a
+    // change to how goods were allocated took this nation from 17 days of
+    // cover to **0.28**, and the whole suite stayed green because the only
+    // gate watching it was measuring evenness. Evenly starving is even.
+    for (label, v) in [("without hauliers", &without), ("with hauliers", &with)] {
+        let lowest = v.iter().cloned().fold(f64::INFINITY, f64::min);
+        assert!(
+            lowest > 3.0,
+            "{label}: the best-stocked town in the country holds {lowest:.2}              days of food — the spread is even because everybody is starving"
+        );
+    }
+
     // **The gap is medical grade**, and it is the shape of cargo the
     // pairwise mechanisms cannot handle at all: made in one town, wanted
     // in every town, bought by nobody over a counter and consumed by no

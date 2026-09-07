@@ -2146,7 +2146,13 @@ with `trade()` switched off is stable, switching the allocation auction off
 changes nothing, and clamping the scarcity multiplier to 1 levels three
 towns of five.
 
-**Two defects, and the first is arithmetic.** The scarcity multiplier is
+**Two defects, and the second is now fixed.** `trade` priced a haul at
+`Route::freight_cost`, the direct link, while a delivery was charged
+`freight_between`, the cheapest *path* — two figures for the same haul, so
+wherever going round was cheaper the gap never closed. There is one
+quotation function now and everybody uses it.
+
+**The first is arithmetic and is not fixed.** The scarcity multiplier is
 applied to carriage as well as to the cost of production, so with landed =
 goods + freight and price = cost x m:
 
@@ -2167,10 +2173,21 @@ direct link, while a delivery is charged `freight_between`, the cheapest
 *path*. Wherever going round is cheaper than going straight the two
 disagree permanently and the gap never closes.
 
-Neither is a tuning problem. What they want is for a market to carry the
-carriage component of its landed cost apart from the goods component, so
-scarcity multiplies one and passes the other through — and for the two
-mechanisms to agree on what a haul costs.
+**And it was tried.** The decomposition is right and the implementation
+was not: `price = marginal delivered + goods x (m - 1)`, with the marginal
+replacement quote taken over producers in merit order, plus buyers
+preferring the cheapest *delivered* supplier rather than whichever sat
+earliest in a vector. Every piece of that is defensible and together they
+**starved a country** — food cover went from 17 days to **0.28**, which
+drove the scarcity premium to its ceiling, which put food at five times its
+cost, which took wages with it, which halved the house-price-to-income
+ratio from a real 9-18x to 2-4x.
+
+Not shipped, and the reason for the size of the wreck is worth more than
+the code was: it is four changes to how goods are allocated and priced,
+made in one go, at the end of a long change, with the measurement left to
+the end. **The order to do it in is one at a time with the food cover read
+after each.**
 
 **And the day's arrivals fold into the landed average once, at the close.**
 Blending each cargo as it landed meant the figure a works read depended on
@@ -2831,6 +2848,84 @@ which are both `usize` and would both compile.
 transit was untestable because there was no transit to be halfway through;
 a cargo now goes through real bytes mid-journey and comes back the same
 cargo, with its contract, its consignee and its refrigeration intact.
+
+## One quote, and everybody uses it (`src/quote.rs`)
+
+Four things had to decide whether a haul was worth making and they were
+getting different numbers. `trade` priced it at `Route::freight_cost` — the
+direct link — while a delivery was charged `freight_between`, the cheapest
+*path*. Wherever going round was cheaper than going straight the two
+disagreed permanently, which is a price gap nothing can close and goods
+chasing it for ever.
+
+`Quote` is one answer: the cheapest path, its distance, how many nights the
+load spends out, the tightest link's capacity, the carriage, the duty at a
+border, and the share expected not to arrive. `Routing` works out all pairs
+once a day — a Dijkstra per market rather than per enquiry, since the price
+pass alone used to ask thousands of times a day and ran a fresh search for
+every one.
+
+- **What rots on the way is not invented here.** It is the same spoilage
+  the model already applies to a store, over the days the load is actually
+  travelling — so `trade` now declines a haul whose losses eat the margin,
+  which is most of why perishables move short distances.
+- **Duty has a mechanism and a default of nothing.** Empty is free trade,
+  which is what every world currently generates; real applied MFN rates are
+  recorded next to it for whoever populates it.
+
+**And an accounting cost is not a trade signal**, which is the deeper point
+and the one the review named. Six numbers had been collapsed into two:
+
+| | what it is for |
+|---|---|
+| inventory cost basis | what the stock on hand cost — historical |
+| contract price | what was paid to the supplier |
+| inbound freight | what was paid to the carrier |
+| landed inventory cost | purchase + freight + losses, per tonne held |
+| **marginal replacement quote** | **what the next tonne would cost, now** |
+| market price | what it actually clears at |
+| scarcity premium | what shortage adds on top |
+
+A works consumes the cost basis of what is in its yard. Anybody deciding
+whether to *move* goods needs the marginal replacement quote, and using the
+warehouse's weighted-average history instead is what let a town be made to
+look dear by the carriage that had already got its goods there.
+
+### Two constants, corrected because they are wrong
+
+Neither is load-bearing for any gate — reverting either or both leaves the
+suite green — and both were turned up while chasing something else.
+
+- **The harvest curve integrated to 0.9312 while its own comment said
+  1.0**, so every farm on every planet quietly delivered 93% of its rating.
+  Nothing downstream could see it: `region.rs` sizes a country's grain
+  imports as milling need less what its farms *grow*, read off the rated
+  throughput, so **every grain importer in the world bought 7% too little
+  for ever**. The gate now sums all 365 daily factors against a named
+  `ANNUAL_HARVEST_TOTAL`, and checks the curve is still a harvest rather
+  than a trickle that happens to add up — so moving the peak or the width
+  forces the scale to move with it.
+- **A grain terminal rated at 1.1x the annual mean shortfall** ran at
+  exactly 100% every day and could never build a reserve. A harvest is not
+  annual. The replacement — 2.5x, 45 and 90 days — is **labelled a designed
+  placeholder**, because citing the IEA's 90 days was borrowed authority:
+  that obligation is about national *petroleum* emergency reserves, not
+  grain terminal capacity. What a real derivation needs is written next to
+  it, and none of those quantities are the same number: the maximum
+  cumulative seasonal deficit, the shipment lot size, the resupply lead
+  time, a policy reserve, and the physical berth.
+
+### Evenly starving is even
+
+The most useful thing to come out of a change that had to be thrown away.
+`carriers_even_out_a_country_that_pairwise_trade_cannot` asserted that food
+cover was *even* with hauliers and without — and a spread is a difference,
+which says nothing whatever about a level. A country in which every town
+holds a quarter of a day's food has a spread of zero.
+
+That is not hypothetical. An allocation change took this nation from 17
+days of cover to **0.28** and the entire suite stayed green, because the
+one gate watching it was measuring evenness. It asserts the level now.
 
 ## A world with no reason for anything to differ (`src/slice.rs`, `src/econ.rs`)
 
