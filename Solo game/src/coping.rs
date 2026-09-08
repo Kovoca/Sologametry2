@@ -65,7 +65,11 @@ pub struct ControlAppraisal {
 
 impl Default for ControlAppraisal {
     fn default() -> Self {
-        ControlAppraisal { source: 0.5, consequences: 0.5, own_response: 0.5 }
+        ControlAppraisal {
+            source: 0.5,
+            consequences: 0.5,
+            own_response: 0.5,
+        }
     }
 }
 
@@ -95,7 +99,12 @@ pub struct ActualControl {
 
 impl Default for ActualControl {
     fn default() -> Self {
-        ActualControl { source: 0.5, consequences: 0.5, exit: 0.2, means: 0.5 }
+        ActualControl {
+            source: 0.5,
+            consequences: 0.5,
+            exit: 0.2,
+            means: 0.5,
+        }
     }
 }
 
@@ -246,8 +255,11 @@ impl Circumstances {
     /// **Why somebody would hold back**, which is values, affection,
     /// consequences and who is watching — never the size of the impulse.
     pub fn motive_to_hold_back(&self) -> f64 {
-        let protect =
-            if self.someone_to_protect { 0.85 * self.they_matter.clamp(0.0, 1.0) } else { 0.0 };
+        let protect = if self.someone_to_protect {
+            0.85 * self.they_matter.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
         let consequences = if self.other_has_authority { 0.75 } else { 0.0 };
         (protect + consequences + 0.15 * self.witnessed).clamp(0.0, 1.0)
     }
@@ -371,9 +383,7 @@ pub fn propensities(
         w += match k {
             Coping::Active => 0.35 * z(Facet::Perseverance) + 0.2 * z(Facet::Assertiveness),
             Coping::Planning => 0.35 * z(Facet::Orderliness) + 0.2 * z(Facet::Curiosity),
-            Coping::InstrumentalSupport => {
-                0.3 * z(Facet::Gregariousness) - 0.3 * z(Facet::Privacy)
-            }
+            Coping::InstrumentalSupport => 0.3 * z(Facet::Gregariousness) - 0.3 * z(Facet::Privacy),
             Coping::EmotionalSupport => 0.3 * z(Facet::Gregariousness) + 0.2 * z(Facet::Trust),
             Coping::Reframing => 0.3 * z(Facet::Cheerfulness) + 0.2 * z(Facet::Tolerance),
             Coping::Acceptance => 0.25 * z(Facet::Tolerance) - 0.2 * z(Facet::Anxiety),
@@ -394,7 +404,11 @@ pub fn propensities(
             w = restrain(w, c.motive_to_hold_back(), regulatory_capacity(mind, debt));
         }
         if k == Coping::SubstanceUse && c.someone_to_protect {
-            w = restrain(w, 0.6 * c.motive_to_hold_back(), regulatory_capacity(mind, debt));
+            w = restrain(
+                w,
+                0.6 * c.motive_to_hold_back(),
+                regulatory_capacity(mind, debt),
+            );
         }
 
         // **Willpower holds somebody to the harder option**, and mounting
@@ -411,12 +425,7 @@ pub fn propensities(
 }
 
 /// The likeliest, for a caller that does not want to sample.
-pub fn choose(
-    mind: &Mind,
-    control: &ControlAppraisal,
-    c: &Circumstances,
-    debt: f64,
-) -> Coping {
+pub fn choose(mind: &Mind, control: &ControlAppraisal, c: &Circumstances, debt: f64) -> Coping {
     propensities(mind, control, c, debt)[0].0
 }
 
@@ -560,7 +569,7 @@ impl ControlAppraisal {
                 Attributed::NotEnoughEffort => 0.15,
                 Attributed::Chance => 0.10,
             })
-            .clamp(0.0, 1.0)
+        .clamp(0.0, 1.0)
             * 0.35;
         let toward = if e.encouraging { 1.0 } else { 0.0 };
         self.source += (toward - self.source) * weight * e.about_source.clamp(0.0, 1.0);
@@ -842,7 +851,12 @@ pub struct Demands {
 
 impl Default for Demands {
     fn default() -> Self {
-        Demands { work: 0.5, caregiving: 0.0, social: 0.3, self_care: 0.3 }
+        Demands {
+            work: 0.5,
+            caregiving: 0.0,
+            social: 0.3,
+            self_care: 0.3,
+        }
     }
 }
 
@@ -1038,7 +1052,11 @@ impl Strain {
     /// *different ids* — which is what makes them count again and mere
     /// re-reading not.
     pub fn appraise(&mut self, event: u64, raw: f64) -> f64 {
-        if let Some(Some((_, felt))) = self.appraised.iter().find(|s| matches!(s, Some((e, _)) if *e == event)) {
+        if let Some(Some((_, felt))) = self
+            .appraised
+            .iter()
+            .find(|s| matches!(s, Some((e, _)) if *e == event))
+        {
             return *felt;
         }
         let felt = self.felt_severity(raw);
@@ -1218,7 +1236,10 @@ impl Strain {
         let aggression = restrain(raw, motive, capacity) - 1.4 * motive;
         let mut out = vec![
             (Acute::Aggression, aggression),
-            (Acute::Panic, 0.6 * z(Facet::Anxiety) + 0.2 * z(Facet::StressVulnerability)),
+            (
+                Acute::Panic,
+                0.6 * z(Facet::Anxiety) + 0.2 * z(Facet::StressVulnerability),
+            ),
             (
                 Acute::Dissociation,
                 0.5 * z(Facet::StressVulnerability) + 0.3 * z(Facet::Privacy),

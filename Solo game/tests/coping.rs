@@ -30,10 +30,18 @@ fn a_person(seed: u64, traits: &[(Facet, f32)]) -> Mind {
 }
 
 fn thinks_they_can() -> ControlAppraisal {
-    ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 }
+    ControlAppraisal {
+        source: 0.9,
+        consequences: 0.9,
+        own_response: 0.5,
+    }
 }
 fn thinks_they_cannot() -> ControlAppraisal {
-    ControlAppraisal { source: 0.05, consequences: 0.05, own_response: 0.5 }
+    ControlAppraisal {
+        source: 0.05,
+        consequences: 0.05,
+        own_response: 0.5,
+    }
 }
 
 // =====================================================================
@@ -50,10 +58,10 @@ fn thinks_they_cannot() -> ControlAppraisal {
 #[test]
 fn a_coarse_advance_matches_a_run_of_days() {
     for (days, pressure, tolerance) in [
-        (730u32, 0.9, 0.2),   // a long descent
-        (400, 0.55, 0.2),     // a slow one
-        (1500, 1.0, 0.1),     // all the way to the bottom
-        (90, 0.3, 0.2),       // barely anything
+        (730u32, 0.9, 0.2), // a long descent
+        (400, 0.55, 0.2),   // a slow one
+        (1500, 1.0, 0.1),   // all the way to the bottom
+        (90, 0.3, 0.2),     // barely anything
     ] {
         let mut daily = Strain::default();
         for _ in 0..days {
@@ -65,8 +73,7 @@ fn a_coarse_advance_matches_a_run_of_days() {
         assert_eq!(coarse.state, daily.state, "descent diverged at {days} days");
         assert!((coarse.debt - daily.debt).abs() < 1e-9);
         assert!(
-            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs()
-                <= 1,
+            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs() <= 1,
             "severe-duration diverged: {} against {}",
             coarse.history.lifetime_days,
             daily.history.lifetime_days
@@ -91,11 +98,13 @@ fn a_coarse_advance_matches_a_run_of_days_recovering() {
         let mut coarse = sunk(Strain::default());
         coarse.advance(days, 0.0, 0.3);
 
-        assert_eq!(coarse.state, daily.state, "recovery diverged over {days} days");
+        assert_eq!(
+            coarse.state, daily.state,
+            "recovery diverged over {days} days"
+        );
         assert!((coarse.debt - daily.debt).abs() < 1e-9);
         assert!(
-            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs()
-                <= 1
+            (coarse.history.lifetime_days as i64 - daily.history.lifetime_days as i64).abs() <= 1
         );
     }
 }
@@ -125,7 +134,10 @@ fn an_advance_can_be_split_at_any_point() {
         let mut split = Strain::default();
         split.advance(cut, 0.8, 0.2);
         split.advance(730 - cut, 0.8, 0.2);
-        assert_eq!(split.state, whole.state, "splitting at {cut} changed the outcome");
+        assert_eq!(
+            split.state, whole.state,
+            "splitting at {cut} changed the outcome"
+        );
         assert!((split.debt - whole.debt).abs() < 1e-9);
     }
 }
@@ -138,13 +150,24 @@ fn an_advance_can_be_split_at_any_point() {
 /// Both important errors follow from the gap.
 #[test]
 fn believing_you_can_fix_it_is_not_being_able_to() {
-    let doer = a_person(1, &[(Facet::Perseverance, 2.0), (Facet::Assertiveness, 1.5)]);
-    let c = Circumstances { severity: 0.7, ..Default::default() };
+    let doer = a_person(
+        1,
+        &[(Facet::Perseverance, 2.0), (Facet::Assertiveness, 1.5)],
+    );
+    let c = Circumstances {
+        severity: 0.7,
+        ..Default::default()
+    };
 
     // He is certain he can sort it out. He cannot.
     let chose = choose(&doer, &thinks_they_can(), &c, 0.0);
     assert_eq!(chose, Coping::Active, "a determined man did not try");
-    let nothing_to_be_done = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.2 };
+    let nothing_to_be_done = ActualControl {
+        source: 0.0,
+        consequences: 0.0,
+        exit: 0.0,
+        means: 0.2,
+    };
     let out = resolve(
         attempt(chose),
         &nothing_to_be_done,
@@ -164,13 +187,27 @@ fn believing_you_can_fix_it_is_not_being_able_to() {
 #[test]
 fn believing_nothing_can_be_done_forgoes_what_could() {
     let m = a_person(2, &[(Facet::Tolerance, 1.5)]);
-    let c = Circumstances { severity: 0.7, ..Default::default() };
+    let c = Circumstances {
+        severity: 0.7,
+        ..Default::default()
+    };
     let chose = choose(&m, &thinks_they_cannot(), &c, 0.0);
     assert!(!chose.is(Family::Problem), "he tried anyway: {chose:?}");
 
     // Had he tried, it would have worked.
-    let could_have = ActualControl { source: 0.9, consequences: 0.9, exit: 0.5, means: 0.9 };
-    let taken = resolve(attempt(chose), &could_have, &SupportGiven::default(), 0.7, 0.6);
+    let could_have = ActualControl {
+        source: 0.9,
+        consequences: 0.9,
+        exit: 0.5,
+        means: 0.9,
+    };
+    let taken = resolve(
+        attempt(chose),
+        &could_have,
+        &SupportGiven::default(),
+        0.7,
+        0.6,
+    );
     let forgone = resolve(
         attempt(Coping::Active),
         &could_have,
@@ -190,12 +227,25 @@ fn believing_nothing_can_be_done_forgoes_what_could() {
 #[test]
 fn the_cost_is_the_failure_and_not_the_family() {
     let a = attempt(Coping::Active);
-    let can = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.95 };
-    let cannot = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.1 };
+    let can = ActualControl {
+        source: 0.95,
+        consequences: 0.95,
+        exit: 0.5,
+        means: 0.95,
+    };
+    let cannot = ActualControl {
+        source: 0.0,
+        consequences: 0.0,
+        exit: 0.0,
+        means: 0.1,
+    };
     let won = resolve(a, &can, &SupportGiven::default(), 0.7, 0.0);
     let lost = resolve(a, &cannot, &SupportGiven::default(), 0.7, 0.0);
 
-    assert!(won.deferred < 0.02, "succeeding at something still cost him");
+    assert!(
+        won.deferred < 0.02,
+        "succeeding at something still cost him"
+    );
     assert!(lost.deferred > won.deferred);
     assert!(won.relief > lost.relief * 3.0);
 }
@@ -204,8 +254,15 @@ fn the_cost_is_the_failure_and_not_the_family() {
 /// still change what it does to him, and coping should see that.
 #[test]
 fn control_over_the_source_and_over_the_consequences_are_different() {
-    let terminal = ControlAppraisal { source: 0.0, consequences: 0.8, own_response: 0.6 };
-    assert!(terminal.instrumental() > 0.7, "nothing at all could be done about anything");
+    let terminal = ControlAppraisal {
+        source: 0.0,
+        consequences: 0.8,
+        own_response: 0.6,
+    };
+    assert!(
+        terminal.instrumental() > 0.7,
+        "nothing at all could be done about anything"
+    );
     let m = a_person(3, &[(Facet::Orderliness, 1.5)]);
     let chose = choose(&m, &terminal, &Circumstances::default(), 0.0);
     assert!(
@@ -222,8 +279,10 @@ fn control_over_the_source_and_over_the_consequences_are_different() {
 /// of an instrument whose author says it has no overall score.
 #[test]
 fn families_are_overlapping_tags_and_not_a_partition() {
-    let multi: Vec<Coping> =
-        Coping::ALL.into_iter().filter(|c| c.families().len() > 1).collect();
+    let multi: Vec<Coping> = Coping::ALL
+        .into_iter()
+        .filter(|c| c.families().len() > 1)
+        .collect();
     assert!(
         multi.len() >= 4,
         "every strategy fell in exactly one family, which is a partition and not a tag"
@@ -253,13 +312,20 @@ fn every_strategy_is_somebody_s() {
                             (Facet::ALL[((seed + 7) % 25) as usize], 1.4),
                         ],
                     );
-                    let c = Circumstances { company, ..Default::default() };
+                    let c = Circumstances {
+                        company,
+                        ..Default::default()
+                    };
                     ever.insert(choose(&m, &control, &c, debt));
                 }
             }
         }
     }
-    assert!(ever.len() >= 8, "only {} strategies were ever reached", ever.len());
+    assert!(
+        ever.len() >= 8,
+        "only {} strategies were ever reached",
+        ever.len()
+    );
 }
 
 // =====================================================================
@@ -271,9 +337,24 @@ fn every_strategy_is_somebody_s() {
 fn avoidance_gives_the_most_relief_today() {
     let s = 0.7;
     let a = ActualControl::default();
-    let avoided = resolve(attempt(Coping::Denial), &a, &SupportGiven::default(), s, 0.8);
-    let faced = resolve(attempt(Coping::Acceptance), &a, &SupportGiven::default(), s, 0.8);
-    assert!(avoided.relief > faced.relief, "avoiding it felt worse on the day");
+    let avoided = resolve(
+        attempt(Coping::Denial),
+        &a,
+        &SupportGiven::default(),
+        s,
+        0.8,
+    );
+    let faced = resolve(
+        attempt(Coping::Acceptance),
+        &a,
+        &SupportGiven::default(),
+        s,
+        0.8,
+    );
+    assert!(
+        avoided.relief > faced.relief,
+        "avoiding it felt worse on the day"
+    );
 }
 
 /// **But it is not uniformly a trap**, and saying so was too strong.
@@ -284,10 +365,8 @@ fn avoidance_gives_the_most_relief_today() {
 fn respite_is_cheap_and_escape_from_a_worsening_thing_is_not() {
     let a = ActualControl::default();
     let s = SupportGiven::default();
-    let rest_from_the_unfixable =
-        resolve(attempt(Coping::Distraction), &a, &s, 0.7, 0.0);
-    let drink_about_the_eviction =
-        resolve(attempt(Coping::SubstanceUse), &a, &s, 0.7, 1.0);
+    let rest_from_the_unfixable = resolve(attempt(Coping::Distraction), &a, &s, 0.7, 0.0);
+    let drink_about_the_eviction = resolve(attempt(Coping::SubstanceUse), &a, &s, 0.7, 1.0);
 
     assert!(
         rest_from_the_unfixable.deferred < rest_from_the_unfixable.relief * 0.35,
@@ -305,8 +384,18 @@ fn respite_is_cheap_and_escape_from_a_worsening_thing_is_not() {
 #[test]
 fn giving_up_on_the_impossible_is_different_from_giving_up() {
     let s = SupportGiven::default();
-    let hopeless = ActualControl { source: 0.0, consequences: 0.1, exit: 0.5, means: 0.2 };
-    let winnable = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.9 };
+    let hopeless = ActualControl {
+        source: 0.0,
+        consequences: 0.1,
+        exit: 0.5,
+        means: 0.2,
+    };
+    let winnable = ActualControl {
+        source: 0.95,
+        consequences: 0.95,
+        exit: 0.5,
+        means: 0.9,
+    };
     let wise = resolve(attempt(Coping::Disengagement), &hopeless, &s, 0.7, 0.5);
     let premature = resolve(attempt(Coping::Disengagement), &winnable, &s, 0.7, 0.5);
     assert!(
@@ -320,7 +409,12 @@ fn giving_up_on_the_impossible_is_different_from_giving_up() {
 #[test]
 fn avoidance_of_the_unchangeable_carries_little_debt() {
     let s = SupportGiven::default();
-    let a = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.0 };
+    let a = ActualControl {
+        source: 0.0,
+        consequences: 0.0,
+        exit: 0.0,
+        means: 0.0,
+    };
     let grief = resolve(attempt(Coping::Distraction), &a, &s, 0.8, 0.0);
     let eviction = resolve(attempt(Coping::Distraction), &a, &s, 0.8, 1.0);
     assert!(eviction.deferred > grief.deferred * 2.0);
@@ -329,11 +423,22 @@ fn avoidance_of_the_unchangeable_carries_little_debt() {
 /// Every avoidant strategy says what kind it is.
 #[test]
 fn avoidance_is_not_one_thing() {
-    let kinds: std::collections::BTreeSet<AvoidanceKind> =
-        Coping::ALL.into_iter().filter_map(|c| c.avoidance()).collect();
-    assert!(kinds.len() >= 4, "avoidance came out as one undifferentiated act");
-    assert_eq!(Coping::Distraction.avoidance(), Some(AvoidanceKind::TemporaryRespite));
-    assert_eq!(Coping::SubstanceUse.avoidance(), Some(AvoidanceKind::SubstanceEscape));
+    let kinds: std::collections::BTreeSet<AvoidanceKind> = Coping::ALL
+        .into_iter()
+        .filter_map(|c| c.avoidance())
+        .collect();
+    assert!(
+        kinds.len() >= 4,
+        "avoidance came out as one undifferentiated act"
+    );
+    assert_eq!(
+        Coping::Distraction.avoidance(),
+        Some(AvoidanceKind::TemporaryRespite)
+    );
+    assert_eq!(
+        Coping::SubstanceUse.avoidance(),
+        Some(AvoidanceKind::SubstanceEscape)
+    );
     assert!(Coping::Active.avoidance().is_none());
 }
 
@@ -368,7 +473,12 @@ fn an_unwanted_lecture_is_support_that_costs() {
 /// and help that puts you under an obligation carries that cost.
 #[test]
 fn the_kind_of_support_decides_what_it_can_do() {
-    let a = ActualControl { source: 0.8, consequences: 0.8, exit: 0.3, means: 0.9 };
+    let a = ActualControl {
+        source: 0.8,
+        consequences: 0.8,
+        exit: 0.3,
+        means: 0.9,
+    };
     let listening = SupportGiven {
         practical: 0.0,
         emotional: 1.0,
@@ -384,9 +494,15 @@ fn the_kind_of_support_decides_what_it_can_do() {
     let talked = resolve(attempt(Coping::EmotionalSupport), &a, &listening, 0.7, 0.5);
     let lent = resolve(attempt(Coping::InstrumentalSupport), &a, &money, 0.7, 0.5);
 
-    assert!(talked.the_problem_moved < 0.01, "a sympathetic ear paid the rent");
+    assert!(
+        talked.the_problem_moved < 0.01,
+        "a sympathetic ear paid the rent"
+    );
     assert!(lent.the_problem_moved > 0.2);
-    assert!(lent.deferred > 0.0, "being lent money left him owing nothing");
+    assert!(
+        lent.deferred > 0.0,
+        "being lent money left him owing nothing"
+    );
 }
 
 /// **Nobody there, nothing to ask.**
@@ -399,7 +515,10 @@ fn you_cannot_ask_somebody_who_is_not_there() {
         ..Default::default()
     };
     let chose = choose(&sociable, &thinks_they_cannot(), &alone, 0.4);
-    assert!(!chose.needs_company(), "he asked somebody who was not there: {chose:?}");
+    assert!(
+        !chose.needs_company(),
+        "he asked somebody who was not there: {chose:?}"
+    );
     assert_ne!(chose, Coping::SubstanceUse);
 }
 
@@ -450,7 +569,10 @@ fn nothing_recovers_while_the_conditions_hold() {
     st.advance(1500, 0.9, 0.2);
     let sunk = st.debt;
     st.advance(2000, 0.9, 0.2);
-    assert!(st.debt >= sunk, "he got better while nothing about his life changed");
+    assert!(
+        st.debt >= sunk,
+        "he got better while nothing about his life changed"
+    );
     assert_eq!(st.state, FunctionalState::Impaired);
 
     st.advance(2000, 0.05, 0.4);
@@ -503,7 +625,10 @@ fn the_debt_saturates_and_the_duration_does_not() {
     let mut long = Strain::default();
     long.advance(1200 + 3650, 1.0, 0.0);
 
-    assert!((brief.debt - long.debt).abs() < 1e-9, "the debt kept deepening");
+    assert!(
+        (brief.debt - long.debt).abs() < 1e-9,
+        "the debt kept deepening"
+    );
     assert!(brief.debt <= STRAIN_CEILING + 1e-9);
     assert!(
         long.history.lifetime_days > brief.history.lifetime_days * 2,
@@ -535,8 +660,16 @@ fn impairment_is_a_degree_and_not_an_absence() {
 /// performing — at a cost.
 #[test]
 fn burnout_is_three_axes_and_not_a_rung() {
-    let dutiful = Burnout { exhaustion: 0.95, cynicism: 0.10, reduced_efficacy: 0.15 };
-    let checked_out = Burnout { exhaustion: 0.40, cynicism: 0.55, reduced_efficacy: 0.25 };
+    let dutiful = Burnout {
+        exhaustion: 0.95,
+        cynicism: 0.10,
+        reduced_efficacy: 0.15,
+    };
+    let checked_out = Burnout {
+        exhaustion: 0.40,
+        cynicism: 0.55,
+        reduced_efficacy: 0.25,
+    };
     assert!(dutiful.exhaustion > checked_out.exhaustion);
     assert!(dutiful.cynicism < checked_out.cynicism);
     // A single number could not tell these two apart, which is the point.
@@ -565,10 +698,15 @@ fn the_same_man_does_different_things_in_different_rooms() {
         they_matter: 1.0,
         ..Default::default()
     };
-    let before_a_magistrate =
-        Circumstances { other_has_authority: true, ..Default::default() };
+    let before_a_magistrate = Circumstances {
+        other_has_authority: true,
+        ..Default::default()
+    };
 
-    assert_eq!(Strain::crisis_propensities(&violent, &plain)[0].0, Acute::Aggression);
+    assert_eq!(
+        Strain::crisis_propensities(&violent, &plain)[0].0,
+        Acute::Aggression
+    );
     assert_ne!(
         Strain::crisis_propensities(&violent, &before_a_child)[0].0,
         Acute::Aggression,
@@ -615,11 +753,17 @@ fn people_cope_in_every_state_including_the_worst() {
     let c = Circumstances::default();
     for debt in [0.0, 0.5, 1.0, STRAIN_CEILING] {
         let p = propensities(&m, &thinks_they_cannot(), &c, debt);
-        assert!(!p.is_empty(), "at a debt of {debt} he had no way of coping at all");
+        assert!(
+            !p.is_empty(),
+            "at a debt of {debt} he had no way of coping at all"
+        );
     }
     // And at the bottom what he reaches for is avoidance.
     let sunk = choose(&m, &thinks_they_cannot(), &c, STRAIN_CEILING);
-    assert!(sunk.is(Family::Avoidant), "at the very bottom he was still coping well");
+    assert!(
+        sunk.is(Family::Avoidant),
+        "at the very bottom he was still coping well"
+    );
 }
 
 /// **An attempt is raised, not a stress subtraction.** Nothing relieves
@@ -639,7 +783,10 @@ fn a_strategy_raises_an_attempt_and_does_not_pay_out_by_itself() {
         0.7,
         0.5,
     );
-    assert!(nothing.relief < 0.01, "asking for help worked with nobody answering");
+    assert!(
+        nothing.relief < 0.01,
+        "asking for help worked with nobody answering"
+    );
 }
 
 // =====================================================================
@@ -670,7 +817,10 @@ fn holding_back_gets_harder_as_somebody_comes_apart() {
     let m = a_person(50, &[]);
     let fresh = regulatory_capacity(&m, 0.0);
     let worn = regulatory_capacity(&m, 1.2);
-    assert!(fresh > worn * 1.5, "a man at the end of himself held on as well as ever");
+    assert!(
+        fresh > worn * 1.5,
+        "a man at the end of himself held on as well as ever"
+    );
 }
 
 /// **A child in the room is not a restraint on somebody it is nothing
@@ -679,9 +829,16 @@ fn holding_back_gets_harder_as_somebody_comes_apart() {
 fn the_person_to_be_protected_has_to_matter() {
     let mut m = a_person(51, &[(Facet::Violence, 2.0), (Facet::Anger, 2.0)]);
     m.willpower = 1.0;
-    let his_own = Circumstances { someone_to_protect: true, they_matter: 1.0, ..Default::default() };
-    let a_stranger =
-        Circumstances { someone_to_protect: true, they_matter: 0.0, ..Default::default() };
+    let his_own = Circumstances {
+        someone_to_protect: true,
+        they_matter: 1.0,
+        ..Default::default()
+    };
+    let a_stranger = Circumstances {
+        someone_to_protect: true,
+        they_matter: 0.0,
+        ..Default::default()
+    };
     assert!(his_own.motive_to_hold_back() > a_stranger.motive_to_hold_back());
     assert_eq!(
         Strain::crisis_propensities(&m, &a_stranger)[0].0,
@@ -699,7 +856,12 @@ fn somebody_impaired_at_work_can_still_be_a_parent() {
     // nothing about whether the domain is doing any work.
     let mut st = Strain::default();
     st.advance(350, 0.35, 0.15);
-    let d = Demands { work: 0.9, caregiving: 0.5, social: 0.4, self_care: 0.4 };
+    let d = Demands {
+        work: 0.9,
+        caregiving: 0.5,
+        social: 0.4,
+        self_care: 0.4,
+    };
 
     let work = st.functioning_in(FunctionalDomain::Work, &d, &Defence::default());
     let care = st.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default());
@@ -715,15 +877,26 @@ fn somebody_impaired_at_work_can_still_be_a_parent() {
 fn what_gets_dropped_first_is_the_person_themselves() {
     let mut st = Strain::default();
     st.advance(250, 0.35, 0.15);
-    let d = Demands { work: 0.5, caregiving: 0.5, social: 0.5, self_care: 0.5 };
+    let d = Demands {
+        work: 0.5,
+        caregiving: 0.5,
+        social: 0.5,
+        self_care: 0.5,
+    };
     let order: Vec<FunctionalState> = FunctionalDomain::ALL
         .iter()
         .map(|&x| st.functioning_in(x, &d, &Defence::default()))
         .collect();
     let care = st.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default());
     let self_care = st.functioning_in(FunctionalDomain::SelfCare, &d, &Defence::default());
-    assert!(self_care >= care, "he stopped minding the children before he stopped sleeping");
-    assert!(order.iter().any(|s| *s != order[0]), "every part of his life went at once");
+    assert!(
+        self_care >= care,
+        "he stopped minding the children before he stopped sleeping"
+    );
+    assert!(
+        order.iter().any(|s| *s != order[0]),
+        "every part of his life went at once"
+    );
 }
 
 /// **Relapse sensitivity has exactly one consumer.** `advance` must not
@@ -800,13 +973,20 @@ fn a_crisis_does_not_touch_the_chronic_state() {
     let mut calm = Strain::default();
     assert_eq!(calm.state, FunctionalState::Regulated);
     calm.crisis_strikes(Acute::Panic, 0.9, 10, 77);
-    assert_eq!(calm.state, FunctionalState::Regulated, "one bad hour broke a settled man");
+    assert_eq!(
+        calm.state,
+        FunctionalState::Regulated,
+        "one bad hour broke a settled man"
+    );
     assert!(calm.crisis.is_some());
     assert!(calm.debt < 1e-9);
 
     // It fades on its own clock, in days.
     calm.advance(7, 0.1, 0.5);
-    assert!(calm.crisis.is_none(), "a panic was still running a week later");
+    assert!(
+        calm.crisis.is_none(),
+        "a panic was still running a week later"
+    );
     assert_eq!(calm.state, FunctionalState::Regulated);
 
     // And on somebody already down, it leaves the chronic state alone.
@@ -835,15 +1015,35 @@ fn a_crisis_does_not_touch_the_chronic_state() {
 fn different_people_hold_onto_different_things() {
     let mut st = Strain::default();
     st.advance(350, 0.35, 0.15);
-    let d = Demands { work: 0.6, caregiving: 0.6, social: 0.6, self_care: 0.6 };
+    let d = Demands {
+        work: 0.6,
+        caregiving: 0.6,
+        social: 0.6,
+        self_care: 0.6,
+    };
 
     // A man who is what he does.
-    let work_first = Defence { work: 1.2, caregiving: 0.5, social: 0.4, self_care: 0.3 };
+    let work_first = Defence {
+        work: 1.2,
+        caregiving: 0.5,
+        social: 0.4,
+        self_care: 0.3,
+    };
     // A parent who will give up anything else.
-    let child_first = Defence { work: 0.4, caregiving: 1.3, social: 0.35, self_care: 0.3 };
+    let child_first = Defence {
+        work: 0.4,
+        caregiving: 1.3,
+        social: 0.35,
+        self_care: 0.3,
+    };
     // Somebody who guards their own footing above all, which is neither
     // selfish nor unusual after a bad enough stretch.
-    let self_first = Defence { work: 0.4, caregiving: 0.45, social: 0.4, self_care: 1.2 };
+    let self_first = Defence {
+        work: 0.4,
+        caregiving: 0.45,
+        social: 0.4,
+        self_care: 1.2,
+    };
 
     let best = |dfc: &Defence| {
         let mut ranked: Vec<(FunctionalDomain, FunctionalState)> = FunctionalDomain::ALL
@@ -885,7 +1085,11 @@ fn appraising_one_event_twice_is_idempotent() {
 
     let first = veteran.appraise(42, 0.5);
     for _ in 0..365 {
-        assert_eq!(veteran.appraise(42, 0.5), first, "daily polling reapplied it");
+        assert_eq!(
+            veteran.appraise(42, 0.5),
+            first,
+            "daily polling reapplied it"
+        );
     }
     // A genuinely different event counts again.
     assert!(veteran.appraise(43, 0.5) > 0.5 - 1e-9);
@@ -926,14 +1130,20 @@ fn different_crises_fade_differently() {
 fn holding_in_a_larger_impulse_costs_more() {
     let big = inhibition_effort(3.0, 0.8, 0.8);
     let small = inhibition_effort(0.5, 0.8, 0.8);
-    assert!(big > small * 3.0, "restraining a rage cost what restraining a twinge did");
+    assert!(
+        big > small * 3.0,
+        "restraining a rage cost what restraining a twinge did"
+    );
 
     // And it is spent from the same capacity, so the second decision of
     // a bad evening is harder than the first.
     let m = a_person(70, &[]);
     let fresh = regulatory_capacity_after(&m, 0.0, 0.0);
     let after = regulatory_capacity_after(&m, 0.0, big.min(1.0));
-    assert!(after < fresh, "holding on once cost nothing toward holding on again");
+    assert!(
+        after < fresh,
+        "holding on once cost nothing toward holding on again"
+    );
 }
 
 /// **A failed attempt teaches something.** Without this, perceived
@@ -941,7 +1151,12 @@ fn holding_in_a_larger_impulse_costs_more() {
 /// from the gap — so a distant man repeats a futile strategy for ever.
 #[test]
 fn failing_at_something_is_informative() {
-    let hopeless = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.6 };
+    let hopeless = ActualControl {
+        source: 0.0,
+        consequences: 0.0,
+        exit: 0.0,
+        means: 0.6,
+    };
     let out = resolve(
         attempt(Coping::Active),
         &hopeless,
@@ -949,7 +1164,10 @@ fn failing_at_something_is_informative() {
         0.7,
         0.3,
     );
-    assert!(out.information_gained > 0.0, "finding out taught him nothing");
+    assert!(
+        out.information_gained > 0.0,
+        "finding out taught him nothing"
+    );
     assert!(out.effort_cost > 0.0);
 
     let e = out.as_evidence(&hopeless);
@@ -960,19 +1178,44 @@ fn failing_at_something_is_informative() {
 /// **One failure is not helplessness; a run of them is.**
 #[test]
 fn learned_helplessness_takes_more_than_a_bad_afternoon() {
-    let hopeless = ActualControl { source: 0.0, consequences: 0.0, exit: 0.0, means: 0.6 };
-    let out = resolve(attempt(Coping::Active), &hopeless, &SupportGiven::default(), 0.7, 0.3);
+    let hopeless = ActualControl {
+        source: 0.0,
+        consequences: 0.0,
+        exit: 0.0,
+        means: 0.6,
+    };
+    let out = resolve(
+        attempt(Coping::Active),
+        &hopeless,
+        &SupportGiven::default(),
+        0.7,
+        0.3,
+    );
     let e = out.as_evidence(&hopeless);
 
-    let mut once = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    let mut once = ControlAppraisal {
+        source: 0.9,
+        consequences: 0.9,
+        own_response: 0.5,
+    };
     once.revise(&e);
-    assert!(once.source > 0.6, "one failure convinced him nothing could ever be done");
+    assert!(
+        once.source > 0.6,
+        "one failure convinced him nothing could ever be done"
+    );
 
-    let mut many = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    let mut many = ControlAppraisal {
+        source: 0.9,
+        consequences: 0.9,
+        own_response: 0.5,
+    };
     for _ in 0..25 {
         many.revise(&e);
     }
-    assert!(many.source < 0.2, "twenty-five futile years taught him nothing");
+    assert!(
+        many.source < 0.2,
+        "twenty-five futile years taught him nothing"
+    );
     assert!(many.source < once.source);
 }
 
@@ -981,7 +1224,11 @@ fn learned_helplessness_takes_more_than_a_bad_afternoon() {
 #[test]
 fn attribution_decides_what_a_failure_is_worth() {
     let mk = |a: Attributed| {
-        let mut c = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+        let mut c = ControlAppraisal {
+            source: 0.9,
+            consequences: 0.9,
+            own_response: 0.5,
+        };
         let e = scale_sim::coping::ControlEvidence {
             about_source: 1.0,
             about_consequences: 0.5,
@@ -1001,13 +1248,31 @@ fn attribution_decides_what_a_failure_is_worth() {
 /// **And success revises the other way**, or belief could only ever fall.
 #[test]
 fn succeeding_teaches_somebody_they_can() {
-    let can = ActualControl { source: 0.95, consequences: 0.95, exit: 0.5, means: 0.95 };
-    let out = resolve(attempt(Coping::Active), &can, &SupportGiven::default(), 0.7, 0.3);
+    let can = ActualControl {
+        source: 0.95,
+        consequences: 0.95,
+        exit: 0.5,
+        means: 0.95,
+    };
+    let out = resolve(
+        attempt(Coping::Active),
+        &can,
+        &SupportGiven::default(),
+        0.7,
+        0.3,
+    );
     let e = out.as_evidence(&can);
     assert!(e.encouraging);
-    let mut low = ControlAppraisal { source: 0.05, consequences: 0.05, own_response: 0.5 };
+    let mut low = ControlAppraisal {
+        source: 0.05,
+        consequences: 0.05,
+        own_response: 0.5,
+    };
     for _ in 0..20 {
         low.revise(&e);
     }
-    assert!(low.source > 0.3, "twenty plain successes did not shift his view at all");
+    assert!(
+        low.source > 0.3,
+        "twenty plain successes did not shift his view at all"
+    );
 }

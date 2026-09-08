@@ -943,10 +943,7 @@ impl Vehicle {
             along[row as usize] = xs.len();
         }
         let longest = along.iter().copied().max().unwrap_or(0);
-        let body = along
-            .iter()
-            .filter(|&&n| n * 4 > longest)
-            .count() as i32;
+        let body = along.iter().filter(|&&n| n * 4 > longest).count() as i32;
         modelled_width_m(body.max(1))
     }
 
@@ -1034,4 +1031,3 @@ impl Vehicle {
         (top * 0.85).min(governed)
     }
 }
-

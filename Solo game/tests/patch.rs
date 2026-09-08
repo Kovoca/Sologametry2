@@ -15,8 +15,7 @@ use scale_sim::save::{Journal, Reader, Save, SaveError, Store, Writer};
 /// "somebody rebuilt the world" case can actually be tested.
 fn generator(salt: u64) -> impl Fn(i64, i64, i64) -> u64 {
     move |x, y, z| {
-        let h = (x as u64)
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        let h = (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
             ^ (y as u64).wrapping_mul(0xBF58_476D_1CE4_E5B9)
             ^ (z as u64).wrapping_mul(0x94D0_49BB_1331_11EB)
             ^ salt;
@@ -38,10 +37,22 @@ fn base_tile(gen: &impl Fn(i64, i64, i64) -> u64, at: (i64, i64, i64)) -> Materi
             1 => Material::Sedimentary,
             _ => Material::Igneous,
         }),
-        construction: if (v >> 7) % 5 == 0 { Some(Construction::Wall) } else { None },
-        ceiling: if (v >> 11) % 4 == 0 { Some(Boundary::Solid) } else { None },
+        construction: if (v >> 7).is_multiple_of(5) {
+            Some(Construction::Wall)
+        } else {
+            None
+        },
+        ceiling: if (v >> 11).is_multiple_of(4) {
+            Some(Boundary::Solid)
+        } else {
+            None
+        },
         fluid: None,
-        vegetation: if (v >> 13) % 6 == 0 { Some(Vegetation::Tree) } else { None },
+        vegetation: if (v >> 13).is_multiple_of(6) {
+            Some(Vegetation::Tree)
+        } else {
+            None
+        },
         object: None,
     }
 }
@@ -60,7 +71,13 @@ fn the_identified_base_plus_the_overlay_is_the_same_world() {
     // Somebody knocks a hole in a wall, floods a cellar, fells a tree
     // and puts a hatch in a floor.
     let edits: Vec<((i64, i64, i64), TileChange)> = vec![
-        ((4, 5, 0), TileChange { construction: Field::Remove, ..Default::default() }),
+        (
+            (4, 5, 0),
+            TileChange {
+                construction: Field::Remove,
+                ..Default::default()
+            },
+        ),
         (
             (6, 5, 0),
             TileChange {
@@ -69,17 +86,37 @@ fn the_identified_base_plus_the_overlay_is_the_same_world() {
                 ..Default::default()
             },
         ),
-        ((7, 9, -1), TileChange { fluid: Field::Set(Fluid::Water), ..Default::default() }),
-        ((11, 2, 0), TileChange { vegetation: Field::Remove, ..Default::default() }),
-        ((3, 3, 0), TileChange { ceiling: Field::Set(Boundary::Hatch), ..Default::default() }),
+        (
+            (7, 9, -1),
+            TileChange {
+                fluid: Field::Set(Fluid::Water),
+                ..Default::default()
+            },
+        ),
+        (
+            (11, 2, 0),
+            TileChange {
+                vegetation: Field::Remove,
+                ..Default::default()
+            },
+        ),
+        (
+            (3, 3, 0),
+            TileChange {
+                ceiling: Field::Set(Boundary::Hatch),
+                ..Default::default()
+            },
+        ),
     ];
     for (at, c) in &edits {
         o.record(*at, *c, 1, &gen);
     }
 
     // What the world looks like now.
-    let live: Vec<Materialised> =
-        edits.iter().map(|(at, _)| o.materialise(*at, base_tile(&gen, *at))).collect();
+    let live: Vec<Materialised> = edits
+        .iter()
+        .map(|(at, _)| o.materialise(*at, base_tile(&gen, *at)))
+        .collect();
 
     // Written down, read back, and applied to a freshly regenerated base.
     let bytes = Save {
@@ -95,7 +132,11 @@ fn the_identified_base_plus_the_overlay_is_the_same_world() {
 
     for (i, (at, _)) in edits.iter().enumerate() {
         let chunk = ChunkAt::of(at.0, at.1, at.2);
-        assert_eq!(back.check(chunk, 1, &gen), Rebase::Matches, "the base moved");
+        assert_eq!(
+            back.check(chunk, 1, &gen),
+            Rebase::Matches,
+            "the base moved"
+        );
         assert_eq!(
             back.materialise(*at, base_tile(&gen, *at)),
             live[i],
@@ -112,7 +153,15 @@ fn applying_an_overlay_twice_changes_nothing() {
     let gen = generator(2);
     let mut o = Overlay::new();
     let at = (1, 1, 0);
-    o.record(at, TileChange { construction: Field::Remove, ..Default::default() }, 1, &gen);
+    o.record(
+        at,
+        TileChange {
+            construction: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
     let once = o.materialise(at, base_tile(&gen, at));
     let twice = o.materialise(at, once);
     assert_eq!(once, twice);
@@ -133,7 +182,15 @@ fn a_changed_base_is_detected_and_not_silently_applied() {
     let old = generator(1);
     let mut o = Overlay::new();
     let at = (4, 5, 0);
-    o.record(at, TileChange { construction: Field::Remove, ..Default::default() }, 1, &old);
+    o.record(
+        at,
+        TileChange {
+            construction: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &old,
+    );
 
     // The generator is rebuilt. Same version number, different world.
     let rebuilt = generator(999);
@@ -154,7 +211,15 @@ fn an_overlay_from_a_newer_generator_is_refused() {
     let gen = generator(3);
     let mut o = Overlay::new();
     let at = (2, 2, 0);
-    o.record(at, TileChange { terrain: Field::Set(Terrain::Open), ..Default::default() }, 7, &gen);
+    o.record(
+        at,
+        TileChange {
+            terrain: Field::Set(Terrain::Open),
+            ..Default::default()
+        },
+        7,
+        &gen,
+    );
     let chunk = ChunkAt::of(at.0, at.1, at.2);
     assert_eq!(o.check(chunk, 3, &gen), Rebase::UnknownGenerator(7));
 }
@@ -165,17 +230,40 @@ fn an_overlay_from_a_newer_generator_is_refused() {
 fn identity_is_kept_for_what_was_changed_and_nothing_else() {
     let gen = generator(4);
     let mut o = Overlay::new();
-    o.record((0, 0, 0), TileChange { vegetation: Field::Remove, ..Default::default() }, 1, &gen);
-    o.record((1, 0, 0), TileChange { vegetation: Field::Remove, ..Default::default() }, 1, &gen);
+    o.record(
+        (0, 0, 0),
+        TileChange {
+            vegetation: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
+    o.record(
+        (1, 0, 0),
+        TileChange {
+            vegetation: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
     // Same chunk, so one identity.
     assert_eq!(o.base.len(), 1);
     o.record(
         (CHUNK + 1, 0, 0),
-        TileChange { vegetation: Field::Remove, ..Default::default() },
+        TileChange {
+            vegetation: Field::Remove,
+            ..Default::default()
+        },
         1,
         &gen,
     );
-    assert_eq!(o.base.len(), 2, "a change in another chunk brought no identity with it");
+    assert_eq!(
+        o.base.len(),
+        2,
+        "a change in another chunk brought no identity with it"
+    );
     assert_eq!(o.len(), 3);
 }
 
@@ -201,10 +289,22 @@ fn a_layer_has_three_states_and_needs_all_three() {
     };
 
     let mut o = Overlay::new();
-    o.record(at, TileChange { construction: Field::Remove, ..Default::default() }, 1, &gen);
+    o.record(
+        at,
+        TileChange {
+            construction: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
     let after = o.materialise(at, base);
     assert_eq!(after.construction, None, "the door could not be taken away");
-    assert_eq!(after.material, Some(Material::Brick), "removing a door changed the brickwork");
+    assert_eq!(
+        after.material,
+        Some(Material::Brick),
+        "removing a door changed the brickwork"
+    );
     assert_eq!(after.terrain, Some(Terrain::Floor));
     assert_eq!(after.ceiling, Some(Boundary::Solid));
 }
@@ -217,7 +317,15 @@ fn editing_one_layer_leaves_the_rest_to_the_generator() {
     let at = (8, 8, 0);
     let base = base_tile(&gen, at);
     let mut o = Overlay::new();
-    o.record(at, TileChange { fluid: Field::Set(Fluid::Sewage), ..Default::default() }, 1, &gen);
+    o.record(
+        at,
+        TileChange {
+            fluid: Field::Set(Fluid::Sewage),
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
     let after = o.materialise(at, base);
     assert_eq!(after.fluid, Some(Fluid::Sewage));
     assert_eq!(after.terrain, base.terrain);
@@ -235,11 +343,22 @@ fn looking_at_the_world_does_not_write_to_it() {
     for x in 0..200i64 {
         o.record((x, 0, 0), TileChange::default(), 1, &gen);
     }
-    assert!(o.is_empty(), "two hundred untouched tiles were written down");
+    assert!(
+        o.is_empty(),
+        "two hundred untouched tiles were written down"
+    );
 
     // And reverting a change removes it rather than recording the
     // reversion.
-    o.record((5, 0, 0), TileChange { vegetation: Field::Remove, ..Default::default() }, 1, &gen);
+    o.record(
+        (5, 0, 0),
+        TileChange {
+            vegetation: Field::Remove,
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
     assert_eq!(o.len(), 1);
     o.record((5, 0, 0), TileChange::default(), 1, &gen);
     assert!(o.is_empty(), "putting it back left a change behind");
@@ -255,12 +374,20 @@ fn a_floor_between_two_levels_is_one_fact() {
     // Knocking a hole in the floor of the first storey.
     let lower = Overlay::boundary_between(4, 4, 0);
     assert_eq!(lower, (4, 4, 0));
-    o.record(lower, TileChange { ceiling: Field::Set(Boundary::Open), ..Default::default() }, 1, &gen);
+    o.record(
+        lower,
+        TileChange {
+            ceiling: Field::Set(Boundary::Open),
+            ..Default::default()
+        },
+        1,
+        &gen,
+    );
 
     // The level above records nothing about it — there is nowhere for it
     // to, which is what makes the boundary unambiguous.
     assert_eq!(o.len(), 1);
-    assert!(o.tiles.get(&(4, 4, 1)).is_none());
+    assert!(!o.tiles.contains_key(&(4, 4, 1)));
     let after = o.materialise(lower, base_tile(&gen, lower));
     assert_eq!(after.ceiling, Some(Boundary::Open));
 }
@@ -335,7 +462,10 @@ fn an_overlay_is_written_canonically() {
         for &x in order {
             o.record(
                 (x, 0, 0),
-                TileChange { vegetation: Field::Remove, ..Default::default() },
+                TileChange {
+                    vegetation: Field::Remove,
+                    ..Default::default()
+                },
                 1,
                 &gen,
             );
@@ -357,7 +487,11 @@ fn a_duplicated_tile_is_rejected() {
         w.i64(1);
         w.i64(1);
         w.i64(0);
-        TileChange { vegetation: Field::Remove, ..Default::default() }.store(&mut w);
+        TileChange {
+            vegetation: Field::Remove,
+            ..Default::default()
+        }
+        .store(&mut w);
     }
     assert!(matches!(
         Overlay::load(&mut Reader::new(&w.bytes)),
@@ -369,7 +503,11 @@ fn a_duplicated_tile_is_rejected() {
 #[test]
 fn a_base_identity_round_trips() {
     let b = BaseChunk {
-        at: ChunkAt { cx: -3, cy: 7, cz: -1 },
+        at: ChunkAt {
+            cx: -3,
+            cy: 7,
+            cz: -1,
+        },
         worldgen_version: 4,
         base_hash: 0xDEAD_BEEF,
     };
@@ -382,8 +520,36 @@ fn a_base_identity_round_trips() {
 /// address the right chunk.
 #[test]
 fn chunks_are_addressed_correctly_below_and_left_of_nothing() {
-    assert_eq!(ChunkAt::of(-1, -1, -1), ChunkAt { cx: -1, cy: -1, cz: -1 });
-    assert_eq!(ChunkAt::of(0, 0, 0), ChunkAt { cx: 0, cy: 0, cz: 0 });
-    assert_eq!(ChunkAt::of(CHUNK, CHUNK - 1, 2), ChunkAt { cx: 1, cy: 0, cz: 2 });
-    assert_eq!(ChunkAt::of(-CHUNK, 0, 0), ChunkAt { cx: -1, cy: 0, cz: 0 });
+    assert_eq!(
+        ChunkAt::of(-1, -1, -1),
+        ChunkAt {
+            cx: -1,
+            cy: -1,
+            cz: -1
+        }
+    );
+    assert_eq!(
+        ChunkAt::of(0, 0, 0),
+        ChunkAt {
+            cx: 0,
+            cy: 0,
+            cz: 0
+        }
+    );
+    assert_eq!(
+        ChunkAt::of(CHUNK, CHUNK - 1, 2),
+        ChunkAt {
+            cx: 1,
+            cy: 0,
+            cz: 2
+        }
+    );
+    assert_eq!(
+        ChunkAt::of(-CHUNK, 0, 0),
+        ChunkAt {
+            cx: -1,
+            cy: 0,
+            cz: 0
+        }
+    );
 }

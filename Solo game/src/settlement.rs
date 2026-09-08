@@ -206,7 +206,11 @@ struct Cost(f32);
 impl Eq for Cost {}
 impl PartialOrd for Cost {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.total_cmp(&other.0))
+        // Delegates to `Ord`, which is the canonical form and the only one
+        // that cannot drift apart from it. `Ord::cmp` is the total order
+        // over the float; a second copy of it here is a second thing to
+        // get wrong.
+        Some(self.cmp(other))
     }
 }
 impl Ord for Cost {
@@ -320,8 +324,7 @@ fn site_score(world: &World) -> Vec<f32> {
         let trade = coast;
         let extraction = minerals * softened;
 
-        score[i] = (0.30 * farming + 0.22 * trade + 0.24 * extraction + 0.24 * reachable)
-            * cold;
+        score[i] = (0.30 * farming + 0.22 * trade + 0.24 * extraction + 0.24 * reachable) * cold;
     }
     score
 }
@@ -566,7 +569,9 @@ impl Settlements {
         // mean and produced a planet of identical cities.
         let mut order: Vec<usize> = (0..list.len()).collect();
         order.sort_by(|&a, &b| {
-            weight[b].total_cmp(&weight[a]).then(list[a].cell.cmp(&list[b].cell))
+            weight[b]
+                .total_cmp(&weight[a])
+                .then(list[a].cell.cmp(&list[b].cell))
         });
         for (rank, &idx) in order.iter().enumerate() {
             list[idx].population = population_at_rank(rank + 1).round() as u32;

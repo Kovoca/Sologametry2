@@ -62,9 +62,15 @@ fn main() {
         eprintln!("no nation of rank {rank}");
         std::process::exit(1);
     };
-    let Some(region) =
-        Region::extract(&world, &polities, &settlements, &network, id, 5, Doctrine::Prudent)
-    else {
+    let Some(region) = Region::extract(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        id,
+        5,
+        Doctrine::Prudent,
+    ) else {
         eprintln!("that nation has no settlements to model");
         std::process::exit(1);
     };
@@ -118,7 +124,13 @@ fn main() {
         loc.size as f64 * METRES_PER_LOCALITY / 1000.0
     );
     println!();
-    for line in if plain { loc.render() } else { loc.render_in_colour() }.lines() {
+    for line in if plain {
+        loc.render()
+    } else {
+        loc.render_in_colour()
+    }
+    .lines()
+    {
         println!("  {line}");
     }
 
@@ -127,7 +139,8 @@ fn main() {
     // The town stands on the middle of its own locality, so the ground
     // showing between the streets is the ground you would have walked in.
     let centre = loc.at(loc.size / 2, loc.size / 2);
-    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome).on_rock(world.geology.rock[cell])
+    let plan = Plan::lay_out_on(seed, cell, pop, size, centre.biome)
+        .on_rock(world.geology.rock[cell])
         .on_ground(elevation_m, relief_m)
         .with_water_at(world.depth_to_water_m(cell));
     println!();
@@ -138,11 +151,20 @@ fn main() {
     );
     println!("{name}, {} people", fmt_pop(pop));
     println!();
-    for line in if plain { plan.render() } else { plan.render_in_colour() }.lines() {
+    for line in if plain {
+        plan.render()
+    } else {
+        plan.render_in_colour()
+    }
+    .lines()
+    {
         println!("  {line}");
     }
     println!();
-    println!("{}", scale_sim::townplan::plan_legend_in(plan.ground, !plain));
+    println!(
+        "{}",
+        scale_sim::townplan::plan_legend_in(plan.ground, !plain)
+    );
     println!();
     println!(
         "  {} houses and {} blocks of flats; {} shops.",

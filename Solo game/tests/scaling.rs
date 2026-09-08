@@ -6,7 +6,7 @@
 //! asserted, and it is bounded.
 
 use scale_sim::coping::{
-    Acute, ActualControl, ControlAppraisal, Coping, Defence, Demands, FunctionalDomain,
+    ActualControl, Acute, ControlAppraisal, Coping, Defence, Demands, FunctionalDomain,
     FunctionalState,
 };
 use scale_sim::growth::{ShapesPersonality, ShapesWellbeing};
@@ -44,7 +44,11 @@ fn a_trouble(severity: f64) -> Standing {
 fn a_life(seed: u64, severity: f64) -> Coarse {
     let mut c = Coarse::new(who(3), seed, 0);
     c.standing.push(a_trouble(severity));
-    c.perceived_control = ControlAppraisal { source: 0.2, consequences: 0.3, own_response: 0.5 };
+    c.perceived_control = ControlAppraisal {
+        source: 0.2,
+        consequences: 0.3,
+        own_response: 0.5,
+    };
     c
 }
 
@@ -83,8 +87,7 @@ fn a_coarse_advance_matches_a_life_lived_day_by_day() {
             fine.strain.debt
         );
         assert!(
-            (coarse.strain.history.lifetime_days as i64
-                - fine.strain.history.lifetime_days as i64)
+            (coarse.strain.history.lifetime_days as i64 - fine.strain.history.lifetime_days as i64)
                 .abs()
                 <= 2
         );
@@ -155,7 +158,10 @@ fn demoting_a_promotion_gives_the_record_back() {
     assert_eq!(there_and_back.strain, c.strain);
     assert_eq!(there_and_back.origin, c.origin);
     assert_eq!(there_and_back.standing.len(), c.standing.len());
-    assert_eq!(there_and_back.growth.episodics.len(), c.growth.episodics.len());
+    assert_eq!(
+        there_and_back.growth.episodics.len(),
+        c.growth.episodics.len()
+    );
     assert_eq!(there_and_back.growth.roles.len(), c.growth.roles.len());
     assert_eq!(there_and_back.habits.strongest(), c.habits.strongest());
 }
@@ -179,7 +185,9 @@ fn a_personality_is_regenerated_and_not_carried() {
     // A different seed is a different man.
     let other = promote(&a_life(18, 0.4), &cult, 0);
     assert!(
-        Facet::ALL.iter().any(|&f| (other.z(f) - first.z(f)).abs() > 0.1),
+        Facet::ALL
+            .iter()
+            .any(|&f| (other.z(f) - first.z(f)).abs() > 0.1),
         "two different seeds produced the same person"
     );
 }
@@ -195,7 +203,10 @@ fn what_happened_to_somebody_survives_being_put_away() {
     c.growth
         .shaped_personality(Facet::Anxiety, ShapesPersonality::Trauma, 1.0, 1.0, 100);
     let after = promote(&c, &cult, 200).z(Facet::Anxiety);
-    assert!(after > untouched + 0.05, "a trauma did not survive the journey");
+    assert!(
+        after > untouched + 0.05,
+        "a trauma did not survive the journey"
+    );
 
     // And it is still fading correctly years later, without anybody
     // having ticked it.
@@ -209,11 +220,18 @@ fn what_happened_to_somebody_survives_being_put_away() {
 fn a_wellbeing_injury_is_carried_and_not_confused_with_a_trait() {
     let cult = culture();
     let mut c = a_life(21, 0.3);
-    let traits_before: Vec<f32> = Facet::ALL.iter().map(|&f| promote(&c, &cult, 0).z(f)).collect();
+    let traits_before: Vec<f32> = Facet::ALL
+        .iter()
+        .map(|&f| promote(&c, &cult, 0).z(f))
+        .collect();
 
-    c.growth.shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 50);
+    c.growth
+        .shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 50);
     let d = promote(&c, &cult, 100);
-    assert!(d.mind.wellbeing_baseline < -0.1, "the injury did not come back with him");
+    assert!(
+        d.mind.wellbeing_baseline < -0.1,
+        "the injury did not come back with him"
+    );
     for (i, &f) in Facet::ALL.iter().enumerate() {
         assert!(
             (d.z(f) - traits_before[i]).abs() < 1e-6,
@@ -311,7 +329,10 @@ fn a_long_life_does_not_grow_the_record_without_bound() {
     let z_before = promote(&c, &cult, today).z(Facet::Anxiety);
 
     c.compact(today);
-    assert!(c.growth.episodics.len() < before, "seventy years compacted to nothing");
+    assert!(
+        c.growth.episodics.len() < before,
+        "seventy years compacted to nothing"
+    );
     let z_after = promote(&c, &cult, today).z(Facet::Anxiety);
     assert!(
         (z_after - z_before).abs() < 0.02,
@@ -340,12 +361,18 @@ fn a_distant_person_keeps_what_shaped_them_and_not_the_afternoons() {
     let back = demote(&d);
     let again = promote(&back, &cult, 20);
 
-    assert!(again.mind.episodes.is_empty(), "a passing mood survived a demotion");
+    assert!(
+        again.mind.episodes.is_empty(),
+        "a passing mood survived a demotion"
+    );
     assert!(
         !back.growth.episodics.is_empty(),
         "the thing that shaped him did not survive"
     );
-    assert!(again.z(Facet::Anxiety) > 0.05, "he came back unmarked by it");
+    assert!(
+        again.z(Facet::Anxiety) > 0.05,
+        "he came back unmarked by it"
+    );
 }
 
 /// The three tiers are ordered, so a caller can compare them.
@@ -409,7 +436,10 @@ fn a_life_with_events_in_it_advances_the_same_either_way() {
     let reference = promote(&start, &cult, 0);
 
     let schedule = vec![
-        Change { day: 100, what: What::SupportChanges(0.9) },
+        Change {
+            day: 100,
+            what: What::SupportChanges(0.9),
+        },
         Change {
             day: 180,
             what: What::StressorBegins(Standing {
@@ -419,7 +449,10 @@ fn a_life_with_events_in_it_advances_the_same_either_way() {
                 actual: ActualControl::default(),
             }),
         },
-        Change { day: 240, what: What::StressorEnds },
+        Change {
+            day: 240,
+            what: What::StressorEnds,
+        },
         Change {
             day: 300,
             what: What::ControlChanges(ControlAppraisal {
@@ -428,7 +461,10 @@ fn a_life_with_events_in_it_advances_the_same_either_way() {
                 own_response: 0.6,
             }),
         },
-        Change { day: 365, what: What::SupportChanges(0.1) },
+        Change {
+            day: 365,
+            what: What::SupportChanges(0.1),
+        },
     ];
 
     // Lived: a day at a time, applying each change on its own day.
@@ -448,7 +484,10 @@ fn a_life_with_events_in_it_advances_the_same_either_way() {
     coarse.advance_through(&reference.mind, 0.2, &schedule);
     coarse.advance_to(500, &reference.mind, 0.2);
 
-    assert_eq!(coarse.strain.state, fine.strain.state, "an eventful year diverged");
+    assert_eq!(
+        coarse.strain.state, fine.strain.state,
+        "an eventful year diverged"
+    );
     assert!(
         (coarse.strain.debt - fine.strain.debt).abs() < 1e-9,
         "debt diverged: {} against {}",
@@ -467,8 +506,14 @@ fn advancing_composes() {
     let start = a_life(103, 0.65);
     let reference = promote(&start, &cult, 0);
     let schedule = vec![
-        Change { day: 90, what: What::SupportChanges(0.8) },
-        Change { day: 400, what: What::SupportChanges(0.2) },
+        Change {
+            day: 90,
+            what: What::SupportChanges(0.8),
+        },
+        Change {
+            day: 400,
+            what: What::SupportChanges(0.2),
+        },
     ];
 
     let mut whole = start.clone();
@@ -484,7 +529,10 @@ fn advancing_composes() {
         split.advance_through(&reference.mind, 0.2, &late);
         split.advance_to(900, &reference.mind, 0.2);
 
-        assert_eq!(split.strain.state, whole.strain.state, "splitting at {cut} diverged");
+        assert_eq!(
+            split.strain.state, whole.strain.state,
+            "splitting at {cut} diverged"
+        );
         assert!(
             (split.strain.debt - whole.strain.debt).abs() < 1e-9,
             "splitting at {cut} gave {} against {}",
@@ -517,8 +565,22 @@ fn a_new_stressor_is_appraised_through_the_history() {
         actual: ActualControl::default(),
     };
     let at = veteran.last_update + 1;
-    veteran.advance_through(&reference.mind, 0.4, &[Change { day: at, what: What::StressorBegins(fresh) }]);
-    newcomer.advance_through(&reference.mind, 0.4, &[Change { day: at, what: What::StressorBegins(fresh) }]);
+    veteran.advance_through(
+        &reference.mind,
+        0.4,
+        &[Change {
+            day: at,
+            what: What::StressorBegins(fresh),
+        }],
+    );
+    newcomer.advance_through(
+        &reference.mind,
+        0.4,
+        &[Change {
+            day: at,
+            what: What::StressorBegins(fresh),
+        }],
+    );
 
     assert!(
         veteran.standing[0].severity > newcomer.standing[0].severity,
@@ -536,13 +598,27 @@ fn a_crisis_can_strike_somebody_nobody_is_watching() {
     c.advance_through(
         &reference.mind,
         0.5,
-        &[Change { day: 50, what: What::Crisis { kind: Acute::Panic, activation: 0.9, because_of: 3 } }],
+        &[Change {
+            day: 50,
+            what: What::Crisis {
+                kind: Acute::Panic,
+                activation: 0.9,
+                because_of: 3,
+            },
+        }],
     );
     assert!(c.strain.crisis.is_some(), "nothing happened to him at all");
-    assert_eq!(c.strain.state, FunctionalState::Regulated, "one bad hour broke him");
+    assert_eq!(
+        c.strain.state,
+        FunctionalState::Regulated,
+        "one bad hour broke him"
+    );
 
     c.advance_to(60, &reference.mind, 0.5);
-    assert!(c.strain.crisis.is_none(), "it was still running ten days later");
+    assert!(
+        c.strain.crisis.is_none(),
+        "it was still running ten days later"
+    );
 }
 
 /// **The domains come back with them.** A distant person's record is
@@ -553,10 +629,17 @@ fn a_record_can_still_say_which_part_of_a_life_is_failing() {
     let mut c = a_life(109, 0.35);
     let reference = promote(&c, &cult, 0);
     c.advance_to(350, &reference.mind, 0.15);
-    let d = Demands { work: 0.9, caregiving: 0.5, social: 0.4, self_care: 0.4 };
+    let d = Demands {
+        work: 0.9,
+        caregiving: 0.5,
+        social: 0.4,
+        self_care: 0.4,
+    };
     assert!(
-        c.strain.functioning_in(FunctionalDomain::Work, &d, &Defence::default())
-            > c.strain.functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default()),
+        c.strain
+            .functioning_in(FunctionalDomain::Work, &d, &Defence::default())
+            > c.strain
+                .functioning_in(FunctionalDomain::Caregiving, &d, &Defence::default()),
         "out of sight, every part of his life failed together"
     );
 }
@@ -589,26 +672,39 @@ fn compacting_preserves_every_future_value() {
                 Facet::Anxiety,
                 m,
                 0.6,
-                if (i as u64 + k) % 2 == 0 { 1.0 } else { -1.0 },
+                if (i as u64 + k).is_multiple_of(2) {
+                    1.0
+                } else {
+                    -1.0
+                },
                 k * 400 + i as u64 * 90,
             );
         }
     }
-    c.growth.shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 300);
-    c.growth.shaped_wellbeing(ShapesWellbeing::Bereavement, 1.0, -1.0, 900);
+    c.growth
+        .shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 300);
+    c.growth
+        .shaped_wellbeing(ShapesWellbeing::Bereavement, 1.0, -1.0, 900);
 
     let today = 365 * 12;
     let before: Vec<(u64, f32, f32)> = [0u64, 1, 365, 365 * 20, 365 * 60]
         .iter()
         .map(|&d| {
             let t = today + d;
-            (t, c.growth.raw_for(Facet::Anxiety, t), c.growth.wellbeing(t))
+            (
+                t,
+                c.growth.raw_for(Facet::Anxiety, t),
+                c.growth.wellbeing(t),
+            )
         })
         .collect();
 
     let n_before = c.growth.episodics.len();
     c.compact(today);
-    assert!(c.growth.episodics.len() < n_before, "nothing was coalesced at all");
+    assert!(
+        c.growth.episodics.len() < n_before,
+        "nothing was coalesced at all"
+    );
 
     for (t, anx, well) in before {
         assert!(
@@ -634,12 +730,18 @@ fn repeated_compaction_is_stable() {
     }
     let today = 365 * 10;
     c.compact(today);
-    let once: Vec<f32> = (0..5).map(|i| c.growth.raw_for(Facet::Gloom, today + i * 700)).collect();
+    let once: Vec<f32> = (0..5)
+        .map(|i| c.growth.raw_for(Facet::Gloom, today + i * 700))
+        .collect();
     let n = c.growth.episodics.len();
     for _ in 0..5 {
         c.compact(today);
     }
-    assert_eq!(c.growth.episodics.len(), n, "compaction kept growing the record");
+    assert_eq!(
+        c.growth.episodics.len(),
+        n,
+        "compaction kept growing the record"
+    );
     for (i, v) in once.iter().enumerate() {
         assert!((c.growth.raw_for(Facet::Gloom, today + i as u64 * 700) - v).abs() < 1e-5);
     }
@@ -652,12 +754,20 @@ fn compaction_keeps_what_the_clamp_is_hiding() {
     let mut c = a_life(205, 0.2);
     c.growth.took_a_role(Facet::Dutifulness, 2.5, 0);
     for k in 0..8u64 {
-        c.growth
-            .shaped_personality(Facet::Dutifulness, ShapesPersonality::Trauma, 1.0, 1.0, k * 200);
+        c.growth.shaped_personality(
+            Facet::Dutifulness,
+            ShapesPersonality::Trauma,
+            1.0,
+            1.0,
+            k * 200,
+        );
     }
     let today = 365 * 12;
     let raw_before = c.growth.raw_for(Facet::Dutifulness, today);
-    assert!(raw_before > ADAPTATION_LIMIT, "nothing was hidden to begin with");
+    assert!(
+        raw_before > ADAPTATION_LIMIT,
+        "nothing was hidden to begin with"
+    );
     c.compact(today);
     assert!(
         (c.growth.raw_for(Facet::Dutifulness, today) - raw_before).abs() < 1e-4,
@@ -710,12 +820,19 @@ fn a_saved_baseline_survives_a_changed_generator() {
     let mut c = a_life(207, 0.2);
     // What the world drew for him, kept.
     let drawn = promote(&c, &cult, 0);
-    let baseline: Vec<f32> = Facet::ALL.iter().map(|&f| drawn.mind.person.baseline_of(f)).collect();
+    let baseline: Vec<f32> = Facet::ALL
+        .iter()
+        .map(|&f| drawn.mind.person.baseline_of(f))
+        .collect();
     c.baseline = baseline.clone();
 
     // The generator changes under us: a different seed is a different
     // draw, which stands in for a new facet or a changed loading.
-    c.origin = PersonOrigin { seed: 999_999, schema: GENERATION_SCHEMA + 1, born: 0 };
+    c.origin = PersonOrigin {
+        seed: 999_999,
+        schema: GENERATION_SCHEMA + 1,
+        born: 0,
+    };
     let reloaded = promote(&c, &cult, 0);
     for (i, &f) in Facet::ALL.iter().enumerate() {
         assert!(
@@ -754,7 +871,10 @@ fn two_things_happening_at_once_are_order_invariant() {
     let cult = culture();
     let start = a_life(213, 0.4);
     let reference = promote(&start, &cult, 0);
-    let a = Change { day: 200, what: What::SupportChanges(0.9) };
+    let a = Change {
+        day: 200,
+        what: What::SupportChanges(0.9),
+    };
     let b = Change {
         day: 200,
         what: What::ControlChanges(ControlAppraisal {
@@ -788,22 +908,34 @@ fn the_boundaries_of_an_interval_behave() {
     at_start.advance_through(
         &reference.mind,
         0.2,
-        &[Change { day: 0, what: What::SupportChanges(0.11) }],
+        &[Change {
+            day: 0,
+            what: What::SupportChanges(0.11),
+        }],
     );
-    assert!((at_start.support_expected - 0.11).abs() < 1e-12, "an event on day zero was lost");
+    assert!(
+        (at_start.support_expected - 0.11).abs() < 1e-12,
+        "an event on day zero was lost"
+    );
 
     // Zero days.
     let mut still = start.clone();
     let before = still.strain;
     still.advance_to(still.last_update, &reference.mind, 0.2);
-    assert_eq!(still.strain, before, "advancing by nothing changed something");
+    assert_eq!(
+        still.strain, before,
+        "advancing by nothing changed something"
+    );
 
     // At the ending instant, then no further.
     let mut at_end = start.clone();
     at_end.advance_through(
         &reference.mind,
         0.2,
-        &[Change { day: 300, what: What::SupportChanges(0.22) }],
+        &[Change {
+            day: 300,
+            what: What::SupportChanges(0.22),
+        }],
     );
     assert_eq!(at_end.last_update, 300);
     assert!((at_end.support_expected - 0.22).abs() < 1e-12);
@@ -825,15 +957,23 @@ fn what_somebody_reaches_for_changes_where_they_end_up() {
         severity: 0.8,
         since: 0,
         worsens_if_ignored: 0.8,
-        actual: ActualControl { source: 0.1, consequences: 0.5, exit: 0.1, means: 0.4 },
+        actual: ActualControl {
+            source: 0.1,
+            consequences: 0.5,
+            exit: 0.1,
+            means: 0.4,
+        },
     };
 
     let mut ends: Vec<f64> = Vec::new();
     for seed in 0..12u64 {
         let mut c = Coarse::new(who(3), 700 + seed, 0);
         c.standing.push(trouble);
-        c.perceived_control =
-            ControlAppraisal { source: 0.5, consequences: 0.5, own_response: 0.5 };
+        c.perceived_control = ControlAppraisal {
+            source: 0.5,
+            consequences: 0.5,
+            own_response: 0.5,
+        };
         let me = promote(&c, &cult, 0);
         // **Their own tolerance**, which is drawn from who they are. A
         // fixed one for everybody puts the whole cast at the ceiling and
@@ -861,9 +1001,18 @@ fn what_coping_taught_does_not_depend_on_the_camera() {
         severity: 0.8,
         since: 0,
         worsens_if_ignored: 0.6,
-        actual: ActualControl { source: 0.0, consequences: 0.05, exit: 0.0, means: 0.5 },
+        actual: ActualControl {
+            source: 0.0,
+            consequences: 0.05,
+            exit: 0.0,
+            means: 0.5,
+        },
     });
-    c.perceived_control = ControlAppraisal { source: 0.9, consequences: 0.9, own_response: 0.5 };
+    c.perceived_control = ControlAppraisal {
+        source: 0.9,
+        consequences: 0.9,
+        own_response: 0.5,
+    };
     let me = promote(&c, &cult, 0);
 
     let mut daily = c.clone();

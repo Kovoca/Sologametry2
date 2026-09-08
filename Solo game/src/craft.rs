@@ -134,7 +134,11 @@ pub struct Need {
 
 impl Need {
     pub fn of(capability: Capability, capacity: f64, precision_mm: f64) -> Self {
-        Need { capability, capacity, precision_mm }
+        Need {
+            capability,
+            capacity,
+            precision_mm,
+        }
     }
 }
 
@@ -313,10 +317,7 @@ impl Step {
     }
 
     /// Say what an interruption does to this particular operation.
-    pub fn interrupted_by(
-        mut self,
-        policy: crate::schedule::OnInterruption,
-    ) -> Self {
+    pub fn interrupted_by(mut self, policy: crate::schedule::OnInterruption) -> Self {
         self.interruption = Some(policy);
         self
     }
@@ -413,8 +414,7 @@ impl Maker {
     /// it right nearly every time, and a model that has them botching a
     /// third of what they touch is not modelling work.
     pub fn care(&self) -> f64 {
-        (0.70 + 0.20 * self.skill + 0.07 * self.proficiency + 0.03 * self.focus)
-            .clamp(0.55, 0.995)
+        (0.70 + 0.20 * self.skill + 0.07 * self.proficiency + 0.03 * self.focus).clamp(0.55, 0.995)
     }
 }
 
@@ -457,7 +457,12 @@ impl RecipeDefinition {
     /// Wall-clock time for one run at nominal rate, before anybody's pace
     /// or any parallel stations are considered.
     pub fn span_minutes(&self) -> f64 {
-        self.setup_minutes + self.steps.iter().map(|s| s.effort.span_minutes()).sum::<f64>()
+        self.setup_minutes
+            + self
+                .steps
+                .iter()
+                .map(|s| s.effort.span_minutes())
+                .sum::<f64>()
     }
 
     /// **What a batch actually saves**: setup, once, rather than per unit.
@@ -470,11 +475,17 @@ impl RecipeDefinition {
 
     /// Everything the plan draws in, over all its steps.
     pub fn all_consumed(&self) -> Vec<Flow> {
-        self.steps.iter().flat_map(|s| s.consumes.iter().copied()).collect()
+        self.steps
+            .iter()
+            .flat_map(|s| s.consumes.iter().copied())
+            .collect()
     }
 
     pub fn all_produced(&self) -> Vec<Flow> {
-        self.steps.iter().flat_map(|s| s.produces.iter().copied()).collect()
+        self.steps
+            .iter()
+            .flat_map(|s| s.produces.iter().copied())
+            .collect()
     }
 
     /// **A tool is used, not eaten.** Anything in `consumes` that is a
@@ -520,7 +531,9 @@ impl RecipeDefinition {
     /// What shape of stock the plan wants where it calls for a given
     /// definition, if it has an opinion.
     pub fn shape_wanted(&self, def: DefId) -> Option<Amount> {
-        self.steps.iter().find_map(|s| s.shapes.iter().find(|p| p.0 == def).map(|p| p.1))
+        self.steps
+            .iter()
+            .find_map(|s| s.shapes.iter().find(|p| p.0 == def).map(|p| p.1))
     }
 
     /// The alternatives the plan's author had in mind. Advisory: what
@@ -539,9 +552,11 @@ impl RecipeDefinition {
     /// handsaw and by a factory.
     pub fn workable_with(&self, tools: &[Provides]) -> bool {
         self.steps.iter().all(|s| {
-            s.needs
-                .iter()
-                .all(|n| tools.iter().any(|t| t.satisfies(n.capability, n.capacity, n.precision_mm)))
+            s.needs.iter().all(|n| {
+                tools
+                    .iter()
+                    .any(|t| t.satisfies(n.capability, n.capacity, n.precision_mm))
+            })
         })
     }
 }
@@ -567,7 +582,8 @@ impl RecipeBook {
     }
 
     pub fn must(&self, name: &str) -> usize {
-        self.named(name).unwrap_or_else(|| panic!("no such recipe: {name}"))
+        self.named(name)
+            .unwrap_or_else(|| panic!("no such recipe: {name}"))
     }
 
     /// **Several ways to make the same thing.**
@@ -724,8 +740,7 @@ pub struct ProcessCapability {
 
 impl ProcessCapability {
     pub fn effective(&self) -> f64 {
-        (self.baseline + self.worker + self.tool + self.workplace + self.material
-            - self.difficulty)
+        (self.baseline + self.worker + self.tool + self.workplace + self.material - self.difficulty)
             .clamp(-1.5, 1.5)
     }
 
@@ -741,7 +756,11 @@ impl ProcessCapability {
         // right. Bad shops scrap what good shops rework.
         let scrapped_share = (0.26 - 0.14 * e).clamp(0.08, 0.45);
         let scrap = defect * scrapped_share;
-        Yields { first_pass: 1.0 - defect, rework: defect - scrap, scrap }
+        Yields {
+            first_pass: 1.0 - defect,
+            rework: defect - scrap,
+            scrap,
+        }
     }
 }
 
@@ -837,7 +856,14 @@ pub fn roll_outcome(
             // that quietly consumes another unit and lets the worker carry
             // on is not what happens when primers go off.
             if k < hazard {
-                return (grade, if k < hazard * 0.3 { Mishap::Fire } else { Mishap::Injury });
+                return (
+                    grade,
+                    if k < hazard * 0.3 {
+                        Mishap::Fire
+                    } else {
+                        Mishap::Injury
+                    },
+                );
             }
             let m = match ((k - hazard) / (1.0 - hazard).max(1e-6)).clamp(0.0, 1.0) {
                 s if s < 0.28 => Mishap::CosmeticFlaw,
@@ -851,7 +877,14 @@ pub fn roll_outcome(
         }
         Grade::Scrapped => {
             if k < hazard {
-                return (grade, if k < hazard * 0.5 { Mishap::Fire } else { Mishap::Injury });
+                return (
+                    grade,
+                    if k < hazard * 0.5 {
+                        Mishap::Fire
+                    } else {
+                        Mishap::Injury
+                    },
+                );
             }
             let m = match ((k - hazard) / (1.0 - hazard).max(1e-6)).clamp(0.0, 1.0) {
                 s if s < 0.45 => Mishap::DamagedComponent,
@@ -902,11 +935,27 @@ pub struct Workplace {
 impl Workplace {
     /// A man with hand tools at a bench.
     pub fn a_workshop(tools: Vec<Provides>) -> Self {
-        Workplace { power: true, water: true, celsius: 18.0, tools, workers: 1.0, stations: 1, jigs: 0.1 }
+        Workplace {
+            power: true,
+            water: true,
+            celsius: 18.0,
+            tools,
+            workers: 1.0,
+            stations: 1,
+            jigs: 0.1,
+        }
     }
 
     pub fn a_factory(tools: Vec<Provides>, workers: f64, stations: u32) -> Self {
-        Workplace { power: true, water: true, celsius: 20.0, tools, workers, stations, jigs: 0.85 }
+        Workplace {
+            power: true,
+            water: true,
+            celsius: 20.0,
+            tools,
+            workers,
+            stations,
+            jigs: 0.85,
+        }
     }
 
     /// **In a blackout you reach for the handsaw.** A powered tool is not
@@ -1229,9 +1278,17 @@ impl WorkOrder {
             Placement::Installed { .. } => false,
             Placement::Fixtured { resource, slot, .. } => !store.items.iter().any(|(id, _)| {
                 store.placement(id)
-                    == Some(Placement::Fixtured { resource, slot, clamped: false })
+                    == Some(Placement::Fixtured {
+                        resource,
+                        slot,
+                        clamped: false,
+                    })
                     || store.placement(id)
-                        == Some(Placement::Fixtured { resource, slot, clamped: true })
+                        == Some(Placement::Fixtured {
+                            resource,
+                            slot,
+                            clamped: true,
+                        })
             }),
         }
     }
@@ -1283,7 +1340,11 @@ impl WorkOrder {
             // until somebody comes and fetches it. Not clamped — anybody
             // can lift a finished chair off a bench — but the bench is not
             // free while it is there.
-            Placement::Fixtured { resource: self.workplace, slot: 0, clamped: false }
+            Placement::Fixtured {
+                resource: self.workplace,
+                slot: 0,
+                clamped: false,
+            }
         };
         let id = store.add(made, at);
         self.delivered = true;
@@ -1408,7 +1469,11 @@ impl WorkOrder {
                 Effort::Hands { .. } => {
                     // More hands help, with diminishing returns: two
                     // people on one chair are not twice as quick.
-                    let people = if hands <= 1.0 { hands } else { 1.0 + (hands - 1.0).sqrt() };
+                    let people = if hands <= 1.0 {
+                        hands
+                    } else {
+                        1.0 + (hands - 1.0).sqrt()
+                    };
                     tool_speed * maker.pace() * people
                 }
                 Effort::Machine { .. } => tool_speed.max(1.0) * place.stations.max(1) as f64,
@@ -1420,10 +1485,14 @@ impl WorkOrder {
             self.elapsed_min += spend;
             left -= spend;
             match step.effort {
-                Effort::Hands { .. } => self.active_labour_min += spend * hands.min(1.0).max(0.0),
+                Effort::Hands { .. } => self.active_labour_min += spend * hands.clamp(0.0, 1.0),
                 Effort::Machine { minutes, tending } => {
                     self.machine_min += spend * rate;
-                    let share = if minutes > 0.0 { tending / minutes } else { 0.0 };
+                    let share = if minutes > 0.0 {
+                        tending / minutes
+                    } else {
+                        0.0
+                    };
                     self.active_labour_min += spend * share;
                 }
                 Effort::Unattended { .. } => self.unattended_min += spend,
@@ -1434,7 +1503,11 @@ impl WorkOrder {
             }
 
             if self.step_done + 1e-9 < step.effort.span_minutes() {
-                self.state = if step.effort.needs_somebody() { Halt::Running } else { Halt::Unattended };
+                self.state = if step.effort.needs_somebody() {
+                    Halt::Running
+                } else {
+                    Halt::Unattended
+                };
                 return self.state;
             }
 
@@ -1585,12 +1658,9 @@ impl WorkOrder {
         if grade == Grade::Reworkable {
             self.spoil(step, recipe, cat, 1.0);
         }
-        match mishap {
-            Mishap::Slow(f) => {
-                self.elapsed_min += step.effort.span_minutes() * (f - 1.0);
-                self.active_labour_min += step.effort.labour_minutes() * (f - 1.0);
-            }
-            _ => {}
+        if let Mishap::Slow(f) = mishap {
+            self.elapsed_min += step.effort.span_minutes() * (f - 1.0);
+            self.active_labour_min += step.effort.labour_minutes() * (f - 1.0);
         }
     }
 
@@ -1755,7 +1825,11 @@ impl WorkOrder {
         // **What it is actually made of, not what the definition says a
         // normal one is made of.**
         let actual = record.actual_materials();
-        item.materials = if actual.is_empty() { item.materials.clone() } else { actual };
+        item.materials = if actual.is_empty() {
+            item.materials.clone()
+        } else {
+            actual
+        };
         item.assembly = Some(record);
         Some(item)
     }
@@ -1849,7 +1923,9 @@ pub enum Blocked {
     /// machine, which is still occupied by it. The handle is the object,
     /// which already exists: its inputs are consumed and its quality is
     /// settled, and choosing a different destination cannot reroll it.
-    NoRoom { parked: Id<ItemInstance> },
+    NoRoom {
+        parked: Id<ItemInstance>,
+    },
     AlreadyDelivered,
 }
 
@@ -1895,7 +1971,7 @@ fn add<K: PartialEq + Copy>(v: &mut Vec<(K, f64)>, k: K, amount: f64) {
     }
 }
 
-fn sub<K: PartialEq + Copy>(v: &mut Vec<(K, f64)>, k: K, amount: f64) {
+fn sub<K: PartialEq + Copy>(v: &mut [(K, f64)], k: K, amount: f64) {
     if let Some(p) = v.iter_mut().find(|p| p.0 == k) {
         p.1 = (p.1 - amount).max(0.0);
     }
@@ -1931,40 +2007,82 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
         // stock is boards of 18-32 mm at least 140 mm wide; a batten is
         // too narrow to get a seat out of and an offcut is too short to
         // get a leg out of, whatever either of them weighs.
-        let cut = Step::new("cut members", Operation::Cut, Effort::Hands { minutes: 45.0 })
-            .needing(&[Need::of(C::CutWood, 30.0, if speed_needs { 0.8 } else { 2.0 })])
-            .taking(&[Flow::Item { def: oak, count: 1.0 }])
-            .shaped(&[(
-                oak,
-                Amount::Sheet {
-                    min_width_m: 0.14,
-                    min_length_m: 1.2,
-                    thickness_m: (0.016, 0.032),
-                },
-            )])
-            .giving(&[Flow::Waste { material: Material::Oak, kg: 1.93 }])
-            .leaving(chair_parts);
+        let cut = Step::new(
+            "cut members",
+            Operation::Cut,
+            Effort::Hands { minutes: 45.0 },
+        )
+        .needing(&[Need::of(
+            C::CutWood,
+            30.0,
+            if speed_needs { 0.8 } else { 2.0 },
+        )])
+        .taking(&[Flow::Item {
+            def: oak,
+            count: 1.0,
+        }])
+        .shaped(&[(
+            oak,
+            Amount::Sheet {
+                min_width_m: 0.14,
+                min_length_m: 1.2,
+                thickness_m: (0.016, 0.032),
+            },
+        )])
+        .giving(&[Flow::Waste {
+            material: Material::Oak,
+            kg: 1.93,
+        }])
+        .leaving(chair_parts);
         let cut = if powered { cut.powered() } else { cut };
         vec![
-            Step::new("measure and mark", Operation::Measure, Effort::Hands { minutes: 10.0 })
-                .needing(&[Need::of(C::Measure, 1.0, 2.0)]),
+            Step::new(
+                "measure and mark",
+                Operation::Measure,
+                Effort::Hands { minutes: 10.0 },
+            )
+            .needing(&[Need::of(C::Measure, 1.0, 2.0)]),
             cut,
-            Step::new("drill joints", Operation::Drill, Effort::Hands { minutes: 15.0 })
-                .needing(&[Need::of(C::Drill, 8.0, 1.5)]),
-            Step::new("glue and fasten", Operation::Glue, Effort::Hands { minutes: 20.0 })
-                .needing(&[Need::of(C::Glue, 1.0, 3.0), Need::of(C::Fasten, 5.0, 3.0)])
-                .taking(&[
-                    Flow::Item { def: chair_parts, count: 1.0 },
-                    Flow::Item { def: glue, count: 0.05 },
-                    Flow::Item { def: screw, count: 12.0 },
-                ])
-                .joined(JointMethod::Glued),
+            Step::new(
+                "drill joints",
+                Operation::Drill,
+                Effort::Hands { minutes: 15.0 },
+            )
+            .needing(&[Need::of(C::Drill, 8.0, 1.5)]),
+            Step::new(
+                "glue and fasten",
+                Operation::Glue,
+                Effort::Hands { minutes: 20.0 },
+            )
+            .needing(&[Need::of(C::Glue, 1.0, 3.0), Need::of(C::Fasten, 5.0, 3.0)])
+            .taking(&[
+                Flow::Item {
+                    def: chair_parts,
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: glue,
+                    count: 0.05,
+                },
+                Flow::Item {
+                    def: screw,
+                    count: 12.0,
+                },
+            ])
+            .joined(JointMethod::Glued),
             // **Curing takes twelve hours and nobody's day.** This is the
             // step that makes labour and elapsed time different numbers.
-            Step::new("clamp and cure", Operation::Rest, Effort::Unattended { minutes: 720.0 }),
+            Step::new(
+                "clamp and cure",
+                Operation::Rest,
+                Effort::Unattended { minutes: 720.0 },
+            ),
             Step::new("sand", Operation::Grind, Effort::Hands { minutes: 25.0 })
                 .needing(&[Need::of(C::Grind, 2.0, 2.0)])
-                .giving(&[Flow::Waste { material: Material::Oak, kg: 0.03 }]),
+                .giving(&[Flow::Waste {
+                    material: Material::Oak,
+                    kg: 0.03,
+                }]),
         ]
     };
 
@@ -2032,24 +2150,54 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
         steps: vec![
             Step::new("mix", Operation::Mix, Effort::Hands { minutes: 15.0 })
                 .taking(&[
-                    Flow::Bulk { material: Material::Flour, kg: 0.50 },
-                    Flow::Environment { material: Material::Water, kg: 0.35 },
+                    Flow::Bulk {
+                        material: Material::Flour,
+                        kg: 0.50,
+                    },
+                    Flow::Environment {
+                        material: Material::Water,
+                        kg: 0.35,
+                    },
                 ])
                 .leaving(dough),
-            Step::new("shape", Operation::Assemble, Effort::Hands { minutes: 10.0 })
-                .taking(&[Flow::Item { def: dough, count: 1.0 }])
-                .leaving(risen),
-            Step::new("prove", Operation::Rest, Effort::Unattended { minutes: 60.0 }),
+            Step::new(
+                "shape",
+                Operation::Assemble,
+                Effort::Hands { minutes: 10.0 },
+            )
+            .taking(&[Flow::Item {
+                def: dough,
+                count: 1.0,
+            }])
+            .leaving(risen),
+            Step::new(
+                "prove",
+                Operation::Rest,
+                Effort::Unattended { minutes: 60.0 },
+            ),
             // **Bread is the spoilage case and the oven is the thermal
             // one.** Forty-five minutes in a cooling oven is a loaf
             // nobody wants; the general oven default only knows about
             // getting the heat back.
-            Step::new("bake", Operation::Bake, Effort::Machine { minutes: 35.0, tending: 10.0 })
-                .interrupted_by(crate::schedule::OnInterruption::SpoilAfter { minutes: 45.0 })
-                .needing(&[Need::of(C::Bake, 220.0, 100.0)])
-                .taking(&[Flow::Item { def: risen, count: 1.0 }])
-                .giving(&[Flow::Emission { material: Material::Water, kg: 0.05 }])
-                .powered(),
+            Step::new(
+                "bake",
+                Operation::Bake,
+                Effort::Machine {
+                    minutes: 35.0,
+                    tending: 10.0,
+                },
+            )
+            .interrupted_by(crate::schedule::OnInterruption::SpoilAfter { minutes: 45.0 })
+            .needing(&[Need::of(C::Bake, 220.0, 100.0)])
+            .taking(&[Flow::Item {
+                def: risen,
+                count: 1.0,
+            }])
+            .giving(&[Flow::Emission {
+                material: Material::Water,
+                kg: 0.05,
+            }])
+            .powered(),
         ],
         substitutions: vec![],
         setup_minutes: 5.0,
@@ -2069,19 +2217,39 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
         difficulty: 0.3,
         needs_knowledge: false,
         steps: vec![
-            Step::new("cut panels", Operation::Cut, Effort::Hands { minutes: 25.0 })
-                .needing(&[Need::of(C::CutFabric, 4.0, 3.0)])
-                .taking(&[Flow::Bulk { material: Material::Cotton, kg: 0.67 }])
-                .giving(&[Flow::Waste { material: Material::Cotton, kg: 0.09 }])
-                .leaving(panels),
+            Step::new(
+                "cut panels",
+                Operation::Cut,
+                Effort::Hands { minutes: 25.0 },
+            )
+            .needing(&[Need::of(C::CutFabric, 4.0, 3.0)])
+            .taking(&[Flow::Bulk {
+                material: Material::Cotton,
+                kg: 0.67,
+            }])
+            .giving(&[Flow::Waste {
+                material: Material::Cotton,
+                kg: 0.09,
+            }])
+            .leaving(panels),
             Step::new("sew", Operation::Sew, Effort::Hands { minutes: 55.0 })
                 .needing(&[Need::of(C::Sew, 4.0, 2.0)])
                 .taking(&[
-                    Flow::Item { def: panels, count: 1.0 },
-                    Flow::Bulk { material: Material::Thread, kg: 0.018 },
+                    Flow::Item {
+                        def: panels,
+                        count: 1.0,
+                    },
+                    Flow::Bulk {
+                        material: Material::Thread,
+                        kg: 0.018,
+                    },
                 ])
                 .joined(JointMethod::Stitched),
-            Step::new("press and fold", Operation::Package, Effort::Hands { minutes: 6.0 }),
+            Step::new(
+                "press and fold",
+                Operation::Package,
+                Effort::Hands { minutes: 6.0 },
+            ),
         ],
         substitutions: vec![(cloth, vec![cat.must("cotton cloth")])],
         setup_minutes: 10.0,
@@ -2106,40 +2274,91 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
         difficulty: 0.6,
         needs_knowledge: true,
         steps: vec![
-            Step::new("press and pin the barrel", Operation::Press, Effort::Hands { minutes: 25.0 })
-                .needing(&[Need::of(C::Press, 300.0, 0.05)])
-                .taking(&[
-                    Flow::Item { def: cat.must("receiver"), count: 1.0 },
-                    Flow::Item { def: cat.must("barrel"), count: 1.0 },
-                ])
-                .joined(JointMethod::Crimped),
-            Step::new("rivet in the fire control group", Operation::Fasten,
-                      Effort::Hands { minutes: 30.0 })
-                .needing(&[Need::of(C::Fasten, 5.0, 2.0)])
-                .taking(&[
-                    Flow::Item { def: cat.must("fire control group"), count: 1.0 },
-                    Flow::Item { def: cat.must("rivet"), count: 4.0 },
-                ])
-                .joined(JointMethod::Riveted),
-            Step::new("fit the bolt carrier", Operation::Assemble, Effort::Hands { minutes: 8.0 })
-                .taking(&[Flow::Item { def: cat.must("bolt assembly"), count: 1.0 }])
-                .joined(JointMethod::Clipped),
-            Step::new("bolt on the stock", Operation::Fasten, Effort::Hands { minutes: 10.0 })
-                .needing(&[Need::of(C::Fasten, 5.0, 2.0)])
-                .taking(&[
-                    Flow::Item { def: cat.must("stock"), count: 1.0 },
-                    Flow::Item { def: cat.must("bolt"), count: 2.0 },
-                ])
-                .joined(JointMethod::Bolted),
-            Step::new("fit the magazine", Operation::Assemble, Effort::Hands { minutes: 2.0 })
-                .taking(&[Flow::Item { def: cat.must("magazine"), count: 1.0 }])
-                .joined(JointMethod::Clipped),
+            Step::new(
+                "press and pin the barrel",
+                Operation::Press,
+                Effort::Hands { minutes: 25.0 },
+            )
+            .needing(&[Need::of(C::Press, 300.0, 0.05)])
+            .taking(&[
+                Flow::Item {
+                    def: cat.must("receiver"),
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: cat.must("barrel"),
+                    count: 1.0,
+                },
+            ])
+            .joined(JointMethod::Crimped),
+            Step::new(
+                "rivet in the fire control group",
+                Operation::Fasten,
+                Effort::Hands { minutes: 30.0 },
+            )
+            .needing(&[Need::of(C::Fasten, 5.0, 2.0)])
+            .taking(&[
+                Flow::Item {
+                    def: cat.must("fire control group"),
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: cat.must("rivet"),
+                    count: 4.0,
+                },
+            ])
+            .joined(JointMethod::Riveted),
+            Step::new(
+                "fit the bolt carrier",
+                Operation::Assemble,
+                Effort::Hands { minutes: 8.0 },
+            )
+            .taking(&[Flow::Item {
+                def: cat.must("bolt assembly"),
+                count: 1.0,
+            }])
+            .joined(JointMethod::Clipped),
+            Step::new(
+                "bolt on the stock",
+                Operation::Fasten,
+                Effort::Hands { minutes: 10.0 },
+            )
+            .needing(&[Need::of(C::Fasten, 5.0, 2.0)])
+            .taking(&[
+                Flow::Item {
+                    def: cat.must("stock"),
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: cat.must("bolt"),
+                    count: 2.0,
+                },
+            ])
+            .joined(JointMethod::Bolted),
+            Step::new(
+                "fit the magazine",
+                Operation::Assemble,
+                Effort::Hands { minutes: 2.0 },
+            )
+            .taking(&[Flow::Item {
+                def: cat.must("magazine"),
+                count: 1.0,
+            }])
+            .joined(JointMethod::Clipped),
             // **Headspace is measured, not assumed.** It is the one check
             // between a rifle and a hazard, and it wants a tolerance no
             // ordinary tool holds.
-            Step::new("check headspace", Operation::Test, Effort::Hands { minutes: 12.0 })
-                .needing(&[Need::of(C::Measure, 1.0, 0.05)]),
-            Step::new("function test", Operation::Test, Effort::Hands { minutes: 6.0 }),
+            Step::new(
+                "check headspace",
+                Operation::Test,
+                Effort::Hands { minutes: 12.0 },
+            )
+            .needing(&[Need::of(C::Measure, 1.0, 0.05)]),
+            Step::new(
+                "function test",
+                Operation::Test,
+                Effort::Hands { minutes: 6.0 },
+            ),
         ],
         substitutions: vec![],
         setup_minutes: 20.0,
@@ -2159,33 +2378,66 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
         difficulty: 0.5,
         needs_knowledge: true,
         steps: vec![
-            Step::new("size and trim the case", Operation::Press, Effort::Hands { minutes: 0.6 })
-                .needing(&[Need::of(C::Press, 400.0, 0.1)])
-                .taking(&[Flow::Item { def: case, count: 1.0 }])
-                .leaving(sized),
-            Step::new("seat the primer", Operation::Press, Effort::Hands { minutes: 0.3 })
-                .needing(&[Need::of(C::Press, 100.0, 0.1)])
-                .taking(&[
-                    Flow::Item { def: sized, count: 1.0 },
-                    Flow::Item { def: cat.must("primer"), count: 1.0 },
-                ])
-                .leaving(primed)
-                .dangerous(0.35),
+            Step::new(
+                "size and trim the case",
+                Operation::Press,
+                Effort::Hands { minutes: 0.6 },
+            )
+            .needing(&[Need::of(C::Press, 400.0, 0.1)])
+            .taking(&[Flow::Item {
+                def: case,
+                count: 1.0,
+            }])
+            .leaving(sized),
+            Step::new(
+                "seat the primer",
+                Operation::Press,
+                Effort::Hands { minutes: 0.3 },
+            )
+            .needing(&[Need::of(C::Press, 100.0, 0.1)])
+            .taking(&[
+                Flow::Item {
+                    def: sized,
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: cat.must("primer"),
+                    count: 1.0,
+                },
+            ])
+            .leaving(primed)
+            .dangerous(0.35),
             Step::new("charge", Operation::Measure, Effort::Hands { minutes: 0.5 })
                 .needing(&[Need::of(C::Measure, 1.0, 0.05)])
                 .taking(&[
-                    Flow::Item { def: primed, count: 1.0 },
-                    Flow::Bulk { material: Material::Propellant, kg: 0.0017 },
+                    Flow::Item {
+                        def: primed,
+                        count: 1.0,
+                    },
+                    Flow::Bulk {
+                        material: Material::Propellant,
+                        kg: 0.0017,
+                    },
                 ])
                 .leaving(charged)
                 .dangerous(0.25),
-            Step::new("seat the bullet and crimp", Operation::Press, Effort::Hands { minutes: 0.4 })
-                .needing(&[Need::of(C::Press, 300.0, 0.05)])
-                .taking(&[
-                    Flow::Item { def: charged, count: 1.0 },
-                    Flow::Item { def: cat.must("bullet"), count: 1.0 },
-                ])
-                .joined(JointMethod::Crimped),
+            Step::new(
+                "seat the bullet and crimp",
+                Operation::Press,
+                Effort::Hands { minutes: 0.4 },
+            )
+            .needing(&[Need::of(C::Press, 300.0, 0.05)])
+            .taking(&[
+                Flow::Item {
+                    def: charged,
+                    count: 1.0,
+                },
+                Flow::Item {
+                    def: cat.must("bullet"),
+                    count: 1.0,
+                },
+            ])
+            .joined(JointMethod::Crimped),
             Step::new("inspect", Operation::Test, Effort::Hands { minutes: 0.2 })
                 .needing(&[Need::of(C::Measure, 1.0, 0.05)]),
         ],
@@ -2199,24 +2451,47 @@ pub fn standard_recipes(cat: &Catalogue) -> RecipeBook {
 /// Tools a person owns rather than a factory: what one man at a bench can
 /// bring to a plan.
 pub fn hand_tools(cat: &Catalogue) -> Vec<Provides> {
-    ["handsaw", "hand drill", "hammer", "screwdriver", "workbench", "scissors",
-     "needle and thread", "oven", "reloading press", "clamps", "sanding block"]
-        .iter()
-        .filter_map(|n| cat.named(n))
-        .filter_map(|d| cat.get(d))
-        .flat_map(|d| d.provides.iter().copied())
-        .collect()
+    [
+        "handsaw",
+        "hand drill",
+        "hammer",
+        "screwdriver",
+        "workbench",
+        "scissors",
+        "needle and thread",
+        "oven",
+        "reloading press",
+        "clamps",
+        "sanding block",
+    ]
+    .iter()
+    .filter_map(|n| cat.named(n))
+    .filter_map(|d| cat.get(d))
+    .flat_map(|d| d.provides.iter().copied())
+    .collect()
 }
 
 /// What a works has: the same capabilities, faster and to a tighter
 /// tolerance, and every one of them wanting power.
 pub fn machine_shop(cat: &Catalogue) -> Vec<Provides> {
-    ["bandsaw", "angle grinder", "plasma cutter", "cordless drill", "welder",
-     "sewing machine", "workbench", "oven", "reloading press", "scissors", "hammer",
-     "clamps", "sanding block"]
-        .iter()
-        .filter_map(|n| cat.named(n))
-        .filter_map(|d| cat.get(d))
-        .flat_map(|d| d.provides.iter().copied())
-        .collect()
+    [
+        "bandsaw",
+        "angle grinder",
+        "plasma cutter",
+        "cordless drill",
+        "welder",
+        "sewing machine",
+        "workbench",
+        "oven",
+        "reloading press",
+        "scissors",
+        "hammer",
+        "clamps",
+        "sanding block",
+    ]
+    .iter()
+    .filter_map(|n| cat.named(n))
+    .filter_map(|d| cat.get(d))
+    .flat_map(|d| d.provides.iter().copied())
+    .collect()
 }

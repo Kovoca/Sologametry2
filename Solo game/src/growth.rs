@@ -212,7 +212,9 @@ impl Role {
             None => reached,
             Some(end) if today > end => {
                 let since = (today - end) as f32;
-                ShapesPersonality::RoleDemand.persistence().worth(reached, since)
+                ShapesPersonality::RoleDemand
+                    .persistence()
+                    .worth(reached, since)
             }
             Some(_) => reached,
         }
@@ -324,7 +326,13 @@ pub struct Episodic {
 
 impl Episodic {
     pub fn new(target: DurableTarget, cause: Cause, initial: f32, day: u64) -> Self {
-        Episodic { target, cause, persistence: cause.persistence(), initial, day }
+        Episodic {
+            target,
+            cause,
+            persistence: cause.persistence(),
+            initial,
+            day,
+        }
     }
 
     pub fn worth_now(&self, today: u64) -> f32 {
@@ -345,7 +353,8 @@ impl Episodic {
     /// Whether this reading is still inside the followed period, or has
     /// run off the end of what anybody measured.
     pub fn within_evidence(&self, today: u64) -> bool {
-        self.persistence.measured_at(today.saturating_sub(self.day) as f32)
+        self.persistence
+            .measured_at(today.saturating_sub(self.day) as f32)
     }
 }
 
@@ -427,7 +436,12 @@ impl Growth {
 
     /// Somebody took up work that demands something of them.
     pub fn took_a_role(&mut self, facet: Facet, target: f32, day: u64) {
-        self.roles.push(Role { facet, target, started: day, ended: None });
+        self.roles.push(Role {
+            facet,
+            target,
+            started: day,
+            ended: None,
+        });
     }
 
     /// And left it. The demand stops being made; what it built decays
@@ -786,7 +800,13 @@ impl Doubts {
         if let Some(i) = self.open.iter().position(|d| d.key == key) {
             return &mut self.open[i];
         }
-        self.open.push(Doubt { key, amount: 0.0, toward: 0.0, last_day: day, times_heard: 0 });
+        self.open.push(Doubt {
+            key,
+            amount: 0.0,
+            toward: 0.0,
+            last_day: day,
+            times_heard: 0,
+        });
         self.open.last_mut().unwrap()
     }
 }
@@ -799,6 +819,10 @@ fn set_conviction(mind: &mut Mind, topic: Value, to: f32) {
     if let Some(c) = mind.values.iter_mut().find(|c| c.topic == topic) {
         c.held = to;
     } else {
-        mind.values.push(Conviction { topic, held: to, cultural: 0 });
+        mind.values.push(Conviction {
+            topic,
+            held: to,
+            cultural: 0,
+        });
     }
 }

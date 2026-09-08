@@ -49,7 +49,13 @@ fn main() {
             "--seed" => seed = it.next().and_then(|v| v.parse().ok()).unwrap_or(seed),
             "--rank" => rank = it.next().and_then(|v| v.parse().ok()).unwrap_or(3).max(1),
             "--which" => which = it.next().and_then(|v| v.parse().ok()).unwrap_or(4),
-            "--size" => size = it.next().and_then(|v| v.parse().ok()).unwrap_or(72).clamp(16, 200),
+            "--size" => {
+                size = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(72)
+                    .clamp(16, 200)
+            }
             "--pop" => pop_override = it.next().and_then(|v| v.parse().ok()),
             "--plain" => plain = true,
             "--help" | "-h" => {
@@ -73,9 +79,15 @@ fn main() {
         eprintln!("no nation of rank {rank}");
         std::process::exit(1);
     };
-    let Some(region) =
-        Region::extract(&world, &polities, &settlements, &network, id, 5, Doctrine::Prudent)
-    else {
+    let Some(region) = Region::extract(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        id,
+        5,
+        Doctrine::Prudent,
+    ) else {
         eprintln!("that nation has no settlements to model");
         std::process::exit(1);
     };
@@ -100,9 +112,19 @@ fn main() {
         size as f64 * METRES_PER_PLOT / 1000.0
     );
     println!();
-    print!("{}", if plain { plan.render() } else { plan.render_in_colour() });
+    print!(
+        "{}",
+        if plain {
+            plan.render()
+        } else {
+            plan.render_in_colour()
+        }
+    );
     println!();
-    println!("{}", scale_sim::townplan::plan_legend_in(plan.ground, !plain));
+    println!(
+        "{}",
+        scale_sim::townplan::plan_legend_in(plan.ground, !plain)
+    );
     println!();
 
     let houses = plan.count(Lot::House) + plan.count(Lot::Flats);

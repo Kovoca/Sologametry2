@@ -495,8 +495,7 @@ impl Personality {
     /// silently share one bound.
     pub fn adapt(&mut self, f: Facet, by: f32) {
         let i = f.index();
-        self.adaptation[i] =
-            (self.adaptation[i] + by).clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT);
+        self.adaptation[i] = (self.adaptation[i] + by).clamp(-ADAPTATION_LIMIT, ADAPTATION_LIMIT);
     }
 
     /// **Set the durable term outright**, for whoever owns the sum of
@@ -1019,7 +1018,10 @@ impl Mind {
                 recovery: 0.02 * (1.5 - vuln),
             },
             mood: Mood::default(),
-            focus: Focus { current: 0.85, capacity: 0.85 },
+            focus: Focus {
+                current: 0.85,
+                capacity: 0.85,
+            },
             willpower: gauss(rng),
             empathy: gauss(rng),
             // Somebody starts at their own set-point; what moves it is
@@ -1114,7 +1116,8 @@ impl Mind {
         // **Current vulnerability**: the same remark lands differently on
         // somebody already carrying a load, and an irritable mood makes
         // an ambiguous event an unkind one.
-        let vulnerable = 1.0 + 0.4 * self.mood.irritability * (ev.severity < 0.0) as u8 as f64
+        let vulnerable = 1.0
+            + 0.4 * self.mood.irritability * (ev.severity < 0.0) as u8 as f64
             + 0.3 * (self.stress.load / self.stress.tolerance.max(0.1)).min(1.0);
         // **Regulation**: willpower does not stop somebody feeling it, it
         // damps what comes out.
@@ -1145,7 +1148,10 @@ impl Mind {
                 add(Emotion::Satisfaction, bite * 0.6);
             }
             if ev.deliberate && !ev.my_doing {
-                add(Emotion::Gratitude, bite * (0.3 + 0.7 * pct(Facet::Gratitude)));
+                add(
+                    Emotion::Gratitude,
+                    bite * (0.3 + 0.7 * pct(Facet::Gratitude)),
+                );
                 add(Emotion::Affection, bite * 0.5 * pct(Facet::Trust));
             }
         } else if ev.severity < 0.0 {
@@ -1180,33 +1186,48 @@ impl Mind {
                 } else {
                     // **Intolerance sharpens outrage**, which is why the
                     // loading on tolerance is negative here.
-                    add(Emotion::Outrage, force * (0.6 + 0.6 * (1.0 - pct(Facet::Tolerance))));
+                    add(
+                        Emotion::Outrage,
+                        force * (0.6 + 0.6 * (1.0 - pct(Facet::Tolerance))),
+                    );
                 }
             }
         }
 
         if ev.someone_gained {
-            let r = relevance.max(0.4).min(1.0);
+            let r = relevance.clamp(0.4, 1.0);
             add(Emotion::Envy, (0.15 + 0.9 * pct(Facet::Envy)) * r);
             add(Emotion::Frustration, (0.1 + 0.8 * pct(Facet::Ambition)) * r);
-            add(Emotion::Discouragement, (0.5 - pct(Facet::Pride)).max(0.0) * r);
+            add(
+                Emotion::Discouragement,
+                (0.5 - pct(Facet::Pride)).max(0.0) * r,
+            );
             // **Gladness for a friend, in the same head as the envy.**
             add(Emotion::Joy, 0.5 * pct(Facet::Altruism) * ev.to_mine);
         }
         if ev.unfair > 0.01 {
             let cares = (self.conviction(Value::Fairness) as f64 / 50.0).max(0.0);
             add(Emotion::Outrage, ev.unfair * (0.3 + 0.7 * cares));
-            add(Emotion::Resentment, ev.unfair * (0.2 + 0.8 * pct(Facet::Vengefulness)));
+            add(
+                Emotion::Resentment,
+                ev.unfair * (0.2 + 0.8 * pct(Facet::Vengefulness)),
+            );
         }
         if ev.confirms_a_fear > 0.01 {
-            add(Emotion::Shame, ev.confirms_a_fear * (0.3 + 0.7 * pct(Facet::Gloom)));
+            add(
+                Emotion::Shame,
+                ev.confirms_a_fear * (0.3 + 0.7 * pct(Facet::Gloom)),
+            );
             add(
                 Emotion::Discouragement,
                 ev.confirms_a_fear * (0.3 + 0.7 * pct(Facet::Gloom)),
             );
         }
         if ev.blocks_a_goal {
-            add(Emotion::Frustration, bite.max(0.3) * (0.3 + 0.7 * pct(Facet::Ambition)));
+            add(
+                Emotion::Frustration,
+                bite.max(0.3) * (0.3 + 0.7 * pct(Facet::Ambition)),
+            );
             add(Emotion::Discouragement, bite.max(0.2) * pct(Facet::Gloom));
         }
         if ev.nothing_happening {
@@ -1284,7 +1305,10 @@ impl Mind {
             }
             self.mood.valence = 0.9 * self.mood.valence + 0.1 * v * e.strength;
             self.mood.arousal = 0.9 * self.mood.arousal + 0.1 * e.activation * e.strength;
-            if matches!(e.what, Emotion::Anger | Emotion::Resentment | Emotion::Outrage) {
+            if matches!(
+                e.what,
+                Emotion::Anger | Emotion::Resentment | Emotion::Outrage
+            ) {
                 self.mood.irritability = (self.mood.irritability + 0.15 * e.strength).min(1.0);
             }
             if matches!(e.what, Emotion::Fear | Emotion::Anxiety) {
@@ -1509,14 +1533,22 @@ pub struct ListenerReading {
 
 impl ListenerReading {
     pub fn weight_of(&self, r: Reading) -> f64 {
-        self.inferred.iter().find(|w| w.reading == r).map(|w| w.weight).unwrap_or(0.0)
+        self.inferred
+            .iter()
+            .find(|w| w.reading == r)
+            .map(|w| w.weight)
+            .unwrap_or(0.0)
     }
     /// The likeliest verdict — for a line of dialogue or a label, never
     /// for the arithmetic, which uses the whole distribution.
     pub fn likeliest(&self) -> Option<Reading> {
         self.inferred
             .iter()
-            .max_by(|a, b| a.weight.total_cmp(&b.weight).then(b.reading.cmp(&a.reading)))
+            .max_by(|a, b| {
+                a.weight
+                    .total_cmp(&b.weight)
+                    .then(b.reading.cmp(&a.reading))
+            })
             .map(|w| w.reading)
     }
 }
@@ -1558,7 +1590,10 @@ impl Mind {
         let mut inferred: Vec<WeightedReading> = Vec::new();
         let mut push = |r: Reading, w: f64| {
             if w > 0.02 {
-                inferred.push(WeightedReading { reading: r, weight: w });
+                inferred.push(WeightedReading {
+                    reading: r,
+                    weight: w,
+                });
             }
         };
 
@@ -1585,7 +1620,10 @@ impl Mind {
                 // when the speaker fumbles it, so a deft compliment and a
                 // graceless one landed identically.
                 let flat = (1.0 - delivery.warmth.max(0.0)) * delivery.emphasis;
-                push(Reading::Condescension, (flat + 0.5 * delivery.hesitation) * 0.9);
+                push(
+                    Reading::Condescension,
+                    (flat + 0.5 * delivery.hesitation) * 0.9,
+                );
             }
             Content::Barb { sharpness, .. } => {
                 // **The grin is the whole difference.** With it, teasing;
@@ -1598,7 +1636,10 @@ impl Mind {
                     (0.45 + 0.35 * trusted - 0.4 * wary).clamp(0.0, 1.0)
                 };
                 push(Reading::FriendlyTeasing, friendly * sharpness);
-                push(Reading::Mockery, (1.0 - friendly) * sharpness + delivery.edge * 0.5);
+                push(
+                    Reading::Mockery,
+                    (1.0 - friendly) * sharpness + delivery.edge * 0.5,
+                );
             }
             Content::Insult { strength } => {
                 push(Reading::Threat, strength * (0.5 + 0.5 * delivery.edge));
@@ -1617,8 +1658,7 @@ impl Mind {
             Content::Apology(a) => {
                 // **An apology is read, not applied.** Whether it repairs
                 // anything is the listener's decision, later.
-                let credible = ((a.acknowledgement + a.responsibility + a.remorse) / 3.0
-                    * clarity
+                let credible = ((a.acknowledgement + a.responsibility + a.remorse) / 3.0 * clarity
                     + 0.25 * trusted
                     - 0.3 * wary)
                     .clamp(0.0, 1.0);
@@ -1628,19 +1668,29 @@ impl Mind {
             Content::Claim(c) => {
                 // Confidence in the voice is not truth, and a wary
                 // listener knows it.
-                push(Reading::PlainStatement, (c.asserted * (0.5 + 0.5 * trusted)).clamp(0.0, 1.0));
+                push(
+                    Reading::PlainStatement,
+                    (c.asserted * (0.5 + 0.5 * trusted)).clamp(0.0, 1.0),
+                );
                 push(Reading::Manipulation, wary * 0.4 * c.asserted);
             }
             Content::Remark { .. } => push(Reading::PlainStatement, 0.8),
         }
 
-        inferred.sort_by(|a, b| b.weight.total_cmp(&a.weight).then(a.reading.cmp(&b.reading)));
+        inferred.sort_by(|a, b| {
+            b.weight
+                .total_cmp(&a.weight)
+                .then(a.reading.cmp(&b.reading))
+        });
         let sincerity = inferred
             .iter()
             .filter(|w| {
                 matches!(
                     w.reading,
-                    Reading::SincerePraise | Reading::Consolation | Reading::AnApology | Reading::PlainStatement
+                    Reading::SincerePraise
+                        | Reading::Consolation
+                        | Reading::AnApology
+                        | Reading::PlainStatement
                 )
             })
             .map(|w| w.weight)
@@ -1671,7 +1721,8 @@ impl Mind {
         let good = r.weight_of(Reading::SincerePraise)
             + r.weight_of(Reading::Consolation)
             + r.weight_of(Reading::FriendlyTeasing) * 0.4;
-        let bad = r.weight_of(Reading::Mockery) + r.weight_of(Reading::Threat)
+        let bad = r.weight_of(Reading::Mockery)
+            + r.weight_of(Reading::Threat)
             + r.weight_of(Reading::Condescension) * 0.7;
         let h = Happening {
             severity: (good - bad).clamp(-1.0, 1.0),

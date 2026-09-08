@@ -296,7 +296,10 @@ pub fn find_landmasses(elev: &Field, sea_level: f32) -> Vec<Landmass> {
             }
         }
         let significance = (cells.len() as f32 / FULLY_SIGNIFICANT).min(1.0);
-        out.push(Landmass { cells, significance });
+        out.push(Landmass {
+            cells,
+            significance,
+        });
     }
     out
 }
@@ -500,7 +503,11 @@ pub fn generate(
         ore.data[i] = host * (0.55 + 0.45 * altitude.sqrt()) * veins;
 
         // --- Coal: sedimentary lowlands with a wet, temperate past ---
-        let coal_host = if rock[i] == Rock::Sedimentary { 1.0 } else { 0.12 };
+        let coal_host = if rock[i] == Rock::Sedimentary {
+            1.0
+        } else {
+            0.12
+        };
         let peat = bell(rain_rank.data[i], 0.68, 0.24) * bell(temperature.data[i], 0.55, 0.28);
         coal.data[i] = coal_host
             * peat
@@ -508,7 +515,11 @@ pub fn generate(
             * (vein_a.data[i] * vein_fine.data[i]).powf(1.4);
 
         // --- Petroleum: sedimentary former shallow seas near the coast ---
-        let pet_host = if rock[i] == Rock::Sedimentary { 1.0 } else { 0.1 };
+        let pet_host = if rock[i] == Rock::Sedimentary {
+            1.0
+        } else {
+            0.1
+        };
         let shelf = bell(altitude, 0.06, 0.09); // coastal lowland shelf
         petroleum.data[i] = pet_host
             * shelf
@@ -554,7 +565,7 @@ pub fn generate(
     normalise_over_land(&mut petroleum, &land, region_size);
 
     let mut masses = find_landmasses(elev, sea_level);
-    masses.sort_by(|a, b| b.cells.len().cmp(&a.cells.len()));
+    masses.sort_by_key(|a| std::cmp::Reverse(a.cells.len()));
 
     Geology {
         rock,

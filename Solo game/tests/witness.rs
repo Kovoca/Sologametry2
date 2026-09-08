@@ -9,9 +9,9 @@
 //! honest accounts of one event start to differ.
 
 use scale_sim::ground::{Ground, Tile};
+use scale_sim::id::{Arena, Id};
 use scale_sim::memory::{EventKind, Memory, Place, Source, WorldEvent};
 use scale_sim::mind::{Facet, Happening, Mind, Value};
-use scale_sim::id::{Arena, Id};
 use scale_sim::person::{Person, Trade};
 use scale_sim::rng::Rng;
 
@@ -45,7 +45,13 @@ fn a_mind(seed: u64) -> Mind {
 /// generator makes, not ones invented for a test.
 fn a_shop() -> (u64, Plan, (i64, i64)) {
     let seed = 20260828u64;
-    let plan = Plan::lay_out_on(seed, 4242, 2_500_000.0, 32, scale_sim::world::Biome::Grassland);
+    let plan = Plan::lay_out_on(
+        seed,
+        4242,
+        2_500_000.0,
+        32,
+        scale_sim::world::Biome::Grassland,
+    );
     let t = TILES_PER_PLOT as i64;
     for y in 1..plan.height - 1 {
         for x in 1..plan.width - 1 {
@@ -119,19 +125,27 @@ fn a_wall_makes_a_different_witness_and_not_an_ignorant_one() {
     // proves nothing. Two metres further in is through a doorway.
     let scene = inside;
     let beside_him = (inside.0, inside.1 + 1);
-    let in_the_room = from_the_ground(&g, beside_him, scene, EventKind::Assault, AMBIENT_INDOORS_DB)
-        .expect("somebody standing a metre away perceived nothing");
+    let in_the_room = from_the_ground(
+        &g,
+        beside_him,
+        scene,
+        EventKind::Assault,
+        AMBIENT_INDOORS_DB,
+    )
+    .expect("somebody standing a metre away perceived nothing");
     // A quiet street: the classic case is a neighbour at night, and
     // sixty-five decibels of traffic masks a great deal.
     let through_the_wall =
         from_the_ground(&g, outside, scene, EventKind::Assault, AMBIENT_INDOORS_DB);
 
     assert_eq!(in_the_room.source, Source::Witnessed);
-    assert!(in_the_room.could_identify, "a man two metres away could not say who");
-
-    let outside_man = through_the_wall.expect(
-        "a scream indoors reached nobody in the street: sound does not stop at a wall",
+    assert!(
+        in_the_room.could_identify,
+        "a man two metres away could not say who"
     );
+
+    let outside_man = through_the_wall
+        .expect("a scream indoors reached nobody in the street: sound does not stop at a wall");
     assert_eq!(
         outside_man.source,
         Source::Overheard,
@@ -193,8 +207,7 @@ fn distance_takes_the_face_before_it_takes_the_event() {
 
     let up_close = from_the_ground(&g, near, event_at, EventKind::Assault, AMBIENT_STREET_DB)
         .expect("standing beside it and saw nothing");
-    let down_the_road =
-        from_the_ground(&g, far, event_at, EventKind::Assault, AMBIENT_STREET_DB);
+    let down_the_road = from_the_ground(&g, far, event_at, EventKind::Assault, AMBIENT_STREET_DB);
 
     assert!(up_close.could_identify, "a man beside it could not say who");
     if let Some(w) = down_the_road {
@@ -215,8 +228,14 @@ fn far_enough_away_and_nothing_happened() {
     let here = spot;
     let miles_off = (spot.0 + 400, spot.1 + 400);
     assert!(
-        from_the_ground(&g, here, miles_off, EventKind::Conversation, AMBIENT_STREET_DB)
-            .is_none(),
+        from_the_ground(
+            &g,
+            here,
+            miles_off,
+            EventKind::Conversation,
+            AMBIENT_STREET_DB
+        )
+        .is_none(),
         "a conversation four hundred metres away was overheard"
     );
     // Even a roof coming in has a range.
@@ -258,10 +277,12 @@ fn a_collapse_carries_where_conversational_words_no_longer_do() {
 
     let crash = from_the_ground(&g, here, there, EventKind::Collapse, AMBIENT_STREET_DB);
     let chat = from_the_ground(&g, here, there, EventKind::Conversation, AMBIENT_STREET_DB);
-    let crash = crash.expect(&format!(
-        "a roof came in {} m down an open street and nobody noticed",
-        (there.0 - here.0).abs()
-    ));
+    let crash = crash.unwrap_or_else(|| {
+        panic!(
+            "a roof came in {} m down an open street and nobody noticed",
+            (there.0 - here.0).abs()
+        )
+    });
     assert!(crash.cues.prosody, "a roof coming in was not even audible");
 
     // **The conversation is not simply unperceived, and saying so would
@@ -277,9 +298,8 @@ fn a_collapse_carries_where_conversational_words_no_longer_do() {
     // Hold the sight case still by asking it only where the collapse was
     // *seen*, which is the same clear line.
     if crash.source == Source::Witnessed {
-        let chat = chat.expect(
-            "two people talking in plain view down an open street went wholly unnoticed",
-        );
+        let chat = chat
+            .expect("two people talking in plain view down an open street went wholly unnoticed");
         assert_eq!(
             chat.source,
             Source::Witnessed,
@@ -343,7 +363,10 @@ fn you_can_hear_that_people_are_talking_without_hearing_what() {
     )
     .expect("a conversation in a quiet street reached nobody at all");
     assert!(quiet.cues.prosody, "no voice in a quiet street");
-    assert!(quiet.cues.words, "the words did not carry with 18 dB of headroom");
+    assert!(
+        quiet.cues.words,
+        "the words did not carry with 18 dB of headroom"
+    );
 
     let busy = from_the_ground(
         &g,
@@ -398,7 +421,10 @@ fn a_settlement_person_knows_what_happens_where_they_are() {
         in_the_road.exposure < 0.2,
         "everything that happens on your street happens in front of you"
     );
-    assert!(at_home.could_identify, "somebody in the next room could not say who");
+    assert!(
+        at_home.could_identify,
+        "somebody in the next room could not say who"
+    );
     assert!(
         !in_the_road.could_identify,
         "something at the far end of the street was identified by face"
@@ -424,7 +450,10 @@ fn word_of_mouth_carries_a_death_and_not_a_dinner() {
     );
     let death = told(EventKind::Death, 1, who(4)).expect("nobody passed on a death");
     assert_eq!(death.source, Source::Told { by: who(4) });
-    assert!(death.could_identify, "the man who told him could not say who died");
+    assert!(
+        death.could_identify,
+        "the man who told him could not say who died"
+    );
 
     // Third hand, and the identity is the first thing to go.
     let secondhand = told(EventKind::Death, 3, who(4)).unwrap();
@@ -451,8 +480,18 @@ fn all_three_tiers_produce_the_same_kind_of_answer() {
     let mut rng = Rng::new(2);
     let ev = a_scream(5);
 
-    let ground = from_the_ground(&g, spot, (spot.0 + 1, spot.1), EventKind::Assault, AMBIENT_INDOORS_DB);
-    let settlement = in_the_settlement(&[Context::Household(1)], Context::Household(1), EventKind::Assault);
+    let ground = from_the_ground(
+        &g,
+        spot,
+        (spot.0 + 1, spot.1),
+        EventKind::Assault,
+        AMBIENT_INDOORS_DB,
+    );
+    let settlement = in_the_settlement(
+        &[Context::Household(1)],
+        Context::Household(1),
+        EventKind::Assault,
+    );
     let distant = told(EventKind::Assault, 2, who(8));
 
     for w in [ground, settlement, distant].into_iter().flatten() {
@@ -510,7 +549,10 @@ fn a_wall_takes_the_face_and_leaves_the_voice() {
     )
     .expect("a man a metre away heard nothing");
     assert!(facing.cues.words && facing.cues.prosody);
-    assert!(facing.cues.expression, "a man a metre away could not see a face");
+    assert!(
+        facing.cues.expression,
+        "a man a metre away could not see a face"
+    );
     assert!(facing.cues.gesture);
     assert_eq!(facing.cues.completeness(), 1.0);
 
@@ -526,7 +568,10 @@ fn a_wall_takes_the_face_and_leaves_the_voice() {
     // asserting the stronger of the two claims, and it is the one that
     // fails first — which is exactly the neighbour who heard shouting
     // and cannot tell you what was shouted.
-    assert!(muffled.cues.prosody, "a shout through a wall carried no voice at all");
+    assert!(
+        muffled.cues.prosody,
+        "a shout through a wall carried no voice at all"
+    );
     assert!(
         !muffled.cues.words || muffled.cues.prosody,
         "words were made out that could not be heard"
@@ -572,8 +617,7 @@ fn a_face_is_legible_much_closer_than_a_figure() {
         .expect("three metres away and nothing reached him");
     assert!(close_up.cues.expression, "no face at three metres");
 
-    if let Some(across) = from_the_ground(&g, far, open[3], EventKind::Assault, AMBIENT_STREET_DB)
-    {
+    if let Some(across) = from_the_ground(&g, far, open[3], EventKind::Assault, AMBIENT_STREET_DB) {
         assert!(
             !across.cues.expression,
             "he read an expression from {} metres",

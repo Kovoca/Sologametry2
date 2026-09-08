@@ -9,9 +9,7 @@ use scale_sim::bom::{
     EndOfLife, Flaw, Origin,
 };
 use scale_sim::craft::standard_recipes;
-use scale_sim::item::{
-    standard_catalogue, Catalogue, DefId, Family, ItemInstance, JointMethod,
-};
+use scale_sim::item::{standard_catalogue, Catalogue, DefId, Family, ItemInstance, JointMethod};
 use scale_sim::material::Material;
 use scale_sim::teardown::{take_apart, Teardown};
 
@@ -55,7 +53,10 @@ fn a_broken_definition_is_caught() {
     let steel = good.must("steel sheet");
 
     let found = |c: &Catalogue| -> Vec<Flaw> {
-        validate(c, &["a plan that exists"]).into_iter().map(|f| f.flaw).collect()
+        validate(c, &["a plan that exists"])
+            .into_iter()
+            .map(|f| f.flaw)
+            .collect()
     };
 
     // No mass.
@@ -75,29 +76,54 @@ fn a_broken_definition_is_caught() {
     let mut c = Catalogue::new();
     let id = c.add(a_thing("lighter than its parts", 1.0));
     c.set_bill(id, Bom::default().with_bulk(&[(Material::MildSteel, 4.0)]));
-    assert!(found(&c).iter().any(|f| matches!(f, Flaw::MassMismatch { .. })));
+    assert!(found(&c)
+        .iter()
+        .any(|f| matches!(f, Flaw::MassMismatch { .. })));
 
     // A component that is not there.
     let mut c = Catalogue::new();
     let id = c.add(a_thing("full of ghosts", 1.0));
     c.set_bill(
         id,
-        Bom::assembled(vec![BomEntry::new(DefId(999), 1, 1.0, "somewhere", JointMethod::Bolted)]),
+        Bom::assembled(vec![BomEntry::new(
+            DefId(999),
+            1,
+            1.0,
+            "somewhere",
+            JointMethod::Bolted,
+        )]),
     );
     assert!(found(&c).contains(&Flaw::UnknownComponent(DefId(999))));
 
     // A component whose own mass disagrees with the line.
     let mut c = Catalogue::new();
     let bolt = c.add(a_thing("bolt", 0.02));
-    c.set_bill(bolt, Bom::default().with_bulk(&[(Material::MildSteel, 0.02)]));
+    c.set_bill(
+        bolt,
+        Bom::default().with_bulk(&[(Material::MildSteel, 0.02)]),
+    );
     let id = c.add(a_thing("a fib", 1.0));
-    c.set_bill(id, Bom::assembled(vec![BomEntry::new(bolt, 1, 1.0, "x", JointMethod::Bolted)]));
-    assert!(found(&c).iter().any(|f| matches!(f, Flaw::ComponentMassMismatch { .. })));
+    c.set_bill(
+        id,
+        Bom::assembled(vec![BomEntry::new(bolt, 1, 1.0, "x", JointMethod::Bolted)]),
+    );
+    assert!(found(&c)
+        .iter()
+        .any(|f| matches!(f, Flaw::ComponentMassMismatch { .. })));
 
     // Something that contains itself.
     let mut c = Catalogue::new();
     let id = c.add(a_thing("ouroboros", 1.0));
-    c.set_bill(id, Bom::assembled(vec![BomEntry::new(id, 1, 1.0, "in itself", JointMethod::Bolted)]));
+    c.set_bill(
+        id,
+        Bom::assembled(vec![BomEntry::new(
+            id,
+            1,
+            1.0,
+            "in itself",
+            JointMethod::Bolted,
+        )]),
+    );
     assert!(found(&c).contains(&Flaw::Cycle));
 
     // No way in and no way out.
@@ -116,7 +142,12 @@ fn a_broken_definition_is_caught() {
     let mut c = Catalogue::new();
     let id = c.add(a_thing("vapourware", 1.0));
     c.set_bill(id, Bom::default().with_bulk(&[(Material::MildSteel, 1.0)]));
-    c.set_origin(id, vec![Origin::Made { plan: "no such plan" }]);
+    c.set_origin(
+        id,
+        vec![Origin::Made {
+            plan: "no such plan",
+        }],
+    );
     assert!(found(&c).contains(&Flaw::UnknownPlan("no such plan")));
 
     // An end its own materials rule out: solid steel does not compost.
@@ -160,7 +191,11 @@ fn nothing_is_simply_impossible() {
     let board = cat.get(cat.must("circuit board")).unwrap();
     match &board.origin[0] {
         Origin::Industrial { needs } => {
-            assert!(needs.len() >= 4, "a fab was described in {} words", needs.len());
+            assert!(
+                needs.len() >= 4,
+                "a fab was described in {} words",
+                needs.len()
+            );
             assert!(needs.iter().any(|n| n.contains("cleanroom")));
             assert!(needs.iter().any(|n| n.contains("silicon")));
         }
@@ -174,13 +209,21 @@ fn nothing_is_simply_impossible() {
 fn everything_has_an_end() {
     let cat = standard_catalogue();
     for d in cat.iter() {
-        assert!(!d.end_of_life.is_empty(), "{} can never be got rid of", d.name);
+        assert!(
+            !d.end_of_life.is_empty(),
+            "{} can never be got rid of",
+            d.name
+        );
         // Disposal is always available, which is the floor rather than
         // the answer.
         assert!(d.end_of_life.contains(&EndOfLife::Disposal));
         let allowed = plausible_ends(&d.bill, &d.materials, d.family);
         for e in &d.end_of_life {
-            assert!(allowed.contains(e), "{} claims {e:?} and its contents rule it out", d.name);
+            assert!(
+                allowed.contains(e),
+                "{} claims {e:?} and its contents rule it out",
+                d.name
+            );
         }
     }
 
@@ -221,7 +264,12 @@ fn a_drill_opens_all_the_way_to_copper() {
         .iter()
         .filter_map(|c| cat.get(c.def).map(|x| x.name))
         .collect();
-    for want in ["chuck assembly", "gearbox", "electric motor, small", "control assembly"] {
+    for want in [
+        "chuck assembly",
+        "gearbox",
+        "electric motor, small",
+        "control assembly",
+    ] {
         assert!(names.contains(&want), "a drill has no {want}: {names:?}");
     }
 
@@ -233,7 +281,12 @@ fn a_drill_opens_all_the_way_to_copper() {
         .iter()
         .filter_map(|c| cat.get(c.def).map(|x| x.name))
         .collect();
-    for want in ["motor winding", "stator laminations", "magnet", "ball bearing"] {
+    for want in [
+        "motor winding",
+        "stator laminations",
+        "magnet",
+        "ball bearing",
+    ] {
         assert!(inner.contains(&want), "a motor has no {want}: {inner:?}");
     }
 
@@ -245,8 +298,13 @@ fn a_drill_opens_all_the_way_to_copper() {
         (total - d.nominal_mass_kg).abs() < 0.001,
         "a 1.6 kg drill exploded to {total:.4} kg"
     );
-    for want in [Material::Copper, Material::Ferrite, Material::ToolSteel, Material::Abs,
-                 Material::Lubricant] {
+    for want in [
+        Material::Copper,
+        Material::Ferrite,
+        Material::ToolSteel,
+        Material::Abs,
+        Material::Lubricant,
+    ] {
         assert!(
             flat.iter().any(|m| m.0 == want && m.1 > 0.0),
             "a drill contains no {}: {:?}",
@@ -256,7 +314,11 @@ fn a_drill_opens_all_the_way_to_copper() {
     }
 
     // Deep enough to be a real tree rather than a list.
-    assert!(depth_of(&cat, drill) >= 3, "a drill is only {} deep", depth_of(&cat, drill));
+    assert!(
+        depth_of(&cat, drill) >= 3,
+        "a drill is only {} deep",
+        depth_of(&cat, drill)
+    );
 }
 
 /// **The toaster, which is the example the contract was written about.**
@@ -275,10 +337,17 @@ fn a_toaster_is_not_one_and_a_half_kilograms_of_steel() {
     assert!(flat.iter().any(|m| m.0 == Material::Stainless));
     assert!(flat.iter().any(|m| m.0 == Material::Copper));
     assert!(flat.iter().any(|m| m.0 == Material::Rubber));
-    assert!(flat.len() >= 6, "a toaster came out as {} materials", flat.len());
+    assert!(
+        flat.len() >= 6,
+        "a toaster came out as {} materials",
+        flat.len()
+    );
 
     let total: f64 = flat.iter().map(|m| m.1).sum();
-    assert!((total - 1.8).abs() < 0.01, "the toaster exploded to {total:.3} kg");
+    assert!(
+        (total - 1.8).abs() < 0.01,
+        "the toaster exploded to {total:.3} kg"
+    );
 
     // The interface may group; the data does not.
     let mut s = String::new();
@@ -303,7 +372,10 @@ fn an_armourer_sees_further_than_a_soldier() {
         .filter_map(|c| cat.get(c.def).map(|x| x.name))
         .collect();
     for want in ["bolt body", "extractor", "ejector", "firing pin", "spring"] {
-        assert!(inner.contains(&want), "a bolt assembly has no {want}: {inner:?}");
+        assert!(
+            inner.contains(&want),
+            "a bolt assembly has no {want}: {inner:?}"
+        );
     }
 
     let fcg = cat.get(cat.must("fire control group")).unwrap();
@@ -314,14 +386,20 @@ fn an_armourer_sees_further_than_a_soldier() {
         .filter_map(|c| cat.get(c.def).map(|x| x.name))
         .collect();
     for want in ["trigger", "hammer", "sear", "pin", "spring"] {
-        assert!(inner.contains(&want), "a fire control group has no {want}: {inner:?}");
+        assert!(
+            inner.contains(&want),
+            "a fire control group has no {want}: {inner:?}"
+        );
     }
 
     let rifle = cat.must("rifle");
     assert!(depth_of(&cat, rifle) >= 3);
     let flat = explode(&cat, rifle, 3.01);
     let total: f64 = flat.iter().map(|m| m.1).sum();
-    assert!((total - 3.01).abs() < 0.02, "a rifle exploded to {total:.3} kg");
+    assert!(
+        (total - 3.01).abs() < 0.02,
+        "a rifle exploded to {total:.3} kg"
+    );
 }
 
 /// **A washing machine is mostly concrete**, which is the fact a
@@ -332,7 +410,11 @@ fn a_washing_machine_is_twenty_one_kilograms_of_concrete() {
     let cat = standard_catalogue();
     let id = cat.must("washing machine");
     let flat = explode(&cat, id, 70.0);
-    let concrete = flat.iter().find(|m| m.0 == Material::Concrete).map(|m| m.1).unwrap_or(0.0);
+    let concrete = flat
+        .iter()
+        .find(|m| m.0 == Material::Concrete)
+        .map(|m| m.1)
+        .unwrap_or(0.0);
     assert!(
         (20.0..=22.0).contains(&concrete),
         "the counterweights came to {concrete:.1} kg"
@@ -340,8 +422,15 @@ fn a_washing_machine_is_twenty_one_kilograms_of_concrete() {
     let total: f64 = flat.iter().map(|m| m.1).sum();
     assert!((total - 70.0).abs() < 0.05);
     // And the copper is real, which is why they are worth stripping.
-    let copper = flat.iter().find(|m| m.0 == Material::Copper).map(|m| m.1).unwrap_or(0.0);
-    assert!(copper > 2.0, "a washing machine held {copper:.2} kg of copper");
+    let copper = flat
+        .iter()
+        .find(|m| m.0 == Material::Copper)
+        .map(|m| m.1)
+        .unwrap_or(0.0);
+    assert!(
+        copper > 2.0,
+        "a washing machine held {copper:.2} kg of copper"
+    );
 }
 
 /// **Gate: a grouped detail is not a massless detail.**
@@ -360,13 +449,23 @@ fn a_group_of_fasteners_still_weighs_something() {
         .find(|c| c.def == screws)
         .expect("a washing machine held together by nothing");
 
-    assert!(line.count > 100, "only {} screws in a washing machine", line.count);
-    assert!(line.kg > 0.5, "a hundred and sixty screws weighed {:.3} kg", line.kg);
+    assert!(
+        line.count > 100,
+        "only {} screws in a washing machine",
+        line.count
+    );
+    assert!(
+        line.kg > 0.5,
+        "a hundred and sixty screws weighed {:.3} kg",
+        line.kg
+    );
     assert!((line.kg - line.count as f64 * 0.005).abs() < 1e-9);
 
     // And they turn up in the explosion as steel rather than vanishing.
     let flat = explode(&cat, cat.must("washing machine"), 70.0);
-    assert!(flat.iter().any(|m| m.0 == Material::MildSteel && m.1 > 10.0));
+    assert!(flat
+        .iter()
+        .any(|m| m.0 == Material::MildSteel && m.1 > 10.0));
 }
 
 // =====================================================================
@@ -381,7 +480,10 @@ fn a_spawned_thing_and_a_made_thing_both_know_what_they_contain() {
     let chair = ItemInstance::one(&cat, cat.must("wooden chair"));
 
     // Straight out of the world: it has the authored bill.
-    let rec = chair.assembly.as_ref().expect("a spawned chair contained nothing");
+    let rec = chair
+        .assembly
+        .as_ref()
+        .expect("a spawned chair contained nothing");
     assert!(!rec.components.is_empty());
     assert!(
         (rec.total_component_mass() - chair.mass_kg).abs() < chair.mass_kg * 0.03,
@@ -392,7 +494,10 @@ fn a_spawned_thing_and_a_made_thing_both_know_what_they_contain() {
     // And it can be taken apart on the strength of it.
     let apart = take_apart(&chair, Teardown::Deconstruct, &cat, 0.8, 1);
     assert!((apart.accounted_kg() - chair.mass_kg).abs() < 1e-6);
-    assert!(apart.components.iter().any(|c| c.definition == cat.must("wood screw")));
+    assert!(apart
+        .components
+        .iter()
+        .any(|c| c.definition == cat.must("wood screw")));
 }
 
 /// **Gate: taking apart the default bill cannot return more than the
@@ -403,7 +508,12 @@ fn nothing_gives_back_more_than_it_weighs() {
     let cat = standard_catalogue();
     for d in cat.iter().filter(|d| d.is_assembly()) {
         let item = ItemInstance::one(&cat, d.id);
-        for how in [Teardown::Disassemble, Teardown::Salvage, Teardown::Recycle, Teardown::Smash] {
+        for how in [
+            Teardown::Disassemble,
+            Teardown::Salvage,
+            Teardown::Recycle,
+            Teardown::Smash,
+        ] {
             let r = take_apart(&item, how, &cat, 0.9, 5);
             assert!(
                 r.mass_kg() <= item.mass_kg + 1e-6,
@@ -429,7 +539,12 @@ fn nothing_gives_back_more_than_it_weighs() {
 #[test]
 fn no_assembly_returns_its_own_adhesive() {
     let cat = standard_catalogue();
-    let cured = [Material::Adhesive, Material::Paint, Material::Mortar, Material::Lubricant];
+    let cured = [
+        Material::Adhesive,
+        Material::Paint,
+        Material::Mortar,
+        Material::Lubricant,
+    ];
     for d in cat.iter().filter(|d| d.is_assembly()) {
         let item = ItemInstance::one(&cat, d.id);
         let r = take_apart(&item, Teardown::Disassemble, &cat, 0.99, 2);
@@ -451,7 +566,9 @@ fn no_assembly_returns_its_own_adhesive() {
 fn what_is_not_manufactured_is_got_from_somewhere() {
     let cat = standard_catalogue();
     let logged = cat.get(cat.must("oak board")).unwrap();
-    assert!(logged.origin.contains(&Origin::Gathered(Acquisition::Logging)));
+    assert!(logged
+        .origin
+        .contains(&Origin::Gathered(Acquisition::Logging)));
 
     let steel = cat.get(cat.must("steel sheet")).unwrap();
     match &steel.origin[0] {
@@ -460,7 +577,12 @@ fn what_is_not_manufactured_is_got_from_somewhere() {
     }
 
     // Everything a household buys has a plan or a named process.
-    for f in [Family::Furniture, Family::Clothing, Family::Appliance, Family::Foodstuff] {
+    for f in [
+        Family::Furniture,
+        Family::Clothing,
+        Family::Appliance,
+        Family::Foodstuff,
+    ] {
         for d in cat.of_family(f) {
             assert!(!d.origin.is_empty(), "{} comes from nowhere", d.name);
         }
@@ -488,18 +610,37 @@ fn a_car_door_is_not_thirty_kilograms_of_sheet() {
     // The four pressings are declared as formed parts, with their shape,
     // their state and their surface.
     let names: Vec<&str> = d.bill.formed.iter().map(|f| f.name).collect();
-    for want in ["outer skin", "inner frame", "intrusion beam", "mounting brackets"] {
+    for want in [
+        "outer skin",
+        "inner frame",
+        "intrusion beam",
+        "mounting brackets",
+    ] {
         assert!(names.contains(&want), "a car door has no {want}: {names:?}");
     }
-    let skin = d.bill.formed.iter().find(|f| f.name == "outer skin").unwrap();
+    let skin = d
+        .bill
+        .formed
+        .iter()
+        .find(|f| f.name == "outer skin")
+        .unwrap();
     assert_eq!(skin.geometry, Geometry::Stamping);
     assert_eq!(skin.surface, Surface::Painted);
-    assert!(skin.geometry.holds_its_shape(), "a stamping was treated as generic stock");
+    assert!(
+        skin.geometry.holds_its_shape(),
+        "a stamping was treated as generic stock"
+    );
 
     // The things that genuinely are stuff stayed stuff.
     let bulk: Vec<Material> = d.bill.bulk.iter().map(|b| b.0).collect();
-    assert!(bulk.contains(&Material::Adhesive), "the seam sealer became a part");
-    assert!(bulk.contains(&Material::Rubber), "the damping compound became a part");
+    assert!(
+        bulk.contains(&Material::Adhesive),
+        "the seam sealer became a part"
+    );
+    assert!(
+        bulk.contains(&Material::Rubber),
+        "the damping compound became a part"
+    );
 
     // Flat stock does not hold a shape and is therefore never a formed
     // part in its own right.
@@ -524,22 +665,39 @@ fn taking_a_door_apart_gives_back_a_door_skin() {
     for event in 0..40u64 {
         let careful = take_apart(&door, Teardown::Disassemble, &cat, 0.85, event);
         let shredded = take_apart(&door, Teardown::Recycle, &cat, 0.85, event);
-        careful_skins += careful.formed.iter().filter(|f| f.0.name == "outer skin").count();
-        shredded_skins += shredded.formed.iter().filter(|f| f.0.name == "outer skin").count();
+        careful_skins += careful
+            .formed
+            .iter()
+            .filter(|f| f.0.name == "outer skin")
+            .count();
+        shredded_skins += shredded
+            .formed
+            .iter()
+            .filter(|f| f.0.name == "outer skin")
+            .count();
     }
-    assert!(careful_skins > 20, "a careful strip returned {careful_skins} skins in 40");
+    assert!(
+        careful_skins > 20,
+        "a careful strip returned {careful_skins} skins in 40"
+    );
     assert_eq!(shredded_skins, 0, "a shredder handed back a door skin");
 
     // The shredder returns the steel instead, so nothing is lost.
     let shredded = take_apart(&door, Teardown::Recycle, &cat, 0.85, 1);
-    assert!(shredded.material(Material::MildSteel) > 5.0, "the pressings went nowhere");
+    assert!(
+        shredded.material(Material::MildSteel) > 5.0,
+        "the pressings went nowhere"
+    );
     assert!((shredded.accounted_kg() - door.mass_kg).abs() < 1e-6);
 
     // A recovered skin is bent, not pristine — it went through a crash and
     // a strip-down.
     let rough = take_apart(&door, Teardown::Salvage, &cat, 0.5, 3);
     if let Some((_, cond)) = rough.formed.first() {
-        assert!(cond.damage > 0.0, "rough salvage returned an undamaged pressing");
+        assert!(
+            cond.damage > 0.0,
+            "rough salvage returned an undamaged pressing"
+        );
     }
 }
 
@@ -580,7 +738,10 @@ fn a_line_says_how_many_and_how_much_each() {
     );
     // And every node shows its own arithmetic.
     assert!(s.contains("declared") && s.contains("residual"));
-    assert!(s.contains("direct bulk"), "direct material is indistinguishable from a part");
+    assert!(
+        s.contains("direct bulk"),
+        "direct material is indistinguishable from a part"
+    );
 }
 
 // =====================================================================
@@ -600,8 +761,16 @@ fn a_nominal_mass_knows_how_firm_it_is() {
 
     for d in cat.iter() {
         assert!((d.mass.expected - d.nominal_mass_kg).abs() < 1e-9);
-        assert!(d.mass.source_uncertainty > 0.0, "{} admits no doubt at all", d.name);
-        assert!(d.mass.manufacturing_variation > 0.0, "{} says every one is identical", d.name);
+        assert!(
+            d.mass.source_uncertainty > 0.0,
+            "{} admits no doubt at all",
+            d.name
+        );
+        assert!(
+            d.mass.manufacturing_variation > 0.0,
+            "{} says every one is identical",
+            d.name
+        );
     }
 
     // **Three different things, and they are not one.** How sure anybody
@@ -611,14 +780,26 @@ fn a_nominal_mass_knows_how_firm_it_is() {
     let guessed = NominalMass::of(70.0, MassProvenance::DesignedPlaceholder);
     assert!(measured.source_uncertainty < guessed.source_uncertainty / 3.0);
     assert!(measured.could_have_been(70.5) && !measured.could_have_been(78.0));
-    assert!(guessed.could_have_been(78.0), "a placeholder was held to a measurement");
+    assert!(
+        guessed.could_have_been(78.0),
+        "a placeholder was held to a measurement"
+    );
 
     // A firm figure about a population that genuinely varies: the two
     // move independently.
     let timber = NominalMass::of(6.75, MassProvenance::Measured).varying_by(0.12);
-    assert!(timber.source_uncertainty < 0.02, "the measurement stopped being firm");
-    assert!(timber.an_ordinary_example(7.4), "a damp board was called abnormal");
-    assert!(!timber.could_have_been(7.4), "the measurement was loosened by the timber");
+    assert!(
+        timber.source_uncertainty < 0.02,
+        "the measurement stopped being firm"
+    );
+    assert!(
+        timber.an_ordinary_example(7.4),
+        "a damp board was called abnormal"
+    );
+    assert!(
+        !timber.could_have_been(7.4),
+        "the measurement was loosened by the timber"
+    );
 
     // **And the validator gets neither of them.** A bill adds up or it
     // does not, to floating-point width.
@@ -627,7 +808,13 @@ fn a_nominal_mass_knows_how_firm_it_is() {
     // And an instance weighs what is actually in it, not the nominal.
     let mut one = ItemInstance::one(&cat, cat.must("washing machine"));
     one.mass_kg += 2.4; // a hose still full of water
-    assert!(one.mass_kg > cat.get(cat.must("washing machine")).unwrap().nominal_mass_kg);
+    assert!(
+        one.mass_kg
+            > cat
+                .get(cat.must("washing machine"))
+                .unwrap()
+                .nominal_mass_kg
+    );
 }
 
 /// **Gate: what is technically possible is not what happens.**
@@ -642,7 +829,10 @@ fn an_ending_depends_on_more_than_the_object() {
     let washer = cat.get(cat.must("washing machine")).unwrap();
     let possible = &washer.end_of_life;
 
-    assert!(possible.contains(&EndOfLife::Remanufacture), "a washing machine cannot be rebuilt");
+    assert!(
+        possible.contains(&EndOfLife::Remanufacture),
+        "a washing machine cannot be rebuilt"
+    );
     assert!(possible.contains(&EndOfLife::Recycling));
 
     // In a village with nothing, it goes in the ground — and the
@@ -671,12 +861,24 @@ fn an_ending_depends_on_more_than_the_object() {
         forbidden: vec![],
         worth: vec![(EndOfLife::Recycling, 0.2), (EndOfLife::Reuse, 0.5)],
     };
-    assert_eq!(what_happens_to_it(possible, &town, 0.9, 0.0), EndOfLife::Reuse);
+    assert_eq!(
+        what_happens_to_it(possible, &town, 0.9, 0.0),
+        EndOfLife::Reuse
+    );
     // A wreck is not reused however much reuse pays.
-    assert_eq!(what_happens_to_it(possible, &town, 0.05, 0.0), EndOfLife::Recycling);
+    assert_eq!(
+        what_happens_to_it(possible, &town, 0.05, 0.0),
+        EndOfLife::Recycling
+    );
     // And the law can forbid the profitable one.
-    let regulated = Available { forbidden: vec![EndOfLife::Reuse], ..town.clone() };
-    assert_eq!(what_happens_to_it(possible, &regulated, 0.9, 0.0), EndOfLife::Recycling);
+    let regulated = Available {
+        forbidden: vec![EndOfLife::Reuse],
+        ..town.clone()
+    };
+    assert_eq!(
+        what_happens_to_it(possible, &regulated, 0.9, 0.0),
+        EndOfLife::Recycling
+    );
 }
 
 /// **Gate: `Industrial` is debt, not a portal.**
@@ -713,7 +915,10 @@ fn an_unwritten_process_cannot_make_anything() {
     let food = coverage.iter().find(|c| c.0 == Family::Foodstuff).unwrap();
     assert!(food.1 > 0, "nothing edible can be made at all");
     let spares = coverage.iter().find(|c| c.0 == Family::SparePart).unwrap();
-    assert_eq!(spares.1, 0, "a spare part gained a plan without anybody writing one");
+    assert_eq!(
+        spares.1, 0,
+        "a spare part gained a plan without anybody writing one"
+    );
 }
 
 /// **Gate: the cycle rule is about the bill of materials only.**
@@ -725,7 +930,9 @@ fn an_unwritten_process_cannot_make_anything() {
 fn a_production_loop_is_not_a_bill_of_materials_loop() {
     let cat = standard_catalogue();
     let book = standard_recipes(&cat);
-    assert!(validate(&cat, &plans(&book)).iter().all(|f| f.flaw != Flaw::Cycle));
+    assert!(validate(&cat, &plans(&book))
+        .iter()
+        .all(|f| f.flaw != Flaw::Cycle));
 
     // And the material loop is real and allowed: a washing machine is made
     // of steel, and taking it apart gives steel back to make another.
@@ -735,12 +942,13 @@ fn a_production_loop_is_not_a_bill_of_materials_loop() {
         back.material(Material::MildSteel) > 1.0,
         "recycling an appliance yielded no steel to make another one from"
     );
-    assert!(cat
-        .get(cat.must("washing machine"))
-        .unwrap()
-        .materials
-        .fraction_of(Material::MildSteel)
-        > 0.0);
+    assert!(
+        cat.get(cat.must("washing machine"))
+            .unwrap()
+            .materials
+            .fraction_of(Material::MildSteel)
+            > 0.0
+    );
 }
 
 /// **Gate: a leaf is opened when its inside has a consequence, not to
@@ -756,25 +964,41 @@ fn a_bolt_is_a_leaf_and_a_battery_is_not() {
     let cat = standard_catalogue();
 
     let bolt = cat.must("bolt body");
-    assert!(cat.get(bolt).unwrap().bill.components.is_empty(), "a bolt body was opened up");
-    assert_eq!(should_be_opened(&cat, bolt), None, "a bolt body was asked to come apart");
+    assert!(
+        cat.get(bolt).unwrap().bill.components.is_empty(),
+        "a bolt body was opened up"
+    );
+    assert_eq!(
+        should_be_opened(&cat, bolt),
+        None,
+        "a bolt body was asked to come apart"
+    );
 
     // The battery is now opened, and its contents are the reason.
     let pack = cat.get(cat.must("battery pack")).unwrap();
-    assert!(!pack.bill.components.is_empty(), "a battery pack is still a leaf");
+    assert!(
+        !pack.bill.components.is_empty(),
+        "a battery pack is still a leaf"
+    );
     let inner: Vec<&str> = pack
         .bill
         .components
         .iter()
         .filter_map(|c| cat.get(c.def).map(|d| d.name))
         .collect();
-    assert!(inner.contains(&"battery cell"), "a pack with no cells in it: {inner:?}");
+    assert!(
+        inner.contains(&"battery cell"),
+        "a pack with no cells in it: {inner:?}"
+    );
     assert!(pack.bill.formed.iter().any(|f| f.name == "pack casing"));
 
     // And the hazardous part is real and declared.
     let cell = cat.get(cat.must("battery cell")).unwrap();
     assert!(
-        cell.bill.fluids.iter().any(|f| f.0 == Material::Electrolyte),
+        cell.bill
+            .fluids
+            .iter()
+            .any(|f| f.0 == Material::Electrolyte),
         "a cell with no electrolyte in it"
     );
 }

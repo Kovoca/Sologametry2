@@ -31,8 +31,8 @@ pub fn cost_per_km(biome: Biome, river: bool) -> f64 {
         Biome::Forest => 3.0,
         Biome::Rainforest => 5.0, // clearing, drainage, and it grows back
         Biome::Taiga => 4.5,
-        Biome::Swamp => 7.0, // piling and drainage
-        Biome::Tundra => 8.0, // permafrost heaves whatever you lay on it
+        Biome::Swamp => 7.0,     // piling and drainage
+        Biome::Tundra => 8.0,    // permafrost heaves whatever you lay on it
         Biome::Mountain => 15.0, // cuts, bridges, tunnels
         Biome::Snowcap => 25.0,
         // Not built on; crossings are handled as bridges below.
@@ -109,12 +109,7 @@ impl RoadAccount {
 }
 
 /// Value and upkeep of the roads inside one polity's territory.
-pub fn road_account(
-    world: &World,
-    net: &Network,
-    pol: &Polities,
-    polity: u16,
-) -> RoadAccount {
+pub fn road_account(world: &World, net: &Network, pol: &Polities, polity: u16) -> RoadAccount {
     let mut a = RoadAccount::default();
 
     for i in 0..world.biomes.len() {
@@ -148,8 +143,7 @@ pub fn road_account(
         }
 
         let rain = net_rain_rank(world, i);
-        a.upkeep_per_year +=
-            capital * maintenance_rate(world.temperature.data[i], rain);
+        a.upkeep_per_year += capital * maintenance_rate(world.temperature.data[i], rain);
     }
     a
 }
@@ -170,7 +164,13 @@ fn net_rain_rank(world: &World, i: usize) -> f32 {
 /// Road accounts for every polity holding territory, indexed by polity id.
 pub fn all_accounts(world: &World, net: &Network, pol: &Polities) -> Vec<RoadAccount> {
     let mut out = vec![RoadAccount::default(); pol.list.len()];
-    let max = world.rainfall.data.iter().copied().fold(0.0f32, f32::max).max(1e-6);
+    let max = world
+        .rainfall
+        .data
+        .iter()
+        .copied()
+        .fold(0.0f32, f32::max)
+        .max(1e-6);
 
     for i in 0..world.biomes.len() {
         let owner = pol.owner[i];
@@ -199,8 +199,8 @@ pub fn all_accounts(world: &World, net: &Network, pol: &Polities) -> Vec<RoadAcc
         ) {
             a.hard_going_km += km;
         }
-        a.upkeep_per_year += capital
-            * maintenance_rate(world.temperature.data[i], world.rainfall.data[i] / max);
+        a.upkeep_per_year +=
+            capital * maintenance_rate(world.temperature.data[i], world.rainfall.data[i] / max);
     }
     out
 }

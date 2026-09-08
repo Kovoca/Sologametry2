@@ -203,7 +203,11 @@ impl<T> Default for Registry<T> {
 
 impl<T> Registry<T> {
     pub fn new() -> Self {
-        Registry { next: 1, live: BTreeMap::new(), gone: BTreeMap::new() }
+        Registry {
+            next: 1,
+            live: BTreeMap::new(),
+            gone: BTreeMap::new(),
+        }
     }
 
     /// **Take a key and keep the thing.**
@@ -239,7 +243,13 @@ impl<T> Registry<T> {
     /// the pool; there is no pool.
     pub fn end(&mut self, key: Key<T>, day: u64, how: impl Into<String>) -> Option<T> {
         let was = self.live.remove(&key.n)?;
-        self.gone.insert(key.n, Tombstone { day, how: how.into() });
+        self.gone.insert(
+            key.n,
+            Tombstone {
+                day,
+                how: how.into(),
+            },
+        );
         Some(was)
     }
 
@@ -269,7 +279,9 @@ impl<T> Registry<T> {
     /// whatever a `Vec` happens to hold — so two worlds that registered the
     /// same things can never diverge because of how they were stored.
     pub fn iter(&self) -> impl Iterator<Item = (Key<T>, &T)> {
-        self.live.iter().map(|(&n, t)| (Key { n, of: PhantomData }, t))
+        self.live
+            .iter()
+            .map(|(&n, t)| (Key { n, of: PhantomData }, t))
     }
 
     pub fn keys(&self) -> impl Iterator<Item = Key<T>> + '_ {
@@ -277,7 +289,9 @@ impl<T> Registry<T> {
     }
 
     pub fn graves(&self) -> impl Iterator<Item = (Key<T>, &Tombstone)> {
-        self.gone.iter().map(|(&n, t)| (Key { n, of: PhantomData }, t))
+        self.gone
+            .iter()
+            .map(|(&n, t)| (Key { n, of: PhantomData }, t))
     }
 
     /// **Forget the graves of things nobody will ask about again.**
@@ -304,7 +318,11 @@ impl<T> Registry<T> {
     /// tombstones already claim.
     pub fn restore(next: u64, live: BTreeMap<u64, T>, gone: BTreeMap<u64, Tombstone>) -> Self {
         let highest = live.keys().chain(gone.keys()).copied().max().unwrap_or(0);
-        Registry { next: next.max(highest + 1), live, gone }
+        Registry {
+            next: next.max(highest + 1),
+            live,
+            gone,
+        }
     }
 
     /// For a codec: the raw contents, in key order.
@@ -327,7 +345,10 @@ impl<T> Store for Key<T> {
         w.u64(self.n);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(Key { n: r.u64()?, of: PhantomData })
+        Ok(Key {
+            n: r.u64()?,
+            of: PhantomData,
+        })
     }
 }
 
@@ -336,7 +357,10 @@ impl<T> Store for DefKey<T> {
         w.u64(self.n);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(DefKey { n: r.u64()?, of: PhantomData })
+        Ok(DefKey {
+            n: r.u64()?,
+            of: PhantomData,
+        })
     }
 }
 
@@ -346,7 +370,10 @@ impl Store for Tombstone {
         w.str(&self.how);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(Tombstone { day: r.u64()?, how: r.str()? })
+        Ok(Tombstone {
+            day: r.u64()?,
+            how: r.str()?,
+        })
     }
 }
 

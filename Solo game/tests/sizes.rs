@@ -70,7 +70,11 @@ fn a_generated_world_has_the_sizes_earth_has() {
     pops.sort_unstable_by(|a, b| b.cmp(a));
 
     // The largest is a real largest city, not a continent's worth.
-    assert!(pops[0] > 20_000_000 && pops[0] <= 40_000_000, "largest {}", pops[0]);
+    assert!(
+        pops[0] > 20_000_000 && pops[0] <= 40_000_000,
+        "largest {}",
+        pops[0]
+    );
 
     // **The median is wherever the curve says the middle rank is**, and
     // that is the invariant worth asserting: the absolute figure depends
@@ -135,7 +139,10 @@ fn how_big_it_is_and_what_it_is_are_different_questions() {
         .iter()
         .filter(|s| s.kind == scale_sim::settlement::Kind::Town)
         .any(|s| s.band() == Band::City);
-    assert!(town_sized_city, "nothing was a city by size and a town by status");
+    assert!(
+        town_sized_city,
+        "nothing was a city by size and a town by status"
+    );
 }
 
 // =====================================================================
@@ -161,8 +168,14 @@ fn the_countryside_is_full_of_places_nobody_wrote_down() {
     // what a parish looks like.
     let bands: Vec<Band> = v.iter().map(|x| Band::of(x.population)).collect();
     assert!(bands.iter().filter(|b| **b <= Band::Village).count() > v.len() / 2);
-    assert!(bands.iter().any(|b| *b >= Band::LargeVillage), "no village had a church");
-    assert!(!bands.iter().any(|b| *b >= Band::Town), "a town appeared in the countryside");
+    assert!(
+        bands.iter().any(|b| *b >= Band::LargeVillage),
+        "no village had a church"
+    );
+    assert!(
+        !bands.iter().any(|b| *b >= Band::Town),
+        "a town appeared in the countryside"
+    );
 }
 
 /// **Generated, never stored.** Walking away and coming back finds the
@@ -200,9 +213,8 @@ fn nothing_is_placed_where_nobody_lives() {
 fn how_many_people_there_are_decides_what_the_places_are() {
     let thin = villages_in(3, 77, 300.0);
     let full = villages_in(3, 77, 30_000.0);
-    let biggest = |v: &[scale_sim::locality::Village]| {
-        v.iter().map(|x| x.population).max().unwrap_or(0)
-    };
+    let biggest =
+        |v: &[scale_sim::locality::Village]| v.iter().map(|x| x.population).max().unwrap_or(0);
     assert!(biggest(&full) > biggest(&thin) * 10);
     assert!(Band::of(biggest(&thin)) <= Band::Village);
     assert!(Band::of(biggest(&full)) >= Band::SmallTown);

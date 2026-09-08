@@ -43,14 +43,18 @@ fn walk_across(plan: &Plan, class: StreetClass, plain_frontage: bool) -> (usize,
             // but only when the footway is what is being measured. A dual
             // or a motorway exists only in a city, where every street has
             // frontage, so insisting on it there finds nothing at all.
-            if plain_frontage && [(0i64, -1i64), (0, 1), (-1, 0), (1, 0)].iter().any(|&(dx, dy)| {
-                let (nx, ny) = (x as i64 + dx, y as i64 + dy);
-                nx >= 0
-                    && ny >= 0
-                    && (nx as usize) < plan.width
-                    && (ny as usize) < plan.height
-                    && matches!(plan.at(nx as usize, ny as usize), Lot::Flats | Lot::Shop)
-            }) {
+            if plain_frontage
+                && [(0i64, -1i64), (0, 1), (-1, 0), (1, 0)]
+                    .iter()
+                    .any(|&(dx, dy)| {
+                        let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                        nx >= 0
+                            && ny >= 0
+                            && (nx as usize) < plan.width
+                            && (ny as usize) < plan.height
+                            && matches!(plan.at(nx as usize, ny as usize), Lot::Flats | Lot::Shop)
+                    })
+            {
                 continue;
             }
             let at = (x as i64 * t + t / 2, y as i64 * t + t / 2);
@@ -60,7 +64,11 @@ fn walk_across(plan: &Plan, class: StreetClass, plain_frontage: bool) -> (usize,
             let g = Ground::around(1, plan, at, TILES_PER_PLOT);
             let (mut surface, mut foot) = (0, 0);
             for k in -(TILES_PER_PLOT as i64 / 2)..TILES_PER_PLOT as i64 / 2 {
-                let (gx, gy) = if ns { (at.0 + k, at.1) } else { (at.0, at.1 + k) };
+                let (gx, gy) = if ns {
+                    (at.0 + k, at.1)
+                } else {
+                    (at.0, at.1 + k)
+                };
                 let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
                 if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
                     continue;
@@ -147,7 +155,10 @@ fn a_street_is_not_thirty_two_metres_of_tarmac() {
 
     let road = g.tiles.iter().filter(|&&t| t == Tile::Road).count();
     let paved = g.tiles.iter().filter(|&&t| t == Tile::Pavement).count();
-    assert!(road > 0 && paved > 0, "a street with no carriageway or no path");
+    assert!(
+        road > 0 && paved > 0,
+        "a street with no carriageway or no path"
+    );
 
     // **Measured over the plot, not along a line.** Scanning across an
     // east-west street finds road the whole way, quite correctly — what
@@ -210,8 +221,7 @@ fn a_shop_has_walls_a_door_tills_and_aisles() {
         ys.iter().sum::<usize>() as f64 / ys.len().max(1) as f64
     };
     assert!(
-        mean_y(Tile::Fitting(Fixture::Till))
-            < mean_y(Tile::Fitting(Fixture::StockRack)),
+        mean_y(Tile::Fitting(Fixture::Till)) < mean_y(Tile::Fitting(Fixture::StockRack)),
         "the checkouts are behind the stockroom"
     );
 }
@@ -285,10 +295,24 @@ fn a_road_is_as_big_as_what_uses_it() {
     // **The exact cross-sections, in metres, because one tile is a metre.**
     // Pinned rather than merely ordered: these are real figures, and
     // changing one should cost an argument.
-    assert_eq!((lane, lane_foot), (5, 4), "a lane is 5 m shared and 2 m of path each side");
-    assert_eq!((road, road_foot), (7, 6), "a road is 7.3 m of two lanes and 2.5 m of path");
-    assert_eq!(dual, 16, "a dual is two carriageways of 7.3 m either side of a reserve");
-    assert_eq!(motorway, 29, "a motorway is 11 m of three lanes and 3.3 m of shoulder, twice");
+    assert_eq!(
+        (lane, lane_foot),
+        (5, 4),
+        "a lane is 5 m shared and 2 m of path each side"
+    );
+    assert_eq!(
+        (road, road_foot),
+        (7, 6),
+        "a road is 7.3 m of two lanes and 2.5 m of path"
+    );
+    assert_eq!(
+        dual, 16,
+        "a dual is two carriageways of 7.3 m either side of a reserve"
+    );
+    assert_eq!(
+        motorway, 29,
+        "a motorway is 11 m of three lanes and 3.3 m of shoulder, twice"
+    );
 
     // **Every one of them is two-way.** The narrowest carriageway anybody
     // builds is two lanes of about 2.5 m; a lane that could not fit two
@@ -301,13 +325,13 @@ fn a_road_is_as_big_as_what_uses_it() {
     }
 
     // Footways exist on streets people live on...
-    assert!(lane_foot >= 2 && road_foot >= 2, "a street with nowhere to walk");
+    assert!(
+        lane_foot >= 2 && road_foot >= 2,
+        "a street with nowhere to walk"
+    );
     // ...and not on a motorway. That is what severance means: the town
     // either side of it is joined by bridges or not at all.
-    assert_eq!(
-        motorway_foot, 0,
-        "a footway down the side of a motorway"
-    );
+    assert_eq!(motorway_foot, 0, "a footway down the side of a motorway");
 
     // And the corridor fills the plot. **That is what severance is**: the
     // 32 m of town this route runs through is entirely road, so the halves
@@ -329,9 +353,7 @@ fn the_lines_down_a_road_are_dashed() {
     let mut found = false;
     'find: for y in 1..plan.height - 1 {
         for x in 1..plan.width - 1 {
-            if plan.at(x, y) != Lot::Street
-                || plan.street_class(x, y) != Some(StreetClass::Road)
-            {
+            if plan.at(x, y) != Lot::Street || plan.street_class(x, y) != Some(StreetClass::Road) {
                 continue;
             }
             let ns = plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street;
@@ -344,7 +366,11 @@ fn the_lines_down_a_road_are_dashed() {
             // Walk *along* the centre line and count mark against gap.
             let (mut mark, mut gap) = (0, 0);
             for k in -14..=14i64 {
-                let (gx, gy) = if ns { (at.0, at.1 + k) } else { (at.0 + k, at.1) };
+                let (gx, gy) = if ns {
+                    (at.0, at.1 + k)
+                } else {
+                    (at.0 + k, at.1)
+                };
                 let (vx, vy) = (gx - g.origin.0, gy - g.origin.1);
                 if vx < 0 || vy < 0 || vx as usize >= g.w || vy as usize >= g.h {
                     continue;
@@ -419,7 +445,8 @@ fn find_lot(plan: &Plan, want: Lot, from_centre: bool) -> (usize, usize) {
             }
         }
     }
-    best.map(|(p, _)| p).unwrap_or_else(|| panic!("no {want:?} in this town"))
+    best.map(|(p, _)| p)
+        .unwrap_or_else(|| panic!("no {want:?} in this town"))
 }
 
 #[test]
@@ -433,7 +460,11 @@ fn a_city_centre_is_a_street_wall_and_a_suburb_is_not() {
     // Real site coverage *(footprint over plot)*: a dense urban core is
     // 60-80%, inner terraces 40-50%, detached suburbs 15-25%.
     let plan = a_city();
-    let core = site_coverage(&plan, find_lot(&plan, Lot::Flats, true).0, find_lot(&plan, Lot::Flats, true).1);
+    let core = site_coverage(
+        &plan,
+        find_lot(&plan, Lot::Flats, true).0,
+        find_lot(&plan, Lot::Flats, true).1,
+    );
     let (hx, hy) = find_lot(&plan, Lot::House, false);
     let suburb = site_coverage(&plan, hx, hy);
 
@@ -587,7 +618,10 @@ fn a_building_is_a_stack_of_floors() {
             .filter(|t| matches!(t, Tile::Floor | Tile::Furnishing(_) | Tile::Wall))
             .count()
     };
-    assert!(inside(&g3) > 100, "the third floor of a block of flats is empty");
+    assert!(
+        inside(&g3) > 100,
+        "the third floor of a block of flats is empty"
+    );
 
     // ...and there is more open air up there, because the two-storey
     // shops either side of it have run out.
@@ -601,8 +635,15 @@ fn a_building_is_a_stack_of_floors() {
 
     // **Four storeys is the limit of a walk-up**, which is exactly where
     // lifts start, and a shed is one storey however big it is.
-    assert!(storeys_of(Lot::Flats, 800) > 4, "a tenement of four storeys or fewer");
-    assert_eq!(storeys_of(Lot::House, 60), 2, "a terraced house is two storeys");
+    assert!(
+        storeys_of(Lot::Flats, 800) > 4,
+        "a tenement of four storeys or fewer"
+    );
+    assert_eq!(
+        storeys_of(Lot::House, 60),
+        2,
+        "a terraced house is two storeys"
+    );
     assert_eq!(storeys_of(Lot::Works, 900), 1, "a shed with an upstairs");
 
     // Above the roof there is nothing at all.
@@ -624,7 +665,10 @@ fn a_room_has_a_door_and_something_in_it() {
     let g = Ground::around(1, &plan, at, TILES_PER_PLOT);
 
     let count = |f: scale_sim::ground::Furnishing| {
-        g.tiles.iter().filter(|t| **t == Tile::Furnishing(f)).count()
+        g.tiles
+            .iter()
+            .filter(|t| **t == Tile::Furnishing(f))
+            .count()
     };
     use scale_sim::ground::Furnishing::*;
     assert!(count(Bed) > 0, "a block of flats with nowhere to sleep");
@@ -635,7 +679,7 @@ fn a_room_has_a_door_and_something_in_it() {
     );
     // A stair, because you cannot get to the floors above without one.
     assert!(
-        g.tiles.iter().any(|t| *t == Tile::Stairs),
+        g.tiles.contains(&Tile::Stairs),
         "a block of flats with no stairwell"
     );
 }
@@ -654,14 +698,14 @@ fn down_is_a_direction_like_up() {
     // 3-10 m down, so one level is about right.
     let cellar = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -1);
     assert!(
-        cellar.tiles.iter().any(|t| *t == Tile::Water),
+        cellar.tiles.contains(&Tile::Water),
         "a city street with nothing running under it"
     );
     assert!(
         cellar.tiles.iter().filter(|t| **t == Tile::Earth).count() > 100,
         "the ground either side of a sewer is not solid"
     );
-    assert!(!cellar.tiles.iter().any(|t| *t == Tile::Sky), "sky below ground");
+    assert!(!cellar.tiles.contains(&Tile::Sky), "sky below ground");
 
     // Below the dug level nothing is hollow — but it is not bedrock
     // either. **Six metres down is still weathered rock**, which a spade
@@ -730,8 +774,15 @@ fn a_geological_layer_spans_many_levels() {
     // **A shield has no cover**: exposed igneous or metamorphic rock at
     // the surface is precisely what that means.
     let shield = a_city().on_rock(Rock::Igneous);
-    assert!(matches!(stratum_at(&shield, 50.0), Stratum::Basement(Rock::Igneous)));
-    assert_eq!(stratum_at(&shield, 0.1), Stratum::Topsoil, "a shield with no soil on it");
+    assert!(matches!(
+        stratum_at(&shield, 50.0),
+        Stratum::Basement(Rock::Igneous)
+    ));
+    assert_eq!(
+        stratum_at(&shield, 0.1),
+        Stratum::Topsoil,
+        "a shield with no soil on it"
+    );
 
     // Soil is soil whatever is underneath.
     assert_eq!(stratum_at(&basin, 1.0).rock(), None);
@@ -762,7 +813,10 @@ fn a_stair_is_a_connection_both_ends_agree_about() {
     let (sx, sy) = found.expect("a block of flats with no stairwell");
 
     let ground = connections_at(1, &plan, sx, sy, sz);
-    assert!(ground.up, "a stairwell that goes nowhere from the ground floor");
+    assert!(
+        ground.up,
+        "a stairwell that goes nowhere from the ground floor"
+    );
     let upper = connections_at(1, &plan, sx, sy, sz + 1);
     assert!(
         upper.down,
@@ -806,7 +860,10 @@ fn what_happened_beats_what_was_generated() {
 
     // Look away and look back: the hole is still there.
     let after = Ground::around_with(1, &plan, at, TILES_PER_PLOT, 0, &changes);
-    let (vx, vy) = ((wx - after.origin.0) as usize, (wy - after.origin.1) as usize);
+    let (vx, vy) = (
+        (wx - after.origin.0) as usize,
+        (wy - after.origin.1) as usize,
+    );
     assert_eq!(
         after.at(vx, vy),
         Tile::Floor,
@@ -874,7 +931,10 @@ fn a_floor_is_a_boundary_not_a_property_of_a_level() {
     let (sx, sy) = stair.expect("a block of flats with no stairwell");
     let shaft = floor_below(1, &plan, sx, sy, sz + 1).expect("the shaft left the building");
     assert!(!shaft.supports_weight(), "a stairwell you cannot fall down");
-    assert!(shaft.liquid_permeable(), "water that will not run down a stairwell");
+    assert!(
+        shaft.liquid_permeable(),
+        "water that will not run down a stairwell"
+    );
 
     // **A storey and a level are not the same thing.** A shed's clear
     // height is 6-12 m against a dwelling's 2.5-3, so a works is one
@@ -882,7 +942,11 @@ fn a_floor_is_a_boundary_not_a_property_of_a_level() {
     assert_eq!(levels_per_storey(Lot::Works), 3);
     assert_eq!(levels_per_storey(Lot::House), 1);
     assert_eq!(storeys_of(Lot::Works, 900), 1, "a shed with an upstairs");
-    assert_eq!(levels_of(Lot::Works, 900), 3, "a shed one storey tall and flat");
+    assert_eq!(
+        levels_of(Lot::Works, 900),
+        3,
+        "a shed one storey tall and flat"
+    );
 
     // Works sit out past the housing, so a 1 km square has none in it.
     let wide = Plan::lay_out_on(20260828, 4242, 2_500_000.0, 72, Biome::Grassland);
@@ -934,12 +998,10 @@ fn a_shop_floor_can_be_walked_round() {
     // tile in the window — that is inside whatever building the corner of
     // the view happens to clip, and flooding *its* interior proves
     // nothing about this one.
-    let (sx, sy) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let (sx, sy) = ((at.0 - g.origin.0), (at.1 - g.origin.1));
     let start = (0..g.w * g.h)
         .filter(|i| walkable[*i] && g.tiles[*i] == Tile::Floor)
-        .min_by_key(|i| {
-            ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs()
-        })
+        .min_by_key(|i| ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs())
         .expect("a shop with no floor in it");
     let mut seen = vec![false; g.w * g.h];
     let mut stack = vec![start];
@@ -1001,21 +1063,25 @@ fn a_shop_floor_can_be_walked_round() {
                 continue;
             }
             shelves += 1;
-            if [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)].iter().any(|(dx, dy)| {
-                let (nx, ny) = (x + dx, y + dy);
-                nx >= 0
-                    && ny >= 0
-                    && nx < g.w as i64
-                    && ny < g.h as i64
-                    && seen[idx(nx as usize, ny as usize)]
-            }) {
+            if [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)]
+                .iter()
+                .any(|(dx, dy)| {
+                    let (nx, ny) = (x + dx, y + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && nx < g.w as i64
+                        && ny < g.h as i64
+                        && seen[idx(nx as usize, ny as usize)]
+                })
+            {
                 reachable_shelves += 1;
             }
         }
     }
     assert!(shelves > 40, "only {shelves} shelf tiles in a supermarket");
     assert_eq!(
-        shelves, reachable_shelves,
+        shelves,
+        reachable_shelves,
         "{} shelf tiles cannot be reached from the shop floor",
         shelves - reachable_shelves
     );
@@ -1025,7 +1091,11 @@ fn a_shop_floor_can_be_walked_round() {
     let tills: Vec<usize> = (0..g.w * g.h)
         .filter(|i| g.tiles[*i] == Tile::Fitting(Fixture::Till))
         .collect();
-    assert!(tills.len() > 4, "a supermarket with {} checkouts", tills.len());
+    assert!(
+        tills.len() > 4,
+        "a supermarket with {} checkouts",
+        tills.len()
+    );
     let till_row = tills[0] / g.w;
     let gap = (0..g.w)
         .filter(|x| g.tiles[idx(*x, till_row)] == Tile::Floor)
@@ -1065,7 +1135,7 @@ fn a_stockroom_is_worked_by_forklift() {
     // over the whole window reads a gap between two separate stockrooms as
     // a gangway a metre wide. Scope to the dock nearest the shopper and
     // the walls either side of it.
-    let (px, py) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let (px, py) = ((at.0 - g.origin.0), (at.1 - g.origin.1));
     let dock_row = (0..g.h)
         .filter(|y| (0..g.w).any(|x| g.tiles[idx(x, *y)] == Tile::Fitting(Fixture::LoadingBay)))
         .min_by_key(|y| (*y as i64 - py).abs())
@@ -1092,7 +1162,11 @@ fn a_stockroom_is_worked_by_forklift() {
     while top > 0 && g.tiles[idx(bay_x, top - 1)] != Tile::Wall {
         top -= 1;
     }
-    assert!(dock_row - top >= 3, "a stockroom only {} m deep", dock_row - top);
+    assert!(
+        dock_row - top >= 3,
+        "a stockroom only {} m deep",
+        dock_row - top
+    );
 
     // A cold room is racking that happens to be refrigerated: it stands
     // in the same runs and wants the same gangway.
@@ -1159,7 +1233,8 @@ fn a_stockroom_is_worked_by_forklift() {
         "{docks} loading docks on one shop, which is a depot and not a shop"
     );
     assert_eq!(
-        bays, backed_by_a_door,
+        bays,
+        backed_by_a_door,
         "{} loading bays of {bays} have no door behind them, so the goods \
          cannot come off the lorry",
         bays - backed_by_a_door
@@ -1179,7 +1254,11 @@ fn a_stockroom_is_worked_by_forklift() {
         wx -= 1;
     }
     let mut span = 0;
-    while wx < g.w && matches!(g.tiles[idx(wx, wall_row)], Tile::Wall | Tile::Door | Tile::Window)
+    while wx < g.w
+        && matches!(
+            g.tiles[idx(wx, wall_row)],
+            Tile::Wall | Tile::Door | Tile::Window
+        )
     {
         assert_ne!(
             g.tiles[idx(wx, wall_row)],

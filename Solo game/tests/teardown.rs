@@ -5,7 +5,9 @@
 //! glue came back, by paying no attention to the state the object is in,
 //! and by making a sledgehammer as good as an afternoon with a screwdriver.
 
-use scale_sim::craft::{hand_tools, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace};
+use scale_sim::craft::{
+    hand_tools, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace,
+};
 use scale_sim::item::{standard_catalogue, Catalogue, ItemInstance, JointMethod};
 use scale_sim::material::Material;
 use scale_sim::teardown::{heat_mj, possible, take_apart, Recovered, Teardown};
@@ -17,8 +19,14 @@ fn world() -> (Catalogue, RecipeBook) {
 }
 
 fn a_good_hand() -> Maker {
-    Maker { skill: 0.85, proficiency: 0.8, knows_recipe: true, tool_familiarity: 0.9,
-            focus: 0.9, fatigue: 0.1 }
+    Maker {
+        skill: 0.85,
+        proficiency: 0.8,
+        knows_recipe: true,
+        tool_familiarity: 0.9,
+        focus: 0.9,
+        fatigue: 0.1,
+    }
 }
 
 /// Make a chair, optionally out of something cheaper than the plan says.
@@ -26,8 +34,13 @@ fn a_chair(cat: &Catalogue, book: &RecipeBook, id: u64, cheap: bool) -> ItemInst
     let place = Workplace::a_workshop(hand_tools(cat));
     let mut o = WorkOrder::begin(id, book.must("chair, hand tools"), 1, 0, 1);
     if cheap {
-        o.substituted(cat.must("oak board"), cat.must("particleboard sheet"), cat, book)
-            .expect("a sheet would not do");
+        o.substituted(
+            cat.must("oak board"),
+            cat.must("particleboard sheet"),
+            cat,
+            book,
+        )
+        .expect("a sheet would not do");
     }
     for _ in 0..400 {
         if o.finished() {
@@ -46,7 +59,10 @@ fn a_chair(cat: &Catalogue, book: &RecipeBook, id: u64, cheap: bool) -> ItemInst
 fn got(r: &Recovered, m: Material) -> f64 {
     r.material(m)
         + r.fuel_of(m)
-        + r.components.iter().map(|c| c.materials.fraction_of(m) * c.mass_kg).sum::<f64>()
+        + r.components
+            .iter()
+            .map(|c| c.materials.fraction_of(m) * c.mass_kg)
+            .sum::<f64>()
 }
 
 // =====================================================================
@@ -68,14 +84,21 @@ fn a_chair_of_particleboard_does_not_yield_oak() {
 
     // The oak chair gives back oak, in whatever form oak can come back —
     // which for timber is firewood, because that is all timber ever is.
-    assert!(got(&good, Material::Oak) > 1.0, "the oak chair gave back no oak");
+    assert!(
+        got(&good, Material::Oak) > 1.0,
+        "the oak chair gave back no oak"
+    );
     assert_eq!(got(&good, Material::Particleboard), 0.0);
 
     // **And the particleboard chair gives back no oak of any kind** — not
     // as a component, not as material, not as firewood. The parts are
     // called `chair parts` in both, and what tells them apart is the
     // composition the record kept.
-    assert_eq!(got(&cheap, Material::Oak), 0.0, "particleboard came back as oak");
+    assert_eq!(
+        got(&cheap, Material::Oak),
+        0.0,
+        "particleboard came back as oak"
+    );
     assert!(
         got(&cheap, Material::Particleboard) > 0.0,
         "the particleboard went nowhere at all"
@@ -85,7 +108,9 @@ fn a_chair_of_particleboard_does_not_yield_oak() {
     // frame: what recovers a component is what holds *it*.
     for r in [&good, &cheap] {
         assert!(
-            r.components.iter().any(|c| c.definition == cat.must("wood screw")),
+            r.components
+                .iter()
+                .any(|c| c.definition == cat.must("wood screw")),
             "the screws stayed in"
         );
     }
@@ -114,15 +139,24 @@ fn the_right_mass_in_the_wrong_shape_will_not_do() {
 
     // Same timber, same thickness, wrong geometry.
     assert!(
-        matches!(try_it("oak batten"), Err(scale_sim::craft::Unsuitable::WrongShape(_))),
+        matches!(
+            try_it("oak batten"),
+            Err(scale_sim::craft::Unsuitable::WrongShape(_))
+        ),
         "a 40 mm batten was accepted as chair stock"
     );
     assert!(
-        matches!(try_it("oak offcut"), Err(scale_sim::craft::Unsuitable::WrongShape(_))),
+        matches!(
+            try_it("oak offcut"),
+            Err(scale_sim::craft::Unsuitable::WrongShape(_))
+        ),
         "a 600 mm offcut was accepted as chair stock"
     );
     // Nothing you could cut a chair from at all.
-    assert!(try_it("steel sheet").is_err(), "2 mm plate was accepted as chair stock");
+    assert!(
+        try_it("steel sheet").is_err(),
+        "2 mm plate was accepted as chair stock"
+    );
     assert!(try_it("glass pane").is_err());
     assert!(try_it("rope").is_err());
 }
@@ -137,7 +171,11 @@ fn what_was_cured_stays_cured() {
     let (cat, book) = world();
     let chair = a_chair(&cat, &book, 302, false);
     let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.95, 1);
-    assert_eq!(got(&apart, Material::Adhesive), 0.0, "the glue came back out of the joint");
+    assert_eq!(
+        got(&apart, Material::Adhesive),
+        0.0,
+        "the glue came back out of the joint"
+    );
 
     // The joint table is where this lives, and it is not one number.
     let bolted = JointMethod::Bolted.recovery();
@@ -148,7 +186,10 @@ fn what_was_cured_stays_cured() {
     assert!(bolted.fastener > 0.9, "a bolt did not survive being undone");
     assert_eq!(glued.fastener, 0.0);
     assert_eq!(welded.fastener, 0.0);
-    assert!(stitched.fastener < 0.1, "the thread came off the seam reusable");
+    assert!(
+        stitched.fastener < 0.1,
+        "the thread came off the seam reusable"
+    );
 
     // And the components differ as much as the fasteners do: a bolted
     // frame comes apart, a glued one tears, a welded one has to be cut.
@@ -157,8 +198,16 @@ fn what_was_cured_stays_cured() {
     assert!(welded.needs_cutting && !bolted.needs_cutting);
 
     // Cast, forged and cooked are past the boundary entirely.
-    for m in [JointMethod::Cast, JointMethod::Forged, JointMethod::Cooked, JointMethod::Reacted] {
-        assert!(!m.reversible(), "{m:?} was treated as a joint that can be undone");
+    for m in [
+        JointMethod::Cast,
+        JointMethod::Forged,
+        JointMethod::Cooked,
+        JointMethod::Reacted,
+    ] {
+        assert!(
+            !m.reversible(),
+            "{m:?} was treated as a joint that can be undone"
+        );
     }
     // A crimp is not a weld: the case is reusable, which is why
     // handloading exists at all.
@@ -198,7 +247,6 @@ fn a_wreck_gives_back_less_than_a_working_machine() {
     }
 }
 
-
 /// **Gate: deconstruction is not demolition.**
 ///
 /// Same object, same person, two intentions. A careful afternoon returns
@@ -209,16 +257,32 @@ fn a_careful_hour_and_a_sledgehammer_do_not_return_the_same_pile() {
     let (cat, book) = world();
     let chair = a_chair(&cat, &book, 304, false);
 
-    let (careful, smashed) =
-        scale_sim::teardown::compare(&chair, Teardown::Deconstruct, Teardown::Smash, &cat, 0.8, 77);
+    let (careful, smashed) = scale_sim::teardown::compare(
+        &chair,
+        Teardown::Deconstruct,
+        Teardown::Smash,
+        &cat,
+        0.8,
+        77,
+    );
 
     let parts = |r: &scale_sim::teardown::Recovered| {
         r.components.iter().map(|c| c.count as f64).sum::<f64>()
     };
-    assert!(parts(&careful) > parts(&smashed), "the sledgehammer returned as many parts");
-    assert_eq!(parts(&smashed), 0.0, "a smashed chair yielded reusable components");
+    assert!(
+        parts(&careful) > parts(&smashed),
+        "the sledgehammer returned as many parts"
+    );
+    assert_eq!(
+        parts(&smashed),
+        0.0,
+        "a smashed chair yielded reusable components"
+    );
     assert!(careful.lost_kg < smashed.lost_kg + chair.mass_kg * 0.5);
-    assert!(careful.minutes > smashed.minutes * 5.0, "care took no longer than smashing");
+    assert!(
+        careful.minutes > smashed.minutes * 5.0,
+        "care took no longer than smashing"
+    );
 
     // The smashed chair is firewood, and that is a real destination with a
     // real figure on it: dry timber is about 16-17 MJ/kg.
@@ -226,7 +290,11 @@ fn a_careful_hour_and_a_sledgehammer_do_not_return_the_same_pile() {
     let oak = smashed.fuel_of(Material::Oak);
     assert!(oak > 0.0, "the timber did not even burn");
     let mj = heat_mj(Material::Oak, oak);
-    assert!(mj / oak > 16.0 && mj / oak < 17.0, "oak burnt at {:.1} MJ/kg", mj / oak);
+    assert!(
+        mj / oak > 16.0 && mj / oak < 17.0,
+        "oak burnt at {:.1} MJ/kg",
+        mj / oak
+    );
     // Rubber carries twice the heat of wood, which is why a tyre fire is
     // what it is.
     assert!(heat_mj(Material::Rubber, 1.0) > 2.0 * heat_mj(Material::Pine, 1.0) * 0.9);
@@ -239,8 +307,14 @@ fn a_careful_hour_and_a_sledgehammer_do_not_return_the_same_pile() {
 fn every_teardown_accounts_for_the_whole_object() {
     let (cat, book) = world();
     let chair = a_chair(&cat, &book, 305, false);
-    for how in [Teardown::Disassemble, Teardown::Deconstruct, Teardown::Salvage,
-                Teardown::Recycle, Teardown::CutUp, Teardown::Smash] {
+    for how in [
+        Teardown::Disassemble,
+        Teardown::Deconstruct,
+        Teardown::Salvage,
+        Teardown::Recycle,
+        Teardown::CutUp,
+        Teardown::Smash,
+    ] {
         let r = take_apart(&chair, how, &cat, 0.7, 1);
         assert!(
             (r.accounted_kg() - chair.mass_kg).abs() < 1e-6,
@@ -264,14 +338,27 @@ fn recycling_asks_the_material_and_disassembly_asks_the_joint() {
     let apart = take_apart(&chair, Teardown::Disassemble, &cat, 0.9, 1);
     let recycled = take_apart(&chair, Teardown::Recycle, &cat, 0.9, 1);
 
-    assert!(!apart.components.is_empty(), "careful work returned no components");
-    assert!(recycled.components.is_empty(), "the shredder handed back a board");
+    assert!(
+        !apart.components.is_empty(),
+        "careful work returned no components"
+    );
+    assert!(
+        recycled.components.is_empty(),
+        "the shredder handed back a board"
+    );
 
     // Steel screws are feedstock and come back as steel; oak only burns,
     // whoever is holding it and however carefully.
     assert!(recycled.fuel_kg() > 0.0, "the timber went nowhere");
-    assert!(recycled.material(Material::MildSteel) > 0.0, "the screws were not recovered");
-    assert_eq!(recycled.material(Material::Oak), 0.0, "a shredder turned oak into lumber");
+    assert!(
+        recycled.material(Material::MildSteel) > 0.0,
+        "the screws were not recovered"
+    );
+    assert_eq!(
+        recycled.material(Material::Oak),
+        0.0,
+        "a shredder turned oak into lumber"
+    );
     assert!(recycled.fuel_of(Material::Oak) > 0.0);
 }
 
@@ -328,13 +415,22 @@ fn a_field_strip_stops_at_the_modules() {
     }
 
     // **What a field strip reaches is what unclips and unbolts.**
-    assert!(strip_bolt > 15, "the bolt carrier would not come out: {strip_bolt} of 20");
+    assert!(
+        strip_bolt > 15,
+        "the bolt carrier would not come out: {strip_bolt} of 20"
+    );
     // **And what it does not reach is what was pressed and riveted.** A
     // barrel is an armourer job, and it is never a matter of luck.
     assert_eq!(strip_barrel, 0, "a field strip pulled the barrel");
-    assert!(apart_barrel > 0, "a proper disassembly never reached the barrel");
+    assert!(
+        apart_barrel > 0,
+        "a proper disassembly never reached the barrel"
+    );
     assert!(apart_fcg > 0, "the rivets were never drilled out");
-    assert!(apart_minutes > strip_minutes, "stripping took as long as a strip-down");
+    assert!(
+        apart_minutes > strip_minutes,
+        "stripping took as long as a strip-down"
+    );
 }
 
 /// **Gate: a teardown cannot be rerolled by reloading.**
@@ -349,7 +445,10 @@ fn the_same_teardown_twice_gives_the_same_answer() {
 
     let a = take_apart(&chair, Teardown::Salvage, &cat, 0.6, 900);
     let b = take_apart(&chair, Teardown::Salvage, &cat, 0.6, 900);
-    assert_eq!(a.components, b.components, "reloading gave a different pile");
+    assert_eq!(
+        a.components, b.components,
+        "reloading gave a different pile"
+    );
     assert_eq!(a.materials, b.materials);
 
     let mut counts = std::collections::BTreeSet::new();
@@ -357,7 +456,10 @@ fn the_same_teardown_twice_gives_the_same_answer() {
         let r = take_apart(&chair, Teardown::Salvage, &cat, 0.6, event);
         counts.insert(r.components.iter().map(|c| c.count).sum::<u32>());
     }
-    assert!(counts.len() > 1, "every teardown of every chair returned the same number of parts");
+    assert!(
+        counts.len() > 1,
+        "every teardown of every chair returned the same number of parts"
+    );
 }
 
 /// **Gate: a unique component is recovered or destroyed, never 0.6 of
@@ -377,7 +479,11 @@ fn one_component_is_a_coin_and_many_are_a_rate() {
             // Never a fraction: a count is a whole number of things.
             assert!(c.count >= 1);
             if c.definition == parts {
-                assert_eq!(c.count, 1, "one set of chair parts came back as {}", c.count);
+                assert_eq!(
+                    c.count, 1,
+                    "one set of chair parts came back as {}",
+                    c.count
+                );
                 recovered += 1;
             }
         }
@@ -422,12 +528,18 @@ fn care_never_returns_less_than_carelessness() {
 fn an_action_that_cannot_be_attempted_says_so() {
     let cat = standard_catalogue();
     let loose = ItemInstance::one(&cat, cat.must("alternator"));
-    assert!(!possible(&loose, Teardown::Uninstall), "an alternator on a bench was uninstalled");
+    assert!(
+        !possible(&loose, Teardown::Uninstall),
+        "an alternator on a bench was uninstalled"
+    );
 
     // **A bill is not a parts list.** A board says what it is made of and
     // still has nothing in it that comes out as a component.
     let board = ItemInstance::one(&cat, cat.must("oak board"));
-    assert!(board.assembly.is_some(), "a board did not say what it is made of");
+    assert!(
+        board.assembly.is_some(),
+        "a board did not say what it is made of"
+    );
     assert!(
         !possible(&board, Teardown::Disassemble),
         "a plank was taken apart into components"
@@ -455,15 +567,24 @@ fn a_thing_with_no_record_can_only_be_weighed() {
     let cat = standard_catalogue();
     let mut anonymous = ItemInstance::one(&cat, cat.must("wooden chair"));
     // The ordinary case first: it knows.
-    assert!(anonymous.assembly.is_some(), "a spawned chair did not carry its bill");
+    assert!(
+        anonymous.assembly.is_some(),
+        "a spawned chair did not carry its bill"
+    );
     let known = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9, 1);
     assert!(!known.components.is_empty());
 
     // And now with the history gone.
     anonymous.assembly = None;
     let r = take_apart(&anonymous, Teardown::Disassemble, &cat, 0.9, 1);
-    assert!(r.components.is_empty(), "a chair with no history yielded named parts");
-    assert!(r.fuel_kg() > 0.0 || !r.materials.is_empty(), "it yielded nothing whatever");
+    assert!(
+        r.components.is_empty(),
+        "a chair with no history yielded named parts"
+    );
+    assert!(
+        r.fuel_kg() > 0.0 || !r.materials.is_empty(),
+        "it yielded nothing whatever"
+    );
     assert!((r.accounted_kg() - anonymous.mass_kg).abs() < 1e-6);
 }
 
@@ -520,7 +641,10 @@ fn a_recovered_brick_has_a_grade_as_well_as_a_count() {
     let door = ItemInstance::one(&cat, cat.must("car door"));
     let apart = take_apart(&door, Teardown::Disassemble, &cat, 0.9, 1);
     assert!(
-        apart.components.iter().any(|c| c.grade == RecoveryGrade::IntactClean),
+        apart
+            .components
+            .iter()
+            .any(|c| c.grade == RecoveryGrade::IntactClean),
         "nothing bolted came off clean"
     );
 

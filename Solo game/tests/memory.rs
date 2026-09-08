@@ -4,13 +4,11 @@
 //! not an arithmetic: what somebody knows, how they came to know it, and
 //! the impossibility of being charged twice for the same bad day.
 
+use scale_sim::id::{Arena, Id};
 use scale_sim::memory::{
     holds, testimony, Cue, EventKind, Memory, PerceivedWho, Place, Source, WorldEvent,
 };
-use scale_sim::mind::{
-    ConcernKind, Emotion, Facet, Happening, Mind, Personality, Value,
-};
-use scale_sim::id::{Arena, Id};
+use scale_sim::mind::{ConcernKind, Emotion, Facet, Happening, Mind, Personality, Value};
 use scale_sim::person::{Person, Trade};
 use scale_sim::rng::Rng;
 
@@ -25,7 +23,6 @@ fn who(n: u32) -> Id<Person> {
     }
     last
 }
-
 
 fn a_culture() -> Vec<(Value, i8)> {
     vec![(Value::Fairness, 25), (Value::Family, 30), (Value::Law, 20)]
@@ -85,7 +82,8 @@ fn an_unseen_event_creates_no_memory() {
     let ev = a_collapse(100);
 
     assert!(
-        mem.perceive(&ev, None, Source::Witnessed, 0.0, &mut rng).is_none(),
+        mem.perceive(&ev, None, Source::Witnessed, 0.0, &mut rng)
+            .is_none(),
         "somebody with no exposure to an event perceived it anyway"
     );
     assert_eq!(mem.traces.len(), 0);
@@ -114,10 +112,15 @@ fn hearsay_records_the_telling_and_not_the_fact() {
         Source::Told { by: who(3) },
     );
     let felt = mind.appraise(&mind.read(&claim.facts));
-    let id = mem.encode(claim, &mind, 50, &felt).expect("a claim was not kept");
+    let id = mem
+        .encode(claim, &mind, 50, &felt)
+        .expect("a claim was not kept");
 
     let t = &mem.traces[id];
-    assert!(t.is_hearsay(), "being told something was recorded as seeing it");
+    assert!(
+        t.is_hearsay(),
+        "being told something was recorded as seeing it"
+    );
     assert_eq!(t.source(), Source::Told { by: who(3) });
     assert!(
         t.what_was_perceived().of.is_none(),
@@ -195,9 +198,16 @@ fn routine_days_consolidate_and_the_exceptional_one_does_not() {
             place: Place(1),
             day,
             severity: 0.1,
-            facts: Happening { severity: 0.1, to_me: 0.4, unexpected: 0.05, ..Default::default() },
+            facts: Happening {
+                severity: 0.1,
+                to_me: 0.4,
+                unexpected: 0.05,
+                ..Default::default()
+            },
         };
-        let p = mem.perceive(&meal, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+        let p = mem
+            .perceive(&meal, None, Source::Witnessed, 1.0, &mut rng)
+            .unwrap();
         let felt = mind.appraise(&mind.read(&p.facts));
         mem.encode(p, &mind, day, &felt);
     }
@@ -207,7 +217,10 @@ fn routine_days_consolidate_and_the_exceptional_one_does_not() {
         "thirty ordinary dinners became thirty permanent memories"
     );
     let r = &mem.routines[0];
-    assert_eq!(r.count, 30, "the fact of the repetition was lost with the episodes");
+    assert_eq!(
+        r.count, 30,
+        "the fact of the repetition was lost with the episodes"
+    );
     assert_eq!((r.first, r.last), (0, 29), "the span of the habit was lost");
 
     // The night somebody proposed over dinner stays its own memory.
@@ -226,7 +239,9 @@ fn routine_days_consolidate_and_the_exceptional_one_does_not() {
             ..Default::default()
         },
     };
-    let p = mem.perceive(&proposal, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&proposal, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     assert!(
         mem.encode(p, &mind, 30, &felt).is_some(),
@@ -253,7 +268,9 @@ fn recall_appraises_afresh_and_cannot_replay_the_original() {
     let mut mem = Memory::new();
 
     let ev = a_collapse(100);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let at_the_time = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 100, &at_the_time).unwrap();
 
@@ -265,7 +282,9 @@ fn recall_appraises_afresh_and_cannot_replay_the_original() {
 
     // Years on, the same man has come to care a great deal about the law.
     holds(&mut mind, Value::Law, 48);
-    let r = mem.recall(id, &mind, 100 + 365 * 4).expect("the memory was gone");
+    let r = mem
+        .recall(id, &mind, 100 + 365 * 4)
+        .expect("the memory was gone");
 
     let now_outrage = r
         .episodes
@@ -323,7 +342,9 @@ fn thinking_about_it_often_does_not_charge_it_again() {
     let mut mem = Memory::new();
 
     let ev = a_collapse(0);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 0, &felt).unwrap();
     mind.feel(felt);
@@ -360,12 +381,22 @@ fn a_place_a_person_or_an_anniversary_cues_recall() {
     let mind = plain(7, &[]);
     let mut mem = Memory::new();
     let ev = a_collapse(100);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 100, &felt).unwrap();
 
-    assert_eq!(mem.cued_by(Cue::Place(Place(7)), 200), vec![id], "the mine itself");
-    assert_eq!(mem.cued_by(Cue::Person(who(9)), 200), vec![id], "the foreman");
+    assert_eq!(
+        mem.cued_by(Cue::Place(Place(7)), 200),
+        vec![id],
+        "the mine itself"
+    );
+    assert_eq!(
+        mem.cued_by(Cue::Person(who(9)), 200),
+        vec![id],
+        "the foreman"
+    );
     assert_eq!(
         mem.cued_by(Cue::Similar(EventKind::Collapse), 200),
         vec![id],
@@ -402,7 +433,9 @@ fn recollection_reshapes_a_memory_without_rewriting_where_it_came_from() {
     let mind = plain(10, &[]);
     let mut mem = Memory::new();
     let ev = a_collapse(100);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 100, &felt).unwrap();
 
@@ -428,7 +461,14 @@ fn recollection_reshapes_a_memory_without_rewriting_where_it_came_from() {
 
     // ...and learning later that a different man gave the order changes
     // who is blamed, not what was seen.
-    mem.reattribute(id, PerceivedWho::Believed { person: who(12), confidence: 0.7 }, 0.7);
+    mem.reattribute(
+        id,
+        PerceivedWho::Believed {
+            person: who(12),
+            confidence: 0.7,
+        },
+        0.7,
+    );
     assert_eq!(
         mem.traces[id].blamed.as_ref().and_then(|p| p.person()),
         Some(who(12))
@@ -462,7 +502,9 @@ fn a_core_memory_asks_rather_than_writes() {
     let mind = plain(11, &[(Facet::Anxiety, 0.5)]);
     let mut mem = Memory::new();
     let ev = a_collapse(0);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 0, &felt).unwrap();
 
@@ -488,9 +530,14 @@ fn a_core_memory_asks_rather_than_writes() {
         place: Place(7),
         day: 1,
         severity: 0.0,
-        facts: Happening { unexpected: 0.02, ..Default::default() },
+        facts: Happening {
+            unexpected: 0.02,
+            ..Default::default()
+        },
     };
-    let p = mem.perceive(&dull, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&dull, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     if let Some(dull_id) = mem.encode(p, &mind, 1, &felt) {
         assert!(mem.traces[dull_id].plasticity().is_empty());
@@ -526,7 +573,9 @@ fn a_lie_never_becomes_an_eyewitness_account() {
 
     // He saw one thing...
     let ev = a_collapse(100);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let seen = mem.encode(p, &mind, 100, &felt).unwrap();
 
@@ -550,8 +599,14 @@ fn a_lie_never_becomes_an_eyewitness_account() {
         mem.a_day_passes();
     }
 
-    assert!(!mem.traces[seen].is_hearsay(), "what he saw became something he was told");
-    assert!(mem.traces[heard].is_hearsay(), "a rumour became an eyewitness account");
+    assert!(
+        !mem.traces[seen].is_hearsay(),
+        "what he saw became something he was told"
+    );
+    assert!(
+        mem.traces[heard].is_hearsay(),
+        "a rumour became an eyewitness account"
+    );
     assert!(
         mem.traces[heard].confidence < mem.traces[seen].confidence,
         "a rumour ended up as certain as a thing he watched happen"
@@ -573,7 +628,9 @@ fn a_cue_reaches_a_memory_and_the_concern_keeps_it_alive() {
     let mut mem = Memory::new();
 
     let ev = a_collapse(0);
-    let p = mem.perceive(&ev, None, Source::Witnessed, 1.0, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 1.0, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 0, &felt).unwrap();
     mind.feel(felt);
@@ -587,7 +644,11 @@ fn a_cue_reaches_a_memory_and_the_concern_keeps_it_alive() {
     let quiet = mind.feeling_of(Emotion::Anger);
 
     let brought_back = mem.cued_by(Cue::Anniversary { day: 366 }, 366);
-    assert_eq!(brought_back, vec![id], "a year to the day reminded him of nothing");
+    assert_eq!(
+        brought_back,
+        vec![id],
+        "a year to the day reminded him of nothing"
+    );
     let r = mem.recall(id, &mind, 366).unwrap();
     mind.feel(r.episodes);
     if let Some(e) = mind.cued(grievance, 1.0) {
@@ -607,7 +668,9 @@ fn the_same_seed_remembers_the_same_things() {
         let mind = plain(99, &[]);
         let mut mem = Memory::new();
         let ev = a_collapse(10);
-        let p = mem.perceive(&ev, None, Source::Witnessed, 0.7, &mut rng).unwrap();
+        let p = mem
+            .perceive(&ev, None, Source::Witnessed, 0.7, &mut rng)
+            .unwrap();
         let felt = mind.appraise(&mind.read(&p.facts));
         let id = mem.encode(p, &mind, 10, &felt).unwrap();
         (mem.traces[id].clone(), felt)

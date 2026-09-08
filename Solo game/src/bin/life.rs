@@ -79,9 +79,7 @@ fn parse_args() -> Args {
                     _ => None,
                 }
             }
-            "--fault-on" => {
-                a.fault_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(40)
-            }
+            "--fault-on" => a.fault_on = it.next().and_then(|v| v.parse().ok()).unwrap_or(40),
             "--help" | "-h" => {
                 println!(
                     "usage: life [--seed N] [--rank K] [--days N] [--money N]\n\
@@ -112,9 +110,15 @@ fn main() {
         eprintln!("no nation of rank {}", args.rank);
         std::process::exit(1);
     };
-    let Some(mut region) =
-        Region::extract(&world, &polities, &settlements, &network, id, 5, args.doctrine)
-    else {
+    let Some(mut region) = Region::extract(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        id,
+        5,
+        args.doctrine,
+    ) else {
         eprintln!("that nation has no settlements to model");
         std::process::exit(1);
     };
@@ -143,9 +147,7 @@ fn main() {
     );
     let wage = person::day_rate(&region.economy, start, hal.trade);
     let food_day = region.economy.price(start, FOOD) * person::FOOD_PER_DAY;
-    println!(
-        "A day's work pays about {wage:.1}; a day's food costs {food_day:.1}.",
-    );
+    println!("A day's work pays about {wage:.1}; a day's food costs {food_day:.1}.",);
     println!(
         "He sleeps in {}; the rent is {:.1} a day against {:.1} for food.",
         hal.housing.name(),
@@ -220,11 +222,10 @@ fn main() {
                 }
                 _ => {}
             }
-            if args.fault.is_some() {
+            if let Some(fault) = &args.fault {
                 println!(
-                    "{:>6} |          |       |      |      |       | *** {} fails ***",
-                    "",
-                    args.fault.unwrap()
+                    "{:>6} |          |       |      |      |       | *** {fault} fails ***",
+                    ""
                 );
             }
         }
@@ -252,7 +253,7 @@ fn main() {
         let happened: Vec<String> = hal.log[last_log..].to_vec();
         last_log = hal.log.len();
         for line in &happened {
-            let what = line.splitn(2, ": ").nth(1).unwrap_or(line);
+            let what = line.split_once(": ").map(|x| x.1).unwrap_or(line);
             // Strip the running total so repeats of the same job match.
             let shape: String = what
                 .split(" — ")

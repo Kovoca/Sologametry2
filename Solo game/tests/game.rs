@@ -119,7 +119,11 @@ fn a_subsystem_joins_the_world_where_the_world_is() {
     for _ in 0..50 {
         e.step();
     }
-    assert_eq!(e.ledger.day, born + 50, "the economy did not count its own days");
+    assert_eq!(
+        e.ledger.day,
+        born + 50,
+        "the economy did not count its own days"
+    );
 
     let mut g = GameState::new(1);
     g.advance(300);
@@ -148,7 +152,11 @@ fn nothing_but_advancing_moves_the_clock() {
     g.note(Phase::World, "something happened");
     let _ = g.clocks_agree();
     let _ = g.saveable_parts();
-    assert_eq!(g.day(), before, "reading or noting something moved the date");
+    assert_eq!(
+        g.day(),
+        before,
+        "reading or noting something moved the date"
+    );
 
     g.a_day();
     assert_eq!(g.day(), before + 1);
@@ -183,10 +191,16 @@ fn a_day_happens_in_a_stated_order() {
     let start = g.day();
     g.note(Phase::World, "first");
     g.note(Phase::Consequences, "last");
-    assert!(g.today.iter().all(|h| h.day == start), "the date moved mid-day");
+    assert!(
+        g.today.iter().all(|h| h.day == start),
+        "the date moved mid-day"
+    );
     g.a_day();
     // And the record is a day's record, not a history.
-    assert!(g.today.len() < 100, "the day's notes are accumulating as a log");
+    assert!(
+        g.today.len() < 100,
+        "the day's notes are accumulating as a log"
+    );
 }
 
 // =====================================================================
@@ -239,7 +253,10 @@ fn a_year_passes_with_everything_attached() {
 
     // And the people are still there and still individuated.
     let folk = g.folk.as_ref().unwrap();
-    assert!(folk.people.len() > 0, "a year of being driven by the root emptied the sample");
+    assert!(
+        !folk.people.is_empty(),
+        "a year of being driven by the root emptied the sample"
+    );
 }
 
 // =====================================================================
@@ -276,7 +293,11 @@ fn a_subsystem_that_loses_track_is_put_right() {
     let now = g.day();
     g.economy.as_mut().unwrap().ledger.day = 3;
     g.a_day();
-    assert_eq!(g.day(), now + 1, "a lagging subsystem pulled the world backwards");
+    assert_eq!(
+        g.day(),
+        now + 1,
+        "a lagging subsystem pulled the world backwards"
+    );
     g.assert_clocks_agree();
 }
 
@@ -295,7 +316,10 @@ fn thirty_days_is_thirty_days_however_it_is_asked_for() {
     quick.advance(30);
 
     assert_eq!(slow.day(), quick.day());
-    let (a, b) = (slow.economy.as_ref().unwrap(), quick.economy.as_ref().unwrap());
+    let (a, b) = (
+        slow.economy.as_ref().unwrap(),
+        quick.economy.as_ref().unwrap(),
+    );
     assert_eq!(a.ledger.day, b.ledger.day);
     // And the same world, not merely the same date.
     for m in 0..a.markets.len() {
@@ -338,7 +362,10 @@ fn nothing_leaks_when_a_cargo_moves() {
         .get("freight")
         .copied()
         .unwrap_or(0.0);
-    assert!(paid > 0.0, "two hundred days and no freight was ever charged");
+    assert!(
+        paid > 0.0,
+        "two hundred days and no freight was ever charged"
+    );
 }
 
 /// **Gate: a cargo cannot change the figures that authorised it.**
@@ -352,17 +379,32 @@ fn the_opening_position_does_not_move_during_the_day() {
     let mut g = a_world();
     g.a_day();
 
-    let opened = g.economy.as_ref().unwrap().opening().cloned().expect("no opening");
+    let opened = g
+        .economy
+        .as_ref()
+        .unwrap()
+        .opening()
+        .cloned()
+        .expect("no opening");
     let day_of = opened.day;
 
     // Run the whole of the next day and the previous opening is untouched —
     // it is a photograph, not a view.
     let before = opened.clone();
     g.a_day();
-    assert_eq!(before, opened, "the snapshot was a window rather than a photograph");
+    assert_eq!(
+        before, opened,
+        "the snapshot was a window rather than a photograph"
+    );
 
     // And the new day has its own, taken after the last one closed.
-    let next = g.economy.as_ref().unwrap().opening().cloned().expect("no opening");
+    let next = g
+        .economy
+        .as_ref()
+        .unwrap()
+        .opening()
+        .cloned()
+        .expect("no opening");
     assert!(next.day > day_of, "the day opened on yesterday's figures");
     assert_eq!(next.stock.len(), g.economy.as_ref().unwrap().markets.len());
 }

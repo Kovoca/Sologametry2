@@ -52,9 +52,10 @@ pub const CHUNK: i64 = 32;
 ///
 /// Three states, because two cannot express taking something away that
 /// the generator put there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Field<T> {
     /// The generator's answer stands.
+    #[default]
     Unchanged,
     Set(T),
     /// **There is deliberately nothing here**, whatever was generated.
@@ -72,12 +73,6 @@ impl<T: Copy> Field<T> {
     }
     pub fn is_unchanged(self) -> bool {
         matches!(self, Field::Unchanged)
-    }
-}
-
-impl<T> Default for Field<T> {
-    fn default() -> Self {
-        Field::Unchanged
     }
 }
 
@@ -321,7 +316,10 @@ impl Overlay {
         if now == b.base_hash {
             Rebase::Matches
         } else {
-            Rebase::BaseChanged { was: b.base_hash, now }
+            Rebase::BaseChanged {
+                was: b.base_hash,
+                now,
+            }
         }
     }
 

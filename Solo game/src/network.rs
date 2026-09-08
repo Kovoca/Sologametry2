@@ -57,7 +57,11 @@ struct Cost(f32);
 impl Eq for Cost {}
 impl PartialOrd for Cost {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.total_cmp(&other.0))
+        // Delegates to `Ord`, which is the canonical form and the only one
+        // that cannot drift apart from it. `Ord::cmp` is the total order
+        // over the float; a second copy of it here is a second thing to
+        // get wrong.
+        Some(self.cmp(other))
     }
 }
 impl Ord for Cost {
@@ -84,9 +88,14 @@ fn neighbours(i: usize, w: usize, h: usize, mut f: impl FnMut(usize)) {
 #[inline]
 fn neighbours8(i: usize, w: usize, h: usize, mut f: impl FnMut(usize, f32)) {
     const D: [(i32, i32); 8] = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
     ];
     let (x, y) = ((i % w) as i32, (i / w) as i32);
     for (dx, dy) in D {
@@ -214,8 +223,7 @@ impl Network {
         // than itself, so the biggest is the root and traffic flows up the
         // hierarchy exactly as it does in reality.
         let ranked = set.ranked();
-        let hubs: Vec<&crate::settlement::Settlement> =
-            ranked.into_iter().take(hubs).collect();
+        let hubs: Vec<&crate::settlement::Settlement> = ranked.into_iter().take(hubs).collect();
 
         let mut traffic = vec![0.0f64; n];
         let mut visited = vec![u32::MAX; n];

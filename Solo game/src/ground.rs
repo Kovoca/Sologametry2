@@ -263,7 +263,11 @@ impl Tile {
             Tile::Furnishing(f) => (f.glyph(), Colour::Brown),
             Tile::Vehicle(p) => (p.glyph(), Colour::LightRed),
         };
-        Display { glyph, fg, dim: false }
+        Display {
+            glyph,
+            fg,
+            dim: false,
+        }
     }
 
     pub fn glyph(self) -> char {
@@ -347,10 +351,7 @@ impl Tile {
             Tile::Earth | Tile::Rock => false,
             // A ramp is the whole point: it is the walkable step.
             Tile::Ramp => true,
-            Tile::Fitting(f) => matches!(
-                f,
-                Fixture::Till | Fixture::Counter | Fixture::LoadingBay
-            ),
+            Tile::Fitting(f) => matches!(f, Fixture::Till | Fixture::Counter | Fixture::LoadingBay),
             // You stand beside a bed and at a table; you do not stand in
             // the wardrobe.
             Tile::Furnishing(f) => matches!(f, Furnishing::Chair),
@@ -756,13 +757,7 @@ impl Ground {
     /// -1 the cellar. Absolute levels are the engine's business — a town
     /// 60 m above the sea has its ground at absolute level 20, and asking
     /// for 0 there gets you sixty metres of rock.
-    pub fn around_on(
-        seed: u64,
-        plan: &Plan,
-        centre: (i64, i64),
-        radius: usize,
-        z: i64,
-    ) -> Self {
+    pub fn around_on(seed: u64, plan: &Plan, centre: (i64, i64), radius: usize, z: i64) -> Self {
         // **Square, because a reality bubble is a radius and not a
         // viewport.** This used to halve the height so it fitted a
         // terminal, which meant somebody could see twice as far east as
@@ -891,10 +886,7 @@ impl Ground {
                 surf.push((surface_m(seed, plan, gx, gy) - eye_m) as f32);
                 let t = TILES_PER_PLOT as i64;
                 let (px, py) = (gx.div_euclid(t), gy.div_euclid(t));
-                let lot = if px < 0
-                    || py < 0
-                    || px >= plan.width as i64
-                    || py >= plan.height as i64
+                let lot = if px < 0 || py < 0 || px >= plan.width as i64 || py >= plan.height as i64
                 {
                     Lot::Open
                 } else {
@@ -1001,13 +993,21 @@ impl Ground {
                 // Priority: the player, then whatever stands on the
                 // ground, then the ground itself.
                 let d = if person == Some(here) {
-                    Display { glyph: '@', fg: Colour::White, dim: false }
+                    Display {
+                        glyph: '@',
+                        fg: Colour::White,
+                        dim: false,
+                    }
                 } else if !seen[y * self.w + x] {
                     // Out of sight. Not a void — simply not known, which
                     // is a different thing from empty and will become
                     // remembered ground once there is a memory to keep it
                     // in.
-                    Display { glyph: ' ', fg: Colour::Black, dim: false }
+                    Display {
+                        glyph: ' ',
+                        fg: Colour::Black,
+                        dim: false,
+                    }
                 } else if let Some(part) = self.over[y * self.w + x] {
                     // **What an enclosure shows is its outside.** A part
                     // inside a closed hull is not on view to somebody
@@ -1017,7 +1017,11 @@ impl Ground {
                     // The inspection view is the exception, and it is the
                     // whole reason to have one: it shows the assembly.
                     let shown = if eyes { part.seen_from_outside() } else { part };
-                    Display { glyph: shown.glyph(), fg: Colour::LightRed, dim: false }
+                    Display {
+                        glyph: shown.glyph(),
+                        fg: Colour::LightRed,
+                        dim: false,
+                    }
                 } else {
                     let mut d = self.at(x, y).display();
                     // Topology decides a wall's line and use decides its
@@ -1113,22 +1117,31 @@ impl Ground {
                 // — and a shopfront came out with its windows missing at
                 // the far end while the wall either side of them was
                 // drawn. You see the whole face of a room you are in.
-                let boundary = self.blocks_sight(x, y)
-                    || matches!(self.at(x, y), Tile::Window | Tile::Door);
+                let boundary =
+                    self.blocks_sight(x, y) || matches!(self.at(x, y), Tile::Window | Tile::Door);
                 if seen[i] || !boundary {
                     continue;
                 }
-                let open = [(0i64, -1i64), (1, 0), (0, 1), (-1, 0), (-1, -1), (1, -1), (-1, 1), (1, 1)]
-                    .iter()
-                    .any(|&(dx, dy)| {
-                        let (nx, ny) = (x as i64 + dx, y as i64 + dy);
-                        nx >= 0
-                            && ny >= 0
-                            && (nx as usize) < self.w
-                            && (ny as usize) < self.h
-                            && seen[ny as usize * self.w + nx as usize]
-                            && !self.blocks_sight(nx as usize, ny as usize)
-                    });
+                let open = [
+                    (0i64, -1i64),
+                    (1, 0),
+                    (0, 1),
+                    (-1, 0),
+                    (-1, -1),
+                    (1, -1),
+                    (-1, 1),
+                    (1, 1),
+                ]
+                .iter()
+                .any(|&(dx, dy)| {
+                    let (nx, ny) = (x as i64 + dx, y as i64 + dy);
+                    nx >= 0
+                        && ny >= 0
+                        && (nx as usize) < self.w
+                        && (ny as usize) < self.h
+                        && seen[ny as usize * self.w + nx as usize]
+                        && !self.blocks_sight(nx as usize, ny as usize)
+                });
                 if open {
                     lit[i] = true;
                 }
@@ -1356,8 +1369,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
             // fills the whole plot, so a street meeting one dead-ends
             // against it — which is exactly the claim the cross-sections
             // were already making and nothing was enforcing.
-            let equal_crossing =
-                roads.len() == 2 && roads[0].0.size() == roads[1].0.size();
+            let equal_crossing = roads.len() == 2 && roads[0].0.size() == roads[1].0.size();
             for &(c, across, along) in &roads {
                 if let Some(tile) = cross_section(c, across, along, equal_crossing) {
                     return tile;
@@ -1433,10 +1445,7 @@ fn tile_at(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Tile {
             // Miss this and every corner in the town is a patch of grass,
             // which is the one place a player is most likely to stand.
             if roads.len() == 2 {
-                built_side |= built(
-                    if ix < mid { -1 } else { 1 },
-                    if iy < mid { -1 } else { 1 },
-                );
+                built_side |= built(if ix < mid { -1 } else { 1 }, if iy < mid { -1 } else { 1 });
             }
             let built = built_side;
             if built {
@@ -1514,19 +1523,42 @@ fn footprint_of(plan: &Plan, lot: Lot, px: i64, py: i64) -> Footprint {
         // trailer's length. Fixing it properly means letting a store's
         // yard occupy the plot behind it, the way spanning three plots
         // sideways let it be a superstore at all.
-        Lot::Shop => Footprint { front: 1, back: 6, side: 0, terraced: true },
+        Lot::Shop => Footprint {
+            front: 1,
+            back: 6,
+            side: 0,
+            terraced: true,
+        },
         // A mansion block: on the street, joined to its neighbours, with
         // the bins and the drying green behind. ~78%.
-        Lot::Flats => Footprint { front: 1, back: 6, side: 0, terraced: true },
+        Lot::Flats => Footprint {
+            front: 1,
+            back: 6,
+            side: 0,
+            terraced: true,
+        },
         // A shed wants lorry access, so the yard is at the front.
-        Lot::Works => Footprint { front: 6, back: 2, side: 2, terraced: false },
+        Lot::Works => Footprint {
+            front: 6,
+            back: 2,
+            side: 2,
+            terraced: false,
+        },
         // **The gradient.** A terraced house is 10 m deep with a 4 m front
         // garden and a long garden behind — a Victorian street. Detached,
         // it is a 12 m box in the middle of its ground.
-        Lot::House if neighbours => {
-            Footprint { front: 4, back: 18, side: 0, terraced: true }
-        }
-        _ => Footprint { front: 8, back: 14, side: 10, terraced: false },
+        Lot::House if neighbours => Footprint {
+            front: 4,
+            back: 18,
+            side: 0,
+            terraced: true,
+        },
+        _ => Footprint {
+            front: 8,
+            back: 14,
+            side: 10,
+            terraced: false,
+        },
     }
 }
 
@@ -1668,7 +1700,13 @@ fn shop_run(seed: u64, plan: &Plan, lot: Lot, px: i64, py: i64) -> (i64, i64, i6
     // every plot in the run agrees about where the building begins and
     // the last one is not left as a scrap.
     let axis = |along: i64, most: i64, horizontal: bool| -> (i64, i64) {
-        let at = |k: i64| if horizontal { joins(k, py) } else { joins(px, k) };
+        let at = |k: i64| {
+            if horizontal {
+                joins(k, py)
+            } else {
+                joins(px, k)
+            }
+        };
         let mut from = along;
         while at(from - 1) {
             from -= 1;
@@ -1780,11 +1818,7 @@ fn building_tile(
     // by party walls every 6 m or so — real terraced frontages are 4.5 to
     // 6 m — and without them a street of houses was a single building the
     // width of the plot with one front door.
-    let party = f.terraced
-        && lot == Lot::House
-        && ix % 6 == 0
-        && ix != lo_x
-        && ix != hi_x;
+    let party = f.terraced && lot == Lot::House && ix % 6 == 0 && ix != lo_x && ix != hi_x;
     // **A terrace's high flank is closed by next door's party wall — if
     // there is a next door.**
     //
@@ -1825,11 +1859,8 @@ fn building_tile(
             // still happening after the level check went in.
             && footprint_of(plan, plan.at(nx as usize, ny as usize), nx, ny).terraced
     };
-    let on_wall = party
-        || ix == lo_x
-        || iy == lo_y
-        || iy == hi_y
-        || (ix == hi_x && !closed_by_next_door);
+    let on_wall =
+        party || ix == lo_x || iy == lo_y || iy == hi_y || (ix == hi_x && !closed_by_next_door);
     if on_wall {
         // Every house in the terrace gets its own front door.
         let mid = (lo_x + hi_x) / 2;
@@ -1916,8 +1947,17 @@ fn building_tile(
                 };
             }
             let key = px * 977 + py * 31;
-            let (flat, _fw, _fh, wall) =
-                room_at(seed, key, lo_x + 1, lo_y + 1, hi_x - 1, hi_y - 1, ix, iy, FLAT_M2);
+            let (flat, _fw, _fh, wall) = room_at(
+                seed,
+                key,
+                lo_x + 1,
+                lo_y + 1,
+                hi_x - 1,
+                hi_y - 1,
+                ix,
+                iy,
+                FLAT_M2,
+            );
             if let Some(door) = wall {
                 return if door { Tile::Door } else { Tile::Wall };
             }
@@ -2053,9 +2093,9 @@ fn cross_section(class: StreetClass, across: i64, along: i64, junction: bool) ->
         },
         // ~25 m: a reserve, then 7.3 m of two lanes each way, then footways.
         StreetClass::Dual => match across {
-            0..=1 => Some(reserve), // central reserve
-            2 | 9 => Some(edge_line),   // solid: the edge of the carriageway
-            5 => Some(lane_line),       // dashed: between the two lanes
+            0..=1 => Some(reserve),   // central reserve
+            2 | 9 => Some(edge_line), // solid: the edge of the carriageway
+            5 => Some(lane_line),     // dashed: between the two lanes
             3..=8 => Some(Tile::Road),
             10..=12 => Some(foot),
             _ => None,
@@ -2612,7 +2652,8 @@ fn below_ground(
             // A cellar is storage, and it is where the stair comes down.
             let (w, _h) = (hi_x - lo_x + 1, hi_y - lo_y + 1);
             let core_x = lo_x + w / 2 - 2;
-            if lot == Lot::Flats && iy >= lo_y + 1 && iy <= lo_y + 5 && ix <= core_x + 1 && ix >= core_x {
+            if lot == Lot::Flats && iy > lo_y && iy <= lo_y + 5 && ix <= core_x + 1 && ix >= core_x
+            {
                 return Tile::Stairs;
             }
             if hash(seed, gx, gy, 15) < 0.22 {
@@ -2628,9 +2669,9 @@ fn below_ground(
             let mid = t / 2;
             let across = (ix - mid).abs().min((iy - mid).abs());
             match across {
-                0 => Tile::Water,   // the flow
-                1 => Tile::Floor,   // the ledge you walk on
-                2 => Tile::Wall,    // brick
+                0 => Tile::Water, // the flow
+                1 => Tile::Floor, // the ledge you walk on
+                2 => Tile::Wall,  // brick
                 _ => Tile::Earth,
             }
         }
@@ -2752,10 +2793,7 @@ pub fn floor_below(seed: u64, plan: &Plan, gx: i64, gy: i64, gz: i64) -> Option<
 
     // A stairwell or a hoistway is a hole through every floor it passes:
     // that is what makes it a shaft rather than a stack of cupboards.
-    let open = matches!(
-        tile_at(seed, plan, gx, gy, gz),
-        Tile::Stairs | Tile::Lift
-    );
+    let open = matches!(tile_at(seed, plan, gx, gy, gz), Tile::Stairs | Tile::Lift);
     Some(Floor {
         material: if lot == Lot::Works {
             FloorMaterial::Concrete
@@ -2828,7 +2866,11 @@ fn room_at(
         // Somewhere in the middle, so no room is a slot.
         let t = 0.35 + 0.30 * hash(seed, key, id as i64, 11) as f64;
         let cut = (span as f64 * t) as i64;
-        let (lo, at) = if vertical { (x0, x0 + cut) } else { (y0, y0 + cut) };
+        let (lo, at) = if vertical {
+            (x0, x0 + cut)
+        } else {
+            (y0, y0 + cut)
+        };
         let _ = lo;
         let here = if vertical { ix } else { iy };
 
@@ -2837,15 +2879,25 @@ fn room_at(
             // wall — a room with no door is a cupboard.
             let other = if vertical { iy } else { ix };
             let (o0, o1) = if vertical { (y0, y1) } else { (x0, x1) };
-            let door = o0 + 1 + ((o1 - o0 - 1) as f64
-                * (0.2 + 0.6 * hash(seed, key, id as i64, 12) as f64)) as i64;
+            let door = o0
+                + 1
+                + ((o1 - o0 - 1) as f64 * (0.2 + 0.6 * hash(seed, key, id as i64, 12) as f64))
+                    as i64;
             return (id, w, h, Some(other == door));
         }
         if here < at {
-            if vertical { x1 = at - 1 } else { y1 = at - 1 }
-            id = id * 2;
+            if vertical {
+                x1 = at - 1
+            } else {
+                y1 = at - 1
+            }
+            id *= 2;
         } else {
-            if vertical { x0 = at + 1 } else { y0 = at + 1 }
+            if vertical {
+                x0 = at + 1
+            } else {
+                y0 = at + 1
+            }
             id = id * 2 + 1;
         }
     }
@@ -2869,9 +2921,9 @@ fn furnish(
 ) -> Tile {
     let kind = if depth_from_front <= 1 {
         Room::Living
-    } else if room % 3 == 0 {
+    } else if room.is_multiple_of(3) {
         Room::Kitchen
-    } else if room % 7 == 0 {
+    } else if room.is_multiple_of(7) {
         Room::Hall
     } else {
         Room::Bedroom

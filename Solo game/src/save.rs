@@ -205,7 +205,17 @@ impl<'a> Reader<'a> {
         let s = self.take(n)?;
         String::from_utf8(s.to_vec()).map_err(|_| SaveError::Truncated)
     }
-    pub fn len(&mut self) -> Result<usize, SaveError> {
+    /// **Read a length out of the stream.**
+    ///
+    /// Named `len` once, which is a different thing entirely — a reader's
+    /// own length is `left`, and this consumes four bytes and hands back
+    /// what they said. The old name also drew a lint asking for an
+    /// `is_empty` to go with it, which would have been meaningless, and
+    /// the lint was right about the name rather than about the method.
+    ///
+    /// Use `count` instead wherever the number is about to be allocated
+    /// against.
+    pub fn read_len(&mut self) -> Result<usize, SaveError> {
         Ok(self.u32()? as usize)
     }
 
@@ -539,7 +549,11 @@ impl Store for Strain {
         s.state = FunctionalState::load(r)?;
         s.days_in_state = r.u32()?;
         s.history = ImpairmentHistory::load(r)?;
-        s.crisis = if r.bool()? { Some(CrisisEpisode::load(r)?) } else { None };
+        s.crisis = if r.bool()? {
+            Some(CrisisEpisode::load(r)?)
+        } else {
+            None
+        };
         let n = r.count()?;
         for _ in 0..n {
             let (e, v) = (r.u64()?, r.f64()?);
@@ -618,7 +632,11 @@ impl Store for PersonOrigin {
         w.u64(self.born);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(PersonOrigin { seed: r.u64()?, schema: r.u32()?, born: r.u64()? })
+        Ok(PersonOrigin {
+            seed: r.u64()?,
+            schema: r.u32()?,
+            born: r.u64()?,
+        })
     }
 }
 
@@ -662,7 +680,9 @@ impl Store for Coarse {
         c.perceived_control = ControlAppraisal::load(r)?;
         c.habits = Habits::load(r)?;
         let n = r.count()?;
-        c.standing = (0..n).map(|_| Standing::load(r)).collect::<Result<_, _>>()?;
+        c.standing = (0..n)
+            .map(|_| Standing::load(r))
+            .collect::<Result<_, _>>()?;
         c.attempts_outstanding = r.u16()?;
         c.support_expected = r.finite_f64()?;
         c.last_update = r.u64()?;
@@ -719,7 +739,6 @@ pub fn channel(seed: u64, event: u64, name: &str) -> u64 {
     }
     mix(mix(seed, event), h)
 }
-
 
 // =====================================================================
 // work in progress
@@ -862,8 +881,13 @@ impl Store for crate::wip::Feature {
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         use crate::wip::Feature::*;
         Ok(match r.u16()? {
-            1 => Hole { count: r.u32()?, mm: r.f64()? },
-            2 => Cut { length_mm: r.f64()? },
+            1 => Hole {
+                count: r.u32()?,
+                mm: r.f64()?,
+            },
+            2 => Cut {
+                length_mm: r.f64()?,
+            },
             3 => Bend { degrees: r.f64()? },
             4 => Weld { segments: r.u32()? },
             5 => Coating {
@@ -884,7 +908,11 @@ impl Store for crate::wip::Progress {
                 w.f64(*done_mm);
                 w.f64(*total_mm);
             }
-            Heat { celsius, target_c, ambient_c } => {
+            Heat {
+                celsius,
+                target_c,
+                ambient_c,
+            } => {
                 w.u16(2);
                 w.f64(*celsius);
                 w.f64(*target_c);
@@ -895,7 +923,11 @@ impl Store for crate::wip::Progress {
                 w.f64(*moisture);
                 w.f64(*target);
             }
-            Cure { reacted, at_c, wants_c } => {
+            Cure {
+                reacted,
+                at_c,
+                wants_c,
+            } => {
                 w.u16(4);
                 w.f64(*reacted);
                 w.f64(*at_c);
@@ -906,18 +938,29 @@ impl Store for crate::wip::Progress {
                 w.u32(*done);
                 w.u32(*segments);
             }
-            Coat { microns, target_microns, layers } => {
+            Coat {
+                microns,
+                target_microns,
+                layers,
+            } => {
                 w.u16(6);
                 w.f64(*microns);
                 w.f64(*target_microns);
                 w.u32(*layers);
             }
-            Assemble { joints_done, joints } => {
+            Assemble {
+                joints_done,
+                joints,
+            } => {
                 w.u16(7);
                 w.u32(*joints_done);
                 w.u32(*joints);
             }
-            Machine { features_done, features, allowance_mm } => {
+            Machine {
+                features_done,
+                features,
+                allowance_mm,
+            } => {
                 w.u16(8);
                 w.u32(*features_done);
                 w.u32(*features);
@@ -933,19 +976,46 @@ impl Store for crate::wip::Progress {
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         use crate::wip::Progress::*;
         Ok(match r.u16()? {
-            1 => Cut { done_mm: r.f64()?, total_mm: r.f64()? },
-            2 => Heat { celsius: r.f64()?, target_c: r.f64()?, ambient_c: r.f64()? },
-            3 => Dry { moisture: r.f64()?, target: r.f64()? },
-            4 => Cure { reacted: r.f64()?, at_c: r.f64()?, wants_c: r.f64()? },
-            5 => Weld { done: r.u32()?, segments: r.u32()? },
-            6 => Coat { microns: r.f64()?, target_microns: r.f64()?, layers: r.u32()? },
-            7 => Assemble { joints_done: r.u32()?, joints: r.u32()? },
+            1 => Cut {
+                done_mm: r.f64()?,
+                total_mm: r.f64()?,
+            },
+            2 => Heat {
+                celsius: r.f64()?,
+                target_c: r.f64()?,
+                ambient_c: r.f64()?,
+            },
+            3 => Dry {
+                moisture: r.f64()?,
+                target: r.f64()?,
+            },
+            4 => Cure {
+                reacted: r.f64()?,
+                at_c: r.f64()?,
+                wants_c: r.f64()?,
+            },
+            5 => Weld {
+                done: r.u32()?,
+                segments: r.u32()?,
+            },
+            6 => Coat {
+                microns: r.f64()?,
+                target_microns: r.f64()?,
+                layers: r.u32()?,
+            },
+            7 => Assemble {
+                joints_done: r.u32()?,
+                joints: r.u32()?,
+            },
             8 => Machine {
                 features_done: r.u32()?,
                 features: r.u32()?,
                 allowance_mm: r.f64()?,
             },
-            9 => Elapsed { minutes: r.f64()?, total: r.f64()? },
+            9 => Elapsed {
+                minutes: r.f64()?,
+                total: r.f64()?,
+            },
             other => return Err(SaveError::UnknownCode("Progress", other as u32)),
         })
     }
@@ -1003,7 +1073,11 @@ impl Store for crate::item::Placement {
                 host.store(w);
                 w.u32(*mount as u32);
             }
-            Fixtured { resource, slot, clamped } => {
+            Fixtured {
+                resource,
+                slot,
+                clamped,
+            } => {
                 w.u16(5);
                 w.u32(*resource);
                 w.u32(*slot);
@@ -1014,14 +1088,24 @@ impl Store for crate::item::Placement {
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         use crate::item::Placement::*;
         Ok(match r.u16()? {
-            1 => Ground { locality: r.u32()?, x: r.i64()? as i32, y: r.i64()? as i32 },
+            1 => Ground {
+                locality: r.u32()?,
+                x: r.i64()? as i32,
+                y: r.i64()? as i32,
+            },
             2 => Carried { person: r.u64()? },
-            3 => Contained { container: crate::id::Id::load(r)? },
+            3 => Contained {
+                container: crate::id::Id::load(r)?,
+            },
             4 => Installed {
                 host: crate::item::Host::load(r)?,
                 mount: r.u32()? as usize,
             },
-            5 => Fixtured { resource: r.u32()?, slot: r.u32()?, clamped: r.bool()? },
+            5 => Fixtured {
+                resource: r.u32()?,
+                slot: r.u32()?,
+                clamped: r.bool()?,
+            },
             other => return Err(SaveError::UnknownCode("Placement", other as u32)),
         })
     }
@@ -1052,7 +1136,10 @@ impl Store for crate::item::WorkStatus {
         Ok(match r.u16()? {
             1 => Available,
             2 => Reserved { order: r.u64()? },
-            3 => Wip { order: r.u64()?, operation: r.u32()? as usize },
+            3 => Wip {
+                order: r.u64()?,
+                operation: r.u32()? as usize,
+            },
             4 => AwaitingUnload { order: r.u64()? },
             other => return Err(SaveError::UnknownCode("WorkStatus", other as u32)),
         })
@@ -1244,8 +1331,12 @@ impl Journal {
             return self.entries[k].outcome;
         }
         let outcome = channel(world_seed, key.event, draw);
-        self.commit(Entry { key, outcome, applied: false })
-            .expect("a fresh event cannot conflict with itself");
+        self.commit(Entry {
+            key,
+            outcome,
+            applied: false,
+        })
+        .expect("a fresh event cannot conflict with itself");
         outcome
     }
 
@@ -1284,7 +1375,11 @@ impl Journal {
 
     /// What a replay after a crash still has to do, in causal order.
     pub fn unapplied(&self) -> Vec<Entry> {
-        self.entries.values().filter(|e| !e.applied).copied().collect()
+        self.entries
+            .values()
+            .filter(|e| !e.applied)
+            .copied()
+            .collect()
     }
 
     /// Everything since a checkpoint, in causal order.
@@ -1310,8 +1405,11 @@ impl Journal {
                 true
             }
         });
-        let live: BTreeMap<EventId, JournalKey> =
-            self.entries.values().map(|e| (e.key.event, e.key)).collect();
+        let live: BTreeMap<EventId, JournalKey> = self
+            .entries
+            .values()
+            .map(|e| (e.key.event, e.key))
+            .collect();
         self.by_event = live;
         c.last_applied_sequence = high;
         c.checkpoint_id += 1;
@@ -1334,15 +1432,21 @@ impl Journal {
     pub fn schedule(&mut self, p: Pending) {
         self.pending.push(p);
         self.pending.sort_by(|a, b| {
-            a.scheduled_at.cmp(&b.scheduled_at).then(a.event.cmp(&b.event))
+            a.scheduled_at
+                .cmp(&b.scheduled_at)
+                .then(a.event.cmp(&b.event))
         });
     }
     pub fn pending(&self) -> &[Pending] {
         &self.pending
     }
     pub fn take_due(&mut self, day: u64) -> Vec<Pending> {
-        let due: Vec<Pending> =
-            self.pending.iter().filter(|p| p.scheduled_at <= day).cloned().collect();
+        let due: Vec<Pending> = self
+            .pending
+            .iter()
+            .filter(|p| p.scheduled_at <= day)
+            .cloned()
+            .collect();
         self.pending.retain(|p| p.scheduled_at > day);
         due
     }
@@ -1420,7 +1524,13 @@ impl Store for Pending {
         for _ in 0..n {
             inputs.push((r.str()?, r.u64()?));
         }
-        Ok(Pending { event, scheduled_at, resolver, resolver_version, inputs })
+        Ok(Pending {
+            event,
+            scheduled_at,
+            resolver,
+            resolver_version,
+            inputs,
+        })
     }
 }
 
@@ -1453,7 +1563,14 @@ impl Store for Journal {
                 return Err(SaveError::Conflict(key.event));
             }
             j.by_event.insert(key.event, key);
-            j.entries.insert(key, Entry { key, outcome, applied });
+            j.entries.insert(
+                key,
+                Entry {
+                    key,
+                    outcome,
+                    applied,
+                },
+            );
         }
         let n = r.count()?;
         for _ in 0..n {
@@ -1598,7 +1715,11 @@ impl Store for ChunkAt {
         w.i64(self.cz);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(ChunkAt { cx: r.i64()?, cy: r.i64()?, cz: r.i64()? })
+        Ok(ChunkAt {
+            cx: r.i64()?,
+            cy: r.i64()?,
+            cz: r.i64()?,
+        })
     }
 }
 
@@ -1821,8 +1942,10 @@ impl Save {
         let mut b = Reader::new(body);
         let world_seed = b.u64()?;
         let day = b.u64()?;
-        let n = b.len()?;
-        let people = (0..n).map(|_| Coarse::load(&mut b)).collect::<Result<_, _>>()?;
+        let n = b.read_len()?;
+        let people = (0..n)
+            .map(|_| Coarse::load(&mut b))
+            .collect::<Result<_, _>>()?;
         let journal = Journal::load(&mut b)?;
         let checkpoint = Checkpoint::load(&mut b)?;
         let overlay = Overlay::load(&mut b)?;

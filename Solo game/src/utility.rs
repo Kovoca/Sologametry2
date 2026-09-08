@@ -326,7 +326,11 @@ pub fn a_day(
 /// somebody who could not find a month's bill certainly does not have, and
 /// is why being cut off is self-sustaining in the same way homelessness is.
 pub fn cost_to_reconnect(account: &Account) -> f64 {
-    let deposit = if account.deposit > 0.0 { 0.0 } else { account.tariff.standing_charge * 8.0 };
+    let deposit = if account.deposit > 0.0 {
+        0.0
+    } else {
+        account.tariff.standing_charge * 8.0
+    };
     account.arrears + RECONNECTION_FEE + deposit
 }
 
@@ -360,7 +364,11 @@ pub fn budget_plan(account: &mut Account, expected_year_kwh: f64) {
 /// appropriation rather than entitlement.
 pub fn assistance(annual_bill: f64, income: f64, funded: f64) -> f64 {
     // Targeted at households whose energy burden is above the ordinary 3%.
-    let burden = if income > 0.0 { annual_bill / income } else { 1.0 };
+    let burden = if income > 0.0 {
+        annual_bill / income
+    } else {
+        1.0
+    };
     if burden < 0.06 {
         return 0.0;
     }

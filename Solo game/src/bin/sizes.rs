@@ -31,17 +31,25 @@ fn main() {
         }
     }
     depths.sort_by(|a, b| a.total_cmp(b));
-    let share = |m: f64| 100.0 * depths.iter().filter(|d| **d <= m).count() as f64 / depths.len() as f64;
+    let share =
+        |m: f64| 100.0 * depths.iter().filter(|d| **d <= m).count() as f64 / depths.len() as f64;
     println!(
         "land: {:.0}% within 10m, {:.0}% within 30m, {:.0}% within 100m; median {:.0}m",
-        share(10.0), share(30.0), share(100.0), depths[depths.len() / 2]
+        share(10.0),
+        share(30.0),
+        share(100.0),
+        depths[depths.len() / 2]
     );
 
     let mut pops: Vec<u32> = set.list.iter().map(|s| s.population).collect();
     pops.sort_unstable_by(|a, b| b.cmp(a));
     let total: f64 = pops.iter().map(|&p| p as f64).sum();
 
-    println!("placed {} settlements, {:.2}bn people in them", pops.len(), total / 1e9);
+    println!(
+        "placed {} settlements, {:.2}bn people in them",
+        pops.len(),
+        total / 1e9
+    );
     println!("\nrank      population");
     for r in [1usize, 2, 5, 10, 50, 100, 500, 1000, 2000, 4000, 6000, 8000] {
         if let Some(p) = pops.get(r - 1) {

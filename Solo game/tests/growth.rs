@@ -9,15 +9,18 @@
 //! a personality facet.
 
 use scale_sim::growth::{
-    stationary_post_exposure_ceiling, stationary_pre_exposure_ceiling, Argued, Cause,
-    DurableTarget, Doubts, Framing, Growth, Role, ShapesPersonality, ShapesWellbeing,
-    CONVICTION_STEP, DOUBT_TO_MOVE,
+    stationary_post_exposure_ceiling, stationary_pre_exposure_ceiling, Argued, Cause, Doubts,
+    DurableTarget, Framing, Growth, Role, ShapesPersonality, ShapesWellbeing, CONVICTION_STEP,
+    DOUBT_TO_MOVE,
 };
 use scale_sim::mind::{Facet, Mind, Value, ADAPTATION_LIMIT};
 use scale_sim::rng::Rng;
 
 fn a_person(seed: u64) -> Mind {
-    let mut m = Mind::draw(&mut Rng::new(seed), &[(Value::Family, 25), (Value::Law, 20)]);
+    let mut m = Mind::draw(
+        &mut Rng::new(seed),
+        &[(Value::Family, 25), (Value::Law, 20)],
+    );
     for f in Facet::ALL {
         m.person.set_baseline(f, 0.0);
     }
@@ -32,7 +35,11 @@ fn holding(m: &mut Mind, topic: Value, held: i8) {
 
 /// A speaker worth listening to and with something new to say.
 fn credible_and_fresh() -> Framing {
-    Framing { credible: 0.9, novelty: 1.0, ..Default::default() }
+    Framing {
+        credible: 0.9,
+        novelty: 1.0,
+        ..Default::default()
+    }
 }
 
 // =====================================================================
@@ -96,7 +103,10 @@ fn a_persistence_figure_knows_how_far_the_evidence_goes() {
     g.shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 0);
     let e = g.episodics[0];
 
-    assert!(e.within_evidence(365 * 10), "ten years was inside a fifteen-year panel");
+    assert!(
+        e.within_evidence(365 * 10),
+        "ten years was inside a fifteen-year panel"
+    );
     assert!(
         !e.within_evidence(365 * 40),
         "forty years on was reported as measured when nobody followed anybody that long"
@@ -158,9 +168,7 @@ fn contributions_add_rather_than_compete() {
     let mut two = Growth::new();
     two.shaped_personality(Facet::Anxiety, ShapesPersonality::Trauma, 0.5, 1.0, 0);
     two.shaped_personality(Facet::Anxiety, ShapesPersonality::Trauma, 0.5, 1.0, 0);
-    assert!(
-        (one.raw_for(Facet::Anxiety, 0) - two.raw_for(Facet::Anxiety, 0)).abs() < 1e-6
-    );
+    assert!((one.raw_for(Facet::Anxiety, 0) - two.raw_for(Facet::Anxiety, 0)).abs() < 1e-6);
 }
 
 /// **What is hidden behind a saturating effect reappears the moment it
@@ -275,18 +283,29 @@ fn a_working_life_does_not_pin_a_trait_at_the_ceiling() {
         lifetime < 0.3,
         "a working life drove a trait to {lifetime:.3}, near the safety ceiling"
     );
-    assert!(lifetime > 0.2, "forty years of it did almost nothing: {lifetime:.3}");
+    assert!(
+        lifetime > 0.2,
+        "forty years of it did almost nothing: {lifetime:.3}"
+    );
 }
 
 /// **Leaving the work does not undo it, and does not preserve it
 /// either.**
 #[test]
 fn what_a_role_built_decays_once_the_role_ends() {
-    let r = Role { facet: Facet::Dutifulness, target: 0.25, started: 0, ended: Some(3650) };
+    let r = Role {
+        facet: Facet::Dutifulness,
+        target: 0.25,
+        started: 0,
+        ended: Some(3650),
+    };
     let at_the_end = r.current(3650);
     let long_after = r.current(3650 + 365 * 8);
     assert!(long_after < at_the_end, "it kept every bit of it forever");
-    assert!(long_after > at_the_end * 0.5, "it vanished entirely on the last day");
+    assert!(
+        long_after > at_the_end * 0.5,
+        "it vanished entirely on the last day"
+    );
 }
 
 /// **Cumulative**, and a sustained effort is what actually moves a trait
@@ -294,7 +313,13 @@ fn what_a_role_built_decays_once_the_role_ends() {
 #[test]
 fn sustained_effort_is_what_moves_a_trait() {
     let mut g = Growth::new();
-    g.shaped_personality(Facet::Anxiety, ShapesPersonality::SustainedTreatment, 1.0, -1.0, 0);
+    g.shaped_personality(
+        Facet::Anxiety,
+        ShapesPersonality::SustainedTreatment,
+        1.0,
+        -1.0,
+        0,
+    );
     let one_week = g.raw_for(Facet::Anxiety, 0).abs();
     assert!(one_week < 0.03, "one week of trying moved {one_week:.3} z");
 
@@ -338,8 +363,17 @@ fn what_shaped_somebody_can_be_named() {
 #[test]
 fn a_role_cannot_be_filed_as_a_one_off() {
     let mut g = Growth::new();
-    g.shaped_personality(Facet::Dutifulness, ShapesPersonality::RoleDemand, 1.0, 1.0, 0);
-    assert!(g.episodics.is_empty(), "a standing demand was recorded as an event");
+    g.shaped_personality(
+        Facet::Dutifulness,
+        ShapesPersonality::RoleDemand,
+        1.0,
+        1.0,
+        0,
+    );
+    assert!(
+        g.episodics.is_empty(),
+        "a standing demand was recorded as an event"
+    );
 }
 
 /// **The ceiling still holds** whatever is thrown at it.
@@ -404,12 +438,29 @@ fn arguments_from_both_sides_do_not_pool() {
     // comfortably. Read while both are still standing, since crossing
     // spends the doubt and resets it.
     for round in 0..4u64 {
-        d.argued(&mut m, Value::Peace, 40, 1.0, credible_and_fresh(), round * 14 + 1);
-        d.argued(&mut m, Value::Peace, -40, 1.0, credible_and_fresh(), round * 14 + 8);
+        d.argued(
+            &mut m,
+            Value::Peace,
+            40,
+            1.0,
+            credible_and_fresh(),
+            round * 14 + 1,
+        );
+        d.argued(
+            &mut m,
+            Value::Peace,
+            -40,
+            1.0,
+            credible_and_fresh(),
+            round * 14 + 8,
+        );
     }
     let up = d.about(Value::Peace, 1);
     let down = d.about(Value::Peace, -1);
-    assert!(up > 0.0 && down > 0.0, "one side of the argument left no trace");
+    assert!(
+        up > 0.0 && down > 0.0,
+        "one side of the argument left no trace"
+    );
     assert!(
         up + down > d.strongest_about(Value::Peace),
         "the two sides were being kept in one bucket"
@@ -431,7 +482,11 @@ fn saying_it_again_is_not_saying_something_new() {
         let mut m = a_person(13);
         holding(&mut m, Value::Law, 20);
         let mut d = Doubts::new();
-        let f = Framing { credible: 0.9, novelty, ..Default::default() };
+        let f = Framing {
+            credible: 0.9,
+            novelty,
+            ..Default::default()
+        };
         let mut moves = 0;
         for week in 0..40 {
             if d.argued(&mut m, Value::Law, -40, 1.0, f, week * 7 + 1) == Argued::Moved {
@@ -444,7 +499,10 @@ fn saying_it_again_is_not_saying_something_new() {
         run(1.0) > run(0.0),
         "the same sentence forty times did as much as forty new arguments"
     );
-    assert!(run(1.0) > 0, "forty fresh arguments from a credible friend moved nobody");
+    assert!(
+        run(1.0) > 0,
+        "forty fresh arguments from a credible friend moved nobody"
+    );
 }
 
 /// **Doubt decays**, so the person you argue with once a year converts
@@ -456,12 +514,26 @@ fn one_conversation_a_year_converts_nobody() {
         holding(&mut m, Value::Law, 30);
         let mut d = Doubts::new();
         for n in 0..25u64 {
-            d.argued(&mut m, Value::Law, -40, 1.0, credible_and_fresh(), n * interval + 1);
+            d.argued(
+                &mut m,
+                Value::Law,
+                -40,
+                1.0,
+                credible_and_fresh(),
+                n * interval + 1,
+            );
         }
         m.conviction(Value::Law)
     };
-    assert_eq!(run(365), 30, "twenty-five arguments over twenty-five years converted a man");
-    assert!(run(7) < 30, "twenty-five arguments in half a year moved nobody");
+    assert_eq!(
+        run(365),
+        30,
+        "twenty-five arguments over twenty-five years converted a man"
+    );
+    assert!(
+        run(7) < 30,
+        "twenty-five arguments in half a year moved nobody"
+    );
 }
 
 /// **Kept up, it works** — slowly, and by a little.
@@ -480,7 +552,10 @@ fn kept_up_it_does_move_somebody() {
             moved += 1;
         }
     }
-    assert!(moved > 0, "three years of weekly argument never once moved him");
+    assert!(
+        moved > 0,
+        "three years of weekly argument never once moved him"
+    );
     assert!(m.conviction(Value::Law) < before);
     let shift = (before - m.conviction(Value::Law)) as f32;
     assert!(shift <= moved as f32 * CONVICTION_STEP + 0.01);
@@ -494,7 +569,14 @@ fn a_deeply_held_conviction_resists_far_more() {
         holding(&mut m, Value::Law, held);
         let mut d = Doubts::new();
         for week in 0..30 {
-            d.argued(&mut m, Value::Law, -45, 1.0, credible_and_fresh(), week * 7 + 1);
+            d.argued(
+                &mut m,
+                Value::Law,
+                -45,
+                1.0,
+                credible_and_fresh(),
+                week * 7 + 1,
+            );
         }
         d.strongest_about(Value::Law) + (held - m.conviction(Value::Law)).abs() as f64
     };
@@ -509,9 +591,16 @@ fn a_speaker_you_disbelieve_is_dismissed_and_not_resisted() {
     holding(&mut m, Value::Law, 40);
     let mut d = Doubts::new();
     let before = m.conviction(Value::Law);
-    let liar = Framing { credible: 0.05, novelty: 1.0, ..Default::default() };
+    let liar = Framing {
+        credible: 0.05,
+        novelty: 1.0,
+        ..Default::default()
+    };
 
-    assert_eq!(d.argued(&mut m, Value::Law, -40, 0.9, liar, 1), Argued::Dismissed);
+    assert_eq!(
+        d.argued(&mut m, Value::Law, -40, 0.9, liar, 1),
+        Argued::Dismissed
+    );
     assert_eq!(
         m.conviction(Value::Law),
         before,
@@ -538,14 +627,26 @@ fn backfire_needs_more_than_a_source_you_dislike() {
         out_group: 0.9,
     };
     let before = zealot.conviction(Value::Law);
-    assert_eq!(d.argued(&mut zealot, Value::Law, -40, 0.9, threat, 1), Argued::Hardened);
+    assert_eq!(
+        d.argued(&mut zealot, Value::Law, -40, 0.9, threat, 1),
+        Argued::Hardened
+    );
     assert!(zealot.conviction(Value::Law) > before);
 
     // Take away any single leg of it and it stops happening.
     for weakened in [
-        Framing { identity_centrality: 0.1, ..threat },
-        Framing { hostile_intent: 0.0, ..threat },
-        Framing { out_group: 0.0, ..threat },
+        Framing {
+            identity_centrality: 0.1,
+            ..threat
+        },
+        Framing {
+            hostile_intent: 0.0,
+            ..threat
+        },
+        Framing {
+            out_group: 0.0,
+            ..threat
+        },
     ] {
         let mut m = a_person(18);
         holding(&mut m, Value::Law, 46);
@@ -575,7 +676,10 @@ fn backfire_needs_more_than_a_source_you_dislike() {
             _ => {}
         }
     }
-    assert!(budged > hardened * 4, "{budged} moved toward against {hardened} away");
+    assert!(
+        budged > hardened * 4,
+        "{budged} moved toward against {hardened} away"
+    );
 }
 
 /// **Credibility does more than the argument does.**
@@ -586,7 +690,11 @@ fn credibility_does_more_than_the_argument_does() {
         holding(&mut m, Value::Law, 15);
         let mut d = Doubts::new();
         for week in 0..10 {
-            let f = Framing { credible, novelty: 1.0, ..Default::default() };
+            let f = Framing {
+                credible,
+                novelty: 1.0,
+                ..Default::default()
+            };
             d.argued(&mut m, Value::Law, -40, 1.0, f, week * 7 + 1);
         }
         d.strongest_about(Value::Law) + (15 - m.conviction(Value::Law)).abs() as f64
@@ -604,10 +712,25 @@ fn changing_your_mind_makes_you_a_heretic() {
     }
     let mut d = Doubts::new();
     for week in 0..40 {
-        d.argued(&mut m, Value::Family, -40, 1.0, credible_and_fresh(), week * 7 + 1);
+        d.argued(
+            &mut m,
+            Value::Family,
+            -40,
+            1.0,
+            credible_and_fresh(),
+            week * 7 + 1,
+        );
     }
-    let now = m.values.iter().find(|c| c.topic == Value::Family).unwrap().heterodoxy();
-    assert!(now > 0, "a man argued out of his culture's view was still orthodox");
+    let now = m
+        .values
+        .iter()
+        .find(|c| c.topic == Value::Family)
+        .unwrap()
+        .heterodoxy();
+    assert!(
+        now > 0,
+        "a man argued out of his culture's view was still orthodox"
+    );
 }
 
 /// **Two fixed points, not one**, and a diagnostic has to say which it
@@ -619,8 +742,14 @@ fn the_ceiling_is_stated_for_a_named_phase() {
     // the distinction the two functions exist for is invisible.
     let post = stationary_post_exposure_ceiling(120.0, added);
     let pre = stationary_pre_exposure_ceiling(120.0, added);
-    assert!(post > pre, "the two phases of the fixed point came out the same");
-    assert!(pre > 0.0, "nothing at all survived to the next conversation");
+    assert!(
+        post > pre,
+        "the two phases of the fixed point came out the same"
+    );
+    assert!(
+        pre > 0.0,
+        "nothing at all survived to the next conversation"
+    );
 
     // The gate that was missing when doubt faded by half in three weeks:
     // weekly argument converged below the bar, so the model silently
@@ -638,7 +767,14 @@ fn the_ceiling_is_stated_for_a_named_phase() {
     let mut d = Doubts::new();
     let mut seen: f64 = 0.0;
     for week in 0..60 {
-        d.argued(&mut m, Value::Law, 40, 1.0, credible_and_fresh(), week * 7 + 1);
+        d.argued(
+            &mut m,
+            Value::Law,
+            40,
+            1.0,
+            credible_and_fresh(),
+            week * 7 + 1,
+        );
         seen = seen.max(d.about(Value::Law, 1));
     }
     assert!(seen <= 1.0 && seen > 0.0);

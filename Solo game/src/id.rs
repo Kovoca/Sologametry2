@@ -141,11 +141,17 @@ impl<T> Default for Arena<T> {
 
 impl<T> Arena<T> {
     pub fn new() -> Self {
-        Arena { slots: Vec::new(), free: Vec::new() }
+        Arena {
+            slots: Vec::new(),
+            free: Vec::new(),
+        }
     }
 
     pub fn with_capacity(n: usize) -> Self {
-        Arena { slots: Vec::with_capacity(n), free: Vec::new() }
+        Arena {
+            slots: Vec::with_capacity(n),
+            free: Vec::new(),
+        }
     }
 
     /// How many things are actually in it. Not the same as the number of
@@ -169,11 +175,22 @@ impl<T> Arena<T> {
             self.free.remove(0);
             let s = &mut self.slots[slot as usize];
             s.value = Some(value);
-            return Id { slot, generation: s.generation, of: PhantomData };
+            return Id {
+                slot,
+                generation: s.generation,
+                of: PhantomData,
+            };
         }
         let slot = self.slots.len() as u32;
-        self.slots.push(Slot { generation: 0, value: Some(value) });
-        Id { slot, generation: 0, of: PhantomData }
+        self.slots.push(Slot {
+            generation: 0,
+            value: Some(value),
+        });
+        Id {
+            slot,
+            generation: 0,
+            of: PhantomData,
+        }
     }
 
     /// Take something out. Its handle stops resolving from this moment,
@@ -231,7 +248,11 @@ impl<T> Arena<T> {
         self.slots.iter().enumerate().filter_map(|(i, s)| {
             s.value.as_ref().map(|v| {
                 (
-                    Id { slot: i as u32, generation: s.generation, of: PhantomData },
+                    Id {
+                        slot: i as u32,
+                        generation: s.generation,
+                        of: PhantomData,
+                    },
                     v,
                 )
             })
@@ -242,7 +263,14 @@ impl<T> Arena<T> {
         self.slots.iter_mut().enumerate().filter_map(|(i, s)| {
             let generation = s.generation;
             s.value.as_mut().map(move |v| {
-                (Id { slot: i as u32, generation, of: PhantomData }, v)
+                (
+                    Id {
+                        slot: i as u32,
+                        generation,
+                        of: PhantomData,
+                    },
+                    v,
+                )
             })
         })
     }

@@ -191,10 +191,13 @@ pub fn update(econ: &mut Economy) {
                 / crate::building::Fixture::Till.staff()
                 * crate::building::Fixture::Till.throughput_t();
             let busy = if rated > 0.0 { site.ran / rated } else { 0.0 };
-            let stocked = Commodity::ALL
-                .iter()
-                .any(|&c| site.stock[c as usize] > 0.0);
-            let afford = econ.payroll_met.get(idx).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+            let stocked = Commodity::ALL.iter().any(|&c| site.stock[c as usize] > 0.0);
+            let afford = econ
+                .payroll_met
+                .get(idx)
+                .copied()
+                .unwrap_or(1.0)
+                .clamp(0.0, 1.0);
             let on_today = if stocked { b.staff_today(busy) } else { 0.0 } * afford;
             working[site.market] += on_today;
             per_site[idx] += on_today;
@@ -261,7 +264,12 @@ pub fn update(econ: &mut Economy) {
         // year and keep its whole staff on. Now a sustained shortfall in
         // what it can actually pay shows up as hands, which is what a
         // demand-side recession is and what this model has never had.
-        let afford = econ.payroll_met.get(idx).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+        let afford = econ
+            .payroll_met
+            .get(idx)
+            .copied()
+            .unwrap_or(1.0)
+            .clamp(0.0, 1.0);
         let on_today = with_charge(hands_for(actual, labour)) * afford;
         working[site.market] += on_today;
         per_site[idx] += on_today;
@@ -319,15 +327,28 @@ pub fn update(econ: &mut Economy) {
             0.0
         };
 
-        // **Wages sag when hands are idle, and not by much.**
+        // **Wages sag when hands are idle, and there is a measured figure
+        // for how much.**
         //
         // Nominal wages are famously sticky: a doubling of unemployment
         // does not halve anybody's pay, and pretending it does would be as
         // wrong as pretending nothing happens. What actually gives is
         // hiring, which is handled by rationing the work itself. This is
         // the smaller, second-order squeeze on top.
-        let slack = (NATURAL_UNEMPLOYMENT / w.unemployment.max(1e-4)).powf(0.35);
-        w.wage_index = slack.clamp(0.75, 1.40);
+        //
+        // **The wage curve puts it at an elasticity of about -0.1**
+        // *(Blanchflower & Oswald, replicated across many countries and
+        // decades)*: double the local unemployment rate and pay falls
+        // about a tenth. The exponent here was 0.35 with a clamp of
+        // 0.75-1.40, which is three and a half times the measured
+        // response — and it mattered, because it sat at its floor in
+        // nearly every nation and dragged a labourer's pay to **4.5 days
+        // of food a day worked against this file's own stated band of
+        // 6-10**. A calibration that the model states and then multiplies
+        // its way out of is worse than one it never claimed.
+        const WAGE_CURVE: f64 = 0.10;
+        let slack = (NATURAL_UNEMPLOYMENT / w.unemployment.max(1e-4)).powf(WAGE_CURVE);
+        w.wage_index = slack.clamp(0.85, 1.20);
 
         // Pay follows the cost of living at a walk, not a run.
         let today = food_price[m];

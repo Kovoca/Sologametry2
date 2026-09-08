@@ -25,8 +25,14 @@ fn jobs_and_people_and_hours_are_different_numbers() {
         "everybody worked a full week"
     );
     assert!(c.employed_people < c.labour_force, "nobody was out of work");
-    assert!(c.labour_force < c.working_age, "every adult was in the labour force");
-    assert!(c.working_age < c.population, "nobody was a child or retired");
+    assert!(
+        c.labour_force < c.working_age,
+        "every adult was in the labour force"
+    );
+    assert!(
+        c.working_age < c.population,
+        "nobody was a child or retired"
+    );
 }
 
 /// **A share carries what it is a share of**, and two on different bases
@@ -44,7 +50,9 @@ fn a_share_knows_its_denominator() {
         of_work.compare(&of_fte).is_none(),
         "two shares on different bases compared as though they were alike"
     );
-    assert!(of_work.compare(&c.share(1.0, Base::EmployedPeople)).is_some());
+    assert!(of_work
+        .compare(&c.share(1.0, Base::EmployedPeople))
+        .is_some());
 }
 
 /// **The same headcount is a bigger share of hours than of heads**,
@@ -57,9 +65,7 @@ fn the_base_changes_the_answer_and_that_is_the_point() {
         c.share(n, Base::FullTimeEquivalents).percent()
             > c.share(n, Base::EmployedPeople).percent()
     );
-    assert!(
-        c.share(n, Base::EmployedPeople).percent() > c.share(n, Base::Population).percent()
-    );
+    assert!(c.share(n, Base::EmployedPeople).percent() > c.share(n, Base::Population).percent());
 }
 
 // =====================================================================
@@ -106,7 +112,11 @@ fn the_quoted_figure_is_a_whole_sector_and_not_the_shops() {
 #[test]
 fn every_benchmark_names_what_it_excludes() {
     for b in DISTRIBUTION {
-        assert!(!b.excludes.is_empty(), "{} did not say what it leaves out", b.what);
+        assert!(
+            !b.excludes.is_empty(),
+            "{} did not say what it leaves out",
+            b.what
+        );
         assert!(b.of_employed > 0.0 && b.of_employed < 0.2);
     }
     assert!(DISTRIBUTION[0].excludes.contains("wholesale"));
@@ -121,7 +131,10 @@ fn every_benchmark_names_what_it_excludes() {
 fn measuring_retail_in_hours_gives_a_smaller_target_than_in_heads() {
     let heads = DISTRIBUTION[0].of_employed;
     let hours = retail_share_of_fte();
-    assert!(hours < heads, "part-time work made no difference to the target");
+    assert!(
+        hours < heads,
+        "part-time work made no difference to the target"
+    );
     assert!(
         (0.055..=0.075).contains(&hours),
         "retail in hours came out at {:.1}%",

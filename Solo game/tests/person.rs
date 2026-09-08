@@ -8,10 +8,10 @@
 use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
 use scale_sim::network::Network;
 use scale_sim::person::{self, Person, State, Trade, FOOD_PER_DAY};
-use scale_sim::travel::Conveyance;
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
+use scale_sim::travel::Conveyance;
 use scale_sim::world::World;
 
 const FOOD: Commodity = Commodity::ProcessedFood;
@@ -425,7 +425,8 @@ fn a_price_shock_can_put_a_working_man_on_the_street() {
         hal.days_worked,
         hal.days_hungry,
         hal.money,
-        r.economy.price(0, scale_sim::econ::Commodity::ProcessedFood)
+        r.economy
+            .price(0, scale_sim::econ::Commodity::ProcessedFood)
     );
 }
 

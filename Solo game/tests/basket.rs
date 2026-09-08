@@ -6,18 +6,30 @@
 //! one number, or by making a household in Miami spend a Minneapolis
 //! winter's fuel bill.
 
-use scale_sim::basket::*;
 use scale_sim::basket::Route;
+use scale_sim::basket::*;
 use scale_sim::item::{standard_catalogue, Catalogue, ItemInstance, Placement, Store};
 
 fn home_of(who: Roster) -> Household {
-    Household::new(who, Climate::temperate(), Placement::Ground { locality: 1, x: 0, y: 0 })
+    Household::new(
+        who,
+        Climate::temperate(),
+        Placement::Ground {
+            locality: 1,
+            x: 0,
+            y: 0,
+        },
+    )
 }
 
 /// A town with a shop that stocks the ordinary things, and a repairer.
 fn a_town(cat: &Catalogue) -> Market {
     let shopkeeper = 1u64;
-    let mut m = Market { repairer: Some(45.0), power: Some(0.41), ..Default::default() };
+    let mut m = Market {
+        repairer: Some(45.0),
+        power: Some(0.41),
+        ..Default::default()
+    };
     for (name, price) in [
         ("washing machine", 700.0),
         ("cooking stove", 900.0),
@@ -49,14 +61,27 @@ fn a_town(cat: &Catalogue) -> Market {
 }
 
 fn comfortable() -> Means {
-    Means { income: 900.0, savings: 6_000.0, credit: 2_000.0 }
+    Means {
+        income: 900.0,
+        savings: 6_000.0,
+        credit: 2_000.0,
+    }
 }
 
 fn poor() -> Means {
-    Means { income: 210.0, savings: 15.0, credit: 0.0 }
+    Means {
+        income: 210.0,
+        savings: 15.0,
+        credit: 0.0,
+    }
 }
 
-fn give(home: &mut Household, store: &mut Store, cat: &Catalogue, name: &str) -> scale_sim::id::Id<ItemInstance> {
+fn give(
+    home: &mut Household,
+    store: &mut Store,
+    cat: &Catalogue,
+    name: &str,
+) -> scale_sim::id::Id<ItemInstance> {
     let id = store.add(ItemInstance::one(cat, cat.must(name)), home.home);
     home.owns.push(id);
     id
@@ -88,11 +113,23 @@ fn a_household_with_a_working_machine_does_not_buy_another() {
         &market,
         comfortable(),
     );
-    assert_eq!(intent, Intent::Nothing, "it went shopping with a working machine at home");
+    assert_eq!(
+        intent,
+        Intent::Nothing,
+        "it went shopping with a working machine at home"
+    );
 
     // And over a whole week of ordering, nothing is bought for it.
     let mut market = market;
-    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 1);
+    let out = a_period(
+        &mut home,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        1,
+    );
     assert!(
         !out.bought.iter().any(|(o, _)| o.need == Need::CleanClothes),
         "a second washing machine turned up in the week"
@@ -101,9 +138,20 @@ fn a_household_with_a_working_machine_does_not_buy_another() {
     // **Money is not what stops it.** The same household with no machine
     // and the same money does buy one.
     let mut bare = home_of(Roster::of(2));
-    let bought = a_period(&mut bare, &mut store, &cat, &mut market, comfortable(), 7, 2);
+    let bought = a_period(
+        &mut bare,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        2,
+    );
     assert!(
-        bought.bought.iter().any(|(o, _)| o.need == Need::CleanClothes),
+        bought
+            .bought
+            .iter()
+            .any(|(o, _)| o.need == Need::CleanClothes),
         "a household with money and no machine did not buy one"
     );
 }
@@ -122,21 +170,48 @@ fn a_broken_machine_is_mended_before_it_is_replaced() {
     let machine = give(&mut home, &mut store, &cat, "washing machine");
     store.get_mut(machine).unwrap().condition.damage = 0.55;
 
-    let intent = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, comfortable());
-    assert_eq!(intent, Intent::Repair(machine), "it scrapped a mendable machine");
+    let intent = what_to_do(
+        Need::CleanClothes,
+        1.0,
+        &home,
+        &store,
+        &cat,
+        &market,
+        comfortable(),
+    );
+    assert_eq!(
+        intent,
+        Intent::Repair(machine),
+        "it scrapped a mendable machine"
+    );
 
     // **A town with nobody to mend things buys a new one instead** — the
     // same household, the same fault, a different place.
     let mut no_repairer = a_town(&cat);
     no_repairer.repairer = None;
-    let instead =
-        what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &no_repairer, comfortable());
+    let instead = what_to_do(
+        Need::CleanClothes,
+        1.0,
+        &home,
+        &store,
+        &cat,
+        &no_repairer,
+        comfortable(),
+    );
     assert_eq!(instead, Intent::BuyNew(cat.must("washing machine")));
 
     // **And a worn-out machine is not worth mending however cheap the
     // repairer is.** Real repair shops turn this work away.
     store.get_mut(machine).unwrap().condition.wear = 0.95;
-    let scrapped = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, comfortable());
+    let scrapped = what_to_do(
+        Need::CleanClothes,
+        1.0,
+        &home,
+        &store,
+        &cat,
+        &market,
+        comfortable(),
+    );
     assert!(
         !matches!(scrapped, Intent::Repair(_)),
         "it paid to mend a machine at the end of its life"
@@ -164,19 +239,34 @@ fn a_used_machine_washes_the_same_clothes() {
     // near enough for a new one. **The essentials come first**, which is
     // why this needs stating: with a smaller purse it correctly buys a tub
     // instead, having spent the money on food, warmth and a bed.
-    let purse = Means { income: 400.0, savings: 2_400.0, credit: 0.0 };
+    let purse = Means {
+        income: 400.0,
+        savings: 2_400.0,
+        credit: 0.0,
+    };
     let intent = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, purse);
-    assert_eq!(intent, Intent::BuyUsed(washer), "it paid full price with a used one on offer");
+    assert_eq!(
+        intent,
+        Intent::BuyUsed(washer),
+        "it paid full price with a used one on offer"
+    );
 
     let out = a_period(&mut home, &mut store, &cat, &mut market, purse, 7, 3);
-    let spent: f64 = out.bought.iter().filter(|(o, _)| o.need == Need::CleanClothes).map(|(_, p)| *p).sum();
-    assert!((spent - 180.0).abs() < 1e-9, "it did not pay the second-hand price: {spent}");
+    let spent: f64 = out
+        .bought
+        .iter()
+        .filter(|(o, _)| o.need == Need::CleanClothes)
+        .map(|(_, p)| *p)
+        .sum();
+    assert!(
+        (spent - 180.0).abs() < 1e-9,
+        "it did not pay the second-hand price: {spent}"
+    );
 
     // **And it does the job**, which is the point: the need is met and
     // nothing is outstanding.
-    assert_eq!(
+    assert!(
         provision_for(Need::CleanClothes, 1.0, &home.owns, &store, &cat).met(),
-        true,
         "a second-hand machine washed nothing"
     );
     // It is not as good, though. Less life left in it.
@@ -186,7 +276,10 @@ fn a_used_machine_washes_the_same_clothes() {
         .find(|&&id| store.get(id).map(|i| i.definition) == Some(washer))
         .copied()
         .expect("it did not end up with a washing machine at all");
-    assert!(store.get(bought).unwrap().condition.wear > 0.3, "a used machine came out box-fresh");
+    assert!(
+        store.get(bought).unwrap().condition.wear > 0.3,
+        "a used machine came out box-fresh"
+    );
 }
 
 /// **Gate 4: nobody selling means unmet demand, not a phantom purchase.**
@@ -210,7 +303,15 @@ fn a_want_nobody_can_supply_is_recorded_as_a_want() {
     market.services.retain(|(n, _)| *n != Need::CookedFood);
     let mut home = home_of(Roster::of(2));
 
-    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 4);
+    let out = a_period(
+        &mut home,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        4,
+    );
 
     assert!(
         !out.bought.iter().any(|(o, _)| matches!(
@@ -226,17 +327,35 @@ fn a_want_nobody_can_supply_is_recorded_as_a_want() {
     assert!(met, "the household simply stopped eating cooked food");
 
     // Now take away every way of doing it and the demand has to surface.
-    let mut nothing = Market { repairer: None, ..Default::default() };
+    let mut nothing = Market {
+        repairer: None,
+        ..Default::default()
+    };
     nothing.services = vec![(Need::Nutrition, 12.0)];
     let mut bare = home_of(Roster::of(2));
     bare.free_hours = 0.5;
-    let out = a_period(&mut bare, &mut store, &cat, &mut nothing, comfortable(), 7, 5);
-    assert!(out.bought.iter().all(|(o, _)| o.need == Need::Nutrition), "it bought from an empty market");
+    let out = a_period(
+        &mut bare,
+        &mut store,
+        &cat,
+        &mut nothing,
+        comfortable(),
+        7,
+        5,
+    );
     assert!(
-        out.without.contains(&Need::CookedFood) || out.unmet.iter().any(|o| o.need == Need::CookedFood),
+        out.bought.iter().all(|(o, _)| o.need == Need::Nutrition),
+        "it bought from an empty market"
+    );
+    assert!(
+        out.without.contains(&Need::CookedFood)
+            || out.unmet.iter().any(|o| o.need == Need::CookedFood),
         "an unsupplied need vanished instead of being recorded"
     );
-    assert!(bare.without_for(Need::CookedFood) > 0, "going without was forgotten by the next week");
+    assert!(
+        bare.without_for(Need::CookedFood) > 0,
+        "going without was forgotten by the next week"
+    );
 }
 
 // =====================================================================
@@ -258,8 +377,14 @@ fn making_it_at_home_is_the_same_work_order_a_works_raises() {
     let mut store = Store::new();
     let mut home = home_of(Roster::of(2));
     let kitchen = Workplace::a_workshop(hand_tools(&cat));
-    let hands = Maker { skill: 0.85, proficiency: 0.8, knows_recipe: true,
-                        tool_familiarity: 0.9, focus: 0.9, fatigue: 0.1 };
+    let hands = Maker {
+        skill: 0.85,
+        proficiency: 0.8,
+        knows_recipe: true,
+        tool_familiarity: 0.9,
+        focus: 0.9,
+        fatigue: 0.1,
+    };
 
     let plan = book.must("chair, hand tools");
     let before = store.live();
@@ -274,7 +399,10 @@ fn making_it_at_home_is_the_same_work_order_a_works_raises() {
     assert_eq!(store.placement(id), Some(home.home));
     // **And it has a real as-built record**, because it went through the
     // ordinary machinery rather than being conjured.
-    assert!(store.get(id).unwrap().assembly.is_some(), "a home-made chair has no record of being made");
+    assert!(
+        store.get(id).unwrap().assembly.is_some(),
+        "a home-made chair has no record of being made"
+    );
     assert!(store.get(id).unwrap().quality.overall() > 0.0);
 }
 
@@ -288,24 +416,68 @@ fn the_money_reaches_whoever_sold_it() {
     let cat = standard_catalogue();
     let mut store = Store::new();
     let player = 4_242u64;
-    let mut market = Market { repairer: Some(45.0), power: Some(0.41), ..Default::default() };
+    let mut market = Market {
+        repairer: Some(45.0),
+        power: Some(0.41),
+        ..Default::default()
+    };
     market.stock(Stall::new(cat.must("cooking stove"), 900.0, 2, player));
     market.services = vec![(Need::Nutrition, 12.0)];
 
     let mut home = home_of(Roster::of(2));
-    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 6);
+    let out = a_period(
+        &mut home,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        6,
+    );
 
-    let took: f64 = out.paid_to.iter().filter(|(w, _)| *w == player).map(|(_, p)| *p).sum();
-    assert!((took - 900.0).abs() < 1e-9, "the player's shop was not paid: {took}");
+    let took: f64 = out
+        .paid_to
+        .iter()
+        .filter(|(w, _)| *w == player)
+        .map(|(_, p)| *p)
+        .sum();
+    assert!(
+        (took - 900.0).abs() < 1e-9,
+        "the player's shop was not paid: {took}"
+    );
     // **And the shelf went down by one.** A sale is stock leaving, not a
     // number going up.
-    assert_eq!(market.stalls.iter().find(|s| s.seller == player).unwrap().stock, 1);
+    assert_eq!(
+        market
+            .stalls
+            .iter()
+            .find(|s| s.seller == player)
+            .unwrap()
+            .stock,
+        1
+    );
 
     // Sell the last one and the next household finds an empty shop.
     let mut second = home_of(Roster::of(2));
-    let _ = a_period(&mut second, &mut store, &cat, &mut market, comfortable(), 7, 7);
+    let _ = a_period(
+        &mut second,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        7,
+    );
     let mut third = home_of(Roster::of(2));
-    let out = a_period(&mut third, &mut store, &cat, &mut market, comfortable(), 7, 8);
+    let out = a_period(
+        &mut third,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        8,
+    );
     assert!(
         !out.paid_to.iter().any(|(w, _)| *w == player),
         "the shop sold a third stove out of two"
@@ -329,8 +501,16 @@ fn a_lump_sum_is_not_a_weeks_wages() {
     let home = home_of(Roster::of(2));
 
     // Same total means, distributed differently.
-    let saved = Means { income: 200.0, savings: 3_000.0, credit: 0.0 };
-    let earned = Means { income: 3_200.0, savings: 0.0, credit: 0.0 };
+    let saved = Means {
+        income: 200.0,
+        savings: 3_000.0,
+        credit: 0.0,
+    };
+    let earned = Means {
+        income: 3_200.0,
+        savings: 0.0,
+        credit: 0.0,
+    };
     assert!((saved.total() - earned.total()).abs() < 1e-9);
     assert!(
         saved.for_a_lump_sum() > earned.for_a_lump_sum(),
@@ -340,7 +520,15 @@ fn a_lump_sum_is_not_a_weeks_wages() {
     // **The poor household cannot reach the machine.** What it can reach is
     // a thirty-pound tub, which is a real answer and not the same answer:
     // it makes Monday possible rather than unnecessary.
-    let broke = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, poor());
+    let broke = what_to_do(
+        Need::CleanClothes,
+        1.0,
+        &home,
+        &store,
+        &cat,
+        &market,
+        poor(),
+    );
     assert_ne!(
         broke,
         Intent::BuyNew(cat.must("washing machine")),
@@ -367,7 +555,15 @@ fn a_lump_sum_is_not_a_weeks_wages() {
     // With nothing at all it is worse again — a bucket and a stream.
     let bare = home_of(Roster::of(2));
     let nothing = Market::default();
-    match what_to_do(Need::CleanClothes, level, &bare, &store, &cat, &nothing, poor()) {
+    match what_to_do(
+        Need::CleanClothes,
+        level,
+        &bare,
+        &store,
+        &cat,
+        &nothing,
+        poor(),
+    ) {
         Intent::ByHand { hours_a_week } => assert!(
             hours_a_week > 12.0,
             "washing in a stream took {hours_a_week:.1} h, no worse than with a tub"
@@ -375,7 +571,15 @@ fn a_lump_sum_is_not_a_weeks_wages() {
         other => panic!("{other:?}"),
     }
 
-    let rich = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, comfortable());
+    let rich = what_to_do(
+        Need::CleanClothes,
+        1.0,
+        &home,
+        &store,
+        &cat,
+        &market,
+        comfortable(),
+    );
     assert_eq!(rich, Intent::BuyNew(cat.must("washing machine")));
 }
 
@@ -396,18 +600,47 @@ fn desired_is_not_the_same_number_as_fulfilled() {
     home.free_hours = 2.0;
 
     let wanted = home.wants();
-    assert_eq!(wanted.len(), ALL_NEEDS.len(), "a household stopped wanting things");
-    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 9);
+    assert_eq!(
+        wanted.len(),
+        ALL_NEEDS.len(),
+        "a household stopped wanting things"
+    );
+    let out = a_period(
+        &mut home,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        9,
+    );
 
-    assert!(out.spent < 1e-9, "it spent money in a market with nothing in it");
+    assert!(
+        out.spent < 1e-9,
+        "it spent money in a market with nothing in it"
+    );
     let missed = out.without.len() + out.unmet.len();
-    assert!(missed > 3, "a household in an empty country came up short on {missed} needs only");
-    assert!(out.satisfaction(&wanted) < 0.75, "going without most things read as satisfied");
+    assert!(
+        missed > 3,
+        "a household in an empty country came up short on {missed} needs only"
+    );
+    assert!(
+        out.satisfaction(&wanted) < 0.75,
+        "going without most things read as satisfied"
+    );
 
     // **And a supplied country satisfies far more of the same list.**
     let mut supplied = a_town(&cat);
     let mut lucky = home_of(Roster::of(3));
-    let good = a_period(&mut lucky, &mut store, &cat, &mut supplied, comfortable(), 7, 10);
+    let good = a_period(
+        &mut lucky,
+        &mut store,
+        &cat,
+        &mut supplied,
+        comfortable(),
+        7,
+        10,
+    );
     assert!(
         good.satisfaction(&wanted) > out.satisfaction(&wanted) + 0.2,
         "having shops made no difference"
@@ -433,7 +666,15 @@ fn a_household_buys_food_every_week_and_a_stove_once() {
     let mut stoves = 0;
     let mut food_weeks = 0;
     for week in 0..8 {
-        let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 20 + week);
+        let out = a_period(
+            &mut home,
+            &mut store,
+            &cat,
+            &mut market,
+            comfortable(),
+            7,
+            20 + week,
+        );
         stoves += out
             .bought
             .iter()
@@ -444,7 +685,10 @@ fn a_household_buys_food_every_week_and_a_stove_once() {
         }
     }
     assert_eq!(stoves, 1, "it bought {stoves} stoves in eight weeks");
-    assert_eq!(food_weeks, 8, "it ate in only {food_weeks} weeks out of eight");
+    assert_eq!(
+        food_weeks, 8,
+        "it ate in only {food_weeks} weeks out of eight"
+    );
 
     // The classification is the item layer's, not a second opinion here.
     assert!(is_flow(&cat, cat.must("loaf")));
@@ -466,9 +710,18 @@ fn four_people_eat_four_dinners_and_heat_one_house() {
 
     let food = get(&four, Need::Nutrition) / get(&one, Need::Nutrition);
     let warmth = get(&four, Need::Warmth) / get(&one, Need::Warmth);
-    assert!((food - 4.0).abs() < 0.05, "four adults did not eat four dinners: {food:.2}");
-    assert!(warmth < 1.5, "heating a house for four cost {warmth:.2} times heating it for one");
-    assert!(warmth > 1.0, "the fourth person made the house no more expensive to heat at all");
+    assert!(
+        (food - 4.0).abs() < 0.05,
+        "four adults did not eat four dinners: {food:.2}"
+    );
+    assert!(
+        warmth < 1.5,
+        "heating a house for four cost {warmth:.2} times heating it for one"
+    );
+    assert!(
+        warmth > 1.0,
+        "the fourth person made the house no more expensive to heat at all"
+    );
 
     // **A child is not an adult**, and an infant is not a child.
     let adults = Roster::of(2);
@@ -495,12 +748,22 @@ fn miami_and_minneapolis_are_not_the_same_household() {
     let hot = requirement_for(Need::Warmth, who, Climate::hot());
     let mid = requirement_for(Need::Warmth, who, Climate::temperate());
 
-    assert!(cold > mid && mid > hot, "cold {cold:.2} temperate {mid:.2} hot {hot:.2}");
-    assert!(cold / hot > 2.0, "a Minnesota winter cost {:.1}x a Florida one", cold / hot);
+    assert!(
+        cold > mid && mid > hot,
+        "cold {cold:.2} temperate {mid:.2} hot {hot:.2}"
+    );
+    assert!(
+        cold / hot > 2.0,
+        "a Minnesota winter cost {:.1}x a Florida one",
+        cold / hot
+    );
 
     // **But a hot country is not free.** Cooling is a real bill and in
     // Miami it is the larger one.
-    assert!(hot > 0.4, "a hot country needed almost nothing spent on comfort: {hot:.2}");
+    assert!(
+        hot > 0.4,
+        "a hot country needed almost nothing spent on comfort: {hot:.2}"
+    );
 
     // Clothing follows the cold too, and much more weakly — a coat lasts
     // years, so apparel spending varies far less than the weather does.
@@ -533,25 +796,40 @@ fn a_household_does_not_destroy_what_it_has_finished_with() {
 
     // Sound, still wanted: it stays in use.
     let good = give(&mut home, &mut store, &cat, "washing machine");
-    assert_eq!(dispose_of(&home, &store, good, &market, true), Disposition::InUse);
+    assert_eq!(
+        dispose_of(&home, &store, good, &market, true),
+        Disposition::InUse
+    );
 
     // Sound, not wanted here, and there is a second-hand trade: it is sold.
     let spare = store.add(ItemInstance::one(&cat, cat.must("radio set")), home.home);
     market.stock(Stall::second_hand(cat.must("radio set"), 20.0, 1, 9));
-    assert_eq!(dispose_of(&home, &store, spare, &market, false), Disposition::OfferedForSale);
+    assert_eq!(
+        dispose_of(&home, &store, spare, &market, false),
+        Disposition::OfferedForSale
+    );
 
     // Worn out, with something worth taking off it.
     let tired = give(&mut home, &mut store, &cat, "bicycle");
     store.get_mut(tired).unwrap().condition.wear = 0.75;
-    assert_eq!(dispose_of(&home, &store, tired, &market, false), Disposition::Cannibalized);
+    assert_eq!(
+        dispose_of(&home, &store, tired, &market, false),
+        Disposition::Cannibalized
+    );
 
     // **And what a household sells is where a second-hand market comes
     // from.** A town whose households sell nothing has an empty one.
     let offers = offered_for_sale(&home, &store, &cat, &market, 77);
-    assert!(!offers.is_empty(), "a household with a sound machine offered nothing");
+    assert!(
+        !offers.is_empty(),
+        "a household with a sound machine offered nothing"
+    );
     assert!(offers.iter().all(|s| s.used && s.seller == 77));
     let washer_new = market.price_new(cat.must("washing machine")).unwrap();
-    let offer = offers.iter().find(|s| s.def == cat.must("washing machine")).unwrap();
+    let offer = offers
+        .iter()
+        .find(|s| s.def == cat.must("washing machine"))
+        .unwrap();
     assert!(
         offer.price < washer_new * 0.5,
         "a used machine was offered at {:.0} against {washer_new:.0} new",
@@ -566,7 +844,9 @@ fn a_household_does_not_destroy_what_it_has_finished_with() {
 /// who happens to be being watched.
 #[test]
 fn watching_them_closely_does_not_change_what_they_want() {
-    let homes: Vec<Household> = (0..100).map(|_| home_of(Roster::of(2).with(0, 1))).collect();
+    let homes: Vec<Household> = (0..100)
+        .map(|_| home_of(Roster::of(2).with(0, 1)))
+        .collect();
     let detailed = aggregate(&homes);
     let coarse = aggregate_from(&homes[0], 100.0);
 
@@ -608,13 +888,19 @@ fn a_shop_employs_people_for_its_customers_not_its_tonnage() {
     // Double the customers through the same floor and the staff rise.
     let quiet = shop_staff_for(400.0, 900.0);
     let busy = shop_staff_for(2_400.0, 900.0);
-    assert!(busy > quiet * 1.4, "a shop six times as busy needed {busy:.0} against {quiet:.0}");
+    assert!(
+        busy > quiet * 1.4,
+        "a shop six times as busy needed {busy:.0} against {quiet:.0}"
+    );
 
     // Same customers over more floor also costs staff — somebody has to
     // keep the place.
     let cramped = shop_staff_for(1_200.0, 500.0);
     let sprawling = shop_staff_for(1_200.0, 3_700.0);
-    assert!(sprawling > cramped * 1.5, "a supermarket ran on a corner shop's staff");
+    assert!(
+        sprawling > cramped * 1.5,
+        "a supermarket ran on a corner shop's staff"
+    );
 
     // **Against the real anchor, and in the right unit.** The median US
     // supermarket is about 3,700 m2, takes 15-25,000 customers a week, and
@@ -632,7 +918,10 @@ fn a_shop_employs_people_for_its_customers_not_its_tonnage() {
         (75.0..105.0).contains(&heads),
         "a real supermarket came out at {heads:.0} people against about 89"
     );
-    assert!(heads > fte, "part-time work made the payroll shorter than the hours");
+    assert!(
+        heads > fte,
+        "part-time work made the payroll shorter than the hours"
+    );
 
     // And the superstore end lands where a Supercenter does.
     let super_fte = shop_staff_for(7_000.0, 17_000.0);
@@ -672,13 +961,18 @@ fn with_no_shops_left_they_mend_make_and_scavenge() {
 
     let out = a_period(&mut home, &mut store, &cat, &mut nothing, poor(), 7, 30);
 
-    assert!(out.spent < 1e-9, "it spent money in a country with no shops");
+    assert!(
+        out.spent < 1e-9,
+        "it spent money in a country with no shops"
+    );
     assert!(
         out.to_make.iter().any(|(_, d)| *d == cat.must("bed")),
         "nobody made the bed they knew how to make"
     );
     assert!(
-        out.scavenged.iter().any(|(_, d)| *d == cat.must("cooking stove")),
+        out.scavenged
+            .iter()
+            .any(|(_, d)| *d == cat.must("cooking stove")),
         "the stove up the road was left there"
     );
     assert!(!out.by_hand.is_empty(), "nothing at all was done by hand");
@@ -689,7 +983,10 @@ fn with_no_shops_left_they_mend_make_and_scavenge() {
         .find(|&&id| store.get(id).map(|i| i.definition) == Some(cat.must("cooking stove")))
         .copied()
         .expect("no stove");
-    assert!(store.get(stove).unwrap().condition.wear > 0.6, "a scavenged stove came out new");
+    assert!(
+        store.get(stove).unwrap().condition.wear > 0.6,
+        "a scavenged stove came out new"
+    );
 
     // **And with a shop it does none of that.** Same household, same
     // knowledge, a market in the town.
@@ -697,7 +994,10 @@ fn with_no_shops_left_they_mend_make_and_scavenge() {
     let mut same = home_of(Roster::of(2));
     same.can_make = vec![cat.must("bed")];
     let with_shops = a_period(&mut same, &mut store, &cat, &mut town, comfortable(), 7, 31);
-    assert!(with_shops.scavenged.is_empty(), "a household with money went scavenging");
+    assert!(
+        with_shops.scavenged.is_empty(),
+        "a household with money went scavenging"
+    );
     assert!(
         with_shops.to_make.is_empty(),
         "somebody who could afford a bed made one instead"
@@ -729,7 +1029,10 @@ fn two_radiators_in_a_mild_house_each_run_at_part_load() {
     give(&mut home, &mut store, &cat, "space heater");
     let three = running_kwh(&home.owns, &store, &cat, &wanted);
 
-    assert!(two > one, "a second heater made no difference to a house that was short of one");
+    assert!(
+        two > one,
+        "a second heater made no difference to a house that was short of one"
+    );
     assert!(
         two < one * 1.6,
         "two heaters cost {two:.0} kWh against one at {one:.0} — they are running flat out"
@@ -768,7 +1071,10 @@ fn two_radiators_in_a_mild_house_each_run_at_part_load() {
     let dead = home.owns[0];
     store.get_mut(dead).unwrap().condition.damage = 0.9;
     let with_a_dead_one = running_kwh(&home.owns, &store, &cat, &wanted);
-    assert!(with_a_dead_one <= two + 1e-9, "a broken heater was still on the bill");
+    assert!(
+        with_a_dead_one <= two + 1e-9,
+        "a broken heater was still on the bill"
+    );
 }
 
 /// **What is past mending goes, and the household stops paying to run it.**
@@ -788,17 +1094,32 @@ fn a_dead_machine_does_not_sit_in_the_corner_for_ever() {
     store.get_mut(dead).unwrap().condition.wear = 0.97;
     let sound = give(&mut home, &mut store, &cat, "radio set");
 
-    let out = a_period(&mut home, &mut store, &cat, &mut market, comfortable(), 7, 40);
+    let out = a_period(
+        &mut home,
+        &mut store,
+        &cat,
+        &mut market,
+        comfortable(),
+        7,
+        40,
+    );
 
     assert!(
         out.discarded.iter().any(|(id, _)| *id == dead),
         "a scrap fridge stayed on the books"
     );
-    assert!(!home.owns.contains(&dead), "it still owns the fridge it got rid of");
+    assert!(
+        !home.owns.contains(&dead),
+        "it still owns the fridge it got rid of"
+    );
     assert!(home.owns.contains(&sound), "it threw out a working radio");
     // **And it is a disposition, not destruction.** Something became of it.
     let fate = out.discarded.iter().find(|(id, _)| *id == dead).unwrap().1;
-    assert_ne!(fate, scale_sim::wip::Disposition::InUse, "a scrap fridge was still in use");
+    assert_ne!(
+        fate,
+        scale_sim::wip::Disposition::InUse,
+        "a scrap fridge was still in use"
+    );
     // A dead fridge waiting for the scrap man is still a whole fridge —
     // which is the point of `Disposition` — but it is no longer theirs and
     // it no longer costs them anything to run.
@@ -819,7 +1140,9 @@ fn a_dead_machine_does_not_sit_in_the_corner_for_ever() {
     let spare = give(&mut seller, &mut store, &cat, "washing machine");
     store.get_mut(spare).unwrap().condition.wear = 0.4;
     let offers = offered_for_sale(&seller, &store, &cat, &market, 55);
-    assert!(offers.iter().any(|s| s.def == cat.must("washing machine") && s.used));
+    assert!(offers
+        .iter()
+        .any(|s| s.def == cat.must("washing machine") && s.used));
 }
 
 // =====================================================================
@@ -839,48 +1162,97 @@ fn a_car_is_bought_on_credit_or_not_at_all() {
     let car = cat.must("motor car");
 
     // A comfortable household, and a car at a real used-car price.
-    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let purse = Means {
+        income: 1_400.0,
+        savings: 4_000.0,
+        credit: 0.0,
+    };
     let mut cash_only = a_town(&cat);
     cash_only.finance = None;
 
     let mut home = home_of(Roster::of(2));
     let level = requirement_for(Need::Mobility, home.who, home.where_);
-    let outright = what_to_do(Need::Mobility, level, &home, &store, &cat, &cash_only, purse);
+    let outright = what_to_do(
+        Need::Mobility,
+        level,
+        &home,
+        &store,
+        &cat,
+        &cash_only,
+        purse,
+    );
     assert!(
         !matches!(outright, Intent::BuyOnCredit { .. }),
         "a town with no bank in it offered finance"
     );
-    assert_ne!(outright, Intent::BuyNew(car), "somebody paid 9,000 cash out of 4,000 of savings");
+    assert_ne!(
+        outright,
+        Intent::BuyNew(car),
+        "somebody paid 9,000 cash out of 4,000 of savings"
+    );
 
     // **The same household, the same money, a bank in the town.**
     let mut with_a_bank = a_town(&cat);
-    with_a_bank.finance =
-        Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
-    let financed = what_to_do(Need::Mobility, level, &home, &store, &cat, &with_a_bank, purse);
+    with_a_bank.finance = Some(Finance {
+        rates: scale_sim::bank::Rates::ordinary(),
+        lending: true,
+    });
+    let financed = what_to_do(
+        Need::Mobility,
+        level,
+        &home,
+        &store,
+        &cat,
+        &with_a_bank,
+        purse,
+    );
     match financed {
-        Intent::BuyOnCredit { def, monthly, months, rate } => {
+        Intent::BuyOnCredit {
+            def,
+            monthly,
+            months,
+            rate,
+        } => {
             assert_eq!(def, car, "it financed something other than the car");
             assert!(months >= 48, "a car loan over {months} months");
-            assert!((0.05..0.20).contains(&rate), "quoted at {:.1}%", rate * 100.0);
+            assert!(
+                (0.05..0.20).contains(&rate),
+                "quoted at {:.1}%",
+                rate * 100.0
+            );
             // Real US new-car payments average around $700 a month.
-            assert!((150.0..900.0).contains(&monthly), "{monthly:.0} a month for a car");
+            assert!(
+                (150.0..900.0).contains(&monthly),
+                "{monthly:.0} a month for a car"
+            );
         }
         other => panic!("a household with a bank and a wage did not finance a car: {other:?}"),
     }
 
     // **And it turns up in the driveway, with an obligation attached.**
     let out = a_period(&mut home, &mut store, &cat, &mut with_a_bank, purse, 7, 90);
-    assert!(!out.borrowed.is_empty(), "nothing was actually borrowed for");
-    assert!(home.committed_monthly > 100.0, "the payment did not attach to the household");
     assert!(
-        home.owns.iter().any(|&id| store.get(id).map(|i| i.definition) == Some(car)),
+        !out.borrowed.is_empty(),
+        "nothing was actually borrowed for"
+    );
+    assert!(
+        home.committed_monthly > 100.0,
+        "the payment did not attach to the household"
+    );
+    assert!(
+        home.owns
+            .iter()
+            .any(|&id| store.get(id).map(|i| i.definition) == Some(car)),
         "the loan was written and no car arrived"
     );
 
     // **The payment comes off the top for years afterwards**, which is the
     // whole reason borrowing is a decision rather than free money.
     let next = a_period(&mut home, &mut store, &cat, &mut with_a_bank, purse, 30, 91);
-    assert!(next.debt_service > 100.0, "the loan cost nothing the following month");
+    assert!(
+        next.debt_service > 100.0,
+        "the loan cost nothing the following month"
+    );
 }
 
 /// **Gate: a credit crunch is one field going false.**
@@ -893,13 +1265,23 @@ fn when_the_bank_stops_lending_the_car_stops_happening() {
     let cat = standard_catalogue();
     let store = Store::new();
     let home = home_of(Roster::of(2));
-    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let purse = Means {
+        income: 1_400.0,
+        savings: 4_000.0,
+        credit: 0.0,
+    };
     let level = requirement_for(Need::Mobility, home.who, home.where_);
 
     let mut open = a_town(&cat);
-    open.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+    open.finance = Some(Finance {
+        rates: scale_sim::bank::Rates::ordinary(),
+        lending: true,
+    });
     let mut shut = open.clone();
-    shut.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: false });
+    shut.finance = Some(Finance {
+        rates: scale_sim::bank::Rates::ordinary(),
+        lending: false,
+    });
 
     assert!(matches!(
         what_to_do(Need::Mobility, level, &home, &store, &cat, &open, purse),
@@ -917,16 +1299,23 @@ fn when_the_bank_stops_lending_the_car_stops_happening() {
     // makes the payment bigger; it does not make the loan impossible.
     let mut dear = open.clone();
     dear.finance = Some(Finance {
-        rates: scale_sim::bank::Rates { policy: 0.14, on_deposits: 0.09 },
+        rates: scale_sim::bank::Rates {
+            policy: 0.14,
+            on_deposits: 0.09,
+        },
         lending: true,
     });
     let cheap_deal = what_to_do(Need::Mobility, level, &home, &store, &cat, &open, purse);
     let dear_deal = what_to_do(Need::Mobility, level, &home, &store, &cat, &dear, purse);
     match (cheap_deal, dear_deal) {
-        (
-            Intent::BuyOnCredit { monthly: a, .. },
-            Intent::BuyOnCredit { monthly: b, .. },
-        ) => assert!(b > a * 1.1, "nine points on the policy rate cost {:.0} against {:.0}", b, a),
+        (Intent::BuyOnCredit { monthly: a, .. }, Intent::BuyOnCredit { monthly: b, .. }) => {
+            assert!(
+                b > a * 1.1,
+                "nine points on the policy rate cost {:.0} against {:.0}",
+                b,
+                a
+            )
+        }
         (_, other) => panic!("dear money made the loan impossible rather than dear: {other:?}"),
     }
 }
@@ -940,10 +1329,17 @@ fn when_the_bank_stops_lending_the_car_stops_happening() {
 fn a_household_already_paying_for_a_car_cannot_borrow_for_another() {
     let cat = standard_catalogue();
     let store = Store::new();
-    let purse = Means { income: 1_400.0, savings: 4_000.0, credit: 0.0 };
+    let purse = Means {
+        income: 1_400.0,
+        savings: 4_000.0,
+        credit: 0.0,
+    };
     let level = requirement_for(Need::Mobility, Roster::of(2), Climate::temperate());
     let mut market = a_town(&cat);
-    market.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+    market.finance = Some(Finance {
+        rates: scale_sim::bank::Rates::ordinary(),
+        lending: true,
+    });
 
     let clear = home_of(Roster::of(2));
     assert!(matches!(
@@ -956,7 +1352,15 @@ fn a_household_already_paying_for_a_car_cannot_borrow_for_another() {
     stretched.committed_monthly = 2_500.0;
     assert!(
         !matches!(
-            what_to_do(Need::Mobility, level, &stretched, &store, &cat, &market, purse),
+            what_to_do(
+                Need::Mobility,
+                level,
+                &stretched,
+                &store,
+                &cat,
+                &market,
+                purse
+            ),
             Intent::BuyOnCredit { .. }
         ),
         "somebody at 43% of income already was written another loan"
@@ -969,11 +1373,32 @@ fn a_household_already_paying_for_a_car_cannot_borrow_for_another() {
     let mut good_record = home_of(Roster::of(2));
     good_record.standing = 0.85;
     match (
-        what_to_do(Need::Mobility, level, &good_record, &store, &cat, &market, purse),
-        what_to_do(Need::Mobility, level, &poor_record, &store, &cat, &market, purse),
+        what_to_do(
+            Need::Mobility,
+            level,
+            &good_record,
+            &store,
+            &cat,
+            &market,
+            purse,
+        ),
+        what_to_do(
+            Need::Mobility,
+            level,
+            &poor_record,
+            &store,
+            &cat,
+            &market,
+            purse,
+        ),
     ) {
         (Intent::BuyOnCredit { rate: good, .. }, Intent::BuyOnCredit { rate: bad, .. }) => {
-            assert!(bad > good * 1.3, "prime {:.1}% against subprime {:.1}%", good * 100.0, bad * 100.0)
+            assert!(
+                bad > good * 1.3,
+                "prime {:.1}% against subprime {:.1}%",
+                good * 100.0,
+                bad * 100.0
+            )
         }
         (_, other) => panic!("a subprime borrower was refused outright: {other:?}"),
     }
@@ -1004,7 +1429,15 @@ fn the_poor_spend_a_larger_share_of_it_on_food() {
         let mut food = 0.0;
         let mut all = 0.0;
         for week in 0..26 {
-            let out = a_period(&mut home, &mut store, &cat, &mut market, means, 7, event + week);
+            let out = a_period(
+                &mut home,
+                &mut store,
+                &cat,
+                &mut market,
+                means,
+                7,
+                event + week,
+            );
             for (o, paid) in &out.bought {
                 all += paid;
                 if o.need.category() == Category::Food {
@@ -1012,7 +1445,11 @@ fn the_poor_spend_a_larger_share_of_it_on_food() {
                 }
             }
         }
-        if all > 0.0 { food / all } else { 0.0 }
+        if all > 0.0 {
+            food / all
+        } else {
+            0.0
+        }
     };
 
     let poor_share = share_for(poor(), 100);
@@ -1023,7 +1460,11 @@ fn the_poor_spend_a_larger_share_of_it_on_food() {
         poor_share * 100.0,
         rich_share * 100.0
     );
-    assert!(poor_share > 0.5, "a household on 210 a week spent {:.0}% on food", poor_share * 100.0);
+    assert!(
+        poor_share > 0.5,
+        "a household on 210 a week spent {:.0}% on food",
+        poor_share * 100.0
+    );
 }
 
 /// The categories are the published ones, and they add up.
@@ -1039,6 +1480,10 @@ fn the_budget_categories_are_a_real_budget() {
     assert!(Category::Shelter.real_share() > Category::Food.real_share());
     // Every need lands in exactly one of them.
     for need in ALL_NEEDS {
-        assert!(ALL_CATEGORIES.contains(&need.category()), "{} has no category", need.name());
+        assert!(
+            ALL_CATEGORIES.contains(&need.category()),
+            "{} has no category",
+            need.name()
+        );
     }
 }

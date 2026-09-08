@@ -148,8 +148,7 @@ fn main() {
     println!("  the like-for-like comparison.");
 
     // Who did well and who did not.
-    let mut sorted: Vec<scale_sim::id::Id<scale_sim::person::Person>> =
-        folk.people.ids().collect();
+    let mut sorted: Vec<scale_sim::id::Id<scale_sim::person::Person>> = folk.people.ids().collect();
     sorted.sort_by(|&a, &b| {
         folk.people[b]
             .money

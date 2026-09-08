@@ -34,10 +34,7 @@ fn a_town() -> (u64, Plan, (i64, i64)) {
             if plan.at(px, py) == Lot::Street
                 && matches!(plan.at(px + 1, py), Lot::Shop | Lot::Flats | Lot::House)
             {
-                spot = (
-                    px as i64 * 32 + 16,
-                    py as i64 * 32 + 16,
-                );
+                spot = (px as i64 * 32 + 16, py as i64 * 32 + 16);
                 break 'find;
             }
         }
@@ -111,7 +108,10 @@ fn opaque_enclosures_hide_building_and_vehicle_interiors() {
             }
         }
     }
-    assert!(fittings > 0, "a town with nothing inside any of its buildings");
+    assert!(
+        fittings > 0,
+        "a town with nothing inside any of its buildings"
+    );
     assert!(
         (fittings_seen as f64) < fittings as f64 * 0.25,
         "{fittings_seen} of {fittings} fittings in the whole view are visible          from one spot in the street, which is a town made of glass"
@@ -159,7 +159,13 @@ fn a_window_is_visible_and_transparent() {
     // state would show the inside of every building in the town.
     assert!(Tile::Door.opaque());
     // Ground you walk on never blocks the view along it.
-    for t in [Tile::Road, Tile::Pavement, Tile::Floor, Tile::Grass, Tile::Sand] {
+    for t in [
+        Tile::Road,
+        Tile::Pavement,
+        Tile::Floor,
+        Tile::Grass,
+        Tile::Sand,
+    ] {
         assert!(!t.opaque(), "{t:?} should not stop a line of sight");
     }
 }
@@ -555,7 +561,7 @@ fn the_walls_of_a_room_you_are_in_are_not_dashed() {
     let at = spot.expect("a town with no shop in it");
     let g = Ground::window(seed, &plan, at, 104, 72);
     // Stand somewhere you can actually stand.
-    let (sx, sy) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let (sx, sy) = ((at.0 - g.origin.0), (at.1 - g.origin.1));
     let stand = (0..g.w * g.h)
         .filter(|i| g.tiles[*i] == Tile::Floor)
         .min_by_key(|i| ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs())
@@ -573,12 +579,13 @@ fn the_walls_of_a_room_you_are_in_are_not_dashed() {
             if !matches!(g.at(x, y), Tile::Wall | Tile::Window | Tile::Door) {
                 continue;
             }
-            let touches_seen_floor = [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)]
-                .iter()
-                .any(|&(dx, dy)| {
-                    let (nx, ny) = ((x as i64 + dx) as usize, (y as i64 + dy) as usize);
-                    g.at(nx, ny) == Tile::Floor && seen[ny * g.w + nx]
-                });
+            let touches_seen_floor =
+                [(0i64, -1i64), (1, 0), (0, 1), (-1, 0)]
+                    .iter()
+                    .any(|&(dx, dy)| {
+                        let (nx, ny) = ((x as i64 + dx) as usize, (y as i64 + dy) as usize);
+                        g.at(nx, ny) == Tile::Floor && seen[ny * g.w + nx]
+                    });
             if !touches_seen_floor {
                 continue;
             }
@@ -588,9 +595,13 @@ fn the_walls_of_a_room_you_are_in_are_not_dashed() {
             }
         }
     }
-    assert!(facing > 60, "only {facing} wall tiles face floor you can see");
+    assert!(
+        facing > 60,
+        "only {facing} wall tiles face floor you can see"
+    );
     assert_eq!(
-        facing, drawn,
+        facing,
+        drawn,
         "{} of {facing} wall tiles face floor in plain view and are not \
          drawn, so the room has holes in it",
         facing - drawn

@@ -69,8 +69,20 @@ pub enum Need {
 pub const ALL_NEEDS: [Need; 14] = {
     use Need::*;
     [
-        Nutrition, CookedFood, FoodKeeping, Warmth, Light, Water, CleanClothes, Clothed, Hygiene,
-        Rest, Mobility, Contact, Health, Diversion,
+        Nutrition,
+        CookedFood,
+        FoodKeeping,
+        Warmth,
+        Light,
+        Water,
+        CleanClothes,
+        Clothed,
+        Hygiene,
+        Rest,
+        Mobility,
+        Contact,
+        Health,
+        Diversion,
     ]
 };
 
@@ -185,7 +197,9 @@ pub enum Category {
 
 pub const ALL_CATEGORIES: [Category; 8] = {
     use Category::*;
-    [Food, Utilities, Household, Apparel, Transport, Healthcare, Leisure, Shelter]
+    [
+        Food, Utilities, Household, Apparel, Transport, Healthcare, Leisure, Shelter,
+    ]
 };
 
 impl Category {
@@ -243,7 +257,10 @@ pub struct Roster {
 
 impl Roster {
     pub fn of(adults: u32) -> Self {
-        Roster { adults, ..Default::default() }
+        Roster {
+            adults,
+            ..Default::default()
+        }
     }
 
     pub fn with(mut self, infants: u32, children: u32) -> Self {
@@ -299,15 +316,24 @@ pub struct Climate {
 impl Climate {
     /// The national average, for a case that is not about climate.
     pub fn temperate() -> Self {
-        Climate { heating_degree_days: 4_000.0, cooling_degree_days: 1_300.0 }
+        Climate {
+            heating_degree_days: 4_000.0,
+            cooling_degree_days: 1_300.0,
+        }
     }
 
     pub fn cold() -> Self {
-        Climate { heating_degree_days: 7_800.0, cooling_degree_days: 700.0 }
+        Climate {
+            heating_degree_days: 7_800.0,
+            cooling_degree_days: 700.0,
+        }
     }
 
     pub fn hot() -> Self {
-        Climate { heating_degree_days: 150.0, cooling_degree_days: 4_400.0 }
+        Climate {
+            heating_degree_days: 150.0,
+            cooling_degree_days: 4_400.0,
+        }
     }
 
     /// **Cooling is not free either**, and in a hot country it is the
@@ -361,7 +387,10 @@ pub fn requirements(who: Roster, where_: Climate) -> Vec<Requirement> {
                 Need::FoodKeeping => 0.8 + where_.cooling_degree_days / 4_000.0 * 0.4,
                 _ => 1.0,
             };
-            Requirement { need, level: scale * climate }
+            Requirement {
+                need,
+                level: scale * climate,
+            }
         })
         .collect()
 }
@@ -541,14 +570,24 @@ pub fn what_it_does(name: &str) -> &'static [Serves] {
 /// layer already answers.
 pub fn is_durable(cat: &Catalogue, def: DefId) -> bool {
     cat.get(def)
-        .map(|d| matches!(d.family.lifecycle(), Lifecycle::Durable | Lifecycle::SemiDurable))
+        .map(|d| {
+            matches!(
+                d.family.lifecycle(),
+                Lifecycle::Durable | Lifecycle::SemiDurable
+            )
+        })
         .unwrap_or(false)
 }
 
 /// Whether it is a flow rather than a stock — food, fuel, soap.
 pub fn is_flow(cat: &Catalogue, def: DefId) -> bool {
     cat.get(def)
-        .map(|d| matches!(d.family.lifecycle(), Lifecycle::Perishable | Lifecycle::Consumable))
+        .map(|d| {
+            matches!(
+                d.family.lifecycle(),
+                Lifecycle::Perishable | Lifecycle::Consumable
+            )
+        })
         .unwrap_or(false)
 }
 
@@ -564,9 +603,7 @@ pub fn things_that_serve(cat: &Catalogue, need: Need) -> Vec<(DefId, Serves)> {
     }
     // Cheapest-covering first, and a stable tiebreak, because a seed has to
     // rebuild the same world.
-    out.sort_by(|a, b| {
-        b.1.covers.total_cmp(&a.1.covers).then(a.0 .0.cmp(&b.0 .0))
-    });
+    out.sort_by(|a, b| b.1.covers.total_cmp(&a.1.covers).then(a.0 .0.cmp(&b.0 .0)));
     out
 }
 
@@ -585,7 +622,9 @@ pub fn provision_for(
     let mut hands_only = true;
     for &id in owned {
         let Some(item) = store.get(id) else { continue };
-        let Some(def) = cat.get(item.definition) else { continue };
+        let Some(def) = cat.get(item.definition) else {
+            continue;
+        };
         for &s in what_it_does(def.name) {
             if s.need != need {
                 continue;
@@ -626,9 +665,9 @@ pub fn provision_for(
     match best {
         // **Owning the tub is not having clean clothes.** The hours are
         // still somebody's Monday, and they are charged as such.
-        Some(_) if hands_only => {
-            Route::ByHand { hours_a_week: hours_to_do_it_by_hand(need, level) * leaves }
-        }
+        Some(_) if hands_only => Route::ByHand {
+            hours_a_week: hours_to_do_it_by_hand(need, level) * leaves,
+        },
         Some((_, id)) => Route::Owned(id),
         None => Route::Unmet,
     }
@@ -694,7 +733,9 @@ fn running(
         if !in_service(item) {
             continue;
         }
-        let Some(def) = cat.get(item.definition) else { continue };
+        let Some(def) = cat.get(item.definition) else {
+            continue;
+        };
         for s in what_it_does(def.name) {
             if s.kwh_a_week <= 0.0 && s.covers <= 0.0 {
                 continue;
@@ -720,12 +761,20 @@ fn running(
     per_need
         .iter()
         .map(|&(need, capacity, following, standing)| {
-            let level = wanted.iter().find(|r| r.need == need).map(|r| r.level).unwrap_or(1.0);
+            let level = wanted
+                .iter()
+                .find(|r| r.need == need)
+                .map(|r| r.level)
+                .unwrap_or(1.0);
             // **A demand-following load runs to the demand**, shared over
             // whatever is installed: two radiators in a mild house each run
             // at part load, and a third one changes nothing but the
             // purchase price.
-            let served = if capacity > 0.0 { (level / capacity).clamp(0.0, 1.0) } else { 0.0 };
+            let served = if capacity > 0.0 {
+                (level / capacity).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             following * served + standing
         })
         .sum()
@@ -775,7 +824,12 @@ pub enum Intent {
     /// transport is 17% of household expenditure and almost all of it is
     /// financed. A household that can only buy what it can pay for outright
     /// never owns a car, which is why transport read as nearly zero.
-    BuyOnCredit { def: DefId, monthly: f64, months: u32, rate: f64 },
+    BuyOnCredit {
+        def: DefId,
+        monthly: f64,
+        months: u32,
+        rate: f64,
+    },
     /// Do it by hand instead. Free of money and expensive in hours.
     ByHand { hours_a_week: f64 },
     /// Buy the service each time rather than the machine once. What people
@@ -804,7 +858,10 @@ impl Intent {
 
     /// Whether it puts an order into a market.
     pub fn is_a_purchase(self) -> bool {
-        matches!(self, Intent::BuyUsed(_) | Intent::BuyNew(_) | Intent::BuyOnCredit { .. })
+        matches!(
+            self,
+            Intent::BuyUsed(_) | Intent::BuyNew(_) | Intent::BuyOnCredit { .. }
+        )
     }
 }
 
@@ -859,11 +916,23 @@ pub struct Stall {
 
 impl Stall {
     pub fn new(def: DefId, price: f64, stock: u32, seller: u64) -> Self {
-        Stall { def, price, stock, seller, used: false }
+        Stall {
+            def,
+            price,
+            stock,
+            seller,
+            used: false,
+        }
     }
 
     pub fn second_hand(def: DefId, price: f64, stock: u32, seller: u64) -> Self {
-        Stall { def, price, stock, seller, used: true }
+        Stall {
+            def,
+            price,
+            stock,
+            seller,
+            used: true,
+        }
     }
 }
 
@@ -921,7 +990,10 @@ impl Market {
     }
 
     pub fn price_service(&self, need: Need) -> Option<f64> {
-        self.services.iter().find(|(n, _)| *n == need).map(|(_, p)| *p)
+        self.services
+            .iter()
+            .find(|(n, _)| *n == need)
+            .map(|(_, p)| *p)
     }
 
     /// **Take one off the shelf.** Returns who was paid and what, or
@@ -1033,10 +1105,15 @@ pub fn what_to_do(
 
     // 2. **A broken one is a repair job before it is a sale.** Look for
     //    something they already own that used to do this.
-    let candidates: Vec<DefId> = things_that_serve(cat, need).into_iter().map(|(d, _)| d).collect();
+    let candidates: Vec<DefId> = things_that_serve(cat, need)
+        .into_iter()
+        .map(|(d, _)| d)
+        .collect();
     for &id in owned {
         let Some(item) = store.get(id) else { continue };
-        let Some(def) = cat.get(item.definition) else { continue };
+        let Some(def) = cat.get(item.definition) else {
+            continue;
+        };
         if !what_it_does(def.name).iter().any(|s| s.need == need) {
             continue;
         }
@@ -1054,10 +1131,14 @@ pub fn what_to_do(
     // 3. **Second-hand does the same job.** Checked before new, because
     //    that is the order somebody short of money looks in.
     let purse = means.for_a_lump_sum();
-    let best_used = best_offer(need, level, &candidates, cat, purse, |d| market.price_used(d));
+    let best_used = best_offer(need, level, &candidates, cat, purse, |d| {
+        market.price_used(d)
+    });
 
     // 4. New, if anybody is selling and they can find the money.
-    let best_new = best_offer(need, level, &candidates, cat, purse, |d| market.price_new(d));
+    let best_new = best_offer(need, level, &candidates, cat, purse, |d| {
+        market.price_new(d)
+    });
 
     // **A used one at half the price wins**, which is what a second-hand
     // market is. A new one wins when the gap is small, because people
@@ -1094,8 +1175,12 @@ pub fn what_to_do(
     if let Some(f) = market.finance.filter(|f| f.lending) {
         let mut best: Option<(DefId, f64, u32, f64)> = None;
         for &d in &candidates {
-            let Some(name) = cat.get(d).map(|x| x.name) else { continue };
-            let Some(sv) = what_it_does(name).iter().find(|s| s.need == need) else { continue };
+            let Some(name) = cat.get(d).map(|x| x.name) else {
+                continue;
+            };
+            let Some(sv) = what_it_does(name).iter().find(|s| s.need == need) else {
+                continue;
+            };
             if sv.hands_on || sv.covers < level {
                 continue;
             }
@@ -1137,7 +1222,12 @@ pub fn what_to_do(
             }
         }
         if let Some((def, monthly, months, rate)) = best {
-            return Intent::BuyOnCredit { def, monthly, months, rate };
+            return Intent::BuyOnCredit {
+                def,
+                monthly,
+                months,
+                rate,
+            };
         }
     }
 
@@ -1170,8 +1260,13 @@ pub fn what_to_do(
             // Buy the tub if anybody sells one and they can afford it,
             // because doing it without is far worse.
             for &d in &candidates {
-                let Some(name) = cat.get(d).map(|x| x.name) else { continue };
-                if !what_it_does(name).iter().any(|s| s.need == need && s.hands_on) {
+                let Some(name) = cat.get(d).map(|x| x.name) else {
+                    continue;
+                };
+                if !what_it_does(name)
+                    .iter()
+                    .any(|s| s.need == need && s.hands_on)
+                {
                     continue;
                 }
                 if let Some(p) = market.price_used(d) {
@@ -1187,9 +1282,13 @@ pub fn what_to_do(
             }
             // Without the kit it takes half as long again — a bucket and a
             // stream against a tub and a mangle.
-            return Intent::ByHand { hours_a_week: by_hand * 1.5 };
+            return Intent::ByHand {
+                hours_a_week: by_hand * 1.5,
+            };
         }
-        return Intent::ByHand { hours_a_week: by_hand };
+        return Intent::ByHand {
+            hours_a_week: by_hand,
+        };
     }
 
     // 8. Pay for it each time, if anybody sells it that way and this
@@ -1227,8 +1326,12 @@ fn best_offer(
         if p > purse {
             continue;
         }
-        let Some(name) = cat.get(d).map(|x| x.name) else { continue };
-        let Some(s) = what_it_does(name).iter().find(|s| s.need == need) else { continue };
+        let Some(name) = cat.get(d).map(|x| x.name) else {
+            continue;
+        };
+        let Some(s) = what_it_does(name).iter().find(|s| s.need == need) else {
+            continue;
+        };
         // A thing that only makes the job possible is not an answer to
         // wanting the job done — it is the hand route with equipment.
         if s.hands_on {
@@ -1286,17 +1389,20 @@ pub fn hours_to_do_it_by_hand(need: Need, level: f64) -> f64 {
 /// Whether there is anything on the market that would actually do the job,
 /// as against merely making it possible. What lets a household with a tub
 /// go on wanting a machine.
-fn anything_better(
-    need: Need,
-    level: f64,
-    cat: &Catalogue,
-    market: &Market,
-    means: Means,
-) -> bool {
-    let candidates: Vec<DefId> = things_that_serve(cat, need).into_iter().map(|(d, _)| d).collect();
+fn anything_better(need: Need, level: f64, cat: &Catalogue, market: &Market, means: Means) -> bool {
+    let candidates: Vec<DefId> = things_that_serve(cat, need)
+        .into_iter()
+        .map(|(d, _)| d)
+        .collect();
     let purse = means.for_a_lump_sum();
-    best_offer(need, level, &candidates, cat, purse, |d| market.price_used(d)).is_some()
-        || best_offer(need, level, &candidates, cat, purse, |d| market.price_new(d)).is_some()
+    best_offer(need, level, &candidates, cat, purse, |d| {
+        market.price_used(d)
+    })
+    .is_some()
+        || best_offer(need, level, &candidates, cat, purse, |d| {
+            market.price_new(d)
+        })
+        .is_some()
 }
 
 /// Whether one of these actually does the whole job, as against getting
@@ -1318,7 +1424,11 @@ fn has_the_kit(need: Need, owned: &[Id<ItemInstance>], store: &Store, cat: &Cata
         store
             .get(id)
             .and_then(|i| cat.get(i.definition))
-            .map(|d| what_it_does(d.name).iter().any(|s| s.need == need && s.hands_on))
+            .map(|d| {
+                what_it_does(d.name)
+                    .iter()
+                    .any(|s| s.need == need && s.hands_on)
+            })
             .unwrap_or(false)
     })
 }
@@ -1496,7 +1606,9 @@ impl Household {
             home,
             can_make: Vec::new(),
             going_without: Vec::new(),
-            supply: Some(crate::utility::Account::new(crate::utility::Tariff::ordinary())),
+            supply: Some(crate::utility::Account::new(
+                crate::utility::Tariff::ordinary(),
+            )),
             day_of_year: 0,
             standing: 0.70,
             committed_monthly: 0.0,
@@ -1509,7 +1621,11 @@ impl Household {
 
     /// Days of cover of a flow need.
     pub fn cover(&self, need: Need) -> f64 {
-        self.larder.iter().find(|(n, _)| *n == need).map(|(_, d)| *d).unwrap_or(0.0)
+        self.larder
+            .iter()
+            .find(|(n, _)| *n == need)
+            .map(|(_, d)| *d)
+            .unwrap_or(0.0)
     }
 
     fn add_cover(&mut self, need: Need, days: f64) {
@@ -1521,7 +1637,11 @@ impl Household {
 
     /// How long it has been going without something.
     pub fn without_for(&self, need: Need) -> u32 {
-        self.going_without.iter().find(|(n, _)| *n == need).map(|(_, d)| *d).unwrap_or(0)
+        self.going_without
+            .iter()
+            .find(|(n, _)| *n == need)
+            .map(|(_, d)| *d)
+            .unwrap_or(0)
     }
 
     fn note_without(&mut self, need: Need, days: u32) {
@@ -1625,9 +1745,9 @@ pub fn a_period(
 
     // **The fuel is bought at the pump**, not billed by the electricity
     // company, and it is transport rather than utilities.
-    let pump = running_unmetered(&home.owns, store, cat, &wanted) * market.power_price()
-        * days as f64
-        / 7.0;
+    let pump =
+        running_unmetered(&home.owns, store, cat, &wanted) * market.power_price() * days as f64
+            / 7.0;
     if pump > 0.0 {
         let paid = pump.min(means.income + means.savings);
         let from_income = paid.min(means.income);
@@ -1672,7 +1792,9 @@ pub fn a_period(
             let have = home.cover(need);
             let short = (want_days - have).max(0.0);
             if short > 0.0 {
-                let unit = market.price_service(need).unwrap_or_else(|| default_flow_price(need));
+                let unit = market
+                    .price_service(need)
+                    .unwrap_or_else(|| default_flow_price(need));
                 let bill = unit * short * req.level;
                 let order = Order {
                     need,
@@ -1699,7 +1821,11 @@ pub fn a_period(
                 } else {
                     // Buys what it can and goes short on the rest.
                     let afford = means.income + means.savings;
-                    let got = if unit > 0.0 { afford / (unit * req.level.max(0.01)) } else { 0.0 };
+                    let got = if unit > 0.0 {
+                        afford / (unit * req.level.max(0.01))
+                    } else {
+                        0.0
+                    };
                     means.income = 0.0;
                     means.savings = 0.0;
                     out.spent += afford;
@@ -1750,13 +1876,22 @@ pub fn a_period(
             }
             Intent::BuyUsed(def) | Intent::BuyNew(def) => {
                 let used = matches!(intent, Intent::BuyUsed(_));
-                let price = if used { market.price_used(def) } else { market.price_new(def) };
+                let price = if used {
+                    market.price_used(def)
+                } else {
+                    market.price_new(def)
+                };
                 let covers = what_it_does(cat.get(def).map(|d| d.name).unwrap_or(""))
                     .iter()
                     .find(|s| s.need == need)
                     .map(|s| s.covers)
                     .unwrap_or(1.0);
-                let order = Order { need, intent, price: price.unwrap_or(0.0), covers };
+                let order = Order {
+                    need,
+                    intent,
+                    price: price.unwrap_or(0.0),
+                    covers,
+                };
                 // **The shelf is checked at the counter, not at the plan.**
                 // A price with nothing behind it fills no order, which is
                 // exactly how a shortage should feel to a household.
@@ -1791,12 +1926,20 @@ pub fn a_period(
                     }
                 }
             }
-            Intent::BuyOnCredit { def, monthly, months, rate } => {
+            Intent::BuyOnCredit {
+                def,
+                monthly,
+                months,
+                rate,
+            } => {
                 // **The deposit comes out of savings and the rest is
                 // borrowed.** The money for it is created where the balance
                 // sheet is; here the household simply acquires the thing
                 // and the obligation.
-                let price = market.price_new(def).or_else(|| market.price_used(def)).unwrap_or(0.0);
+                let price = market
+                    .price_new(def)
+                    .or_else(|| market.price_used(def))
+                    .unwrap_or(0.0);
                 let ltv = crate::bank::Credit::CarLoan.max_loan_to_value();
                 let deposit = (price - price * ltv).max(0.0);
                 let used = market.price_new(def).is_none();
@@ -1864,7 +2007,12 @@ pub fn a_period(
                     means.income -= p;
                     out.spent += p;
                     out.bought.push((
-                        Order { need, intent, price: p, covers: req.level },
+                        Order {
+                            need,
+                            intent,
+                            price: p,
+                            covers: req.level,
+                        },
                         p,
                     ));
                     home.note_met(need);
@@ -1922,7 +2070,11 @@ pub fn a_period(
     // **What is not spent is put by.** Real saving is exactly this: the
     // residue of a week, and it is how a poor household eventually reaches
     // something it could never buy out of a wage.
-    out.left = Means { income: 0.0, savings: means.savings + means.income, credit: means.credit };
+    out.left = Means {
+        income: 0.0,
+        savings: means.savings + means.income,
+        credit: means.credit,
+    };
     out
 }
 
@@ -1957,10 +2109,14 @@ pub fn wear_and_failure(
 ) {
     for (k, &id) in home.owns.clone().iter().enumerate() {
         let Some(item) = store.get(id) else { continue };
-        let Some(def) = cat.get(item.definition) else { continue };
+        let Some(def) = cat.get(item.definition) else {
+            continue;
+        };
         let life = def.family.lifecycle().typical_life_days();
         let per_day = 1.0 / life.max(1.0);
-        let Some(item) = store.get_mut(id) else { continue };
+        let Some(item) = store.get_mut(id) else {
+            continue;
+        };
         item.condition.wear = (item.condition.wear + per_day * days as f64).min(1.0);
         // **An older machine fails more often**, which is the whole shape
         // of an appliance's life and the reason a repair trade exists.
@@ -1995,8 +2151,7 @@ pub fn make_it_yourself(
     order_id: u64,
     day: u32,
 ) -> Result<Id<ItemInstance>, crate::craft::Halt> {
-    let mut order =
-        crate::craft::WorkOrder::begin_for(order_id, recipe, 1, 0, day, home.home);
+    let mut order = crate::craft::WorkOrder::begin_for(order_id, recipe, 1, 0, day, home.home);
     let mut last = crate::craft::Halt::Running;
     for _ in 0..4_000 {
         let before = (order.step, order.step_done, order.elapsed_min);
@@ -2037,7 +2192,9 @@ pub fn dispose_of(
     market: &Market,
     somebody_wants_it: bool,
 ) -> crate::wip::Disposition {
-    let Some(i) = store.get(item) else { return crate::wip::Disposition::Abandoned };
+    let Some(i) = store.get(item) else {
+        return crate::wip::Disposition::Abandoned;
+    };
     let sound = 1.0 - i.condition.wear.max(i.condition.damage);
     let still_used = home.owns.contains(&item) && sound > 0.5;
     // Somebody within reach who would buy it — which is what a second-hand
@@ -2062,7 +2219,12 @@ pub fn offered_for_sale_one(
         return None;
     }
     let new = market.price_new(i.definition)?;
-    Some(Stall::second_hand(d.id, new * (0.18 + sound * 0.25), 1, seller))
+    Some(Stall::second_hand(
+        d.id,
+        new * (0.18 + sound * 0.25),
+        1,
+        seller,
+    ))
 }
 
 /// **What a household puts back into the second-hand market**, which is
@@ -2087,7 +2249,12 @@ pub fn offered_for_sale(
             // A used thing is worth what is left of it, discounted hard —
             // real second-hand appliances go for a fifth to a third of new.
             let new = market.price_new(i.definition)?;
-            Some(Stall::second_hand(d.id, new * (0.18 + sound * 0.25), 1, seller))
+            Some(Stall::second_hand(
+                d.id,
+                new * (0.18 + sound * 0.25),
+                1,
+                seller,
+            ))
         })
         .collect()
 }
@@ -2122,7 +2289,10 @@ pub fn aggregate(homes: &[Household]) -> TownDemand {
         }
     }
     wanted.sort_by_key(|x| x.0);
-    TownDemand { households: homes.len() as f64, wanted }
+    TownDemand {
+        households: homes.len() as f64,
+        wanted,
+    }
 }
 
 /// The same thing computed from a representative household and a count,
@@ -2135,12 +2305,19 @@ pub fn aggregate_from(typical: &Household, count: f64) -> TownDemand {
         .collect::<Vec<_>>();
     let mut wanted = wanted;
     wanted.sort_by_key(|x| x.0);
-    TownDemand { households: count, wanted }
+    TownDemand {
+        households: count,
+        wanted,
+    }
 }
 
 impl TownDemand {
     pub fn level(&self, need: Need) -> f64 {
-        self.wanted.iter().find(|(n, _)| *n == need).map(|(_, l)| *l).unwrap_or(0.0)
+        self.wanted
+            .iter()
+            .find(|(n, _)| *n == need)
+            .map(|(_, l)| *l)
+            .unwrap_or(0.0)
     }
 }
 

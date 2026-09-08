@@ -76,7 +76,13 @@ fn main() {
         match a.as_str() {
             "--seed" => seed = it.next().and_then(|v| v.parse().ok()).unwrap_or(seed),
             "--years" => years = it.next().and_then(|v| v.parse().ok()).unwrap_or(3).max(1),
-            "--folk" => cast = it.next().and_then(|v| v.parse().ok()).unwrap_or(6).clamp(2, 20),
+            "--folk" => {
+                cast = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(6)
+                    .clamp(2, 20)
+            }
             "--help" | "-h" => {
                 println!("usage: minds [--seed N] [--years N] [--folk N]");
                 std::process::exit(0);
@@ -102,7 +108,7 @@ fn main() {
         .iter()
         .filter(|s| polities.owner[s.cell] == nation)
         .collect::<Vec<_>>();
-    here.sort_by(|a, b| b.population.cmp(&a.population));
+    here.sort_by_key(|a| std::cmp::Reverse(a.population));
     let Some(town) = here.first() else {
         eprintln!("that nation has no towns");
         std::process::exit(1);
@@ -130,9 +136,12 @@ fn main() {
     let last_day = years * 365;
     let mut people: Vec<Coarse> = Vec::new();
     for i in 0..cast {
-        let mut c = Coarse::new(folk(i as u32), seed ^ (i as u64 + 1) * 0x9E37, 0);
-        c.perceived_control =
-            ControlAppraisal { source: 0.55, consequences: 0.6, own_response: 0.5 };
+        let mut c = Coarse::new(folk(i as u32), seed ^ ((i as u64 + 1) * 0x9E37), 0);
+        c.perceived_control = ControlAppraisal {
+            source: 0.55,
+            consequences: 0.6,
+            own_response: 0.5,
+        };
         c.support_expected = 0.6;
         people.push(c);
     }
@@ -155,17 +164,26 @@ fn main() {
                 },
             }),
         },
-        Change { day: 420, what: What::SupportChanges(0.25) },
+        Change {
+            day: 420,
+            what: What::SupportChanges(0.25),
+        },
     ];
 
-    let demands = Demands { work: 0.8, caregiving: 0.5, social: 0.4, self_care: 0.4 };
+    let demands = Demands {
+        work: 0.8,
+        caregiving: 0.5,
+        social: 0.4,
+        self_care: 0.4,
+    };
 
     for (i, c) in people.iter_mut().enumerate() {
         let me = promote(c, &culture, 0);
 
         // The blow lands on the well-being layer, which is where the
         // literature that measured it actually looked.
-        c.growth.shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 200);
+        c.growth
+            .shaped_wellbeing(ShapesWellbeing::LostWork, 1.0, -1.0, 200);
         c.appraise(200, 0, 0.75, 200);
         let tol = me.mind.stress.tolerance;
         c.advance_through(&me.mind, tol, &schedule);
@@ -177,14 +195,19 @@ fn main() {
             company: c.support_expected > 0.2,
             ..Default::default()
         };
-        let ranked = propensities(&now.mind, &c.perceived_control, &circumstances, c.strain.debt);
-
-        println!("--- person {} ----------------------------------------", i + 1);
-        println!("  is            {}", sketch(&now.mind));
-        println!(
-            "  reaches for   {:?}, then {:?}",
-            ranked[0].0, ranked[1].0
+        let ranked = propensities(
+            &now.mind,
+            &c.perceived_control,
+            &circumstances,
+            c.strain.debt,
         );
+
+        println!(
+            "--- person {} ----------------------------------------",
+            i + 1
+        );
+        println!("  is            {}", sketch(&now.mind));
+        println!("  reaches for   {:?}, then {:?}", ranked[0].0, ranked[1].0);
         println!("  settled on    {:?}", c.habits.strongest());
 
         // Not one number: which part of a life is failing.
@@ -222,7 +245,9 @@ fn main() {
             println!("  if it breaks  {:?}", breaks[0].0);
         }
 
-        let shaped = c.growth.what_shaped(DurableTarget::WellbeingBaseline, last_day);
+        let shaped = c
+            .growth
+            .what_shaped(DurableTarget::WellbeingBaseline, last_day);
         if let Some((cause, v)) = shaped.first() {
             println!("  because of    {cause:?} ({v:+.2})");
         }
@@ -249,7 +274,11 @@ fn main() {
                 Value::Law,
                 -40,
                 1.0,
-                Framing { credible: 0.9, novelty: 1.0, ..Default::default() },
+                Framing {
+                    credible: 0.9,
+                    novelty: 1.0,
+                    ..Default::default()
+                },
                 day,
             ) {
                 Argued::Moved => moved += 1,
@@ -279,7 +308,10 @@ fn main() {
     // vary are whether there is other work to be had and whether there
     // is drink to be had. Nothing about him changes at all.
     println!("\n=== the same man, three towns ===========================\n");
-    println!("  {:<33} {:<16} {:<10} {}", "town", "settles on", "after 3 yrs", "debt");
+    println!(
+        "  {:<33} {:<16} {:<10} debt",
+        "town", "settles on", "after 3 yrs"
+    );
     let towns: [(&str, f64, bool); 3] = [
         ("work to be had", 0.85, true),
         ("nothing to be had", 0.05, true),
@@ -287,8 +319,11 @@ fn main() {
     ];
     for (name, work, drink) in towns {
         let mut c = Coarse::new(folk(1), seed ^ 0x5EED, 0);
-        c.perceived_control =
-            ControlAppraisal { source: work, consequences: 0.5, own_response: 0.5 };
+        c.perceived_control = ControlAppraisal {
+            source: work,
+            consequences: 0.5,
+            own_response: 0.5,
+        };
         c.support_expected = 0.25 + 0.5 * work;
         c.drink_at_hand = drink;
         c.standing.push(Standing {

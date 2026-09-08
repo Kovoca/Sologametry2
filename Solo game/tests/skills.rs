@@ -115,7 +115,11 @@ fn how_far_somebody_gets_is_not_only_how_long_they_try() {
         able.competence(),
         dull.competence()
     );
-    assert_eq!(dull.competence(), dull.ceiling(), "he should reach his ceiling");
+    assert_eq!(
+        dull.competence(),
+        dull.ceiling(),
+        "he should reach his ceiling"
+    );
     assert!(dull.ceiling() < able.ceiling());
 }
 
@@ -186,7 +190,12 @@ fn a_world_begins_with_experienced_people_in_it() {
         untrained * 100.0
     );
 
-    let mean: f64 = folk.people.values().map(|p| p.competence() as f64).sum::<f64>() / n;
+    let mean: f64 = folk
+        .people
+        .values()
+        .map(|p| p.competence() as f64)
+        .sum::<f64>()
+        / n;
     // **Most people are competent to skilled at their work**, which is
     // the honest shape of a workforce. A country of masters is a country
     // that has flattered itself.
@@ -214,11 +223,19 @@ fn skills_hold_up_over_a_working_life() {
     }
     e.ledger.assert_conserved();
     for p in folk.people.values() {
-        assert!(p.competence() <= p.ceiling(), "{} exceeded their ceiling", p.name);
+        assert!(
+            p.competence() <= p.ceiling(),
+            "{} exceeded their ceiling",
+            p.name
+        );
         assert!(p.competence() <= 10);
     }
-    let mean: f64 =
-        folk.people.values().map(|p| p.competence() as f64).sum::<f64>() / folk.people.len() as f64;
+    let mean: f64 = folk
+        .people
+        .values()
+        .map(|p| p.competence() as f64)
+        .sum::<f64>()
+        / folk.people.len() as f64;
     assert!(
         mean > 3.0,
         "after a decade the average worker is only level {mean:.1}"

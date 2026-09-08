@@ -9,10 +9,10 @@ use scale_sim::econ::{Commodity, Doctrine, SiteKind, DAYS_PER_YEAR, RECIPES};
 use scale_sim::labour::{HOURS_PER_WORKING_YEAR, NATURAL_UNEMPLOYMENT};
 use scale_sim::network::Network;
 use scale_sim::person::{self, Person, Trade, FOOD_PER_DAY};
-use scale_sim::travel::Conveyance;
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
+use scale_sim::travel::Conveyance;
 use scale_sim::world::World;
 
 fn a_nation(doctrine: Doctrine) -> Region {
@@ -21,8 +21,7 @@ fn a_nation(doctrine: Doctrine) -> Region {
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
     let &(id, _) = polities.ranked().first().expect("no nations");
-    Region::extract(&world, &polities, &settlements, &network, id, 5, doctrine)
-        .expect("no region")
+    Region::extract(&world, &polities, &settlements, &network, id, 5, doctrine).expect("no region")
 }
 
 #[test]
@@ -369,8 +368,7 @@ fn a_small_shop_has_no_manager_and_a_big_one_has_several() {
     );
     // Span of control: overheads should land near a tenth to a seventh,
     // which is what real organisations run at.
-    let overhead = (supermarket.supervisors() + supermarket.managers())
-        / supermarket.floor_staff();
+    let overhead = (supermarket.supervisors() + supermarket.managers()) / supermarket.floor_staff();
     assert!(
         (0.05..0.30).contains(&overhead),
         "{:.0}% of a supermarket is management",
@@ -505,9 +503,16 @@ fn the_form_and_the_depth_both_follow_the_size() {
     let corner = Building::shop(0.6, 4.0);
     assert_eq!(corner.ownership(), Ownership::SoleTrader);
     assert!(corner.ownership().owner_works_there());
-    assert!(corner.ownership().unlimited_liability(), "his debts are the shop's");
+    assert!(
+        corner.ownership().unlimited_liability(),
+        "his debts are the shop's"
+    );
     assert!(!corner.ownership().can_sell_shares());
-    assert_eq!(corner.supervisors(), 0.0, "somebody supervising four people");
+    assert_eq!(
+        corner.supervisors(),
+        0.0,
+        "somebody supervising four people"
+    );
     assert_eq!(corner.layers(), 1, "a corner shop with a hierarchy");
 
     // A supermarket: incorporated, the owner is somewhere else, and there

@@ -22,8 +22,8 @@
 pub use crate::econ::Doctrine;
 
 use crate::econ::{
-    basket, Commodity, Economy, Grid, Journal, Ledger, Market, Response, Route, Site,
-    SiteKind, N_COMMODITIES,
+    basket, Commodity, Economy, Grid, Journal, Ledger, Market, Response, Route, Site, SiteKind,
+    N_COMMODITIES,
 };
 
 pub mod site {
@@ -72,8 +72,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Ashford mill".into(),
             kind: SiteKind::Mill,
@@ -85,8 +85,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Ashford cannery".into(),
             kind: SiteKind::Factory,
@@ -108,8 +108,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Kelling power station".into(),
             kind: SiteKind::PowerPlant,
@@ -121,8 +121,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             // **Two towns do not smelt their own steel.** A slice this
             // size buys plate and bar from a stockholder, which is what
@@ -138,8 +138,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Ashford depot".into(),
             kind: SiteKind::Depot,
@@ -151,8 +151,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Ashford market hall".into(),
             kind: SiteKind::Shop,
@@ -164,8 +164,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
         Site {
             name: "Bexley general store".into(),
             kind: SiteKind::Shop,
@@ -177,8 +177,8 @@ pub fn build(doctrine: Doctrine) -> Economy {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    },
+            cost_factor: 1.0,
+        },
     ];
 
     let markets = vec![
@@ -225,11 +225,14 @@ pub fn build(doctrine: Doctrine) -> Economy {
         logistics: None,
         treasury: crate::money::Treasury::new(),
         told_the_day: None,
-            opening: None,
-            shipments: crate::registry::Registry::new(),
-            routing: crate::quote::Routing::default(),
-            import_duty: Default::default(),
-            arrivals: Vec::new(),
+        opening: None,
+        shipments: crate::registry::Registry::new(),
+        power_clearing: None,
+        experiments: Default::default(),
+        routing: crate::quote::Routing::default(),
+        reservations: crate::quote::Reservations::new(),
+        import_duty: Default::default(),
+        arrivals: Vec::new(),
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
         state_afford: 1.0,
@@ -418,8 +421,9 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         }
     }
 
-    let peak =
-        (cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0) * TOWNS as f64;
+    // Provisional: the real figure is taken off the built economy below,
+    // because adding up the recipe draws by hand gets it wrong.
+    let peak = (cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0) * TOWNS as f64;
 
     let mut economy = Economy {
         ledger: Ledger::new(sites),
@@ -440,8 +444,11 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         told_the_day: None,
         opening: None,
         shipments: crate::registry::Registry::new(),
-            routing: crate::quote::Routing::default(),
-            import_duty: Default::default(),
+        power_clearing: None,
+        experiments: Default::default(),
+        routing: crate::quote::Routing::default(),
+        reservations: crate::quote::Reservations::new(),
+        import_duty: Default::default(),
         arrivals: Vec::new(),
         staff_today: Vec::new(),
         payroll_met: Vec::new(),
@@ -455,5 +462,19 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     // the top of every day, but a freshly built world is read before it
     // has had one.
     economy.resurvey();
+    // **And size the grid against the load it will actually see.**
+    //
+    // Adding up the recipe draws by hand got it wrong by half: this
+    // fixture ran at capacity 142 against a demand of 283, so every
+    // measurement taken on it — the allocation work, the permutation
+    // gates, the whole experiment matrix — was taken on a country in
+    // permanent fifty per cent blackout. It did not invalidate them,
+    // because it was the same in every case, and it is exactly the kind of
+    // thing that invalidates the next one.
+    //
+    // **A real system plans a reserve margin of 15-20% above peak**, which
+    // is what keeps the lights on when a unit trips or the weather turns.
+    let peak = economy.power_demand() * 1.20;
+    economy.grid = Grid::for_doctrine(doctrine, peak);
     economy
 }

@@ -235,7 +235,13 @@ impl Treasury {
         }
         *self.balances.entry(to).or_insert(0.0) += amount;
         self.created += amount;
-        self.today.push(Transfer { day, from: to, to, amount, why });
+        self.today.push(Transfer {
+            day,
+            from: to,
+            to,
+            amount,
+            why,
+        });
         *self.flows.entry(reason_name(why)).or_insert(0.0) += amount;
     }
 
@@ -254,7 +260,13 @@ impl Treasury {
         }
         *self.balances.entry(from).or_insert(0.0) -= taken;
         self.destroyed += taken;
-        self.today.push(Transfer { day, from, to: from, amount: taken, why });
+        self.today.push(Transfer {
+            day,
+            from,
+            to: from,
+            amount: taken,
+            why,
+        });
         *self.flows.entry(reason_name(why)).or_insert(0.0) += taken;
         taken
     }

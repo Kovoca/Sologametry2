@@ -78,8 +78,9 @@ pub enum SocialFact {
 /// you in a fight, chronically late, incapable of keeping a secret and
 /// perfectly honest with money. General trust is a weighted summary of
 /// these; the domain evidence stays available.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum TrustIn {
+    #[default]
     General,
     Secrets,
     Money,
@@ -176,7 +177,9 @@ impl Relationship {
             object,
             familiarity: 0.0,
             affection_of: Estimate::default(),
-            trust: (0..6).map(|_| [Estimate::default(), Estimate::default()]).collect(),
+            trust: (0..6)
+                .map(|_| [Estimate::default(), Estimate::default()])
+                .collect(),
             respect: (0..4).map(|_| Estimate::default()).collect(),
             fear_of: Estimate::default(),
             gratitude_to: Estimate::default(),
@@ -216,7 +219,9 @@ impl Relationship {
     }
     pub fn sureness_of_trust(&self, what: TrustIn) -> f64 {
         let i = what.index();
-        self.trust[i][0].confidence().max(self.trust[i][1].confidence())
+        self.trust[i][0]
+            .confidence()
+            .max(self.trust[i][1].confidence())
     }
 
     /// **Would he, or could he?** The two halves of relying on somebody.
@@ -322,18 +327,6 @@ pub struct Evidence {
     pub owing: f64,
 }
 
-impl Default for TrustIn {
-    fn default() -> Self {
-        TrustIn::General
-    }
-}
-
-impl Default for Aspect {
-    fn default() -> Self {
-        Aspect::Integrity
-    }
-}
-
 /// Familiarity is the one dimension that really does come free with
 /// contact, so it keeps a plain rate.
 ///
@@ -366,7 +359,12 @@ pub struct Diagnosticity {
 
 impl Default for Diagnosticity {
     fn default() -> Self {
-        Diagnosticity { quality: 1.0, opportunity: 1.0, responsibility: 1.0, intentional: 1.0 }
+        Diagnosticity {
+            quality: 1.0,
+            opportunity: 1.0,
+            responsibility: 1.0,
+            intentional: 1.0,
+        }
     }
 }
 
@@ -381,9 +379,10 @@ impl Default for Diagnosticity {
 ///
 /// So `if negative { weight *= 2.5 }` is wrong. Which way the asymmetry
 /// runs depends on what is being judged.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Aspect {
     /// Would they? A moral judgement.
+    #[default]
     Integrity,
     /// Could they? A judgement of capability.
     Competence,
@@ -411,7 +410,9 @@ impl Aspect {
 impl Diagnosticity {
     /// 0 to 1: how much this observation is worth knowing.
     pub fn worth(&self, aspect: Aspect, evidence: f64) -> f64 {
-        (self.quality * self.opportunity * self.responsibility.max(0.05)
+        (self.quality
+            * self.opportunity
+            * self.responsibility.max(0.05)
             * (0.3 + 0.7 * self.intentional)
             * aspect.asymmetry(evidence)
             * evidence.abs())
@@ -466,7 +467,11 @@ impl Estimate {
         if w <= 0.0 {
             return 0.0;
         }
-        self.epochs.iter().map(|e| e.magnitude * e.weight * e.live).sum::<f64>() / w
+        self.epochs
+            .iter()
+            .map(|e| e.magnitude * e.weight * e.live)
+            .sum::<f64>()
+            / w
     }
 
     /// **How sure they are of the estimate they now hold.** Not how sure
@@ -508,8 +513,8 @@ impl Estimate {
 
         // How far this cuts against what was believed, and how much that
         // belief was worth in the first place.
-        let contradiction = ((prior - e).abs() / 2.0).clamp(0.0, 1.0)
-            * (prior_weight / MOST_EVIDENCE).min(1.0);
+        let contradiction =
+            ((prior - e).abs() / 2.0).clamp(0.0, 1.0) * (prior_weight / MOST_EVIDENCE).min(1.0);
         let confident_in_it = (k / 6.0).min(1.0);
         // Somebody who already believes people change abandons a model
         // faster; somebody who believes they do not resists.
@@ -523,7 +528,11 @@ impl Estimate {
             // A contradiction is itself evidence that this person is
             // harder to predict than was assumed.
             self.volatility = (self.volatility + rupture * 0.8).min(1.0);
-            self.epochs.push(Epoch { magnitude: e, weight: k, live: 1.0 });
+            self.epochs.push(Epoch {
+                magnitude: e,
+                weight: k,
+                live: 1.0,
+            });
             return;
         }
 
@@ -535,7 +544,11 @@ impl Estimate {
                 cur.weight = (cur.weight + k).min(MOST_EVIDENCE);
                 cur.live = 1.0;
             }
-            None => self.epochs.push(Epoch { magnitude: e, weight: k, live: 1.0 }),
+            None => self.epochs.push(Epoch {
+                magnitude: e,
+                weight: k,
+                live: 1.0,
+            }),
         }
         self.volatility *= 0.995;
     }
@@ -601,7 +614,8 @@ impl Relationship {
             self.familiarity = toward(self.familiarity, 1.0, FAMILIARITY_RATE * e.contact);
         }
         if e.warmth != 0.0 {
-            self.affection_of.observe(e.warmth, Aspect::Integrity, &Diagnosticity::default());
+            self.affection_of
+                .observe(e.warmth, Aspect::Integrity, &Diagnosticity::default());
         }
         if e.reliability != 0.0 {
             // **Reliability is the most diagnostic thing anybody shows
@@ -617,19 +631,33 @@ impl Relationship {
         if e.menace != 0.0 {
             // Menace is read fast and forgotten slowly: one frightening
             // encounter tells you a great deal.
-            self.fear_of.observe(e.menace.clamp(0.0, 1.0), Aspect::Integrity, &Diagnosticity::default());
+            self.fear_of.observe(
+                e.menace.clamp(0.0, 1.0),
+                Aspect::Integrity,
+                &Diagnosticity::default(),
+            );
         }
         if e.kindness != 0.0 {
-            self.gratitude_to.observe(e.kindness, Aspect::Integrity, &Diagnosticity::default());
+            self.gratitude_to
+                .observe(e.kindness, Aspect::Integrity, &Diagnosticity::default());
         }
         if e.owing != 0.0 {
             self.obligation = (self.obligation + e.owing).clamp(-1.0, 1.0);
         }
         if e.wrong > 0.0 {
-            self.grievances.push(Grievance { severity: e.wrong.min(1.0), unresolved: 1.0, day });
+            self.grievances.push(Grievance {
+                severity: e.wrong.min(1.0),
+                unresolved: 1.0,
+                day,
+            });
         }
 
-        let weight = e.warmth.abs().max(e.wrong).max(e.menace).max(e.reliability.abs());
+        let weight = e
+            .warmth
+            .abs()
+            .max(e.wrong)
+            .max(e.menace)
+            .max(e.reliability.abs());
         if weight > 0.25 {
             self.last_meaningful = Some(day);
             self.best_thing_they_did = self.best_thing_they_did.max(e.warmth.max(e.kindness));

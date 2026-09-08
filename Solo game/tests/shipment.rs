@@ -49,7 +49,11 @@ fn stock_up(e: &mut Economy, site: usize, c: Commodity, want: f64) {
         let qty = want - have;
         e.ledger.apply(
             &mut e.journal,
-            Event::Produced { site, commodity: c, qty },
+            Event::Produced {
+                site,
+                commodity: c,
+                qty,
+            },
         );
     } else if have > want {
         let qty = have - want;
@@ -73,7 +77,11 @@ fn stock_up(e: &mut Economy, site: usize, c: Commodity, want: f64) {
 /// right about the rare one.
 #[test]
 fn a_short_haul_is_collected_and_tipped_the_same_day() {
-    assert_eq!(days_on_the_road(94.0), 0, "the average British haul now sleeps out");
+    assert_eq!(
+        days_on_the_road(94.0),
+        0,
+        "the average British haul now sleeps out"
+    );
     assert_eq!(days_on_the_road(0.0), 0);
     assert_eq!(days_on_the_road(KM_PER_DAY - 1.0), 0);
     assert_eq!(days_on_the_road(KM_PER_DAY), 1);
@@ -94,7 +102,9 @@ fn a_cargo_on_the_road_has_not_stopped_existing() {
     let before = e.ledger.total(c);
     let at_seller = e.ledger.stock(from, c);
 
-    let id = e.consign(from, to, 0, c, qty, 2_000.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 2_000.0, false)
+        .expect("nothing set off");
     e.ledger.assert_conserved();
 
     // It has left the seller.
@@ -105,7 +115,11 @@ fn a_cargo_on_the_road_has_not_stopped_existing() {
     // It has not reached the buyer.
     assert!(e.shipments.get(id).unwrap().delivered < 1e-9);
     // And it is still in the country.
-    assert!(e.afloat(c) >= qty - 1e-9, "{} afloat, {qty} despatched", e.afloat(c));
+    assert!(
+        e.afloat(c) >= qty - 1e-9,
+        "{} afloat, {qty} despatched",
+        e.afloat(c)
+    );
     assert!(
         (e.ledger.total(c) - before).abs() < 1e-6,
         "tonnage changed by putting it on a lorry: {before} -> {}",
@@ -124,7 +138,9 @@ fn the_price_moves_and_the_contract_does_not() {
     let (from, to, c, qty) = a_load(&mut e);
     let from_market = e.ledger.sites[from].market;
 
-    let id = e.consign(from, to, 0, c, qty, 1_300.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .expect("nothing set off");
     let agreed = e.shipments.get(id).unwrap().goods;
     let per_tonne = e.shipments.get(id).unwrap().landed_per_tonne();
     assert!(agreed > 0.0, "a consignment left with no contract price");
@@ -146,11 +162,12 @@ fn the_price_moves_and_the_contract_does_not() {
                 .entries()
                 .iter()
                 .filter_map(|entry| match &entry.event {
-                    Event::Landed { shipment, paid, qty, .. }
-                        if *shipment == id =>
-                    {
-                        Some(paid / qty)
-                    }
+                    Event::Landed {
+                        shipment,
+                        paid,
+                        qty,
+                        ..
+                    } if *shipment == id => Some(paid / qty),
                     _ => None,
                 })
                 .next()
@@ -180,7 +197,9 @@ fn the_price_moves_and_the_contract_does_not() {
 fn a_lorry_on_the_road_is_the_same_lorry_after_a_reload() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
-    let id = e.consign(from, to, 3, c, qty, 2_000.0, true).expect("nothing set off");
+    let id = e
+        .consign(from, to, 3, c, qty, 2_000.0, true)
+        .expect("nothing set off");
     let before = e.shipments.get(id).cloned().expect("it did not exist");
 
     // Through actual bytes.
@@ -190,8 +209,13 @@ fn a_lorry_on_the_road_is_the_same_lorry_after_a_reload() {
     let back: Registry<Shipment> = Registry::load(&mut r).expect("it would not read back");
     assert!(r.done(), "the codec left bytes behind");
 
-    let after = back.get(id).expect("the cargo was not there after the reload");
-    assert_eq!(&before, after, "the consignment changed on the way through a save");
+    let after = back
+        .get(id)
+        .expect("the cargo was not there after the reload");
+    assert_eq!(
+        &before, after,
+        "the consignment changed on the way through a save"
+    );
     assert_eq!(after.consignee, to);
     assert_eq!(after.leg, Leg::OnTheRoad);
     assert!(after.refrigerated, "the reefer came back as a flatbed");
@@ -211,7 +235,9 @@ fn a_lorry_on_the_road_is_the_same_lorry_after_a_reload() {
 fn a_lorry_cannot_tip_into_a_shed_that_filled_while_it_was_driving() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
-    let id = e.consign(from, to, 0, c, qty, 1_300.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .expect("nothing set off");
 
     // The consignee's shed fills while the lorry is on the road.
     e.ledger.sites[to].capacity[c as usize] = e.ledger.stock(to, c);
@@ -219,7 +245,10 @@ fn a_lorry_cannot_tip_into_a_shed_that_filled_while_it_was_driving() {
     let off = e.tip(id);
     assert!(off < 1e-9, "{off} t went into a full shed");
     assert_eq!(e.shipments.get(id).unwrap().leg, Leg::Waiting);
-    assert!(e.afloat(c) >= qty - 1e-9, "the cargo evaporated at the gate");
+    assert!(
+        e.afloat(c) >= qty - 1e-9,
+        "the cargo evaporated at the gate"
+    );
     e.ledger.assert_conserved();
 
     // Room appears, and the same lorry tips.
@@ -245,7 +274,9 @@ fn a_load_that_cannot_be_tipped_does_not_wait_for_ever() {
             e.ledger.sites[i].capacity[c as usize] = e.ledger.stock(i, c);
         }
     }
-    let id = e.consign(from, to, 0, c, qty, 700.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 700.0, false)
+        .expect("nothing set off");
 
     for _ in 0..12 {
         e.step();
@@ -256,7 +287,10 @@ fn a_load_that_cannot_be_tipped_does_not_wait_for_ever() {
         "it is still standing at the bay a fortnight later"
     );
     assert!(e.afloat(c) < 1e-6, "{} t is still afloat", e.afloat(c));
-    assert!(e.shipments.len() < 50, "the registry is filling up with stuck loads");
+    assert!(
+        e.shipments.len() < 50,
+        "the registry is filling up with stuck loads"
+    );
 }
 
 /// **A lorry is a store like any other, and refrigeration is the whole
@@ -292,11 +326,9 @@ fn meat_rots_on_the_road_unless_the_lorry_is_cold() {
         .entries()
         .iter()
         .filter_map(|e| match &e.event {
-            Event::LostInTransit { shipment, qty, how, .. }
-                if *shipment == a && *how == Loss::Spoiled =>
-            {
-                Some(*qty)
-            }
+            Event::LostInTransit {
+                shipment, qty, how, ..
+            } if *shipment == a && *how == Loss::Spoiled => Some(*qty),
             _ => None,
         })
         .sum();
@@ -305,16 +337,17 @@ fn meat_rots_on_the_road_unless_the_lorry_is_cold() {
         .entries()
         .iter()
         .filter_map(|e| match &e.event {
-            Event::LostInTransit { shipment, qty, how, .. }
-                if *shipment == b && *how == Loss::Spoiled =>
-            {
-                Some(*qty)
-            }
+            Event::LostInTransit {
+                shipment, qty, how, ..
+            } if *shipment == b && *how == Loss::Spoiled => Some(*qty),
             _ => None,
         })
         .sum();
 
-    assert!(lost_warm > 1e-6, "meat spent three days on an open lorry and nothing happened");
+    assert!(
+        lost_warm > 1e-6,
+        "meat spent three days on an open lorry and nothing happened"
+    );
     assert!(
         lost_cold < lost_warm * 0.5,
         "refrigeration bought nothing: {lost_cold} against {lost_warm}"
@@ -332,22 +365,33 @@ fn nobody_is_paid_for_a_load_that_is_still_moving() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let market = e.ledger.sites[to].market;
-    let paid_before = e.treasury.balance(scale_sim::money::Account::ServiceSector(market));
+    let paid_before = e
+        .treasury
+        .balance(scale_sim::money::Account::ServiceSector(market));
 
-    let id = e.consign(from, to, 0, c, qty, 1_300.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .expect("nothing set off");
     assert!(
         e.shipments.get(id).unwrap().freight > 0.0,
         "a two-day haul was contracted for nothing"
     );
-    let paid_afloat = e.treasury.balance(scale_sim::money::Account::ServiceSector(market));
+    let paid_afloat = e
+        .treasury
+        .balance(scale_sim::money::Account::ServiceSector(market));
     assert!(
         (paid_afloat - paid_before).abs() < 1e-9,
         "the carrier was paid before the goods arrived"
     );
 
     e.tip(id);
-    let paid_after = e.treasury.balance(scale_sim::money::Account::ServiceSector(market));
-    assert!(paid_after > paid_before, "nobody was paid for delivering it");
+    let paid_after = e
+        .treasury
+        .balance(scale_sim::money::Account::ServiceSector(market));
+    assert!(
+        paid_after > paid_before,
+        "nobody was paid for delivering it"
+    );
 }
 
 /// **One consignment, one name, and a grave when it is done with.**
@@ -359,7 +403,9 @@ fn nobody_is_paid_for_a_load_that_is_still_moving() {
 fn a_consignment_keeps_one_name_and_leaves_a_grave() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
-    let id = e.consign(from, to, 0, c, qty, 100.0, false).expect("nothing set off");
+    let id = e
+        .consign(from, to, 0, c, qty, 100.0, false)
+        .expect("nothing set off");
     let day = e.ledger.day;
 
     assert!(matches!(e.shipments.look(id), Lookup::Live(_)));
@@ -375,9 +421,7 @@ fn a_consignment_keeps_one_name_and_leaves_a_grave() {
         .entries()
         .iter()
         .filter_map(|entry| match &entry.event {
-            Event::Despatched { shipment, .. } if *shipment == id => {
-                Some("despatched")
-            }
+            Event::Despatched { shipment, .. } if *shipment == id => Some("despatched"),
             Event::Landed { shipment, .. } if *shipment == id => Some("landed"),
             _ => None,
         })
@@ -397,10 +441,13 @@ fn what_is_on_the_lorry_is_not_still_on_the_shelf() {
     let (from, to, c, _) = a_load(&mut e);
     let have = e.ledger.stock(from, c);
 
-    // Try to send more than there is, twice.
+    // Try to send more than there is, twice. **The second may legitimately
+    // be refused outright** — not for want of goods but for want of road,
+    // since the first booking takes the day's capacity with it, and a
+    // consignment that cannot be carried is not a consignment.
     let first = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false);
     let second = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false);
-    assert!(first.is_some() && second.is_some());
+    assert!(first.is_some(), "nothing set off at all");
 
     let sent: f64 = [first, second]
         .iter()
@@ -442,7 +489,10 @@ fn a_year_of_deliveries_does_not_fill_the_registry() {
     // is still not handed to anybody else.
     let (from, to, c, qty) = a_load(&mut e);
     let fresh = e.consign(from, to, 0, c, qty, 50.0, false).unwrap();
-    assert!(!names.contains(&fresh), "a pruned grave let a name be reissued");
+    assert!(
+        !names.contains(&fresh),
+        "a pruned grave let a name be reissued"
+    );
     e.ledger.assert_conserved();
 }
 
@@ -472,8 +522,15 @@ fn a_generated_world_actually_puts_things_on_the_road_overnight() {
     let polities = Polities::partition(&world, 24);
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
-    let mut n =
-        Nations::build(&world, &polities, &settlements, &network, 4, 4, Doctrine::Prudent);
+    let mut n = Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        4,
+        4,
+        Doctrine::Prudent,
+    );
 
     let mut slept_out = 0usize;
     let mut longest = 0u64;
@@ -493,9 +550,18 @@ fn a_generated_world_actually_puts_things_on_the_road_overnight() {
     }
     let raised = n.economy.shipments.ever();
 
-    assert!(raised > 500, "only {raised} consignments in four months of four nations");
-    assert!(slept_out > 100, "nothing at all spent a night on the road ({slept_out})");
-    assert!(longest >= 2, "the longest journey in the world was {longest} days");
+    assert!(
+        raised > 500,
+        "only {raised} consignments in four months of four nations"
+    );
+    assert!(
+        slept_out > 100,
+        "nothing at all spent a night on the road ({slept_out})"
+    );
+    assert!(
+        longest >= 2,
+        "the longest journey in the world was {longest} days"
+    );
     assert!(peak_afloat > 0.0, "no goods were ever in transit");
 
     // **And the registry does not grow with history.** Graves are pruned;
@@ -545,7 +611,10 @@ fn a_reloaded_world_never_reissues_a_name() {
     let mut back = Save::from_bytes(&bytes).expect("the world would not load");
 
     for &id in &alive {
-        assert!(back.shipments.get(id).is_some(), "{id:?} was lost in the save");
+        assert!(
+            back.shipments.get(id).is_some(),
+            "{id:?} was lost in the save"
+        );
     }
     for &id in &buried {
         assert!(
@@ -587,7 +656,7 @@ fn a_consignment(k: u64) -> Shipment {
         how_lost: None,
         goods: 900.0 * (100.0 + k as f64),
         freight: 45.0 * (100.0 + k as f64),
-        refrigerated: k % 2 == 0,
+        refrigerated: k.is_multiple_of(2),
         leg: Leg::OnTheRoad,
     }
 }
@@ -612,27 +681,114 @@ fn a_world_saved_mid_journey_resumes_the_same_journey() {
         .expect("nothing set off");
     let before = e.shipments.get(id).cloned().expect("it did not exist");
     assert_eq!(before.leg, Leg::OnTheRoad);
-    assert!(before.due > e.ledger.day, "the load is not actually in transit");
+    assert!(
+        before.due > e.ledger.day,
+        "the load is not actually in transit"
+    );
 
     // Out to a file and back, through the header and the checksum.
-    let mut save = Save::default();
-    save.day = e.ledger.day;
-    save.shipments = e.shipments.clone();
+    let save = Save {
+        day: e.ledger.day,
+        shipments: e.shipments.clone(),
+        ..Default::default()
+    };
     let back = Save::from_bytes(&save.to_bytes()).expect("the world would not load");
 
-    let after = back.shipments.get(id).expect("the cargo was not in the save");
-    assert_eq!(&before, after, "the consignment changed on the way through a save");
+    let after = back
+        .shipments
+        .get(id)
+        .expect("the cargo was not in the save");
+    assert_eq!(
+        &before, after,
+        "the consignment changed on the way through a save"
+    );
     assert_eq!(after.consignee, to, "it came back bound for somebody else");
     assert_eq!(after.due, before.due, "it came back due on a different day");
     assert!(
-        (after.goods - before.goods).abs() < 1e-9
-            && (after.freight - before.freight).abs() < 1e-9,
+        (after.goods - before.goods).abs() < 1e-9 && (after.freight - before.freight).abs() < 1e-9,
         "the contract was rewritten by a save"
     );
-    assert_eq!(back.day, e.ledger.day, "the world came back on a different day");
+    assert_eq!(
+        back.day, e.ledger.day,
+        "the world came back on a different day"
+    );
 
     // **And the reloaded world does not hand its name to anybody else.**
     let mut back = back;
     let fresh = back.shipments.add(a_consignment(1));
     assert_ne!(fresh, id);
+}
+
+/// **The same road cannot be promised to everybody.**
+///
+/// Acceptance gate 18.7. A route table worked out once when the day opens
+/// tells every enquiry what the road can carry — and if nothing books
+/// against it, a dozen consignments each set off believing they have that
+/// road to themselves. None of them is wrong on its own, which is what
+/// makes it hard to see: the tonnage conserves, the money conserves, and
+/// the country is simply moving more freight than its roads can hold.
+///
+/// So dispatch reserves, and what is asserted is the sum: **across every
+/// road and every day, what has been committed cannot exceed what that
+/// road can carry.**
+#[test]
+fn no_road_is_booked_past_what_it_can_carry() {
+    use scale_sim::network::Network;
+    use scale_sim::polity::Polities;
+    use scale_sim::region::Nations;
+    use scale_sim::settlement::Settlements;
+    use scale_sim::world::World;
+
+    let world = World::generate(384, 216, 7);
+    let polities = Polities::partition(&world, 24);
+    let settlements = Settlements::place(&world, &polities, 3000);
+    let network = Network::build(&world, &settlements, 500);
+    let mut n = Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        4,
+        4,
+        Doctrine::Prudent,
+    );
+
+    let mut ever_booked = 0usize;
+    let mut tightest = 0.0f64;
+    for _ in 0..200 {
+        n.economy.step();
+        for ((road, day), tonnes) in n.economy.reservations.iter() {
+            let carries = n.economy.routes[road].capacity;
+            assert!(
+                tonnes <= carries + 1e-6,
+                "road {road} on day {day} is booked for {tonnes:.1} t against \
+                 a capacity of {carries:.1}"
+            );
+            ever_booked += 1;
+            tightest = tightest.max(tonnes / carries.max(1e-9));
+        }
+    }
+
+    // **And the gate has to have seen some traffic.** A country where
+    // nothing ever moved satisfies the assertion above and proves nothing.
+    assert!(
+        ever_booked > 100,
+        "only {ever_booked} road-days were ever booked — nothing is moving \
+         and the gate is watching an empty country"
+    );
+    assert!(
+        tightest > 0.01,
+        "the busiest road was {:.4}% full, so the limit was never near \
+         binding and a missing reservation would look the same",
+        100.0 * tightest
+    );
+
+    // **The table does not grow with history.** Yesterday's traffic
+    // constrains nothing.
+    assert!(
+        n.economy.reservations.len() < 5_000,
+        "{} road-days still booked after two hundred days",
+        n.economy.reservations.len()
+    );
+    n.economy.ledger.assert_conserved();
 }

@@ -246,8 +246,7 @@ pub fn settle(
     // Thornthwaite's annual heat index, which sets the shape of the
     // monthly PET curve. Months below freezing contribute nothing.
     let month_temp = |m: i32| {
-        let phase =
-            ((m as f32 / 12.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2).sin();
+        let phase = ((m as f32 / 12.0) * std::f32::consts::TAU - std::f32::consts::FRAC_PI_2).sin();
         mean_c + phase * season_range_c * 0.5
     };
     let heat_index: f32 = (0..12)
@@ -302,7 +301,11 @@ pub fn settle(
         // which is exactly what the first version showed.
         let wet_half = phase > 0.0; // warm half of the year
         let month_rain = rain_mm_per_year / 6.0
-            * if wet_half { summer_share } else { 1.0 - summer_share };
+            * if wet_half {
+                summer_share
+            } else {
+                1.0 - summer_share
+            };
         if month_c <= 0.0 {
             snow_mm += month_rain;
         }
@@ -327,7 +330,11 @@ pub fn settle(
         // work its way down.
         let lag = ((m as f32 - WATER_TABLE_LAG_MONTHS) / 12.0) * std::f32::consts::TAU
             - std::f32::consts::FRAC_PI_2;
-        let wet_season_phase = if summer_share >= 0.5 { lag.sin() } else { -lag.sin() };
+        let wet_season_phase = if summer_share >= 0.5 {
+            lag.sin()
+        } else {
+            -lag.sin()
+        };
         let table_m = (water_table_m - swing_m * 0.5 * wet_season_phase).max(0.0);
 
         // **Groundwater feeds the crop when it is close enough to reach.**
@@ -653,32 +660,60 @@ impl Herd {
     fn needs(self) -> HerdNeeds {
         match self {
             Herd::Cattle => HerdNeeds {
-                t_min: 2.0, t_max: 32.0, takes_poor_forage: 0.55,
-                driest: 0.30, head_kg: 450.0, yield_index: 1.00,
+                t_min: 2.0,
+                t_max: 32.0,
+                takes_poor_forage: 0.55,
+                driest: 0.30,
+                head_kg: 450.0,
+                yield_index: 1.00,
             },
             Herd::Sheep => HerdNeeds {
-                t_min: -4.0, t_max: 28.0, takes_poor_forage: 0.75,
-                driest: 0.18, head_kg: 60.0, yield_index: 0.80,
+                t_min: -4.0,
+                t_max: 28.0,
+                takes_poor_forage: 0.75,
+                driest: 0.18,
+                head_kg: 60.0,
+                yield_index: 0.80,
             },
             Herd::Goat => HerdNeeds {
-                t_min: 0.0, t_max: 36.0, takes_poor_forage: 1.00,
-                driest: 0.07, head_kg: 40.0, yield_index: 0.62,
+                t_min: 0.0,
+                t_max: 36.0,
+                takes_poor_forage: 1.00,
+                driest: 0.07,
+                head_kg: 40.0,
+                yield_index: 0.62,
             },
             Herd::Reindeer => HerdNeeds {
-                t_min: -20.0, t_max: 12.0, takes_poor_forage: 1.00,
-                driest: 0.10, head_kg: 100.0, yield_index: 0.55,
+                t_min: -20.0,
+                t_max: 12.0,
+                takes_poor_forage: 1.00,
+                driest: 0.10,
+                head_kg: 100.0,
+                yield_index: 0.55,
             },
             Herd::Camel => HerdNeeds {
-                t_min: 5.0, t_max: 42.0, takes_poor_forage: 1.00,
-                driest: 0.02, head_kg: 500.0, yield_index: 0.58,
+                t_min: 5.0,
+                t_max: 42.0,
+                takes_poor_forage: 1.00,
+                driest: 0.02,
+                head_kg: 500.0,
+                yield_index: 0.58,
             },
             Herd::Yak => HerdNeeds {
-                t_min: -18.0, t_max: 14.0, takes_poor_forage: 0.85,
-                driest: 0.12, head_kg: 350.0, yield_index: 0.70,
+                t_min: -18.0,
+                t_max: 14.0,
+                takes_poor_forage: 0.85,
+                driest: 0.12,
+                head_kg: 350.0,
+                yield_index: 0.70,
             },
             Herd::Buffalo => HerdNeeds {
-                t_min: 12.0, t_max: 38.0, takes_poor_forage: 0.60,
-                driest: 0.55, head_kg: 500.0, yield_index: 0.95,
+                t_min: 12.0,
+                t_max: 38.0,
+                takes_poor_forage: 0.60,
+                driest: 0.55,
+                head_kg: 500.0,
+                yield_index: 0.95,
             },
         }
     }
@@ -741,8 +776,7 @@ pub fn best_herd(
 ) -> (Herd, f32) {
     let mut best = (Herd::Sheep, 0.0f32);
     for herd in Herd::ALL {
-        let kg =
-            herd.stocking_kg_per_km2(season_c, moisture, forage_kg, wet_ground, high_ground);
+        let kg = herd.stocking_kg_per_km2(season_c, moisture, forage_kg, wet_ground, high_ground);
         // Judged on what it is worth to keep, not on its weight: a tonne
         // of camel is not a tonne of cattle.
         let worth = kg * herd.needs().yield_index;
@@ -830,29 +864,59 @@ impl Crop {
             // yielding: which is why it is grown where wheat will not go
             // and not where it will.
             Crop::Barley => CropNeeds {
-                t_min: 2.0, t_opt_lo: 8.0, t_opt_hi: 18.0, t_max: 26.0,
-                wue: 19.0, loss_mm: 70.0, ceiling: 6.0, drowns: true,
+                t_min: 2.0,
+                t_opt_lo: 8.0,
+                t_opt_hi: 18.0,
+                t_max: 26.0,
+                wue: 19.0,
+                loss_mm: 70.0,
+                ceiling: 6.0,
+                drowns: true,
             },
             Crop::Wheat => CropNeeds {
-                t_min: 5.0, t_opt_lo: 12.0, t_opt_hi: 22.0, t_max: 30.0,
-                wue: 22.0, loss_mm: 80.0, ceiling: 10.0, drowns: true,
+                t_min: 5.0,
+                t_opt_lo: 12.0,
+                t_opt_hi: 22.0,
+                t_max: 30.0,
+                wue: 22.0,
+                loss_mm: 80.0,
+                ceiling: 10.0,
+                drowns: true,
             },
             // C4: more grain per drop, and it wants heat.
             Crop::Maize => CropNeeds {
-                t_min: 12.0, t_opt_lo: 20.0, t_opt_hi: 30.0, t_max: 38.0,
-                wue: 30.0, loss_mm: 90.0, ceiling: 12.0, drowns: true,
+                t_min: 12.0,
+                t_opt_lo: 20.0,
+                t_opt_hi: 30.0,
+                t_max: 38.0,
+                wue: 30.0,
+                loss_mm: 90.0,
+                ceiling: 12.0,
+                drowns: true,
             },
             // C4 and drought-hardy: a crop off 300 mm that would leave
             // wheat with nothing.
             Crop::Sorghum => CropNeeds {
-                t_min: 15.0, t_opt_lo: 22.0, t_opt_hi: 32.0, t_max: 42.0,
-                wue: 26.0, loss_mm: 55.0, ceiling: 6.0, drowns: true,
+                t_min: 15.0,
+                t_opt_lo: 22.0,
+                t_opt_hi: 32.0,
+                t_max: 42.0,
+                wue: 26.0,
+                loss_mm: 55.0,
+                ceiling: 6.0,
+                drowns: true,
             },
             // Thirsty and low-efficiency per drop, but it is grown in the
             // one place nothing else will grow at all.
             Crop::Rice => CropNeeds {
-                t_min: 16.0, t_opt_lo: 22.0, t_opt_hi: 32.0, t_max: 40.0,
-                wue: 14.0, loss_mm: 60.0, ceiling: 9.0, drowns: false,
+                t_min: 16.0,
+                t_opt_lo: 22.0,
+                t_opt_hi: 32.0,
+                t_max: 40.0,
+                wue: 14.0,
+                loss_mm: 60.0,
+                ceiling: 9.0,
+                drowns: false,
             },
             // **By dry matter a potato crop is enormous** — 40 t/ha fresh
             // at ~20% dry matter — and it still is not the staple, which
@@ -863,8 +927,14 @@ impl Crop {
             // real cropland share of 1.4% for potatoes and 15% for wheat.
             // What is rated here is *storable, shippable* food.
             Crop::Potato => CropNeeds {
-                t_min: 3.0, t_opt_lo: 10.0, t_opt_hi: 20.0, t_max: 27.0,
-                wue: 20.0, loss_mm: 75.0, ceiling: 6.5, drowns: true,
+                t_min: 3.0,
+                t_opt_lo: 10.0,
+                t_opt_hi: 20.0,
+                t_max: 27.0,
+                wue: 20.0,
+                loss_mm: 75.0,
+                ceiling: 6.5,
+                drowns: true,
             },
         }
     }
@@ -884,7 +954,11 @@ impl Crop {
         } else {
             1.0
         };
-        let water = if n.drowns { water_mm * aeration } else { water_mm };
+        let water = if n.drowns {
+            water_mm * aeration
+        } else {
+            water_mm
+        };
         let kg = n.wue * (water - n.loss_mm).max(0.0);
         let drowning = if n.drowns { aeration } else { 1.0 };
         (kg / 1000.0).min(n.ceiling) * heat.clamp(0.0, 1.0) * drowning

@@ -25,12 +25,12 @@
 
 use crate::econ::Economy;
 use crate::id::{Arena, Id};
-use crate::travel::Conveyance;
 use crate::person::{
     day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
     Qualification, Trade,
 };
 use crate::rng::Rng;
+use crate::travel::Conveyance;
 
 /// **How people actually live**, which is not one to a house.
 ///
@@ -273,7 +273,10 @@ impl Populace {
     fn marry_the_couples(&mut self) {
         let mut waiting: Vec<(usize, Id<Person>)> = Vec::new();
         for id in self.people.ids().collect::<Vec<_>>() {
-            if !matches!(self.households[id.slot()], Household::Couple | Household::Family(_)) {
+            if !matches!(
+                self.households[id.slot()],
+                Household::Couple | Household::Family(_)
+            ) {
                 continue;
             }
             let market = self.people[id].market;
@@ -445,8 +448,8 @@ impl Populace {
             // books in it is the oldest argument in the subject. The model
             // takes no side and keeps the pull weak: most of the draw is
             // the child's own.
-            let free = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0)
-                as f64;
+            let free =
+                ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             let aptitude = (0.72 * free + 0.28 * household.aptitude).clamp(0.0, 1.0);
 
             // **Grades, and this is where the real mechanism lives.**
@@ -473,8 +476,7 @@ impl Populace {
             // through university; a school system does not raise the mean,
             // it decides what the mean is made of.
             let on_money = 0.30 * (1.0 - helped) + 0.08 * helped;
-            let attained =
-                ((1.0 - on_money) * aptitude + on_money * afford).clamp(0.0, 1.0);
+            let attained = ((1.0 - on_money) * aptitude + on_money * afford).clamp(0.0, 1.0);
 
             // **Two gates, and both must pass.** Below the floor a course
             // is not merely unlikely, it is out of reach — no amount of
@@ -542,6 +544,19 @@ impl Populace {
     /// economy inside the loop would let each person trade against a
     /// slightly different world and quietly break conservation.
     pub fn live_a_day(&mut self, econ: &mut Economy, day: u64) {
+        self.live_a_day_bounded(econ, day, true)
+    }
+
+    /// The same day, with the supply of promotions optionally ignored.
+    ///
+    /// **Public for the reason `biota::settle` and `person::live_a_day`
+    /// are**: a population correlation cannot show a mechanism, so the
+    /// only way to test that advancement is bounded by vacancies is to
+    /// run the same cohort twice and vary that one thing. Passing `false`
+    /// is the bug this rule exists to prevent — promotion on time served
+    /// alone, with nobody to supervise — and is not a mode the game runs
+    /// in.
+    pub fn live_a_day_bounded(&mut self, econ: &mut Economy, day: u64, bounded: bool) {
         // **Is there a post going?**
         //
         // Not a ratio picked to look right: the number of supervisory
@@ -592,7 +607,7 @@ impl Populace {
                 continue;
             }
             let m = self.people[i].market;
-            let free = vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
+            let free = !bounded || vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
             let was = self.people[i].trade;
             live_a_day_with(&mut self.people[i], econ, day, free);
             if was != Trade::Supervisor && self.people[i].trade == Trade::Supervisor {
@@ -603,7 +618,7 @@ impl Populace {
         }
         self.bury_the_dead(day);
         // A year turns.
-        if day > 0 && day % crate::econ::DAYS_PER_YEAR == 0 {
+        if day > 0 && day.is_multiple_of(crate::econ::DAYS_PER_YEAR) {
             self.a_year_passes(econ, day);
         }
     }
@@ -733,23 +748,21 @@ impl Populace {
             if self.people[i].condition > 0.0 {
                 continue;
             }
-            self.gone
-                .push((self.people[i].name.clone(), day));
+            self.gone.push((self.people[i].name.clone(), day));
             let market = self.people[i].market;
-            let first =
-                FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
+            let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
             let trade = draw_trade(&mut self.rng);
             let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
-            p.aptitude = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
-                / 3.0) as f64;
+            p.aptitude =
+                ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             // A replacement is a cross-section of the living, not a
             // school leaver, so they bring their years with them.
             let years_in = (p.age_years - 18.0 - p.qualification.years_to_earn()).max(0.0);
             let cap = crate::person::Skill::days_to_reach(p.ceiling());
             p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
-            p.diligence = ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32())
-                / 3.0) as f64;
+            p.diligence =
+                ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             // **A replacement is somebody else from the population, not a
             // school-leaver.** Drawing their qualification off the trade
             // meant every death diluted the country's skills, and the

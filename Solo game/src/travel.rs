@@ -210,8 +210,7 @@ impl Conveyance {
         // the next seven years feeding it: ten years' work, and twenty-four
         // days of food at the end of it.
         let usage = usage.clamp(0.0, 1.0);
-        let keep = self.upkeep_in_wage_days(false)
-            + self.upkeep_in_wage_days(true) * usage;
+        let keep = self.upkeep_in_wage_days(false) + self.upkeep_in_wage_days(true) * usage;
         can_fill * speed * freight_rate * usage - keep * wage
     }
 
@@ -234,8 +233,7 @@ impl Conveyance {
         goods_price: f64,
         usage: f64,
     ) -> Option<(Conveyance, f64)> {
-        let have =
-            current.worth_per_day(surface, wage, freight_rate, budget, goods_price, usage);
+        let have = current.worth_per_day(surface, wage, freight_rate, budget, goods_price, usage);
         let mut best: Option<(Conveyance, f64, f64)> = None;
         for &c in Conveyance::ALL.iter() {
             // **Never pay to downgrade.** Scoring on the load he can

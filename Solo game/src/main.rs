@@ -163,7 +163,10 @@ fn parse_args() -> Args {
     }
 
     if args.width < 16 || args.height < 16 {
-        eprintln!("size too small: {}x{} (minimum 16x16)", args.width, args.height);
+        eprintln!(
+            "size too small: {}x{} (minimum 16x16)",
+            args.width, args.height
+        );
         std::process::exit(2);
     }
 
@@ -190,22 +193,55 @@ fn main() {
     let scale = (1600 / world.width).clamp(1, 6) as u32;
 
     write_biome_png(&world, &dir.join("world_biomes.png"), scale);
-    write_ramp_png(&world.elevation.data, world.width, world.height,
-        &dir.join("world_elevation.png"), scale, ramp_grey);
-    write_ramp_png(&world.temperature.data, world.width, world.height,
-        &dir.join("world_temperature.png"), scale, ramp_heat);
-    write_ramp_png(&world.rainfall.data, world.width, world.height,
-        &dir.join("world_rainfall.png"), scale, ramp_wet);
+    write_ramp_png(
+        &world.elevation.data,
+        world.width,
+        world.height,
+        &dir.join("world_elevation.png"),
+        scale,
+        ramp_grey,
+    );
+    write_ramp_png(
+        &world.temperature.data,
+        world.width,
+        world.height,
+        &dir.join("world_temperature.png"),
+        scale,
+        ramp_heat,
+    );
+    write_ramp_png(
+        &world.rainfall.data,
+        world.width,
+        world.height,
+        &dir.join("world_rainfall.png"),
+        scale,
+        ramp_wet,
+    );
     write_flow_png(&world, &dir.join("world_rivers.png"), scale);
     write_rock_png(&world, &dir.join("world_rock.png"), scale);
-    write_land_ramp_png(&world, &world.geology.fertility.data,
-        &dir.join("world_fertility.png"), scale, ramp_fertility);
+    write_land_ramp_png(
+        &world,
+        &world.geology.fertility.data,
+        &dir.join("world_fertility.png"),
+        scale,
+        ramp_fertility,
+    );
     write_resource_png(&world, &dir.join("world_resources.png"), scale);
     write_polity_png(&world, &polities, &dir.join("world_nations.png"), scale);
-    write_settlement_png(&world, &polities, &settlements,
-        &dir.join("world_settlements.png"), scale);
-    write_network_png(&world, &settlements, &network,
-        &dir.join("world_routes.png"), scale);
+    write_settlement_png(
+        &world,
+        &polities,
+        &settlements,
+        &dir.join("world_settlements.png"),
+        scale,
+    );
+    write_network_png(
+        &world,
+        &settlements,
+        &network,
+        &dir.join("world_routes.png"),
+        scale,
+    );
     write_ascii(&world, &dir.join("world.txt"));
 
     print_report(&world, gen_ms, &args.out);
@@ -254,9 +290,7 @@ fn write_flow_png(world: &World, path: &Path, scale: u32) {
     for y in 0..h {
         for x in 0..w {
             let i = y * w + x;
-            let colour = if world.biomes[i] == Biome::Ocean
-                || world.biomes[i] == Biome::Shallows
-            {
+            let colour = if world.biomes[i] == Biome::Ocean || world.biomes[i] == Biome::Shallows {
                 [8, 12, 28]
             } else if world.lake[i] {
                 [70, 120, 200]
@@ -267,7 +301,11 @@ fn write_flow_png(world: &World, path: &Path, scale: u32) {
             };
             for dy in 0..scale {
                 for dx in 0..scale {
-                    img.put_pixel(x as u32 * scale + dx, y as u32 * scale + dy, image::Rgb(colour));
+                    img.put_pixel(
+                        x as u32 * scale + dx,
+                        y as u32 * scale + dy,
+                        image::Rgb(colour),
+                    );
                 }
             }
         }
@@ -416,13 +454,7 @@ fn write_polity_png(world: &World, pol: &Polities, path: &Path, scale: u32) {
 
 /// Settlements over a muted territory map: capitals gold, cities orange,
 /// towns white, sized by population so the hierarchy reads at a glance.
-fn write_settlement_png(
-    world: &World,
-    pol: &Polities,
-    set: &Settlements,
-    path: &Path,
-    scale: u32,
-) {
+fn write_settlement_png(world: &World, pol: &Polities, set: &Settlements, path: &Path, scale: u32) {
     let (w, h) = (world.width, world.height);
     let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
 
@@ -484,13 +516,7 @@ fn write_settlement_png(
 
 /// Trade infrastructure over a dark land: navigable water in blue, roads
 /// graded by traffic, chokepoints picked out in red.
-fn write_network_png(
-    world: &World,
-    set: &Settlements,
-    net: &Network,
-    path: &Path,
-    scale: u32,
-) {
+fn write_network_png(world: &World, set: &Settlements, net: &Network, path: &Path, scale: u32) {
     let (w, h) = (world.width, world.height);
     let mut img = image::RgbImage::new(w as u32 * scale, h as u32 * scale);
 
@@ -590,7 +616,11 @@ fn print_settlements(set: &Settlements) {
             fmt_pop(s.population),
             s.kind.name(),
             s.catchment,
-            if site.is_empty() { "inland".into() } else { site.join("+") },
+            if site.is_empty() {
+                "inland".into()
+            } else {
+                site.join("+")
+            },
         );
     }
     let ports = ranked.iter().filter(|s| s.coastal).count();
@@ -645,9 +675,7 @@ fn print_polities(world: &World, pol: &Polities) {
         .iter()
         .filter(|(_, p)| p.workable_deposits() == 0)
         .count();
-    println!(
-        "  {landlocked} landlocked; {no_deposits} with no workable deposits"
-    );
+    println!("  {landlocked} landlocked; {no_deposits} with no workable deposits");
     println!();
 }
 
@@ -690,7 +718,11 @@ fn write_land_ramp_png(
 fn put_block(img: &mut image::RgbImage, x: usize, y: usize, scale: u32, colour: [u8; 3]) {
     for dy in 0..scale {
         for dx in 0..scale {
-            img.put_pixel(x as u32 * scale + dx, y as u32 * scale + dy, image::Rgb(colour));
+            img.put_pixel(
+                x as u32 * scale + dx,
+                y as u32 * scale + dy,
+                image::Rgb(colour),
+            );
         }
     }
 }
@@ -762,9 +794,11 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
     let counts = world.biome_counts();
     let total = world.biomes.len() as f32;
 
-    let mut rows: Vec<(Biome, usize)> =
-        Biome::ALL.iter().map(|&b| (b, counts[b as usize])).collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    let mut rows: Vec<(Biome, usize)> = Biome::ALL
+        .iter()
+        .map(|&b| (b, counts[b as usize]))
+        .collect();
+    rows.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     println!("biome distribution");
     for (biome, n) in rows {
@@ -773,7 +807,13 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
         }
         let pct = n as f32 / total * 100.0;
         let bar = "#".repeat((pct / 2.0).round() as usize);
-        println!("  {} {:<10} {:>5.1}%  {}", biome.glyph(), biome.name(), pct, bar);
+        println!(
+            "  {} {:<10} {:>5.1}%  {}",
+            biome.glyph(),
+            biome.name(),
+            pct,
+            bar
+        );
     }
     print_geology(world);
 
@@ -806,10 +846,8 @@ fn land_within_reach(world: &World, reach: usize) -> f32 {
                 }
                 let xm = (x + w - 1) % w;
                 let xp = (x + 1) % w;
-                near[y * w + x] = src[y * w + xm]
-                    || src[y * w + xp]
-                    || src[ym * w + x]
-                    || src[yp * w + x];
+                near[y * w + x] =
+                    src[y * w + xm] || src[y * w + xp] || src[ym * w + x] || src[yp * w + x];
             }
         }
     }
@@ -850,8 +888,7 @@ fn print_geology(world: &World) {
     }
     println!();
 
-    let mean_fert: f32 =
-        land.iter().map(|&i| g.fertility.data[i]).sum::<f32>() / land_n;
+    let mean_fert: f32 = land.iter().map(|&i| g.fertility.data[i]).sum::<f32>() / land_n;
     let prime = land.iter().filter(|&&i| g.fertility.data[i] > 0.55).count();
     println!(
         "soil     mean fertility {:.2}   prime farmland {:.1}% of land",

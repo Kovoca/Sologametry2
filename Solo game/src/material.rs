@@ -153,18 +153,14 @@ impl Material {
         match self {
             MildSteel | ToolSteel | Stainless | Aluminium | Copper | Brass | Lead | Solder
             | Glass | Nichrome | Zinc => Recovers::Feedstock,
-            Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Gypsum
-            | Silicon | Ferrite | Mica | Lithium => {
-                Recovers::Downcycled
-            }
+            Polyethylene | Abs | Polyester | Paperboard | Concrete | Brick | Gypsum | Silicon
+            | Ferrite | Mica | Lithium => Recovers::Downcycled,
             Oak | Pine | Plywood | Particleboard | Cotton | Wool | Leather | Thread | Rubber => {
                 Recovers::Fuel
             }
             // Cured, set, cooked or reacted.
-            Adhesive | Paint | Mortar | Ceramic | Propellant | Lubricant | Electrolyte
-            | Flour | Water => {
-                Recovers::Nothing
-            }
+            Adhesive | Paint | Mortar | Ceramic | Propellant | Lubricant | Electrolyte | Flour
+            | Water => Recovers::Nothing,
         }
     }
 
@@ -233,11 +229,46 @@ impl Material {
 pub const ALL_MATERIALS: [Material; 40] = {
     use Material::*;
     [
-        MildSteel, ToolSteel, Stainless, Aluminium, Copper, Brass, Lead, Zinc, Lithium,
-        Electrolyte, Oak, Pine, Plywood, Particleboard, Glass, Cotton, Wool, Polyester,
-        Polyethylene, Abs, Rubber, Leather, Concrete, Brick, Mortar, Ceramic, Gypsum,
-        Paperboard, Silicon, Nichrome, Mica, Ferrite, Lubricant, Propellant, Adhesive, Solder,
-        Thread, Paint, Flour, Water,
+        MildSteel,
+        ToolSteel,
+        Stainless,
+        Aluminium,
+        Copper,
+        Brass,
+        Lead,
+        Zinc,
+        Lithium,
+        Electrolyte,
+        Oak,
+        Pine,
+        Plywood,
+        Particleboard,
+        Glass,
+        Cotton,
+        Wool,
+        Polyester,
+        Polyethylene,
+        Abs,
+        Rubber,
+        Leather,
+        Concrete,
+        Brick,
+        Mortar,
+        Ceramic,
+        Gypsum,
+        Paperboard,
+        Silicon,
+        Nichrome,
+        Mica,
+        Ferrite,
+        Lubricant,
+        Propellant,
+        Adhesive,
+        Solder,
+        Thread,
+        Paint,
+        Flour,
+        Water,
     ]
 };
 
@@ -276,13 +307,17 @@ pub struct Composition {
 
 impl Composition {
     pub fn of(parts: &[(Material, f64)]) -> Self {
-        let mut c = Composition { parts: parts.to_vec() };
+        let mut c = Composition {
+            parts: parts.to_vec(),
+        };
         c.normalise();
         c
     }
 
     pub fn pure(m: Material) -> Self {
-        Composition { parts: vec![(m, 1.0)] }
+        Composition {
+            parts: vec![(m, 1.0)],
+        }
     }
 
     fn normalise(&mut self) {
@@ -294,7 +329,7 @@ impl Composition {
         }
         // Deterministic order, so two compositions built in different
         // orders are the same composition.
-        self.parts.sort_by(|a, b| a.0.cmp(&b.0));
+        self.parts.sort_by_key(|a| a.0);
         self.parts.retain(|p| p.1 > 0.0);
     }
 
@@ -303,7 +338,11 @@ impl Composition {
     }
 
     pub fn fraction_of(&self, m: Material) -> f64 {
-        self.parts.iter().find(|p| p.0 == m).map(|p| p.1).unwrap_or(0.0)
+        self.parts
+            .iter()
+            .find(|p| p.0 == m)
+            .map(|p| p.1)
+            .unwrap_or(0.0)
     }
 
     /// The material it is mostly made of, which is what a coarse salvage
@@ -363,7 +402,11 @@ pub struct Dims {
 
 impl Dims {
     pub fn new(length_m: f64, width_m: f64, height_m: f64) -> Self {
-        Dims { length_m, width_m, height_m }
+        Dims {
+            length_m,
+            width_m,
+            height_m,
+        }
     }
 
     pub fn litres(self) -> f64 {
@@ -451,27 +494,59 @@ impl Quantity {
         Some(match (self, other) {
             (Quantity::Count(a), Quantity::Count(b)) => Quantity::Count(a + b),
             (Quantity::Length { metres: a, kg: ka }, Quantity::Length { metres: b, kg: kb }) => {
-                Quantity::Length { metres: a + b, kg: ka + kb }
+                Quantity::Length {
+                    metres: a + b,
+                    kg: ka + kb,
+                }
             }
             (Quantity::Area { m2: a, kg: ka }, Quantity::Area { m2: b, kg: kb }) => {
-                Quantity::Area { m2: a + b, kg: ka + kb }
+                Quantity::Area {
+                    m2: a + b,
+                    kg: ka + kb,
+                }
             }
             (Quantity::Mass { kg: a }, Quantity::Mass { kg: b }) => Quantity::Mass { kg: a + b },
             (Quantity::Energy { kwh: a }, Quantity::Energy { kwh: b }) => {
                 Quantity::Energy { kwh: a + b }
             }
             (
-                Quantity::Fluid { litres: la, kg: ka, celsius: ca },
-                Quantity::Fluid { litres: lb, kg: kb, celsius: cb },
+                Quantity::Fluid {
+                    litres: la,
+                    kg: ka,
+                    celsius: ca,
+                },
+                Quantity::Fluid {
+                    litres: lb,
+                    kg: kb,
+                    celsius: cb,
+                },
             ) => {
                 let kg = ka + kb;
-                let celsius = if kg > 0.0 { (ca * ka + cb * kb) / kg } else { ca };
-                Quantity::Fluid { litres: la + lb, kg, celsius }
+                let celsius = if kg > 0.0 {
+                    (ca * ka + cb * kb) / kg
+                } else {
+                    ca
+                };
+                Quantity::Fluid {
+                    litres: la + lb,
+                    kg,
+                    celsius,
+                }
             }
             (
-                Quantity::Stock { count: a, each, kg: ka },
-                Quantity::Stock { count: b, kg: kb, .. },
-            ) => Quantity::Stock { count: a + b, each, kg: ka + kb },
+                Quantity::Stock {
+                    count: a,
+                    each,
+                    kg: ka,
+                },
+                Quantity::Stock {
+                    count: b, kg: kb, ..
+                },
+            ) => Quantity::Stock {
+                count: a + b,
+                each,
+                kg: ka + kb,
+            },
             _ => return None,
         })
     }
@@ -490,16 +565,31 @@ pub enum Amount {
     /// So many discrete things: screws, cartridges, bearings.
     Count(u32),
     /// Loose stuff, where shape genuinely does not matter.
-    Mass { kg: f64 },
-    Volume { litres: f64 },
+    Mass {
+        kg: f64,
+    },
+    Volume {
+        litres: f64,
+    },
     /// Rope, cable, wire, moulding. A short heavy piece will not do.
-    Length { metres: f64 },
-    Area { m2: f64 },
+    Length {
+        metres: f64,
+    },
+    Area {
+        m2: f64,
+    },
     /// Board, plate, panel, cloth. Both plan dimensions and the thickness
     /// have to be right.
-    Sheet { min_width_m: f64, min_length_m: f64, thickness_m: (f64, f64) },
+    Sheet {
+        min_width_m: f64,
+        min_length_m: f64,
+        thickness_m: (f64, f64),
+    },
     /// Bar, tube, billet, timber in section.
-    Bar { min_section_m: f64, min_length_m: f64 },
+    Bar {
+        min_section_m: f64,
+        min_length_m: f64,
+    },
 }
 
 /// Whether a piece of stock will do, and why not if it will not.
@@ -534,9 +624,9 @@ impl Amount {
         let have_kg = held.mass_kg(unit_mass_kg);
         match self {
             Amount::Count(n) => match held {
-                Quantity::Count(h) | Quantity::Stock { count: h, .. } if h >= n => {
-                    Fit::Yes { uses_kg: unit_mass_kg * n as f64 }
-                }
+                Quantity::Count(h) | Quantity::Stock { count: h, .. } if h >= n => Fit::Yes {
+                    uses_kg: unit_mass_kg * n as f64,
+                },
                 Quantity::Count(_) | Quantity::Stock { .. } => Fit::NotEnough,
                 _ => Fit::WrongShape("a count was wanted and this is not counted"),
             },
@@ -548,9 +638,9 @@ impl Amount {
                 }
             }
             Amount::Volume { litres } => match held {
-                Quantity::Fluid { litres: h, kg, .. } if h + 1e-9 >= litres => {
-                    Fit::Yes { uses_kg: kg * litres / h.max(1e-9) }
-                }
+                Quantity::Fluid { litres: h, kg, .. } if h + 1e-9 >= litres => Fit::Yes {
+                    uses_kg: kg * litres / h.max(1e-9),
+                },
                 Quantity::Fluid { .. } => Fit::NotEnough,
                 _ => Fit::WrongShape("a volume was wanted and this is not a fluid"),
             },
@@ -560,27 +650,34 @@ impl Amount {
                     if h + 1e-9 < metres {
                         Fit::WrongShape("too short, whatever it weighs")
                     } else {
-                        Fit::Yes { uses_kg: kg * metres / h.max(1e-9) }
+                        Fit::Yes {
+                            uses_kg: kg * metres / h.max(1e-9),
+                        }
                     }
                 }
                 Quantity::Stock { each: d, count, .. } => {
                     if d.longest_m() + 1e-9 < metres {
                         Fit::WrongShape("no single piece is long enough")
                     } else {
-                        Fit::Yes { uses_kg: unit_mass_kg * metres / d.longest_m().max(1e-9) * count.min(1) as f64 }
+                        Fit::Yes {
+                            uses_kg: unit_mass_kg * metres / d.longest_m().max(1e-9)
+                                * count.min(1) as f64,
+                        }
                     }
                 }
                 _ => Fit::WrongShape("a length was wanted and this has none"),
             },
             Amount::Area { m2 } => match held {
-                Quantity::Area { m2: h, kg } if h + 1e-9 >= m2 => {
-                    Fit::Yes { uses_kg: kg * m2 / h.max(1e-9) }
-                }
+                Quantity::Area { m2: h, kg } if h + 1e-9 >= m2 => Fit::Yes {
+                    uses_kg: kg * m2 / h.max(1e-9),
+                },
                 Quantity::Area { .. } => Fit::NotEnough,
                 _ => {
                     let sheet = each.length_m * each.width_m;
                     if sheet + 1e-9 >= m2 {
-                        Fit::Yes { uses_kg: unit_mass_kg * m2 / sheet.max(1e-9) }
+                        Fit::Yes {
+                            uses_kg: unit_mass_kg * m2 / sheet.max(1e-9),
+                        }
                     } else {
                         Fit::WrongShape("no single piece has the area")
                     }
@@ -589,7 +686,11 @@ impl Amount {
             // **Both plan dimensions and the thickness.** A board too
             // narrow to cut a seat from weighs exactly as much as one that
             // is wide enough.
-            Amount::Sheet { min_width_m, min_length_m, thickness_m } => {
+            Amount::Sheet {
+                min_width_m,
+                min_length_m,
+                thickness_m,
+            } => {
                 let (t0, t1) = thickness_m;
                 let mut d = [each.length_m, each.width_m, each.height_m];
                 d.sort_by(f64::total_cmp);
@@ -609,9 +710,14 @@ impl Amount {
                 if have_kg <= 0.0 {
                     return Fit::NotEnough;
                 }
-                Fit::Yes { uses_kg: unit_mass_kg }
+                Fit::Yes {
+                    uses_kg: unit_mass_kg,
+                }
             }
-            Amount::Bar { min_section_m, min_length_m } => {
+            Amount::Bar {
+                min_section_m,
+                min_length_m,
+            } => {
                 let mut d = [each.length_m, each.width_m, each.height_m];
                 d.sort_by(f64::total_cmp);
                 let (thin, section, long) = (d[0], d[1], d[2]);
@@ -624,7 +730,9 @@ impl Amount {
                 if have_kg <= 0.0 {
                     return Fit::NotEnough;
                 }
-                Fit::Yes { uses_kg: unit_mass_kg }
+                Fit::Yes {
+                    uses_kg: unit_mass_kg,
+                }
             }
         }
     }
@@ -655,22 +763,43 @@ impl Quantity {
                 let (a, b, akg) = part(metres, kg)?;
                 (
                     Quantity::Length { metres: a, kg: akg },
-                    Quantity::Length { metres: b, kg: kg - akg },
+                    Quantity::Length {
+                        metres: b,
+                        kg: kg - akg,
+                    },
                 )
             }
             Quantity::Area { m2, kg } => {
                 let (a, b, akg) = part(m2, kg)?;
-                (Quantity::Area { m2: a, kg: akg }, Quantity::Area { m2: b, kg: kg - akg })
+                (
+                    Quantity::Area { m2: a, kg: akg },
+                    Quantity::Area {
+                        m2: b,
+                        kg: kg - akg,
+                    },
+                )
             }
             Quantity::Mass { kg } => {
                 let (a, b, _) = part(kg, kg)?;
                 (Quantity::Mass { kg: a }, Quantity::Mass { kg: b })
             }
-            Quantity::Fluid { litres, kg, celsius } => {
+            Quantity::Fluid {
+                litres,
+                kg,
+                celsius,
+            } => {
                 let (a, b, akg) = part(litres, kg)?;
                 (
-                    Quantity::Fluid { litres: a, kg: akg, celsius },
-                    Quantity::Fluid { litres: b, kg: kg - akg, celsius },
+                    Quantity::Fluid {
+                        litres: a,
+                        kg: akg,
+                        celsius,
+                    },
+                    Quantity::Fluid {
+                        litres: b,
+                        kg: kg - akg,
+                        celsius,
+                    },
                 )
             }
             Quantity::Energy { kwh } => {
@@ -693,8 +822,16 @@ impl Quantity {
                 }
                 let per = kg / count.max(1) as f64;
                 (
-                    Quantity::Stock { count: k, each, kg: per * k as f64 },
-                    Quantity::Stock { count: count - k, each, kg: per * (count - k) as f64 },
+                    Quantity::Stock {
+                        count: k,
+                        each,
+                        kg: per * k as f64,
+                    },
+                    Quantity::Stock {
+                        count: count - k,
+                        each,
+                        kg: per * (count - k) as f64,
+                    },
                 )
             }
         })

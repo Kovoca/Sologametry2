@@ -2,7 +2,9 @@
 //!
 //!   cargo run --release --bin jobs -- --seed N --rank K
 
-use scale_sim::census::{retail_share_of_fte, whole_distribution_sector, Base, Census, DISTRIBUTION};
+use scale_sim::census::{
+    retail_share_of_fte, whole_distribution_sector, Base, Census, DISTRIBUTION,
+};
 use scale_sim::econ::Doctrine;
 use scale_sim::network::Network;
 use scale_sim::polity::Polities;
@@ -62,8 +64,16 @@ fn main() {
             works += staff;
         }
     }
-    let state = e.government.as_ref().map(|g| g.posts.iter().sum::<f64>()).unwrap_or(0.0);
-    let services = e.services.as_ref().map(|s| s.posts.iter().flatten().sum::<f64>()).unwrap_or(0.0);
+    let state = e
+        .government
+        .as_ref()
+        .map(|g| g.posts.iter().sum::<f64>())
+        .unwrap_or(0.0);
+    let services = e
+        .services
+        .as_ref()
+        .map(|s| s.posts.iter().flatten().sum::<f64>())
+        .unwrap_or(0.0);
 
     let row = |name: &str, n: f64, real: f64| {
         let s = c.share(n, Base::EmployedPeople);
@@ -83,7 +93,12 @@ fn main() {
 
     let total = shop + works + state + services;
     let all = c.share(total, Base::EmployedPeople);
-    println!("\n  {:<30} {total:>12.0}  {:>5.1}% of {}", "accounted for", all.percent(), all.of.name());
+    println!(
+        "\n  {:<30} {total:>12.0}  {:>5.1}% of {}",
+        "accounted for",
+        all.percent(),
+        all.of.name()
+    );
 
     println!("\nthe distribution sector, at the boundaries the statistics use");
     for b in DISTRIBUTION {

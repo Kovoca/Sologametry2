@@ -51,8 +51,15 @@ fn lending_creates_the_money_it_lends() {
     let other_savers = t.balance(Account::Households(0));
 
     let who = a_borrower(4_000.0, 0.8);
-    let offer = underwrite(sys.bank(bank), &sys.rates, &who, Credit::CarLoan, 24_000.0, 24_000.0)
-        .expect("a solid borrower was refused a car loan");
+    let offer = underwrite(
+        sys.bank(bank),
+        &sys.rates,
+        &who,
+        Credit::CarLoan,
+        24_000.0,
+        24_000.0,
+    )
+    .expect("a solid borrower was refused a car loan");
     sys.advance(bank, Account::Firm(9), &offer, &mut t, 1, None);
 
     // **Both sides of the balance sheet grew.**
@@ -91,8 +98,15 @@ fn lending_creates_the_money_it_lends() {
 fn repaying_it_unmakes_the_money_and_interest_only_moves_it() {
     let (mut sys, mut t, bank) = a_system();
     let who = a_borrower(4_000.0, 0.8);
-    let offer =
-        underwrite(sys.bank(bank), &sys.rates, &who, Credit::CarLoan, 24_000.0, 24_000.0).unwrap();
+    let offer = underwrite(
+        sys.bank(bank),
+        &sys.rates,
+        &who,
+        Credit::CarLoan,
+        24_000.0,
+        24_000.0,
+    )
+    .unwrap();
     let id = sys.advance(bank, Account::Households(0), &offer, &mut t, 1, None);
     let after_lending = t.total();
 
@@ -108,7 +122,10 @@ fn repaying_it_unmakes_the_money_and_interest_only_moves_it() {
         after_lending - t.total(),
         p.principal
     );
-    assert!(t.balance(Account::Bank(bank)) > 400_000.0, "the bank was not paid its interest");
+    assert!(
+        t.balance(Account::Bank(bank)) > 400_000.0,
+        "the bank was not paid its interest"
+    );
     assert!((sys.destroyed - p.principal).abs() < 1e-6);
     sys.assert_balanced();
     t.assert_conserved();
@@ -116,8 +133,15 @@ fn repaying_it_unmakes_the_money_and_interest_only_moves_it() {
     // **Early on it is nearly all interest**, which is why paying a
     // mortgage for five years barely dents it.
     let who = a_borrower(9_000.0, 0.85);
-    let m = underwrite(sys.bank(bank), &sys.rates, &who, Credit::Mortgage, 300_000.0, 320_000.0)
-        .unwrap();
+    let m = underwrite(
+        sys.bank(bank),
+        &sys.rates,
+        &who,
+        Credit::Mortgage,
+        300_000.0,
+        320_000.0,
+    )
+    .unwrap();
     let mid = sys.advance(bank, Account::Households(0), &m, &mut t, 40, None);
     let first = sys.take_payment(mid, 99_000.0, &mut t, 70);
     assert!(
@@ -153,8 +177,15 @@ fn an_economy_of_pure_credit_cannot_pay_its_own_interest() {
         standing: 0.85,
         settled: true,
     };
-    let offer = underwrite(sys.bank(bank), &sys.rates, &who, Credit::PersonalLoan, 40_000.0, 0.0)
-        .expect("refused");
+    let offer = underwrite(
+        sys.bank(bank),
+        &sys.rates,
+        &who,
+        Credit::PersonalLoan,
+        40_000.0,
+        0.0,
+    )
+    .expect("refused");
     let id = sys.advance(bank, Account::Households(0), &offer, &mut t, 1, None);
 
     let lent = offer.principal;
@@ -171,10 +202,7 @@ fn an_economy_of_pure_credit_cannot_pay_its_own_interest() {
         (in_the_world - lent).abs() < 1e-6,
         "the borrower holds {in_the_world:.0} against a loan of {lent:.0}"
     );
-    assert!(
-        owed - lent > 1.0,
-        "there was no interest to be short of"
-    );
+    assert!(owed - lent > 1.0, "there was no interest to be short of");
 
     // Pay it down until the money runs out, and it runs out before the
     // debt does.
@@ -224,9 +252,19 @@ fn a_bank_runs_out_of_capital_before_it_runs_out_of_reserves() {
     let mut t = Treasury::new();
     t.open(Account::Bank(a), 20_000.0);
     thin.advance(a, Account::Households(0), &big, &mut t, 1, None);
-    assert!(thin.bank(a).reserves > 1_000_000.0, "the bank is short of reserves, not capital");
+    assert!(
+        thin.bank(a).reserves > 1_000_000.0,
+        "the bank is short of reserves, not capital"
+    );
     assert_eq!(
-        underwrite(thin.bank(a), &rates, &who, Credit::Mortgage, 200_000.0, 260_000.0),
+        underwrite(
+            thin.bank(a),
+            &rates,
+            &who,
+            Credit::Mortgage,
+            200_000.0,
+            260_000.0
+        ),
         Err(Refused::NotEnoughCapital),
         "a bank at its capital limit with five million in reserves wrote another mortgage"
     );
@@ -235,7 +273,15 @@ fn a_bank_runs_out_of_capital_before_it_runs_out_of_reserves() {
     let mut thick = System::new(rates);
     let b = thick.add_bank(400_000.0, 90_000.0);
     assert!(
-        underwrite(thick.bank(b), &rates, &who, Credit::Mortgage, 200_000.0, 260_000.0).is_ok(),
+        underwrite(
+            thick.bank(b),
+            &rates,
+            &who,
+            Credit::Mortgage,
+            200_000.0,
+            260_000.0
+        )
+        .is_ok(),
         "a well capitalised bank could not lend for want of reserves"
     );
 
@@ -256,7 +302,10 @@ fn a_bank_runs_out_of_capital_before_it_runs_out_of_reserves() {
         };
         sys.advance(c, Account::Households(k), &o, &mut t, 1, None);
     }
-    assert!(sys.observed_multiple() > before, "lending did not change the ratio");
+    assert!(
+        sys.observed_multiple() > before,
+        "lending did not change the ratio"
+    );
     assert!(
         sys.broad_money() > sys.base_money(),
         "two million of lending and there was still no more money than cash:          broad {:.0} against base {:.0}",
@@ -290,9 +339,19 @@ fn no_is_not_one_answer() {
     assert!(poor.debt_to_income(1_800.0) > MAX_DEBT_TO_INCOME);
 
     // Nothing down, on a mortgage that wants 3.5%.
-    let no_deposit = Applicant { savings: 100.0, ..a_borrower(12_000.0, 0.8) };
+    let no_deposit = Applicant {
+        savings: 100.0,
+        ..a_borrower(12_000.0, 0.8)
+    };
     assert_eq!(
-        underwrite(b, &rates, &no_deposit, Credit::Mortgage, 300_000.0, 300_000.0),
+        underwrite(
+            b,
+            &rates,
+            &no_deposit,
+            Credit::Mortgage,
+            300_000.0,
+            300_000.0
+        ),
         Err(Refused::NotEnoughSecurity)
     );
 
@@ -305,7 +364,10 @@ fn no_is_not_one_answer() {
 
     // **And no address is a refusal on its own**, which is one more way
     // being homeless is self-sustaining.
-    let nowhere = Applicant { settled: false, ..a_borrower(12_000.0, 0.9) };
+    let nowhere = Applicant {
+        settled: false,
+        ..a_borrower(12_000.0, 0.9)
+    };
     assert_eq!(
         underwrite(b, &rates, &nowhere, Credit::PersonalLoan, 5_000.0, 0.0),
         Err(Refused::NoCreditworthiness)
@@ -331,12 +393,31 @@ fn the_same_car_costs_the_poor_man_far_more() {
     let bank = sys.add_bank(3_000_000.0, 1_000_000.0);
     let b = sys.bank(bank);
 
-    let prime = underwrite(b, &rates, &a_borrower(6_000.0, 0.95), Credit::UsedCarLoan, 18_000.0, 18_000.0)
-        .expect("a prime borrower was refused");
-    let subprime = underwrite(b, &rates, &a_borrower(6_000.0, 0.35), Credit::UsedCarLoan, 18_000.0, 18_000.0)
-        .expect("a subprime borrower was refused");
+    let prime = underwrite(
+        b,
+        &rates,
+        &a_borrower(6_000.0, 0.95),
+        Credit::UsedCarLoan,
+        18_000.0,
+        18_000.0,
+    )
+    .expect("a prime borrower was refused");
+    let subprime = underwrite(
+        b,
+        &rates,
+        &a_borrower(6_000.0, 0.35),
+        Credit::UsedCarLoan,
+        18_000.0,
+        18_000.0,
+    )
+    .expect("a subprime borrower was refused");
 
-    assert!(subprime.rate > prime.rate * 1.4, "prime {:.1}% subprime {:.1}%", prime.rate * 100.0, subprime.rate * 100.0);
+    assert!(
+        subprime.rate > prime.rate * 1.4,
+        "prime {:.1}% subprime {:.1}%",
+        prime.rate * 100.0,
+        subprime.rate * 100.0
+    );
     assert!(
         (0.13..0.24).contains(&subprime.rate),
         "subprime used car finance came out at {:.1}%",
@@ -351,8 +432,15 @@ fn the_same_car_costs_the_poor_man_far_more() {
 
     // **And a mortgage repays about two and a half times what was
     // borrowed**, which is the number nobody looks at.
-    let m = underwrite(b, &rates, &a_borrower(11_000.0, 0.9), Credit::Mortgage, 300_000.0, 340_000.0)
-        .unwrap();
+    let m = underwrite(
+        b,
+        &rates,
+        &a_borrower(11_000.0, 0.9),
+        Credit::Mortgage,
+        300_000.0,
+        340_000.0,
+    )
+    .unwrap();
     assert!(
         (2.0..3.0).contains(&m.times_over()),
         "a thirty-year mortgage repaid {:.2} times the loan",
@@ -378,8 +466,15 @@ fn the_same_car_costs_the_poor_man_far_more() {
 fn they_take_the_car_and_you_still_owe_the_difference() {
     let (mut sys, mut t, bank) = a_system();
     let who = a_borrower(4_500.0, 0.6);
-    let offer =
-        underwrite(sys.bank(bank), &sys.rates, &who, Credit::CarLoan, 26_000.0, 26_000.0).unwrap();
+    let offer = underwrite(
+        sys.bank(bank),
+        &sys.rates,
+        &who,
+        Credit::CarLoan,
+        26_000.0,
+        26_000.0,
+    )
+    .unwrap();
     let id = sys.advance(bank, Account::Households(0), &offer, &mut t, 1, None);
 
     // Three missed payments and a car lender has had enough.
@@ -387,7 +482,10 @@ fn they_take_the_car_and_you_still_owe_the_difference() {
         let p = sys.take_payment(id, 0.0, &mut t, 30 * m);
         assert!(p.missed);
         if m < 3 {
-            assert!(!p.defaulted, "a car was repossessed after {m} missed payments");
+            assert!(
+                !p.defaulted,
+                "a car was repossessed after {m} missed payments"
+            );
         }
     }
     assert!(sys.loans[&id].defaulted());
@@ -396,7 +494,11 @@ fn they_take_the_car_and_you_still_owe_the_difference() {
     // Auction: about half the balance, which is the real figure.
     let f = sys.foreclose(id, 12_500.0, 120);
     assert!(f.took_the_security);
-    assert!(f.shortfall > 5_000.0, "the auction covered all but {:.0}", f.shortfall);
+    assert!(
+        f.shortfall > 5_000.0,
+        "the auction covered all but {:.0}",
+        f.shortfall
+    );
     assert!(f.still_owed > 0.0, "losing the car cleared the debt");
     assert!(
         sys.bank(bank).capital < capital_before,
@@ -468,8 +570,14 @@ fn a_bank_is_illiquid_before_it_is_insolvent() {
         };
         solid.advance(big, Account::Households(k), &o, &mut t2, 1, None);
     }
-    assert!(!solid.bank(big).illiquid(), "it was short before anybody spent anything");
-    assert!(!solid.bank(big).insolvent(), "a bank with a good mortgage book was insolvent");
+    assert!(
+        !solid.bank(big).illiquid(),
+        "it was short before anybody spent anything"
+    );
+    assert!(
+        !solid.bank(big).insolvent(),
+        "a bank with a good mortgage book was insolvent"
+    );
 
     // **Every borrower spends the money at somebody who banks elsewhere**,
     // which is what a mortgage is *for*, and the reserves go with it.
@@ -509,7 +617,10 @@ fn a_bank_is_illiquid_before_it_is_insolvent() {
     }
     let till = run.bank(r).reserves;
     let owed = run.bank(r).deposits;
-    assert!(owed > till * 3.0, "the bank was holding most of its deposits in cash");
+    assert!(
+        owed > till * 3.0,
+        "the bank was holding most of its deposits in cash"
+    );
     assert!(!run.bank(r).insolvent(), "the mortgage book was sound");
 
     let asked_for = owed;
@@ -522,7 +633,10 @@ fn a_bank_is_illiquid_before_it_is_insolvent() {
         (got - till).abs() < 1e-6,
         "the till paid out {got:.0} with {till:.0} in it"
     );
-    assert!(run.bank(r).reserves < 1e-6, "there was money left after a run cleaned it out");
+    assert!(
+        run.bank(r).reserves < 1e-6,
+        "there was money left after a run cleaned it out"
+    );
     assert!(run.bank(r).illiquid());
     run.assert_balanced();
 }
@@ -546,9 +660,14 @@ fn the_books_close_through_a_whole_lending_cycle() {
     let mut ids = Vec::new();
     for k in 0..6u64 {
         let who = a_borrower(5_500.0, 0.75);
-        let Ok(o) =
-            underwrite(sys.bank(bank), &sys.rates, &who, Credit::CarLoan, 22_000.0, 22_000.0)
-        else {
+        let Ok(o) = underwrite(
+            sys.bank(bank),
+            &sys.rates,
+            &who,
+            Credit::CarLoan,
+            22_000.0,
+            22_000.0,
+        ) else {
             break;
         };
         ids.push(sys.advance(bank, Account::Households(k as usize), &o, &mut t, 1, None));
@@ -583,14 +702,21 @@ fn the_books_close_through_a_whole_lending_cycle() {
     let should_be = opening + t.created - t.destroyed;
     assert!((t.total() - should_be).abs() < 1e-6);
     assert!(t.created > 0.0 && t.destroyed > 0.0);
-    assert!((sys.created - t.created).abs() < 1e-6, "the bank and the treasury disagree");
+    assert!(
+        (sys.created - t.created).abs() < 1e-6,
+        "the bank and the treasury disagree"
+    );
 
     // **A bank makes money by lending its deposits out, and loses on the
     // ones it does not.** Real US banks run a loan-to-deposit ratio around
     // 70%; a regulator worries above 90% because there is nothing left to
     // meet withdrawals with.
     let ltd = sys.loan_to_deposit(bank);
-    assert!(ltd > 0.2, "the bank had lent only {:.0}% of its deposits", ltd * 100.0);
+    assert!(
+        ltd > 0.2,
+        "the bank had lent only {:.0}% of its deposits",
+        ltd * 100.0
+    );
     let nim = sys.net_interest_margin(bank);
     assert!(
         nim > 0.0,
@@ -605,11 +731,17 @@ fn the_payment_is_the_one_a_bank_would_quote() {
     // A textbook case that can be checked by hand: 200,000 at 6% over 30
     // years is 1,199.10 a month.
     let m = Loan::level_payment(200_000.0, 0.06, 360);
-    assert!((m - 1_199.10).abs() < 0.5, "came out at {m:.2} against 1,199.10");
+    assert!(
+        (m - 1_199.10).abs() < 0.5,
+        "came out at {m:.2} against 1,199.10"
+    );
 
     // 25,000 over 5 years at 7.2% is 497.62.
     let car = Loan::level_payment(25_000.0, 0.072, 60);
-    assert!((car - 497.62).abs() < 0.5, "came out at {car:.2} against 497.62");
+    assert!(
+        (car - 497.62).abs() < 0.5,
+        "came out at {car:.2} against 497.62"
+    );
 
     // Zero interest divides evenly, and a zero term asks for nothing.
     assert!((Loan::level_payment(1_200.0, 0.0, 12) - 100.0).abs() < 1e-9);

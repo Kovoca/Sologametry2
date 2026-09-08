@@ -20,13 +20,22 @@ use scale_sim::material::Material;
 use scale_sim::teardown::{Recovered, Teardown};
 use scale_sim::vehicle::{Part, Vehicle};
 
-fn a_van(cat: &Catalogue, store: &mut Store) -> (FittedVehicle, Vec<scale_sim::id::Id<ItemInstance>>) {
+fn a_van(
+    cat: &Catalogue,
+    store: &mut Store,
+) -> (FittedVehicle, Vec<scale_sim::id::Id<ItemInstance>>) {
     FittedVehicle::adapt(1, Vehicle::van(), &serviceable_parts(), cat, store)
 }
 
 fn a_good_hand() -> Maker {
-    Maker { skill: 0.85, proficiency: 0.8, knows_recipe: true, tool_familiarity: 0.9,
-            focus: 0.9, fatigue: 0.1 }
+    Maker {
+        skill: 0.85,
+        proficiency: 0.8,
+        knows_recipe: true,
+        tool_familiarity: 0.9,
+        focus: 0.9,
+        fatigue: 0.1,
+    }
 }
 
 // =====================================================================
@@ -44,14 +53,37 @@ fn fitting_a_part_takes_it_out_of_the_crate() {
     let mut store = Store::new();
     let (mut van, _) = a_van(&cat, &mut store);
 
-    let crate_ = store.add(ItemInstance::one(&cat, cat.must("washing machine")), Placement::anywhere());
-    let alt = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
-    store.place(alt, Placement::Ground { locality: 3, x: 4, y: 5 });
+    let crate_ = store.add(
+        ItemInstance::one(&cat, cat.must("washing machine")),
+        Placement::anywhere(),
+    );
+    let alt = store.add(
+        ItemInstance::one(&cat, cat.must("alternator")),
+        Placement::anywhere(),
+    );
+    store.place(
+        alt,
+        Placement::Ground {
+            locality: 3,
+            x: 4,
+            y: 5,
+        },
+    );
 
     // Onto the host item first, to prove the same rule holds there.
-    store.install(crate_, alt, &cat).expect("the bracket would not take it");
-    assert!(matches!(store.placement(alt), Some(Placement::Installed { .. })));
-    assert!(store.get(crate_).unwrap().attachments.iter().any(|a| a.1 == alt));
+    store
+        .install(crate_, alt, &cat)
+        .expect("the bracket would not take it");
+    assert!(matches!(
+        store.placement(alt),
+        Some(Placement::Installed { .. })
+    ));
+    assert!(store
+        .get(crate_)
+        .unwrap()
+        .attachments
+        .iter()
+        .any(|a| a.1 == alt));
 
     // And now into the van. It must leave the washing machine as it goes.
     let bracket = van.mount_named("alternator bracket").unwrap();
@@ -61,15 +93,31 @@ fn fitting_a_part_takes_it_out_of_the_crate() {
         Err(WontFit::NotAvailable(_))
     ));
 
-    store.place(alt, Placement::Ground { locality: 0, x: 0, y: 0 });
+    store.place(
+        alt,
+        Placement::Ground {
+            locality: 0,
+            x: 0,
+            y: 0,
+        },
+    );
     assert!(
-        !store.get(crate_).unwrap().attachments.iter().any(|a| a.1 == alt),
+        !store
+            .get(crate_)
+            .unwrap()
+            .attachments
+            .iter()
+            .any(|a| a.1 == alt),
         "it was still bolted to the washing machine after being taken off"
     );
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
     assert_eq!(
         store.placement(alt),
-        Some(Placement::Installed { host: Host::Vehicle(1), mount: bracket })
+        Some(Placement::Installed {
+            host: Host::Vehicle(1),
+            mount: bracket
+        })
     );
 }
 
@@ -79,7 +127,8 @@ fn one_alternator_cannot_be_in_two_vans() {
     let cat = standard_catalogue();
     let mut store = Store::new();
     let (mut a, loose) = a_van(&cat, &mut store);
-    let (mut b, _) = FittedVehicle::adapt(2, Vehicle::van(), &serviceable_parts(), &cat, &mut store);
+    let (mut b, _) =
+        FittedVehicle::adapt(2, Vehicle::van(), &serviceable_parts(), &cat, &mut store);
 
     let alt = *loose
         .iter()
@@ -93,7 +142,10 @@ fn one_alternator_cannot_be_in_two_vans() {
         b.install(&mut store, m2, alt, &cat, &[], None, 1),
         Err(WontFit::NotAvailable(_))
     ));
-    assert!(!b.mounts[m2].occupied(), "the second van thought it had one");
+    assert!(
+        !b.mounts[m2].occupied(),
+        "the second van thought it had one"
+    );
 }
 
 /// **Gate: a mount takes one thing.**
@@ -103,11 +155,22 @@ fn a_mount_that_is_full_is_full() {
     let mut store = Store::new();
     let (mut van, loose) = a_van(&cat, &mut store);
     let alt = loose[0];
-    let spare = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
-    store.place(spare, Placement::Ground { locality: 0, x: 0, y: 0 });
+    let spare = store.add(
+        ItemInstance::one(&cat, cat.must("alternator")),
+        Placement::anywhere(),
+    );
+    store.place(
+        spare,
+        Placement::Ground {
+            locality: 0,
+            x: 0,
+            y: 0,
+        },
+    );
 
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
     assert_eq!(
         van.install(&mut store, bracket, spare, &cat, &[], None, 1),
         Err(WontFit::Occupied)
@@ -129,45 +192,95 @@ fn something_spoken_for_is_not_available() {
     // a panel clamped in a press has not been claimed by anybody. Both
     // stop you fitting it, for different reasons.
     for (state, expect) in [
-        (Placement::Installed { host: Host::Vehicle(77), mount: 0 }, "fitted"),
-        (Placement::Fixtured { resource: 3, slot: 1, clamped: true }, "clamped"),
+        (
+            Placement::Installed {
+                host: Host::Vehicle(77),
+                mount: 0,
+            },
+            "fitted",
+        ),
+        (
+            Placement::Fixtured {
+                resource: 3,
+                slot: 1,
+                clamped: true,
+            },
+            "clamped",
+        ),
     ] {
-        let alt = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
+        let alt = store.add(
+            ItemInstance::one(&cat, cat.must("alternator")),
+            Placement::anywhere(),
+        );
         store.place(alt, state);
         match van.install(&mut store, bracket, alt, &cat, &[], None, 1) {
             Err(WontFit::NotAvailable(why)) => {
-                assert!(why.contains(expect), "the refusal said {why:?} for {state:?}")
+                assert!(
+                    why.contains(expect),
+                    "the refusal said {why:?} for {state:?}"
+                )
             }
             other => panic!("{state:?} was accepted: {other:?}"),
         }
     }
     for (status, expect) in [
         (WorkStatus::Reserved { order: 9 }, "committed"),
-        (WorkStatus::Wip { order: 9, operation: 2 }, "being worked on"),
+        (
+            WorkStatus::Wip {
+                order: 9,
+                operation: 2,
+            },
+            "being worked on",
+        ),
         (WorkStatus::AwaitingUnload { order: 9 }, "not yet collected"),
     ] {
-        let alt = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
+        let alt = store.add(
+            ItemInstance::one(&cat, cat.must("alternator")),
+            Placement::anywhere(),
+        );
         store.set_status(alt, status);
         // **It has not moved.** A reserved board is still on its rack.
-        assert!(matches!(store.placement(alt), Some(Placement::Ground { .. })));
+        assert!(matches!(
+            store.placement(alt),
+            Some(Placement::Ground { .. })
+        ));
         match van.install(&mut store, bracket, alt, &cat, &[], None, 1) {
             Err(WontFit::NotAvailable(why)) => {
-                assert!(why.contains(expect), "the refusal said {why:?} for {status:?}")
+                assert!(
+                    why.contains(expect),
+                    "the refusal said {why:?} for {status:?}"
+                )
             }
             other => panic!("{status:?} was accepted: {other:?}"),
         }
     }
     // And a panel sitting in an output tray is reachable: somebody can
     // pick it up and walk off with it.
-    let tray = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
-    store.place(tray, Placement::Fixtured { resource: 3, slot: 0, clamped: false });
-    assert!(store.available(tray), "a cool part in a tray could not be picked up");
+    let tray = store.add(
+        ItemInstance::one(&cat, cat.must("alternator")),
+        Placement::anywhere(),
+    );
+    store.place(
+        tray,
+        Placement::Fixtured {
+            resource: 3,
+            slot: 0,
+            clamped: false,
+        },
+    );
+    assert!(
+        store.available(tray),
+        "a cool part in a tray could not be picked up"
+    );
 
     // **And a thing that has ended is not somewhere else — it is not
     // anywhere, because it is not an item any more.** That is a different
     // question from where a live item is, and it used to be the same
     // field.
-    let doomed = store.add(ItemInstance::one(&cat, cat.must("alternator")), Placement::anywhere());
+    let doomed = store.add(
+        ItemInstance::one(&cat, cat.must("alternator")),
+        Placement::anywhere(),
+    );
     store.end(doomed, scale_sim::item::ItemEnd::Destroyed, 4);
     assert_eq!(store.placement(doomed), None);
     assert!(matches!(
@@ -184,8 +297,18 @@ fn what_fits_is_decided_by_the_fitting() {
     let mut store = Store::new();
     let (mut van, _) = a_van(&cat, &mut store);
     let bracket = van.mount_named("alternator bracket").unwrap();
-    let loaf = store.add(ItemInstance::one(&cat, cat.must("loaf")), Placement::anywhere());
-    store.place(loaf, Placement::Ground { locality: 0, x: 0, y: 0 });
+    let loaf = store.add(
+        ItemInstance::one(&cat, cat.must("loaf")),
+        Placement::anywhere(),
+    );
+    store.place(
+        loaf,
+        Placement::Ground {
+            locality: 0,
+            x: 0,
+            y: 0,
+        },
+    );
     assert_eq!(
         van.install(&mut store, bracket, loaf, &cat, &[], None, 1),
         Err(WontFit::DoesNotFit)
@@ -201,10 +324,14 @@ fn uninstalling_leaves_it_loose_and_not_nowhere() {
     let alt = loose[0];
     let bracket = van.mount_named("alternator bracket").unwrap();
 
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
     let back = van.uninstall(&mut store, bracket).unwrap();
     assert_eq!(back, alt);
-    assert!(matches!(store.placement(alt), Some(Placement::Ground { .. })));
+    assert!(matches!(
+        store.placement(alt),
+        Some(Placement::Ground { .. })
+    ));
     assert!(!van.mounts[bracket].occupied());
     assert_eq!(van.uninstall(&mut store, bracket), Err(WontFit::Empty));
 }
@@ -229,7 +356,8 @@ fn a_wrecked_mount_settles_its_occupant_one_way_or_another() {
             let (mut van, loose) = a_van(&cat, &mut store);
             let alt = loose[0];
             let bracket = van.mount_named("alternator bracket").unwrap();
-            van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+            van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+                .unwrap();
             let before = store.live();
 
             let out = van
@@ -249,20 +377,29 @@ fn a_wrecked_mount_settles_its_occupant_one_way_or_another() {
             // Exactly one outcome, and the object is in exactly one state.
             match &out {
                 InstallationFailure::Destroyed { .. } => {
-                    assert!(store.get(alt).is_none(), "a destroyed part was still an object");
+                    assert!(
+                        store.get(alt).is_none(),
+                        "a destroyed part was still an object"
+                    );
                     assert_eq!(store.live(), before - 1, "something leaked");
                     assert_eq!(store.graves().len(), 1, "no tombstone was left");
                     assert!(!van.mounts[bracket].occupied());
                 }
                 InstallationFailure::Detached { .. } => {
-                    assert!(matches!(store.placement(alt), Some(Placement::Ground { .. })));
+                    assert!(matches!(
+                        store.placement(alt),
+                        Some(Placement::Ground { .. })
+                    ));
                     assert!(!van.mounts[bracket].occupied());
                     assert_eq!(store.live(), before, "detaching it duplicated it");
                 }
                 InstallationFailure::RemainsAttached { .. }
                 | InstallationFailure::Inaccessible
                 | InstallationFailure::ContentsReleased => {
-                    assert!(van.mounts[bracket].occupied(), "it fell out of a mount it is in");
+                    assert!(
+                        van.mounts[bracket].occupied(),
+                        "it fell out of a mount it is in"
+                    );
                     assert!(matches!(
                         store.placement(alt),
                         Some(Placement::Installed { .. })
@@ -271,16 +408,23 @@ fn a_wrecked_mount_settles_its_occupant_one_way_or_another() {
                 }
             }
             // Never in two places.
-            let fitted = van.mounts.iter().filter(|m| m.occupant == Some(alt)).count();
-            let on_ground =
-                matches!(store.placement(alt), Some(Placement::Ground { .. })) as usize;
+            let fitted = van
+                .mounts
+                .iter()
+                .filter(|m| m.occupant == Some(alt))
+                .count();
+            let on_ground = matches!(store.placement(alt), Some(Placement::Ground { .. })) as usize;
             assert!(fitted + on_ground <= 1, "the alternator was in two places");
         }
     }
 
     // **All of them are reachable.** A settlement with one outcome is the
     // old rule with more words.
-    assert!(seen.len() >= 3, "only {} distinct outcomes ever happened", seen.len());
+    assert!(
+        seen.len() >= 3,
+        "only {} distinct outcomes ever happened",
+        seen.len()
+    );
 }
 
 /// **A hard knock is worse than a light one**, and a weak joint lets go
@@ -295,7 +439,8 @@ fn a_harder_impact_costs_more() {
             let mut store = Store::new();
             let (mut van, loose) = a_van(&cat, &mut store);
             let bracket = van.mount_named("alternator bracket").unwrap();
-            van.install(&mut store, bracket, loose[0], &cat, &[], None, 1).unwrap();
+            van.install(&mut store, bracket, loose[0], &cat, &[], None, 1)
+                .unwrap();
             match van.wreck_mount(&mut store, bracket, severity, &cat, event, 1) {
                 Some(InstallationFailure::Destroyed { .. }) => destroyed += 1,
                 Some(InstallationFailure::RemainsAttached { .. }) => attached += 1,
@@ -306,15 +451,24 @@ fn a_harder_impact_costs_more() {
     };
     let (gentle_d, gentle_a) = count(0.1);
     let (hard_d, hard_a) = count(0.95);
-    assert!(hard_d > gentle_d, "a heavy impact broke no more than a nudge");
-    assert!(gentle_a > hard_a, "a nudge shook as much loose as a heavy impact");
+    assert!(
+        hard_d > gentle_d,
+        "a heavy impact broke no more than a nudge"
+    );
+    assert!(
+        gentle_a > hard_a,
+        "a nudge shook as much loose as a heavy impact"
+    );
     assert!(
         gentle_d * 3 < hard_d.max(1),
         "severity barely mattered: {gentle_d} destroyed at a nudge against {hard_d} at a crash"
     );
     // And a nudge is overwhelmingly "still bolted on", which is what
     // makes it a nudge.
-    assert!(gentle_a > 200, "only {gentle_a} of 300 survived a light knock in place");
+    assert!(
+        gentle_a > 200,
+        "only {gentle_a} of 300 survived a light knock in place"
+    );
 }
 
 /// **Structural breakup moves what survives.** A hole in the floor is not
@@ -328,15 +482,20 @@ fn breaking_a_lorry_in_half_does_not_destroy_the_far_end() {
     for (m, &item) in loose.iter().enumerate() {
         let takes = van.mounts[m].takes;
         if cat.get(store.get(item).unwrap().definition).unwrap().fits == Some(takes) {
-            van.install(&mut store, m, item, &cat, &[], None, 1).unwrap();
+            van.install(&mut store, m, item, &cat, &[], None, 1)
+                .unwrap();
         }
     }
     let fitted_before = van.fitted().count();
     assert!(fitted_before >= 4);
 
     // The nose is torn off: everything at x = 0.
-    let lost: Vec<(i32, i32)> =
-        van.mounts.iter().map(|m| m.at).filter(|&(x, _)| x == 0).collect();
+    let lost: Vec<(i32, i32)> = van
+        .mounts
+        .iter()
+        .map(|m| m.at)
+        .filter(|&(x, _)| x == 0)
+        .collect();
     let settled = van.break_up(&mut store, &lost, 0.8, &cat, 4242, 12);
 
     assert!(!settled.is_empty(), "tearing the nose off settled nothing");
@@ -350,7 +509,10 @@ fn breaking_a_lorry_in_half_does_not_destroy_the_far_end() {
             );
         }
     }
-    assert!(van.fitted().count() > 0, "the whole van was written off by losing its nose");
+    assert!(
+        van.fitted().count() > 0,
+        "the whole van was written off by losing its nose"
+    );
 }
 
 /// **Gate: a fitted thing is not ordinary stock.** It has a history and a
@@ -362,14 +524,21 @@ fn a_fitted_part_is_not_folded_into_a_lot() {
     let (mut van, loose) = a_van(&cat, &mut store);
     let alt = loose[0];
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
 
     // **Where it is, is the store's question.** The instance on its own
     // cannot know it is bolted into a van, which is exactly why the check
     // lives where the placement does.
-    assert!(!store.aggregatable(alt), "an alternator in a van was folded into a lot");
+    assert!(
+        !store.aggregatable(alt),
+        "an alternator in a van was folded into a lot"
+    );
     let spare = store.add_loose(ItemInstance::one(&cat, cat.must("alternator")));
-    assert!(store.aggregatable(spare), "an alternator on a shelf refused to be counted");
+    assert!(
+        store.aggregatable(spare),
+        "an alternator on a shelf refused to be counted"
+    );
 
     let fitted = store.get(alt).unwrap().clone();
     let (lot, _) = ItemLot::aggregate(cat.must("alternator"), vec![fitted], 10);
@@ -393,12 +562,23 @@ fn the_alternator_that_comes_off_is_the_one_that_went_on() {
         a.quality.workmanship = 0.91;
         a.given_name = Some("the rebuilt one".into());
         a.faults.push(scale_sim::item::Fault {
-            what: "noisy bearing", severity: 0.3, disabling: false, since_day: 40,
+            what: "noisy bearing",
+            severity: 0.3,
+            disabling: false,
+            since_day: 40,
         });
     }
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[(Material::MildSteel, 0.04)], Some(7), 12)
-        .unwrap();
+    van.install(
+        &mut store,
+        bracket,
+        alt,
+        &cat,
+        &[(Material::MildSteel, 0.04)],
+        Some(7),
+        12,
+    )
+    .unwrap();
 
     // A year of running.
     store.get_mut(alt).unwrap().condition.wear = 0.61;
@@ -406,10 +586,17 @@ fn the_alternator_that_comes_off_is_the_one_that_went_on() {
     let back = van.uninstall(&mut store, bracket).unwrap();
     assert_eq!(back, alt, "a different alternator came off");
     let a = store.get(back).unwrap();
-    assert!((a.condition.wear - 0.61).abs() < 1e-9, "its hours were forgotten");
+    assert!(
+        (a.condition.wear - 0.61).abs() < 1e-9,
+        "its hours were forgotten"
+    );
     assert_eq!(a.quality.workmanship, 0.91);
     assert_eq!(a.given_name.as_deref(), Some("the rebuilt one"));
-    assert_eq!(a.faults.len(), 1, "the noisy bearing was mended by taking it out");
+    assert_eq!(
+        a.faults.len(),
+        1,
+        "the noisy bearing was mended by taking it out"
+    );
 }
 
 /// **Gate: the fasteners are sacrificed and the component is not.**
@@ -423,8 +610,16 @@ fn what_was_used_installing_it_is_not_part_of_it() {
     let (mut van, loose) = a_van(&cat, &mut store);
     let alt = loose[0];
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[(Material::MildSteel, 0.08)], Some(3), 5)
-        .unwrap();
+    van.install(
+        &mut store,
+        bracket,
+        alt,
+        &cat,
+        &[(Material::MildSteel, 0.08)],
+        Some(3),
+        5,
+    )
+    .unwrap();
 
     let record = van.installations.iter().find(|i| i.item == alt).unwrap();
     assert_eq!(record.joint, JointMethod::Bolted);
@@ -447,7 +642,8 @@ fn the_van_gets_heavier_by_exactly_the_alternator() {
 
     let empty = van.kerb_kg(&store);
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
     let fitted = van.kerb_kg(&store);
 
     assert!(
@@ -483,7 +679,8 @@ fn a_van_with_no_alternator_generates_nothing() {
         .find(|&&i| store.get(i).unwrap().definition == cat.must("alternator"))
         .unwrap();
     let bracket = van.mount_named("alternator bracket").unwrap();
-    van.install(&mut store, bracket, alt, &cat, &[], None, 1).unwrap();
+    van.install(&mut store, bracket, alt, &cat, &[], None, 1)
+        .unwrap();
     assert!(van.assembled().generation_kwh_per_day() > 5.0);
 }
 
@@ -494,14 +691,21 @@ fn a_van_with_its_wheels_off_is_not_drivable() {
     let cat = standard_catalogue();
     let mut store = Store::new();
     let (mut van, loose) = a_van(&cat, &mut store);
-    assert!(!van.assembled().drivable(), "it drove with every wheel in the store");
+    assert!(
+        !van.assembled().drivable(),
+        "it drove with every wheel in the store"
+    );
 
     let wheels: Vec<_> = loose
         .iter()
         .copied()
         .filter(|&i| store.get(i).unwrap().definition == cat.must("road wheel"))
         .collect();
-    assert!(wheels.len() >= 4, "a van came apart into {} wheels", wheels.len());
+    assert!(
+        wheels.len() >= 4,
+        "a van came apart into {} wheels",
+        wheels.len()
+    );
 
     let hubs: Vec<usize> = van
         .mounts
@@ -511,9 +715,13 @@ fn a_van_with_its_wheels_off_is_not_drivable() {
         .map(|(i, _)| i)
         .collect();
     for (hub, wheel) in hubs.iter().zip(&wheels) {
-        van.install(&mut store, *hub, *wheel, &cat, &[], None, 1).unwrap();
+        van.install(&mut store, *hub, *wheel, &cat, &[], None, 1)
+            .unwrap();
     }
-    assert!(van.assembled().drivable(), "a van with four wheels on would not move");
+    assert!(
+        van.assembled().drivable(),
+        "a van with four wheels on would not move"
+    );
 
     // Take two off and it is on the ramp again.
     van.uninstall(&mut store, hubs[0]).unwrap();
@@ -521,7 +729,10 @@ fn a_van_with_its_wheels_off_is_not_drivable() {
     van.uninstall(&mut store, hubs[2]).unwrap();
     assert!(!van.assembled().drivable());
     // And the wheels are objects on the floor, not gone.
-    assert!(matches!(store.placement(wheels[0]), Some(Placement::Ground { .. })));
+    assert!(matches!(
+        store.placement(wheels[0]),
+        Some(Placement::Ground { .. })
+    ));
 }
 
 // =====================================================================
@@ -530,16 +741,31 @@ fn a_van_with_its_wheels_off_is_not_drivable() {
 
 fn a_wall(cat: &Catalogue, store: &mut Store) -> (WallAssembly, scale_sim::id::Id<ItemInstance>) {
     let mut wall = WallAssembly::timber_framed(10, cat);
-    let door = store.add(ItemInstance::one(cat, cat.must("door")), Placement::anywhere());
-    store.place(door, Placement::Ground { locality: 0, x: 0, y: 0 });
+    let door = store.add(
+        ItemInstance::one(cat, cat.must("door")),
+        Placement::anywhere(),
+    );
+    store.place(
+        door,
+        Placement::Ground {
+            locality: 0,
+            x: 0,
+            y: 0,
+        },
+    );
     let opening = wall.fixture_named("doorway").unwrap();
-    wall.install(store, opening, door, cat, &[(Material::MildSteel, 0.15)], 1).unwrap();
+    wall.install(store, opening, door, cat, &[(Material::MildSteel, 0.15)], 1)
+        .unwrap();
     (wall, door)
 }
 
 fn back(r: &Recovered, cat: &Catalogue, name: &str) -> u32 {
     let want = cat.must(name);
-    r.components.iter().filter(|c| c.definition == want).map(|c| c.count).sum()
+    r.components
+        .iter()
+        .filter(|c| c.definition == want)
+        .map(|c| c.count)
+        .sum()
 }
 
 /// **Gate: careful deconstruction returns the door; demolition does not.**
@@ -560,8 +786,14 @@ fn a_deconstructed_wall_gives_back_its_door() {
         careful_doors += back(&careful, &cat, "door");
         smashed_doors += back(&smashed, &cat, "door");
     }
-    assert!(careful_doors > 25, "careful work saved the door {careful_doors} times in 40");
-    assert_eq!(smashed_doors, 0, "a sledgehammer through a wall produced an intact door");
+    assert!(
+        careful_doors > 25,
+        "careful work saved the door {careful_doors} times in 40"
+    );
+    assert_eq!(
+        smashed_doors, 0,
+        "a sledgehammer through a wall produced an intact door"
+    );
 }
 
 /// **Gate: mortar and adhesive are joint mass and never come back.**
@@ -572,14 +804,22 @@ fn what_was_set_into_the_joint_stays_there() {
     let (wall, _) = a_wall(&cat, &mut store);
 
     let careful = wall.take_down(Teardown::Deconstruct, &cat, &store, 0.95, 3);
-    assert_eq!(careful.material(Material::Adhesive), 0.0, "the mastic came back");
+    assert_eq!(
+        careful.material(Material::Adhesive),
+        0.0,
+        "the mastic came back"
+    );
     assert_eq!(careful.fuel_of(Material::Adhesive), 0.0);
 
     // Nor does the jointing compound come back as plasterboard, which is
     // what a model that treated it as another layer would say.
     let bricks = WallAssembly::brick(11, &cat, JointMethod::CementMortared);
     let down = bricks.take_down(Teardown::Deconstruct, &cat, &store, 0.9, 3);
-    assert_eq!(down.material(Material::Mortar), 0.0, "the mortar was recovered as mortar");
+    assert_eq!(
+        down.material(Material::Mortar),
+        0.0,
+        "the mortar was recovered as mortar"
+    );
 }
 
 /// **Gate: which mortar it was built in decides whether the bricks come
@@ -620,7 +860,10 @@ fn the_bond_decides_whether_the_bricks_come_back() {
         lime_back * 100.0
     );
     // And it is a barrier, not a wall of its own: some come back.
-    assert!(cement_back > 0.0, "cement mortar made recovery flatly impossible");
+    assert!(
+        cement_back > 0.0,
+        "cement mortar made recovery flatly impossible"
+    );
 }
 
 /// **Gate: taking a wall down is a sequence, not a verb.**
@@ -635,7 +878,11 @@ fn deconstruction_is_a_plan_and_it_has_an_order() {
     let (mut wall, door) = a_wall(&cat, &mut store);
 
     let plan = WallAssembly::deconstruction_plan();
-    assert_eq!(plan[0], Stage::IsolateUtilities, "somebody started before killing the power");
+    assert_eq!(
+        plan[0],
+        Stage::IsolateUtilities,
+        "somebody started before killing the power"
+    );
     assert!(
         plan.iter().position(|s| *s == Stage::RemoveOpenings)
             < plan.iter().position(|s| *s == Stage::SeparateStructure),
@@ -648,13 +895,20 @@ fn deconstruction_is_a_plan_and_it_has_an_order() {
     for stage in plan {
         let out = wall.perform(*stage, &mut store, &cat);
         if *stage == Stage::RemoveOpenings {
-            assert_eq!(out, vec![door], "taking the openings out did not produce the door");
+            assert_eq!(
+                out,
+                vec![door],
+                "taking the openings out did not produce the door"
+            );
         }
         assert!(wall.done(*stage));
     }
     // The finish is off the wall and the door is on the floor.
     assert!(!wall.courses.iter().any(|c| c.def == boards));
-    assert!(matches!(store.placement(door), Some(Placement::Ground { .. })));
+    assert!(matches!(
+        store.placement(door),
+        Some(Placement::Ground { .. })
+    ));
     assert!(!wall.fixtures.iter().any(|m| m.occupied()));
 }
 
@@ -672,9 +926,16 @@ fn a_door_taken_out_first_survives_the_demolition() {
     let (wall, _) = a_wall(&cat, &mut store);
     let mut saved = 0;
     for event in 0..40u64 {
-        saved += back(&wall.take_down(Teardown::Smash, &cat, &store, 0.8, event), &cat, "door");
+        saved += back(
+            &wall.take_down(Teardown::Smash, &cat, &store, 0.8, event),
+            &cat,
+            "door",
+        );
     }
-    assert_eq!(saved, 0, "a sledgehammer through an occupied wall spared the door");
+    assert_eq!(
+        saved, 0,
+        "a sledgehammer through an occupied wall spared the door"
+    );
 
     // Stripped first: the door is a separate object on the floor and the
     // demolition cannot touch it.
@@ -685,10 +946,24 @@ fn a_door_taken_out_first_survives_the_demolition() {
     wall.perform(Stage::RemoveOpenings, &mut store, &cat);
 
     let after = wall.take_down(Teardown::Smash, &cat, &store, 0.8, 1);
-    assert_eq!(back(&after, &cat, "door"), 0, "the wall still contained a door");
-    assert!(store.get(door).is_some(), "the door was destroyed with the wall it had left");
-    assert!(matches!(store.placement(door), Some(Placement::Ground { .. })));
-    assert_eq!(store.get(door).unwrap().condition.damage, 0.0, "it was damaged from a distance");
+    assert_eq!(
+        back(&after, &cat, "door"),
+        0,
+        "the wall still contained a door"
+    );
+    assert!(
+        store.get(door).is_some(),
+        "the door was destroyed with the wall it had left"
+    );
+    assert!(matches!(
+        store.placement(door),
+        Some(Placement::Ground { .. })
+    ));
+    assert_eq!(
+        store.get(door).unwrap().condition.damage,
+        0.0,
+        "it was damaged from a distance"
+    );
 }
 
 /// **Gate: what a teardown returns is knocked about, dirty, and sometimes
@@ -713,20 +988,33 @@ fn separability_and_damage_and_dirt_are_different_questions() {
                 hidden += c.hidden_defect as u32;
             }
         }
-        (damage / n.max(1.0), dirt / n.max(1.0), hidden as f64 / n.max(1.0))
+        (
+            damage / n.max(1.0),
+            dirt / n.max(1.0),
+            hidden as f64 / n.max(1.0),
+        )
     };
 
     let careful = survey(Teardown::Deconstruct);
     let rough = survey(Teardown::Salvage);
 
-    assert!(rough.0 > careful.0, "rough work damaged nothing more than careful work");
+    assert!(
+        rough.0 > careful.0,
+        "rough work damaged nothing more than careful work"
+    );
     assert!(rough.1 > careful.1, "rough work returned no dirtier bricks");
     assert!(rough.2 > careful.2, "rough work hid no more defects");
     // And they are separate: a careful job still has some of each, and
     // none of them is simply a copy of another.
     assert!(careful.0 > 0.0 && careful.1 > 0.0);
-    assert!((careful.0 - careful.1).abs() > 1e-6, "damage and dirt were the same number");
-    assert!(careful.2 < 0.5, "half of a careful teardown came out secretly cracked");
+    assert!(
+        (careful.0 - careful.1).abs() > 1e-6,
+        "damage and dirt were the same number"
+    );
+    assert!(
+        careful.2 < 0.5,
+        "half of a careful teardown came out secretly cracked"
+    );
 }
 
 /// **Gate: a fixture taken out of a wall is the same fixture.**
@@ -738,14 +1026,23 @@ fn the_door_that_comes_out_is_the_door_that_went_in() {
     store.get_mut(door).unwrap().condition.wear = 0.35;
     store.get_mut(door).unwrap().given_name = Some("the one off the old house".into());
 
-    assert!(matches!(store.placement(door), Some(Placement::Installed { host: Host::Building(10), .. })));
+    assert!(matches!(
+        store.placement(door),
+        Some(Placement::Installed {
+            host: Host::Building(10),
+            ..
+        })
+    ));
     let opening = wall.fixture_named("doorway").unwrap();
     let back = wall.uninstall(&mut store, opening).unwrap();
     assert_eq!(back, door);
     let d = store.get(back).unwrap();
     assert!((d.condition.wear - 0.35).abs() < 1e-9);
     assert_eq!(d.given_name.as_deref(), Some("the one off the old house"));
-    assert!(matches!(store.placement(back), Some(Placement::Ground { .. })));
+    assert!(matches!(
+        store.placement(back),
+        Some(Placement::Ground { .. })
+    ));
 }
 
 /// **Gate: a wall weighs its courses plus its joints plus its fixtures,
@@ -758,13 +1055,21 @@ fn a_wall_is_the_sum_of_what_is_in_it() {
 
     let mass = wall.mass_kg(&cat, &store);
     // A 2.4 x 3.0 m stud wall with plasterboard runs about 25 kg/m2.
-    assert!((150.0..=230.0).contains(&mass), "the wall came to {mass:.0} kg");
+    assert!(
+        (150.0..=230.0).contains(&mass),
+        "the wall came to {mass:.0} kg"
+    );
     assert!(mass > store.get(door).unwrap().mass_kg);
 
     let as_one = wall.as_one_object(&cat, &store);
     assert!((as_one.mass_kg - mass).abs() < 1e-9);
 
-    for how in [Teardown::Deconstruct, Teardown::Salvage, Teardown::Recycle, Teardown::Smash] {
+    for how in [
+        Teardown::Deconstruct,
+        Teardown::Salvage,
+        Teardown::Recycle,
+        Teardown::Smash,
+    ] {
         let r = wall.take_down(how, &cat, &store, 0.8, 1);
         assert!(
             (r.accounted_kg() - mass).abs() < 1e-6,
@@ -807,7 +1112,11 @@ fn the_shop_reaches_for_the_handsaw() {
         }
     }
 
-    assert_eq!(without.state, Halt::Done, "the shop stopped rather than picking up a saw");
+    assert_eq!(
+        without.state,
+        Halt::Done,
+        "the shop stopped rather than picking up a saw"
+    );
     assert_eq!(with.state, Halt::Done);
     assert!(without.power_kwh == 0.0, "a handsaw drew current");
     assert!(with.power_kwh > 0.0);
@@ -876,12 +1185,28 @@ fn adapting_a_vehicle_moves_parts_out_rather_than_copying_them() {
     let whole = Vehicle::van();
     let (van, loose) = a_van(&cat, &mut store);
 
-    let alternators_before = whole.kinds().filter(|p| matches!(p, Part::Alternator(_))).count();
-    let alternators_after =
-        van.base.parts.iter().filter(|(p, _, _)| matches!(p, Part::Alternator(_))).count();
+    let alternators_before = whole
+        .kinds()
+        .filter(|p| matches!(p, Part::Alternator(_)))
+        .count();
+    let alternators_after = van
+        .base
+        .parts
+        .iter()
+        .filter(|(p, _, _)| matches!(p, Part::Alternator(_)))
+        .count();
     assert_eq!(alternators_before, 1);
-    assert_eq!(alternators_after, 0, "the van kept an alternator it had handed over");
-    assert_eq!(van.mounts.iter().filter(|m| m.name == "alternator bracket").count(), 1);
+    assert_eq!(
+        alternators_after, 0,
+        "the van kept an alternator it had handed over"
+    );
+    assert_eq!(
+        van.mounts
+            .iter()
+            .filter(|m| m.name == "alternator bracket")
+            .count(),
+        1
+    );
 
     // Every part that came out is now an object, and none of them is
     // anywhere but on the floor.
@@ -899,10 +1224,15 @@ fn adapting_a_vehicle_moves_parts_out_rather_than_copying_them() {
             .position(|&i| cat.get(store.get(i).unwrap().definition).unwrap().fits == Some(takes))
             .expect("nothing came out that fits this mount");
         let item = order.remove(at);
-        van.install(&mut store, m, item, &cat, &[], None, 1).unwrap();
+        van.install(&mut store, m, item, &cat, &[], None, 1)
+            .unwrap();
     }
     let rebuilt = van.assembled();
-    assert_eq!(rebuilt.parts.len(), whole.parts.len(), "the van did not go back together");
+    assert_eq!(
+        rebuilt.parts.len(),
+        whole.parts.len(),
+        "the van did not go back together"
+    );
     assert!((rebuilt.kerb_t() - whole.kerb_t()).abs() < 1e-9);
 }
 
@@ -921,10 +1251,17 @@ fn the_crash_probabilities_are_the_model_and_they_are_checked_directly() {
     for severity in [0.0, 0.05, 0.3, 0.5, 0.9, 1.0] {
         for robustness in [0.0, 0.25, 0.5, 0.8, 1.0] {
             let p = chance_destroyed(severity, robustness);
-            assert!((0.0..=1.0).contains(&p), "P(destroyed) = {p} at {severity}/{robustness}");
+            assert!(
+                (0.0..=1.0).contains(&p),
+                "P(destroyed) = {p} at {severity}/{robustness}"
+            );
         }
         assert!((0.0..=1.0).contains(&chance_jammed(severity)));
-        for j in [JointMethod::Welded, JointMethod::Clipped, JointMethod::Bolted] {
+        for j in [
+            JointMethod::Welded,
+            JointMethod::Clipped,
+            JointMethod::Bolted,
+        ] {
             assert!((0.0..=1.0).contains(&chance_detached(j, severity)));
         }
     }
@@ -934,13 +1271,19 @@ fn the_crash_probabilities_are_the_model_and_they_are_checked_directly() {
         let mut last = -1.0;
         for severity in [0.0, 0.1, 0.3, 0.5, 0.7, 0.9, 1.0] {
             let p = chance_destroyed(severity, robustness);
-            assert!(p >= last, "breaking got less likely as the impact got harder");
+            assert!(
+                p >= last,
+                "breaking got less likely as the impact got harder"
+            );
             last = p;
         }
     }
     assert!(chance_destroyed(0.9, 0.5) > chance_destroyed(0.1, 0.5));
     // And a nudge breaks almost nothing, which is what makes it a nudge.
-    assert!(chance_destroyed(0.1, 0.8) < 0.02, "a light knock destroyed things");
+    assert!(
+        chance_destroyed(0.1, 0.8) < 0.02,
+        "a light knock destroyed things"
+    );
 
     // **A stronger thing survives what a weaker one does not.**
     assert!(chance_destroyed(0.6, 0.2) > chance_destroyed(0.6, 0.9));
@@ -978,7 +1321,8 @@ fn a_population_of_crashes_looks_like_the_model_says_it_should() {
         let mut store = Store::new();
         let (mut van, loose) = a_van(&cat, &mut store);
         let bracket = van.mount_named("alternator bracket").unwrap();
-        van.install(&mut store, bracket, loose[0], &cat, &[], None, 1).unwrap();
+        van.install(&mut store, bracket, loose[0], &cat, &[], None, 1)
+            .unwrap();
         if let Some(InstallationFailure::Destroyed { .. }) =
             van.wreck_mount(&mut store, bracket, 0.9, &cat, event, 1)
         {
@@ -997,4 +1341,3 @@ fn a_population_of_crashes_looks_like_the_model_says_it_should() {
         "the sample says {seen:.3} and the model says {expected:.3}"
     );
 }
-

@@ -214,7 +214,10 @@ impl Logistics {
     /// End-to-end freight cost per tonne, or `None` if the roads do not
     /// join the two.
     pub fn freight(&self, from: usize, to: usize) -> Option<f64> {
-        self.cost.get(from).and_then(|r| r.get(to).copied()).flatten()
+        self.cost
+            .get(from)
+            .and_then(|r| r.get(to).copied())
+            .flatten()
     }
 
     pub fn distance_km(&self, from: usize, to: usize) -> f64 {

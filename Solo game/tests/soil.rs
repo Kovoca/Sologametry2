@@ -78,8 +78,7 @@ fn deep_soil_carries_a_dry_season_and_thin_soil_does_not() {
             18.0,      // mean °C
             18.0,      // summer-to-winter range
             0.45,      // climatic moisture: semi-arid
-            soil_m,
-            500.0, // mm of rain a year
+            soil_m, 500.0, // mm of rain a year
             0.22,  // winter-wet: a Mediterranean dry season
             8.0,   // water table well below the root zone
         )
@@ -163,7 +162,10 @@ fn heat_takes_the_water_back() {
     });
     let q = by_temp.len() / 4;
     let m = |c: &[usize]| {
-        c.iter().map(|&i| w.climatic_moisture.data[i] as f64).sum::<f64>() / c.len() as f64
+        c.iter()
+            .map(|&i| w.climatic_moisture.data[i] as f64)
+            .sum::<f64>()
+            / c.len() as f64
     };
     let cool = m(&by_temp[..q]);
     let hot = m(&by_temp[by_temp.len() - q..]);
@@ -184,9 +186,8 @@ fn a_waterlogged_floodplain_reads_wet_and_roots_shallow() {
     // the plant's ability to use it. Which is why the penalty belongs to
     // the crop and not to the water figure. Rice does not care.
     use scale_sim::biota::{settle, Crop};
-    let at_water_table = |depth_m: f32| {
-        settle(600_000.0, 18.0, 18.0, 0.45, 3.0, 500.0, 0.22, depth_m)
-    };
+    let at_water_table =
+        |depth_m: f32| settle(600_000.0, 18.0, 18.0, 0.45, 3.0, 500.0, 0.22, depth_m);
     let drained = at_water_table(8.0);
     let waterlogged = at_water_table(0.4);
 
@@ -206,7 +207,9 @@ fn a_waterlogged_floodplain_reads_wet_and_roots_shallow() {
     assert!(waterlogged.aeration < 0.3 && drained.aeration > 0.9);
 
     // Wheat drowns; the land is not therefore worthless.
-    assert!(Crop::Wheat.yield_t_per_ha(18.0, waterlogged.crop_water_mm, waterlogged.aeration) < 1.0);
+    assert!(
+        Crop::Wheat.yield_t_per_ha(18.0, waterlogged.crop_water_mm, waterlogged.aeration) < 1.0
+    );
 }
 
 #[test]
@@ -237,12 +240,16 @@ fn groundwater_is_a_resource_in_dry_country_and_a_liability_in_wet() {
         drowned < deep,
         "wheat on a table 30 cm down yields {drowned:.1} t/ha, more than on dry ground"
     );
-    assert!((0.5..3.5).contains(&deep), "250 mm of rain alone yields {deep:.1} t/ha of wheat");
+    assert!(
+        (0.5..3.5).contains(&deep),
+        "250 mm of rain alone yields {deep:.1} t/ha of wheat"
+    );
 
     // **But somebody else farms that ground.** The land wheat cannot use
     // is the land that feeds the most people anywhere on Earth.
     let marsh = settle(300_000.0, 26.0, 16.0, 0.25, 1.5, 250.0, 0.8, 0.3);
-    let (crop, y) = scale_sim::biota::best_crop(marsh.season_c, marsh.crop_water_mm, marsh.aeration);
+    let (crop, y) =
+        scale_sim::biota::best_crop(marsh.season_c, marsh.crop_water_mm, marsh.aeration);
     assert_eq!(crop, Crop::Rice, "a warm marsh grows nothing worth having");
     assert!(y > 3.0, "a rice paddy yields {y:.1} t/ha");
 }

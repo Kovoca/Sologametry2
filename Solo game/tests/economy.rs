@@ -23,10 +23,7 @@ fn conservation_holds_over_a_long_run() {
     for day in 0..400 {
         econ.step();
         econ.ledger.assert_conserved();
-        assert!(
-            econ.ledger.day == day + 1,
-            "day counter drifted at {day}"
-        );
+        assert!(econ.ledger.day == day + 1, "day counter drifted at {day}");
     }
 }
 
@@ -57,11 +54,20 @@ fn undisturbed_economy_settles_at_cost() {
     run(&mut econ, 60);
 
     for m in [slice::ASHFORD, slice::BEXLEY] {
+        // **At what it costs to obtain here, which is not the same in both
+        // towns.**
+        //
+        // This compared against the bare reference cost, which says food
+        // costs the same in the town that cans it and in one a hundred and
+        // seventy-three kilometres away. It does not: the second pays the
+        // carter. What settles at cost is the *marginal delivered* cost —
+        // production where it is made, plus what it takes to get it here.
         let price = econ.price(m, FOOD);
-        let base = FOOD.base_cost();
+        let (goods, carriage) = econ.marginal_source(m, FOOD);
+        let obtaining = goods + carriage;
         assert!(
-            (price - base).abs() / base < 0.05,
-            "{}: settled at {price:.0}, expected about {base:.0}",
+            (price - obtaining).abs() / obtaining < 0.05,
+            "{}: settled at {price:.0}, expected about {obtaining:.0}              ({goods:.0} to make, {carriage:.0} to carry)",
             econ.markets[m].name
         );
         // **Against the target this market is actually aiming at**, which
@@ -200,7 +206,10 @@ fn a_spare_transformer_is_the_difference_between_days_and_never() {
         (3..=30).contains(&quick),
         "swapping a spare transformer took {quick} days"
     );
-    assert_eq!(with_spare.response.spare_transformers, 0, "spare not consumed");
+    assert_eq!(
+        with_spare.response.spare_transformers, 0,
+        "spare not consumed"
+    );
 
     let mut without = slice::build(Doctrine::Negligent);
     run(&mut without, 10);
@@ -226,7 +235,11 @@ fn nothing_is_fixed_when_nobody_can_report_it() {
     econ.grid.fail_line("main line");
     run(&mut econ, 60);
 
-    assert_eq!(econ.response.unreported(), 1, "the fault got reported somehow");
+    assert_eq!(
+        econ.response.unreported(),
+        1,
+        "the fault got reported somehow"
+    );
     assert!(
         econ.response.incidents[0].dispatched.is_none(),
         "a crew was sent for a fault nobody had reported"
@@ -296,9 +309,7 @@ fn cutting_the_road_decouples_the_markets() {
     let mut econ = slice::build(Doctrine::Prudent);
     run(&mut econ, 40);
 
-    let gap_before = (econ.price(slice::ASHFORD, FOOD)
-        - econ.price(slice::BEXLEY, FOOD))
-    .abs();
+    let gap_before = (econ.price(slice::ASHFORD, FOOD) - econ.price(slice::BEXLEY, FOOD)).abs();
     assert!(
         gap_before <= econ.routes[0].freight_cost + 1.0,
         "connected markets differ by {gap_before:.0}, more than the {:.0} freight cost",
@@ -310,9 +321,7 @@ fn cutting_the_road_decouples_the_markets() {
     econ.routes[0].open = false;
     run(&mut econ, 25);
 
-    let gap_after = (econ.price(slice::ASHFORD, FOOD)
-        - econ.price(slice::BEXLEY, FOOD))
-    .abs();
+    let gap_after = (econ.price(slice::ASHFORD, FOOD) - econ.price(slice::BEXLEY, FOOD)).abs();
     assert!(
         gap_after > econ.routes[0].freight_cost * 5.0,
         "road is cut but the markets are still coupled (gap {gap_after:.0})"
@@ -387,7 +396,11 @@ fn a_blackout_spoils_the_meat_and_only_delays_the_flour() {
     let warm = Commodity::Meat.spoilage_per_day(false);
     let cold = Commodity::Meat.spoilage_per_day(true);
     assert!(warm > 0.4, "meat left out keeps better than a day");
-    assert!(cold < 0.05, "a cold store loses {:.0}% of its stock a day", cold * 100.0);
+    assert!(
+        cold < 0.05,
+        "a cold store loses {:.0}% of its stock a day",
+        cold * 100.0
+    );
     assert!(warm > cold * 10.0, "refrigeration barely helps");
 
     // **A shelf life is not a loss rate**, which was the first thing tried
@@ -451,7 +464,11 @@ fn a_line_to_a_house_does_not_take_out_the_country() {
     let n_sites = e.ledger.sites.len();
 
     // Everything is on supply to start with.
-    assert_eq!(e.grid.dark_sites(n_sites), 0, "the lights are out before anything broke");
+    assert_eq!(
+        e.grid.dark_sites(n_sites),
+        0,
+        "the lights are out before anything broke"
+    );
 
     // **A service connection: one building.**
     let service = e
@@ -542,7 +559,11 @@ fn a_line_to_a_house_does_not_take_out_the_country() {
     // capacity is what made a fault anywhere a shortage everywhere.
     let cap = e.grid.capacity();
     e.grid.lines[service].up = false;
-    assert_eq!(e.grid.capacity(), cap, "a house's supply changed national capacity");
+    assert_eq!(
+        e.grid.capacity(),
+        cap,
+        "a house's supply changed national capacity"
+    );
 }
 
 #[test]
@@ -563,8 +584,16 @@ fn a_utility_borrows_from_its_neighbour_rather_than_waiting_a_year() {
 
     let mut r = Response::for_doctrine(Doctrine::Prudent);
     r.utilities = vec![
-        Utility { name: "North Power".into(), serves: vec![0, 2], spares: 1 },
-        Utility { name: "South Power".into(), serves: vec![1, 3], spares: 1 },
+        Utility {
+            name: "North Power".into(),
+            serves: vec![0, 2],
+            spares: 1,
+        },
+        Utility {
+            name: "South Power".into(),
+            serves: vec![1, 3],
+            spares: 1,
+        },
     ];
 
     // Its own shelf: a swap, measured in days.
@@ -578,7 +607,12 @@ fn a_utility_borrows_from_its_neighbour_rather_than_waiting_a_year() {
     // the highway authority, a route surveyed for bridges, and a move at
     // walking pace. Real mutual-aid delivery runs two to six weeks.
     let (borrowed_days, how) = r.source_transformer(0);
-    assert_eq!(how, Sourced::Borrowed { from: "South Power".into() });
+    assert_eq!(
+        how,
+        Sourced::Borrowed {
+            from: "South Power".into()
+        }
+    );
     assert!(
         borrowed_days > own_days && borrowed_days < 60,
         "a borrowed transformer arrived in {borrowed_days} days"
@@ -607,10 +641,9 @@ fn a_utility_borrows_from_its_neighbour_rather_than_waiting_a_year() {
     let set = scale_sim::settlement::Settlements::place(&world, &pol, 4000);
     let net = scale_sim::network::Network::build(&world, &set, 900);
     let id = pol.ranked()[2].0;
-    let region = scale_sim::region::Region::extract(
-        &world, &pol, &set, &net, id, 5, Doctrine::Prudent,
-    )
-    .expect("a nation to model");
+    let region =
+        scale_sim::region::Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
+            .expect("a nation to model");
     let us = &region.economy.response.utilities;
     assert!(!us.is_empty(), "a nation with no utility company in it");
     let served: usize = us.iter().map(|u| u.serves.len()).sum();

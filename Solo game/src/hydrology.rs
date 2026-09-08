@@ -24,7 +24,11 @@ struct Elev(f32);
 impl Eq for Elev {}
 impl PartialOrd for Elev {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.total_cmp(&other.0))
+        // Delegates to `Ord`, which is the canonical form and the only one
+        // that cannot drift apart from it. `Ord::cmp` is the total order
+        // over the float; a second copy of it here is a second thing to
+        // get wrong.
+        Some(self.cmp(other))
     }
 }
 impl Ord for Elev {
@@ -38,9 +42,14 @@ impl Ord for Elev {
 #[inline]
 fn for_neighbours(x: usize, y: usize, w: usize, h: usize, mut f: impl FnMut(usize, f32)) {
     const D: [(i32, i32); 8] = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
     ];
     for (dx, dy) in D {
         let ny = y as i32 + dy;
@@ -111,7 +120,11 @@ pub fn route(elev: &Field, sea_level: f32, weight: &Field) -> Flow {
             heap.push(Reverse((Elev(filled[j]), j)));
         });
     }
-    let filled = Field { width: w, height: h, data: filled };
+    let filled = Field {
+        width: w,
+        height: h,
+        data: filled,
+    };
 
     // --- Receivers: steepest descent on the filled surface. On flats
     // (equal filled elevation) route toward the smaller flood order, which
@@ -152,9 +165,18 @@ pub fn route(elev: &Field, sea_level: f32, weight: &Field) -> Flow {
             accum[r] += accum[i];
         }
     }
-    let accum = Field { width: w, height: h, data: accum };
+    let accum = Field {
+        width: w,
+        height: h,
+        data: accum,
+    };
 
-    Flow { filled, receiver, order, accum }
+    Flow {
+        filled,
+        receiver,
+        order,
+        accum,
+    }
 }
 
 /// Gentle stream-power incision: lower high-flow land cells, clamped so a
@@ -162,12 +184,7 @@ pub fn route(elev: &Field, sea_level: f32, weight: &Field) -> Flow {
 /// so each clamp sees its receiver's already-eroded height.
 pub fn erode(elev: &mut Field, flow: &Flow, sea_level: f32, strength: f32) {
     let n = elev.data.len();
-    let max_accum = flow
-        .accum
-        .data
-        .iter()
-        .copied()
-        .fold(1.0f32, f32::max);
+    let max_accum = flow.accum.data.iter().copied().fold(1.0f32, f32::max);
 
     let mut idx: Vec<usize> = (0..n).collect();
     idx.sort_by(|&a, &b| flow.order[a].cmp(&flow.order[b]));

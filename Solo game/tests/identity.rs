@@ -54,7 +54,10 @@ fn a_reused_slot_is_a_different_thing() {
     assert_eq!(gone.slot(), fresh.slot(), "the arena is not reusing slots");
     // But not the same identity.
     assert_ne!(gone, fresh);
-    assert!(!markets.holds(gone), "a handle to a removed market still resolves");
+    assert!(
+        !markets.holds(gone),
+        "a handle to a removed market still resolves"
+    );
     assert!(markets.holds(fresh));
     assert_eq!(markets.get(gone), None);
     assert_eq!(markets[fresh], Market("Yarhaven"));

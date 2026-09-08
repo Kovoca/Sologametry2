@@ -186,7 +186,13 @@ fn a_firm_cannot_pay_what_it_has_not_got() {
     t.open(Account::Firm(0), 100.0);
     t.open(Account::Households(0), 0.0);
 
-    let paid = t.pay(1, Account::Firm(0), Account::Households(0), 250.0, Why::Payroll);
+    let paid = t.pay(
+        1,
+        Account::Firm(0),
+        Account::Households(0),
+        250.0,
+        Why::Payroll,
+    );
     assert_eq!(paid, 100.0, "it should pay what it has");
     assert_eq!(t.balance(Account::Firm(0)), 0.0);
     assert_eq!(t.balance(Account::Households(0)), 100.0);
@@ -199,7 +205,13 @@ fn a_firm_cannot_pay_what_it_has_not_got() {
 
     // Money is never created by paying, however hard anybody tries.
     for _ in 0..100 {
-        t.pay(2, Account::Firm(0), Account::Households(0), 1e9, Why::Payroll);
+        t.pay(
+            2,
+            Account::Firm(0),
+            Account::Households(0),
+            1e9,
+            Why::Payroll,
+        );
     }
     t.assert_conserved();
     assert_eq!(t.total(), 100.0);

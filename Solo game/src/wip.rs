@@ -184,7 +184,11 @@ pub const STAGE_NAMES: &[&str] = &[
 
 /// Find the authored static for a name read back off disk.
 pub fn intern_stage(name: &str) -> &'static str {
-    STAGE_NAMES.iter().copied().find(|s| *s == name).unwrap_or("unrecorded")
+    STAGE_NAMES
+        .iter()
+        .copied()
+        .find(|s| *s == name)
+        .unwrap_or("unrecorded")
 }
 
 // =====================================================================
@@ -200,19 +204,50 @@ pub fn intern_stage(name: &str) -> &'static str {
 /// has to climb back whatever the schedule says.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Progress {
-    Cut { done_mm: f64, total_mm: f64 },
-    Heat { celsius: f64, target_c: f64, ambient_c: f64 },
-    Dry { moisture: f64, target: f64 },
+    Cut {
+        done_mm: f64,
+        total_mm: f64,
+    },
+    Heat {
+        celsius: f64,
+        target_c: f64,
+        ambient_c: f64,
+    },
+    Dry {
+        moisture: f64,
+        target: f64,
+    },
     /// **A cure runs on chemistry, not on the mains.** How fast it goes
     /// depends on the temperature and the humidity it is being held at —
     /// which the power failing may change, and may not.
-    Cure { reacted: f64, at_c: f64, wants_c: f64 },
-    Weld { done: u32, segments: u32 },
-    Coat { microns: f64, target_microns: f64, layers: u32 },
-    Assemble { joints_done: u32, joints: u32 },
-    Machine { features_done: u32, features: u32, allowance_mm: f64 },
+    Cure {
+        reacted: f64,
+        at_c: f64,
+        wants_c: f64,
+    },
+    Weld {
+        done: u32,
+        segments: u32,
+    },
+    Coat {
+        microns: f64,
+        target_microns: f64,
+        layers: u32,
+    },
+    Assemble {
+        joints_done: u32,
+        joints: u32,
+    },
+    Machine {
+        features_done: u32,
+        features: u32,
+        allowance_mm: f64,
+    },
     /// The fallback, for work whose state genuinely is only elapsed time.
-    Elapsed { minutes: f64, total: f64 },
+    Elapsed {
+        minutes: f64,
+        total: f64,
+    },
 }
 
 impl Progress {
@@ -221,9 +256,11 @@ impl Progress {
     pub fn fraction(&self) -> f64 {
         let f = match *self {
             Progress::Cut { done_mm, total_mm } => done_mm / total_mm.max(1e-9),
-            Progress::Heat { celsius, target_c, ambient_c } => {
-                (celsius - ambient_c) / (target_c - ambient_c).max(1e-9)
-            }
+            Progress::Heat {
+                celsius,
+                target_c,
+                ambient_c,
+            } => (celsius - ambient_c) / (target_c - ambient_c).max(1e-9),
             Progress::Dry { moisture, target } => {
                 if moisture <= target {
                     1.0
@@ -233,15 +270,20 @@ impl Progress {
             }
             Progress::Cure { reacted, .. } => reacted,
             Progress::Weld { done, segments } => done as f64 / segments.max(1) as f64,
-            Progress::Coat { microns, target_microns, .. } => {
-                microns / target_microns.max(1e-9)
-            }
-            Progress::Assemble { joints_done, joints } => {
-                joints_done as f64 / joints.max(1) as f64
-            }
-            Progress::Machine { features_done, features, .. } => {
-                features_done as f64 / features.max(1) as f64
-            }
+            Progress::Coat {
+                microns,
+                target_microns,
+                ..
+            } => microns / target_microns.max(1e-9),
+            Progress::Assemble {
+                joints_done,
+                joints,
+            } => joints_done as f64 / joints.max(1) as f64,
+            Progress::Machine {
+                features_done,
+                features,
+                ..
+            } => features_done as f64 / features.max(1) as f64,
             Progress::Elapsed { minutes, total } => minutes / total.max(1e-9),
         };
         f.clamp(0.0, 1.0)
@@ -258,28 +300,42 @@ impl Progress {
             Progress::Cut { done_mm, total_mm } => {
                 *done_mm = (*done_mm + *total_mm * share).min(*total_mm)
             }
-            Progress::Heat { celsius, target_c, ambient_c } => {
-                *celsius = (*celsius + (*target_c - *ambient_c) * share).min(*target_c)
-            }
+            Progress::Heat {
+                celsius,
+                target_c,
+                ambient_c,
+            } => *celsius = (*celsius + (*target_c - *ambient_c) * share).min(*target_c),
             Progress::Dry { moisture, target } => {
                 *moisture = (*moisture - (*moisture - *target) * share.min(1.0)).max(*target)
             }
-            Progress::Cure { reacted, at_c, wants_c } => {
-                *reacted = (*reacted + share * arrhenius(*at_c, *wants_c)).min(1.0)
-            }
+            Progress::Cure {
+                reacted,
+                at_c,
+                wants_c,
+            } => *reacted = (*reacted + share * arrhenius(*at_c, *wants_c)).min(1.0),
             Progress::Weld { done, segments } => {
-                *done = ((*done as f64) + (*segments as f64) * share).round().min(*segments as f64)
-                    as u32
+                *done = ((*done as f64) + (*segments as f64) * share)
+                    .round()
+                    .min(*segments as f64) as u32
             }
-            Progress::Coat { microns, target_microns, .. } => {
-                *microns = (*microns + *target_microns * share).min(*target_microns)
-            }
-            Progress::Assemble { joints_done, joints } => {
+            Progress::Coat {
+                microns,
+                target_microns,
+                ..
+            } => *microns = (*microns + *target_microns * share).min(*target_microns),
+            Progress::Assemble {
+                joints_done,
+                joints,
+            } => {
                 *joints_done = ((*joints_done as f64) + (*joints as f64) * share)
                     .round()
                     .min(*joints as f64) as u32
             }
-            Progress::Machine { features_done, features, allowance_mm } => {
+            Progress::Machine {
+                features_done,
+                features,
+                allowance_mm,
+            } => {
                 *features_done = ((*features_done as f64) + (*features as f64) * share)
                     .round()
                     .min(*features as f64) as u32;
@@ -296,17 +352,19 @@ impl Progress {
         match self {
             // Heat leaks away. Real: a domestic oven loses roughly 150
             // degrees an hour with the door shut.
-            Progress::Heat { celsius, ambient_c, .. } => {
-                *celsius = (*celsius - 150.0 * minutes / 60.0).max(*ambient_c)
-            }
+            Progress::Heat {
+                celsius, ambient_c, ..
+            } => *celsius = (*celsius - 150.0 * minutes / 60.0).max(*ambient_c),
             // **A cure does not stop because the lights went out** — but
             // it does not carry on regardless either. It goes at the speed
             // the conditions allow, and if the power was what was holding
             // the room warm then the conditions have changed and the
             // caller has already said so.
-            Progress::Cure { reacted, at_c, wants_c } => {
-                *reacted = (*reacted + (minutes / 720.0) * arrhenius(*at_c, *wants_c)).min(1.0)
-            }
+            Progress::Cure {
+                reacted,
+                at_c,
+                wants_c,
+            } => *reacted = (*reacted + (minutes / 720.0) * arrhenius(*at_c, *wants_c)).min(1.0),
             // Everything else simply waits.
             _ => {}
         }
@@ -410,10 +468,13 @@ impl Transformation {
         }
     }
 
-    fn noted(mut self, operation: Operation, by: Option<u64>, at: f64, note: &'static str)
-        -> Self
-    {
-        self.record = Some(ProcessRecord { operation, by, at_minute: at, note });
+    fn noted(mut self, operation: Operation, by: Option<u64>, at: f64, note: &'static str) -> Self {
+        self.record = Some(ProcessRecord {
+            operation,
+            by,
+            at_minute: at,
+            note,
+        });
         self
     }
 }
@@ -444,7 +505,12 @@ pub fn cut(
     // movement somebody has to make — see `carry_back`.
     let (whole, comp, def, where_) = {
         let i = store.get(source)?;
-        (i.mass_kg, i.materials.clone(), i.definition, store.placement(source)?)
+        (
+            i.mass_kg,
+            i.materials.clone(),
+            i.definition,
+            store.placement(source)?,
+        )
     };
     if take_kg + kerf_kg > whole + 1e-9 {
         return None;
@@ -456,9 +522,18 @@ pub fn cut(
     blank.mass_kg = take_kg;
     blank.materials = comp.clone();
     blank.bare_bill(take_kg);
-    let mut shape = Shape::of(becoming, stage, Geometry::Sheet { mm: dims.height_m * 1000.0 }, dims);
+    let mut shape = Shape::of(
+        becoming,
+        stage,
+        Geometry::Sheet {
+            mm: dims.height_m * 1000.0,
+        },
+        dims,
+    );
     shape.lineage.push(source);
-    shape.features.push(Feature::Cut { length_mm: dims.length_m * 2000.0 });
+    shape.features.push(Feature::Cut {
+        length_mm: dims.length_m * 2000.0,
+    });
     blank.shape = Some(shape);
     let blank_id = store.add(blank, where_);
 
@@ -467,7 +542,14 @@ pub fn cut(
         off.mass_kg = left;
         off.materials = comp.clone();
         off.bare_bill(left);
-        let mut s = Shape::of(becoming, "offcut", Geometry::Sheet { mm: dims.height_m * 1000.0 }, dims);
+        let mut s = Shape::of(
+            becoming,
+            "offcut",
+            Geometry::Sheet {
+                mm: dims.height_m * 1000.0,
+            },
+            dims,
+        );
         s.lineage.push(source);
         off.shape = Some(s);
         Some(store.add(off, where_))
@@ -480,7 +562,11 @@ pub fn cut(
         from_stock: vec![(source, whole)],
         created: [Some(blank_id), offcut_id].into_iter().flatten().collect(),
         ended: vec![(source, ItemEnd::Consumed)],
-        scrap: if kerf_kg > 0.0 { vec![(material, kerf_kg)] } else { vec![] },
+        scrap: if kerf_kg > 0.0 {
+            vec![(material, kerf_kg)]
+        } else {
+            vec![]
+        },
         tool_wear: 0.002,
         ..Default::default()
     };
@@ -572,7 +658,10 @@ pub fn coat(
         i.mass_kg += stays;
         let s = i.shape.as_mut()?;
         s.surface = surface;
-        s.features.push(Feature::Coating { layer: surface, microns: 40.0 });
+        s.features.push(Feature::Coating {
+            layer: surface,
+            microns: 40.0,
+        });
     }
     Some(
         Transformation {
@@ -630,8 +719,10 @@ pub fn join(
     // **The assembly own bill is the joining material and nothing else.**
     // Its components are real objects sitting inside it, and listing them
     // here as well would count them twice when it comes apart.
-    let mut record = crate::item::AssemblyRecord::default();
-    record.consumed = consumed.to_vec();
+    let mut record = crate::item::AssemblyRecord {
+        consumed: consumed.to_vec(),
+        ..Default::default()
+    };
     // **As built**: the actual objects that went in, by handle. The
     // design still says what a door expects; this says what is in this
     // one, and their mass is theirs rather than being counted twice.
@@ -653,7 +744,13 @@ pub fn join(
     // about both, so anybody could help themselves to the regulator out of
     // a finished door without dismantling anything.
     for (k, &p) in parts.iter().enumerate() {
-        store.place(p, Placement::Installed { host: crate::item::Host::Item(id), mount: k });
+        store.place(
+            p,
+            Placement::Installed {
+                host: crate::item::Host::Item(id),
+                mount: k,
+            },
+        );
         store.set_status(p, WorkStatus::Available);
     }
     Some((
@@ -695,7 +792,9 @@ pub fn melt(
     }
     let burnt = mass * loss.clamp(0.0, 1.0);
     let out = mass - burnt;
-    let material = Composition::of(&comp).chiefly().unwrap_or(Material::MildSteel);
+    let material = Composition::of(&comp)
+        .chiefly()
+        .unwrap_or(Material::MildSteel);
 
     // **The objects end; the metal remembers.** Which lots were charged,
     // what the composition came out at, whether anything hazardous went
@@ -712,13 +811,13 @@ pub fn melt(
         })
         .sum::<f64>()
         / mass.max(1e-9);
-    let hazardous = inputs
-        .iter()
-        .filter_map(|&i| store.get(i))
-        .any(|x| {
-            x.heat.as_ref().map(|h| h.hazardous).unwrap_or(false)
-                || x.materials.parts().iter().any(|&(m, f)| f > 0.0 && m.hazardous())
-        });
+    let hazardous = inputs.iter().filter_map(|&i| store.get(i)).any(|x| {
+        x.heat.as_ref().map(|h| h.hazardous).unwrap_or(false)
+            || x.materials
+                .parts()
+                .iter()
+                .any(|&(m, f)| f > 0.0 && m.hazardous())
+    });
     let mut ancestry: Vec<Id<ItemInstance>> = Vec::new();
     for &i in inputs {
         if let Some(h) = store.get(i).and_then(|x| x.heat.as_ref()) {
@@ -753,10 +852,7 @@ pub fn melt(
     Some((
         id,
         Transformation {
-            from_stock: inputs
-                .iter()
-                .map(|&i| (i, 0.0))
-                .collect(),
+            from_stock: inputs.iter().map(|&i| (i, 0.0)).collect(),
             created: vec![id],
             ended: inputs.iter().map(|&i| (i, ItemEnd::Consumed)).collect(),
             emissions: vec![(material, burnt)],
@@ -812,8 +908,11 @@ pub fn complete(
         }
     }
     Some(
-        Transformation { retained: vec![piece], ..Default::default() }
-            .noted(Operation::Test, None, at, "passed off"),
+        Transformation {
+            retained: vec![piece],
+            ..Default::default()
+        }
+        .noted(Operation::Test, None, at, "passed off"),
     )
 }
 
@@ -906,9 +1005,13 @@ pub fn dismantle(
     use crate::teardown::Recovered;
     let mut out = Recovered::default();
     let mut released = Vec::new();
-    let Some(host) = store.get(assembly).cloned() else { return (out, released) };
+    let Some(host) = store.get(assembly).cloned() else {
+        return (out, released);
+    };
     let total = host.mass_kg;
-    let where_ = store.placement(assembly).unwrap_or_else(Placement::anywhere);
+    let where_ = store
+        .placement(assembly)
+        .unwrap_or_else(Placement::anywhere);
 
     let joint = host
         .assembly
@@ -927,7 +1030,9 @@ pub fn dismantle(
         _ => host.contents.clone(),
     };
     for (k, &part) in children.iter().enumerate() {
-        let Some(p) = store.get(part).cloned() else { continue };
+        let Some(p) = store.get(part).cloned() else {
+            continue;
+        };
         let u = crate::rng::Rng::new(crate::save::channel(event, k as u64, "part separability"))
             .next_f32() as f64;
         if u < survives {
@@ -1102,19 +1207,37 @@ pub fn start(
     order: u64,
     at_resource: u32,
 ) -> Option<Id<ItemInstance>> {
-    let dims = store.get(from).and_then(|i| cat.get(i.definition)).map(|d| d.nominal)?;
+    let dims = store
+        .get(from)
+        .and_then(|i| cat.get(i.definition))
+        .map(|d| d.nominal)?;
     let kg = store.get(from)?.mass_kg;
     let (blank, _, _) = cut(store, cat, from, kg, becoming, "blank", dims, 0.0, (0.0, 0))?;
-    store.place(blank, Placement::Fixtured { resource: at_resource, slot: 0, clamped: true });
-    store.set_status(blank, WorkStatus::Wip { order, operation: 0 });
+    store.place(
+        blank,
+        Placement::Fixtured {
+            resource: at_resource,
+            slot: 0,
+            clamped: true,
+        },
+    );
+    store.set_status(
+        blank,
+        WorkStatus::Wip {
+            order,
+            operation: 0,
+        },
+    );
     Some(blank)
 }
 
 /// Convenience for a fresh piece with nothing but material in it.
 impl ItemInstance {
     pub fn bare_bill(&mut self, kg: f64) {
-        let mut record = crate::item::AssemblyRecord::default();
-        record.bulk = self.materials.masses(kg);
+        let record = crate::item::AssemblyRecord {
+            bulk: self.materials.masses(kg),
+            ..Default::default()
+        };
         self.assembly = Some(record);
         self.quality = Quality::default();
         self.condition = Condition::fresh();

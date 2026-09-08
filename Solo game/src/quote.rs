@@ -108,8 +108,16 @@ pub struct Routing {
     /// answer. A haulier goes the cheap way and it takes as long as it
     /// takes.
     km: Vec<f64>,
-    /// The tightest link along it, in tonnes a day.
+    /// The tightest link along it, in tonnes a day. **A property of the
+    /// road**, and not the same question as how much of it is still going
+    /// spare — see `Economy::spare_capacity`.
     capacity: Vec<f64>,
+    /// The last road taken to reach each destination, and the market it
+    /// came from. Walking these back gives the actual edges a haul uses,
+    /// which is what makes it possible to reserve capacity on them rather
+    /// than promising the same road to every shipment that wants it.
+    prev_edge: Vec<usize>,
+    prev_node: Vec<usize>,
 }
 
 impl Routing {
@@ -119,25 +127,30 @@ impl Routing {
             freight: vec![f64::INFINITY; n * n],
             km: vec![f64::INFINITY; n * n],
             capacity: vec![0.0; n * n],
+            prev_edge: vec![usize::MAX; n * n],
+            prev_node: vec![usize::MAX; n * n],
         }
     }
 
     /// Build from the open routes. `edges` yields `(a, b, freight, km,
-    /// capacity)` for every usable link.
+    /// capacity)` for every usable link, in route-index order — the index
+    /// is kept so a haul can say which roads it is actually using.
     pub fn build(n: usize, edges: &[(usize, usize, f64, f64, f64)]) -> Routing {
         let mut r = Routing::empty(n);
         // Adjacency, both ways: a road is a road in both directions.
-        let mut adj: Vec<Vec<(usize, f64, f64, f64)>> = vec![Vec::new(); n];
-        for &(a, b, f, km, cap) in edges {
+        let mut adj: Vec<Vec<(usize, f64, f64, f64, usize)>> = vec![Vec::new(); n];
+        for (i, &(a, b, f, km, cap)) in edges.iter().enumerate() {
             if a < n && b < n {
-                adj[a].push((b, f, km, cap));
-                adj[b].push((a, f, km, cap));
+                adj[a].push((b, f, km, cap, i));
+                adj[b].push((a, f, km, cap, i));
             }
         }
         for src in 0..n {
             let mut best = vec![f64::INFINITY; n];
             let mut dist = vec![f64::INFINITY; n];
             let mut tight = vec![0.0f64; n];
+            let mut pedge = vec![usize::MAX; n];
+            let mut pnode = vec![usize::MAX; n];
             let mut done = vec![false; n];
             best[src] = 0.0;
             dist[src] = 0.0;
@@ -153,12 +166,14 @@ impl Routing {
                 }
                 let Some(here) = here else { break };
                 done[here] = true;
-                for &(next, f, km, cap) in &adj[here] {
+                for &(next, f, km, cap, edge) in &adj[here] {
                     let through = best[here] + f;
                     if through < best[next] {
                         best[next] = through;
                         dist[next] = dist[here] + km;
                         tight[next] = tight[here].min(cap);
+                        pedge[next] = edge;
+                        pnode[next] = here;
                     }
                 }
             }
@@ -166,6 +181,8 @@ impl Routing {
                 r.freight[src * n + m] = best[m];
                 r.km[src * n + m] = dist[m];
                 r.capacity[src * n + m] = tight[m];
+                r.prev_edge[src * n + m] = pedge[m];
+                r.prev_node[src * n + m] = pnode[m];
             }
         }
         r
@@ -185,7 +202,10 @@ impl Routing {
         if from == to {
             return 0.0;
         }
-        self.km.get(from * self.n + to).copied().unwrap_or(f64::INFINITY)
+        self.km
+            .get(from * self.n + to)
+            .copied()
+            .unwrap_or(f64::INFINITY)
     }
 
     pub fn capacity(&self, from: usize, to: usize) -> f64 {
@@ -196,6 +216,35 @@ impl Routing {
             .get(from * self.n + to)
             .copied()
             .unwrap_or(0.0)
+    }
+
+    /// **Which roads a haul from `from` to `to` actually uses.**
+    ///
+    /// Walked back from the destination, so it is the same path the
+    /// carriage was quoted on rather than a second guess at it. Empty when
+    /// the two are the same place or nothing connects them.
+    pub fn path_edges(&self, from: usize, to: usize) -> Vec<usize> {
+        let mut out = Vec::new();
+        if from == to || self.n == 0 || from >= self.n || to >= self.n {
+            return out;
+        }
+        let mut here = to;
+        // Bounded by the number of markets: a cheapest path visits none
+        // twice, and a malformed table must not spin for ever.
+        for _ in 0..self.n {
+            if here == from {
+                break;
+            }
+            let e = self.prev_edge[from * self.n + here];
+            let p = self.prev_node[from * self.n + here];
+            if e == usize::MAX || p == usize::MAX {
+                return Vec::new();
+            }
+            out.push(e);
+            here = p;
+        }
+        out.reverse();
+        out
     }
 
     pub fn reaches(&self, from: usize, to: usize) -> bool {
@@ -232,5 +281,71 @@ impl Routing {
             loss: loss.clamp(0.0, 0.95),
             tariff: duty,
         })
+    }
+}
+
+// =====================================================================
+// what has already been promised
+// =====================================================================
+
+/// **What each road has already been booked to carry, day by day.**
+///
+/// A quote says what a road *can* take. It cannot say what is left, and a
+/// daily route table that promises the same residual capacity to every
+/// enquiry is how several shipments all claim the same lorry-load of road.
+/// Dispatch reserves; the reservation is what the next enquiry sees.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Reservations {
+    /// `(road, day) -> tonnes`. A `BTreeMap` because a save has to write
+    /// the same bytes every time and a walk has to visit in the same
+    /// order.
+    booked: std::collections::BTreeMap<(usize, u64), f64>,
+}
+
+impl Reservations {
+    pub fn new() -> Reservations {
+        Reservations::default()
+    }
+
+    pub fn booked(&self, road: usize, day: u64) -> f64 {
+        self.booked.get(&(road, day)).copied().unwrap_or(0.0)
+    }
+
+    pub fn book(&mut self, road: usize, day: u64, tonnes: f64) {
+        if tonnes <= 0.0 {
+            return;
+        }
+        *self.booked.entry((road, day)).or_insert(0.0) += tonnes;
+    }
+
+    /// **Give back what was booked and not used.** A consignment written
+    /// off or tipped early is not still occupying the road.
+    pub fn release(&mut self, road: usize, day: u64, tonnes: f64) {
+        if let Some(v) = self.booked.get_mut(&(road, day)) {
+            *v = (*v - tonnes).max(0.0);
+            if *v <= 1e-9 {
+                self.booked.remove(&(road, day));
+            }
+        }
+    }
+
+    /// **Yesterday's traffic is not a constraint on tomorrow's.** Without
+    /// this the table grows with history rather than with what is on the
+    /// road, which is the unbounded state this project has removed four
+    /// times.
+    pub fn forget_before(&mut self, day: u64) {
+        self.booked.retain(|&(_, d), _| d >= day);
+    }
+
+    pub fn len(&self) -> usize {
+        self.booked.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.booked.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = ((usize, u64), f64)> + '_ {
+        self.booked.iter().map(|(&k, &v)| (k, v))
     }
 }

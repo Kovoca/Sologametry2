@@ -22,10 +22,17 @@ use scale_sim::material::{Amount, Composition, Dims, Fit, Material, Quantity, Re
 /// half a cartridge is nothing at all.
 #[test]
 fn a_quantity_is_in_the_unit_the_thing_is_measured_in() {
-    let rope = Quantity::Length { metres: 10.0, kg: 3.2 };
+    let rope = Quantity::Length {
+        metres: 10.0,
+        kg: 3.2,
+    };
     let flour = Quantity::Mass { kg: 25.0 };
     let rounds = Quantity::Count(20);
-    let diesel = Quantity::Fluid { litres: 40.0, kg: 33.6, celsius: 12.0 };
+    let diesel = Quantity::Fluid {
+        litres: 40.0,
+        kg: 33.6,
+        celsius: 12.0,
+    };
 
     assert!(rope.divisible() && flour.divisible() && diesel.divisible());
     assert!(!rounds.divisible(), "a cartridge came apart into fractions");
@@ -42,10 +49,25 @@ fn a_quantity_is_in_the_unit_the_thing_is_measured_in() {
 /// indistinguishable pile.
 #[test]
 fn stacks_do_not_merge_when_the_difference_matters() {
-    let cold = Quantity::Fluid { litres: 10.0, kg: 10.0, celsius: 4.0 };
-    let warm = Quantity::Fluid { litres: 10.0, kg: 10.0, celsius: 60.0 };
-    let cool = Quantity::Fluid { litres: 5.0, kg: 5.0, celsius: 6.0 };
-    assert!(!cold.mergeable_with(warm), "hot and cold water became one tank");
+    let cold = Quantity::Fluid {
+        litres: 10.0,
+        kg: 10.0,
+        celsius: 4.0,
+    };
+    let warm = Quantity::Fluid {
+        litres: 10.0,
+        kg: 10.0,
+        celsius: 60.0,
+    };
+    let cool = Quantity::Fluid {
+        litres: 5.0,
+        kg: 5.0,
+        celsius: 6.0,
+    };
+    assert!(
+        !cold.mergeable_with(warm),
+        "hot and cold water became one tank"
+    );
     assert!(cold.mergeable_with(cool));
 
     // And mixing carries the temperature with the mass rather than losing
@@ -54,14 +76,28 @@ fn stacks_do_not_merge_when_the_difference_matters() {
     match mixed {
         Quantity::Fluid { kg, celsius, .. } => {
             assert!((kg - 15.0).abs() < 1e-9);
-            assert!(celsius > 4.0 && celsius < 6.0, "temperature came out at {celsius}");
+            assert!(
+                celsius > 4.0 && celsius < 6.0,
+                "temperature came out at {celsius}"
+            );
         }
         _ => panic!("mixing two fluids gave something else"),
     }
 
-    let a = Quantity::Stock { count: 4, each: Dims::new(2.4, 0.15, 0.025), kg: 27.0 };
-    let b = Quantity::Stock { count: 4, each: Dims::new(3.0, 0.15, 0.025), kg: 33.75 };
-    assert!(!a.mergeable_with(b), "boards of two lengths became one pile");
+    let a = Quantity::Stock {
+        count: 4,
+        each: Dims::new(2.4, 0.15, 0.025),
+        kg: 27.0,
+    };
+    let b = Quantity::Stock {
+        count: 4,
+        each: Dims::new(3.0, 0.15, 0.025),
+        kg: 33.75,
+    };
+    assert!(
+        !a.mergeable_with(b),
+        "boards of two lengths became one pile"
+    );
     assert!(Quantity::Count(3).merged(Quantity::Count(4)) == Some(Quantity::Count(7)));
 }
 
@@ -111,14 +147,27 @@ fn a_well_made_worn_thing_is_not_a_badly_made_new_one() {
     let cat = standard_catalogue();
     let id = cat.must("wooden chair");
 
-    let fine = Quality { workmanship: 0.95, structural_integrity: 0.95,
-                         dimensional_accuracy: 0.95, finish: 0.9, ..Quality::default() };
-    let poor = Quality { workmanship: 0.25, structural_integrity: 0.35,
-                         dimensional_accuracy: 0.3, finish: 0.2, ..Quality::default() };
+    let fine = Quality {
+        workmanship: 0.95,
+        structural_integrity: 0.95,
+        dimensional_accuracy: 0.95,
+        finish: 0.9,
+        ..Quality::default()
+    };
+    let poor = Quality {
+        workmanship: 0.25,
+        structural_integrity: 0.35,
+        dimensional_accuracy: 0.3,
+        finish: 0.2,
+        ..Quality::default()
+    };
 
     let mut fine_and_worn = ItemInstance::one(&cat, id);
     fine_and_worn.quality = fine;
-    fine_and_worn.condition = Condition { wear: 0.7, ..Condition::fresh() };
+    fine_and_worn.condition = Condition {
+        wear: 0.7,
+        ..Condition::fresh()
+    };
 
     let mut poor_and_new = ItemInstance::one(&cat, id);
     poor_and_new.quality = poor;
@@ -131,12 +180,21 @@ fn a_well_made_worn_thing_is_not_a_badly_made_new_one() {
     // **Repair moves condition and leaves workmanship exactly alone.**
     let was = fine_and_worn.quality.workmanship;
     fine_and_worn.repair(1.0);
-    assert_eq!(fine_and_worn.quality.workmanship, was, "mending it improved the joinery");
-    assert!(fine_and_worn.condition.serviceability() > 0.6, "a full repair fixed nothing");
+    assert_eq!(
+        fine_and_worn.quality.workmanship, was,
+        "mending it improved the joinery"
+    );
+    assert!(
+        fine_and_worn.condition.serviceability() > 0.6,
+        "a full repair fixed nothing"
+    );
 
     let was = poor_and_new.quality.workmanship;
     poor_and_new.repair(1.0);
-    assert_eq!(poor_and_new.quality.workmanship, was, "a cheap chair stopped being cheap");
+    assert_eq!(
+        poor_and_new.quality.workmanship, was,
+        "a cheap chair stopped being cheap"
+    );
 }
 
 /// A damaged part does not stop being a well-made part, and a fault that
@@ -155,7 +213,11 @@ fn a_disabling_fault_is_not_a_worn_tool() {
         disabling: true,
         since_day: 3,
     });
-    assert_eq!(drill.effectiveness(), 0.0, "a burnt-out drill still drilled");
+    assert_eq!(
+        drill.effectiveness(),
+        0.0,
+        "a burnt-out drill still drilled"
+    );
 }
 
 // =====================================================================
@@ -179,19 +241,29 @@ fn a_part_taken_out_is_the_part_that_went_in() {
     alt.given_name = Some("the one off the old machine".into());
     let alt_id = store.add_loose(alt);
 
-    let fitting = store.install(washer, alt_id, &cat).expect("the bracket would not take it");
+    let fitting = store
+        .install(washer, alt_id, &cat)
+        .expect("the bracket would not take it");
     assert!(store.is_installed(alt_id));
     // The mass of the machine now includes it.
     assert!(store.laden_mass(washer) > 70.0);
 
     // Nothing else may take the same point while it is occupied.
     let second = store.add_loose(ItemInstance::one(&cat, cat.must("alternator")));
-    assert_eq!(store.install(washer, second, &cat), Err(Refusal::PointTaken));
+    assert_eq!(
+        store.install(washer, second, &cat),
+        Err(Refusal::PointTaken)
+    );
 
-    let back = store.uninstall(washer, fitting).expect("it would not come off");
+    let back = store
+        .uninstall(washer, fitting)
+        .expect("it would not come off");
     assert_eq!(back, alt_id, "a different alternator came off than went on");
     let a = store.get(back).unwrap();
-    assert!((a.condition.wear - 0.31).abs() < 1e-9, "its hours were forgotten");
+    assert!(
+        (a.condition.wear - 0.31).abs() < 1e-9,
+        "its hours were forgotten"
+    );
     assert_eq!(a.quality.workmanship, 0.88);
     assert_eq!(a.given_name.as_deref(), Some("the one off the old machine"));
     assert!(!store.is_installed(back));
@@ -208,7 +280,10 @@ fn a_fitting_is_a_shape_and_not_a_permission() {
 
     assert!(store.install(rifle, mag, &cat).is_ok());
     assert_eq!(store.install(rifle, loaf, &cat), Err(Refusal::DoesNotFit));
-    assert_eq!(store.put_in(rifle, rifle, &cat), Err(Refusal::WouldContainItself));
+    assert_eq!(
+        store.put_in(rifle, rifle, &cat),
+        Err(Refusal::WouldContainItself)
+    );
 }
 
 /// A worn tool is slower and less precise, which is the whole reason
@@ -222,10 +297,17 @@ fn a_worn_tool_holds_a_worse_tolerance() {
     tired.condition.wear = 0.75;
     let tired = store.add_loose(tired);
 
-    let a = store.capability(good, scale_sim::item::Capability::CutWood, &cat).unwrap();
-    let b = store.capability(tired, scale_sim::item::Capability::CutWood, &cat).unwrap();
+    let a = store
+        .capability(good, scale_sim::item::Capability::CutWood, &cat)
+        .unwrap();
+    let b = store
+        .capability(tired, scale_sim::item::Capability::CutWood, &cat)
+        .unwrap();
     assert!(b.speed < a.speed, "a worn saw cut just as fast");
-    assert!(b.precision_mm > a.precision_mm, "a worn saw held the same tolerance");
+    assert!(
+        b.precision_mm > a.precision_mm,
+        "a worn saw held the same tolerance"
+    );
 }
 
 // =====================================================================
@@ -254,7 +336,10 @@ fn a_washing_machine_is_not_a_loaf() {
     // across the families is three orders of magnitude.
     let per_year = |l: Lifecycle| 365.0 / l.typical_life_days();
     assert!(per_year(Lifecycle::Perishable) > 50.0);
-    assert!(per_year(Lifecycle::Durable) < 0.15, "a washing machine a year");
+    assert!(
+        per_year(Lifecycle::Durable) < 0.15,
+        "a washing machine a year"
+    );
     assert!(per_year(Lifecycle::Perishable) > 400.0 * per_year(Lifecycle::Durable));
 }
 
@@ -263,10 +348,23 @@ fn a_washing_machine_is_not_a_loaf() {
 #[test]
 fn every_family_has_a_lifecycle_and_the_catalogue_covers_the_basket() {
     let cat = standard_catalogue();
-    for f in [Family::Stock, Family::Fastening, Family::Tool, Family::Machine,
-              Family::Furniture, Family::Clothing, Family::Appliance, Family::Ammunition,
-              Family::Firearm, Family::SparePart, Family::Foodstuff] {
-        assert!(cat.of_family(f).next().is_some(), "nothing in the catalogue is {f:?}");
+    for f in [
+        Family::Stock,
+        Family::Fastening,
+        Family::Tool,
+        Family::Machine,
+        Family::Furniture,
+        Family::Clothing,
+        Family::Appliance,
+        Family::Ammunition,
+        Family::Firearm,
+        Family::SparePart,
+        Family::Foodstuff,
+    ] {
+        assert!(
+            cat.of_family(f).next().is_some(),
+            "nothing in the catalogue is {f:?}"
+        );
     }
 }
 
@@ -294,12 +392,18 @@ fn a_lot_expands_to_what_was_folded_into_it() {
     assert!(left.is_empty());
     assert_eq!(lot.count, 40);
     assert!((lot.total_mass_kg - mass_before).abs() < 1e-9);
-    assert!(lot.quality_spread > 0.0, "forty different examples came out identical");
+    assert!(
+        lot.quality_spread > 0.0,
+        "forty different examples came out identical"
+    );
 
     let back = lot.expand(&cat, 7);
     assert_eq!(back.len() as u32, lot.count, "count was not conserved");
     let mass_after: f64 = back.iter().map(|i| i.mass_kg).sum();
-    assert!((mass_after - mass_before).abs() < 1e-9, "mass was not conserved");
+    assert!(
+        (mass_after - mass_before).abs() < 1e-9,
+        "mass was not conserved"
+    );
 
     // And expansion is deterministic: looking at a warehouse twice does
     // not give two warehouses.
@@ -309,8 +413,14 @@ fn a_lot_expands_to_what_was_folded_into_it() {
         assert_eq!(a.condition.wear, b.condition.wear);
     }
     // Nor does it flatten them all to the mean.
-    let spread = back.iter().map(|i| i.quality.overall()).fold(0.0f64, f64::max)
-        - back.iter().map(|i| i.quality.overall()).fold(1.0f64, f64::min);
+    let spread = back
+        .iter()
+        .map(|i| i.quality.overall())
+        .fold(0.0f64, f64::max)
+        - back
+            .iter()
+            .map(|i| i.quality.overall())
+            .fold(1.0f64, f64::min);
     assert!(spread > 0.02, "expanding gave forty identical screws");
 }
 
@@ -334,7 +444,10 @@ fn particular_things_refuse_to_become_a_statistic() {
 
     let mut faulty = ItemInstance::one(&cat, id);
     faulty.faults.push(scale_sim::item::Fault {
-        what: "cracked stock", severity: 0.4, disabling: false, since_day: 1,
+        what: "cracked stock",
+        severity: 0.4,
+        disabling: false,
+        since_day: 1,
     });
 
     let mut marked = ItemInstance::one(&cat, id);
@@ -346,8 +459,13 @@ fn particular_things_refuse_to_become_a_statistic() {
     store.install(host, mag, &cat).unwrap();
     let loaded = store.get(host).unwrap().clone();
 
-    for (what, item) in [("named", named), ("owned", owned), ("faulty", faulty),
-                         ("marked", marked), ("loaded", loaded)] {
+    for (what, item) in [
+        ("named", named),
+        ("owned", owned),
+        ("faulty", faulty),
+        ("marked", marked),
+        ("loaded", loaded),
+    ] {
         assert!(!item.aggregatable(), "a {what} rifle was folded into a lot");
     }
 
@@ -375,7 +493,9 @@ fn the_right_weight_of_the_wrong_shape_is_not_the_right_stock() {
     let one = Quantity::Count(1);
 
     // A real board.
-    assert!(board.met_by(Dims::new(2.4, 0.15, 0.025), one, 6.75).is_yes());
+    assert!(board
+        .met_by(Dims::new(2.4, 0.15, 0.025), one, 6.75)
+        .is_yes());
 
     // Same timber, same thickness, same order of mass — and useless.
     assert!(matches!(
@@ -400,15 +520,32 @@ fn the_right_weight_of_the_wrong_shape_is_not_the_right_stock() {
     // A rope that outweighs the requirement and is too short for it.
     let rope = Amount::Length { metres: 6.0 };
     assert!(matches!(
-        rope.met_by(Dims::new(4.8, 0.02, 0.02), Quantity::Length { metres: 4.8, kg: 9.0 }, 9.0),
+        rope.met_by(
+            Dims::new(4.8, 0.02, 0.02),
+            Quantity::Length {
+                metres: 4.8,
+                kg: 9.0
+            },
+            9.0
+        ),
         Fit::WrongShape("too short, whatever it weighs")
     ));
     assert!(rope
-        .met_by(Dims::new(9.0, 0.012, 0.012), Quantity::Length { metres: 9.0, kg: 2.7 }, 2.7)
+        .met_by(
+            Dims::new(9.0, 0.012, 0.012),
+            Quantity::Length {
+                metres: 9.0,
+                kg: 2.7
+            },
+            2.7
+        )
         .is_yes());
 
     // A bar wants a section as well as a length.
-    let bar = Amount::Bar { min_section_m: 0.02, min_length_m: 1.0 };
+    let bar = Amount::Bar {
+        min_section_m: 0.02,
+        min_length_m: 1.0,
+    };
     assert!(bar.met_by(Dims::new(3.0, 0.025, 0.025), one, 14.7).is_yes());
     assert!(matches!(
         bar.met_by(Dims::new(3.0, 0.006, 0.006), one, 0.85),
@@ -417,7 +554,9 @@ fn the_right_weight_of_the_wrong_shape_is_not_the_right_stock() {
 
     // Where shape genuinely does not matter, mass is the whole question.
     let flour = Amount::Mass { kg: 25.0 };
-    assert!(flour.met_by(Dims::default(), Quantity::Mass { kg: 40.0 }, 0.0).is_yes());
+    assert!(flour
+        .met_by(Dims::default(), Quantity::Mass { kg: 40.0 }, 0.0)
+        .is_yes());
     assert_eq!(
         flour.met_by(Dims::default(), Quantity::Mass { kg: 10.0 }, 0.0),
         Fit::NotEnough
@@ -431,13 +570,19 @@ fn the_right_weight_of_the_wrong_shape_is_not_the_right_stock() {
 /// books, and not five destroyed charges.
 #[test]
 fn a_rope_cut_in_two_is_a_short_rope_and_a_long_one() {
-    let rope = Quantity::Length { metres: 4.8, kg: 1.44 };
+    let rope = Quantity::Length {
+        metres: 4.8,
+        kg: 1.44,
+    };
     let (short, long) = rope.split(1.8).expect("the rope would not cut");
 
     match (short, long) {
         (Quantity::Length { metres: a, kg: ka }, Quantity::Length { metres: b, kg: kb }) => {
             assert!((a - 1.8).abs() < 1e-9 && (b - 3.0).abs() < 1e-9);
-            assert!((ka + kb - 1.44).abs() < 1e-9, "mass was not conserved by the cut");
+            assert!(
+                (ka + kb - 1.44).abs() < 1e-9,
+                "mass was not conserved by the cut"
+            );
             // Mass follows length, so the short piece is lighter.
             assert!(ka < kb);
         }
@@ -445,7 +590,9 @@ fn a_rope_cut_in_two_is_a_short_rope_and_a_long_one() {
     }
 
     // The two halves go back together.
-    let rejoined = short.merged(long).expect("two lengths of the same rope would not merge");
+    let rejoined = short
+        .merged(long)
+        .expect("two lengths of the same rope would not merge");
     assert_eq!(rejoined, rope);
 
     // You cannot cut off more than there is.
@@ -463,9 +610,16 @@ fn a_rope_cut_in_two_is_a_short_rope_and_a_long_one() {
     assert!(rounds.split(21.0).is_none());
 
     // A rack of boards splits by the piece, and each piece keeps its size.
-    let rack = Quantity::Stock { count: 10, each: Dims::new(2.4, 0.15, 0.025), kg: 67.5 };
+    let rack = Quantity::Stock {
+        count: 10,
+        each: Dims::new(2.4, 0.15, 0.025),
+        kg: 67.5,
+    };
     let (four, six) = rack.split(4.0).unwrap();
     assert!((four.mass_kg(0.0) - 27.0).abs() < 1e-9);
     assert!((six.mass_kg(0.0) - 40.5).abs() < 1e-9);
-    assert!(four.mergeable_with(six), "two pieces of the same rack would not stack");
+    assert!(
+        four.mergeable_with(six),
+        "two pieces of the same rack would not stack"
+    );
 }

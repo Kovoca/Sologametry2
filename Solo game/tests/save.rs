@@ -38,10 +38,15 @@ fn a_lived_life(seed: u64) -> Coarse {
         worsens_if_ignored: 0.6,
         actual: ActualControl::default(),
     });
-    c.perceived_control = ControlAppraisal { source: 0.25, consequences: 0.4, own_response: 0.5 };
+    c.perceived_control = ControlAppraisal {
+        source: 0.25,
+        consequences: 0.4,
+        own_response: 0.5,
+    };
     c.growth
         .shaped_personality(Facet::Anxiety, ShapesPersonality::Trauma, 1.0, 1.0, 40);
-    c.growth.shaped_wellbeing(ShapesWellbeing::LostWork, 0.9, -1.0, 90);
+    c.growth
+        .shaped_wellbeing(ShapesWellbeing::LostWork, 0.9, -1.0, 90);
     c.growth.took_a_role(Facet::Dutifulness, 0.25, 10);
     c.baseline = Facet::ALL
         .iter()
@@ -101,8 +106,14 @@ fn the_person_who_comes_back_is_the_same_person() {
     let before = promote(&c, &cult, 500);
     let after = promote(
         &Save::from_bytes(
-            &Save { world_seed: 7, day: 500, people: vec![c.clone()], journal: Journal::new(), ..Default::default() }
-                .to_bytes(),
+            &Save {
+                world_seed: 7,
+                day: 500,
+                people: vec![c.clone()],
+                journal: Journal::new(),
+                ..Default::default()
+            }
+            .to_bytes(),
         )
         .unwrap()
         .people[0],
@@ -162,10 +173,20 @@ fn awkward_numbers_come_back_unchanged() {
 /// **Something that is not a save says so.**
 #[test]
 fn rubbish_is_rejected_rather_than_read() {
-    assert_eq!(Save::from_bytes(b"not a save at all").unwrap_err(), SaveError::BadMagic);
+    assert_eq!(
+        Save::from_bytes(b"not a save at all").unwrap_err(),
+        SaveError::BadMagic
+    );
     assert_eq!(Save::from_bytes(&[]).unwrap_err(), SaveError::Truncated);
 
-    let good = Save { world_seed: 1, day: 1, people: vec![], journal: Journal::new(), ..Default::default() }.to_bytes();
+    let good = Save {
+        world_seed: 1,
+        day: 1,
+        people: vec![],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     // A truncated file.
     assert!(Save::from_bytes(&good[..good.len() - 4]).is_err());
 
@@ -221,7 +242,10 @@ fn a_facet_survives_by_name_and_not_by_position() {
         // The name really is in there, which is what makes a save
         // legible in a hex dump and immune to reordering.
         let text = String::from_utf8_lossy(&w.bytes).to_string();
-        assert!(text.contains(&format!("{f:?}")), "{f:?} was not written by name");
+        assert!(
+            text.contains(&format!("{f:?}")),
+            "{f:?} was not written by name"
+        );
         assert_eq!(Facet::load(&mut Reader::new(&w.bytes)).unwrap(), f);
     }
 }
@@ -233,12 +257,20 @@ fn habits_are_stored_against_the_strategy_and_not_the_slot() {
     let mut c = a_lived_life(21);
     c.habits.used(Coping::SubstanceUse, 40);
     c.habits.used(Coping::Planning, 12);
-    let bytes =
-        Save { world_seed: 21, day: 0, people: vec![c.clone()], journal: Journal::new(), ..Default::default() }
-            .to_bytes();
+    let bytes = Save {
+        world_seed: 21,
+        day: 0,
+        people: vec![c.clone()],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     let back = &Save::from_bytes(&bytes).unwrap().people[0];
     for k in Coping::ALL {
-        assert!((back.habits.of(k) - c.habits.of(k)).abs() < 1e-9, "{k:?} moved");
+        assert!(
+            (back.habits.of(k) - c.habits.of(k)).abs() < 1e-9,
+            "{k:?} moved"
+        );
     }
     assert_eq!(back.habits.strongest(), Coping::SubstanceUse);
 }
@@ -246,16 +278,6 @@ fn habits_are_stored_against_the_strategy_and_not_the_slot() {
 // =====================================================================
 // the journal: what happened is not worked out twice
 // =====================================================================
-
-/// **Once it has happened, it has happened.**
-///
-/// Recomputing an outcome after a balance change, an RNG change or a new
-
-/// **Two witnesses cannot make two accidents.** The objective outcome
-/// comes from the world's seed and the event, never from whoever
-
-/// **A perception is not written down.** It is derived, because it is
-/// not a world fact — and a journal that recorded every witness's view
 
 /// **A save costs what happened**, not how long anybody played.
 #[test]
@@ -269,9 +291,24 @@ fn a_save_grows_with_history_and_not_with_time() {
     };
     let mut busy_journal = Journal::new();
     for e in 0..500u64 {
-        busy_journal.resolve(5, JournalKey { time: e, phase: 0, sequence: e, event: e }, "what");
+        busy_journal.resolve(
+            5,
+            JournalKey {
+                time: e,
+                phase: 0,
+                sequence: e,
+                event: e,
+            },
+            "what",
+        );
     }
-    let busy = Save { world_seed: 5, day: 10, people: vec![a_lived_life(5)], journal: busy_journal, ..Default::default() };
+    let busy = Save {
+        world_seed: 5,
+        day: 10,
+        people: vec![a_lived_life(5)],
+        journal: busy_journal,
+        ..Default::default()
+    };
 
     assert!(
         busy.to_bytes().len() > quiet.to_bytes().len(),
@@ -290,7 +327,8 @@ fn a_coarse_record_round_trips_whole() {
     let mut c = a_lived_life(31);
     let reference = promote(&c, &cult, 0);
     c.advance_to(900, &reference.mind, 0.2);
-    c.strain.crisis_strikes(scale_sim::coping::Acute::Panic, 0.8, 900, 5);
+    c.strain
+        .crisis_strikes(scale_sim::coping::Acute::Panic, 0.8, 900, 5);
     c.strain.appraise(12, 0.6);
     c.attempts_outstanding = 3;
     c.support_expected = 0.37;
@@ -313,9 +351,14 @@ fn a_reload_does_not_reappraise_an_old_trouble() {
     c.strain.advance(2000, 0.0, 0.5);
     let felt = c.strain.appraise(555, 0.5);
 
-    let bytes =
-        Save { world_seed: 1, day: 0, people: vec![c.clone()], journal: Journal::new(), ..Default::default() }
-            .to_bytes();
+    let bytes = Save {
+        world_seed: 1,
+        day: 0,
+        people: vec![c.clone()],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     let mut back = Save::from_bytes(&bytes).unwrap().people.remove(0);
     assert_eq!(
         back.strain.appraise(555, 0.5),
@@ -328,7 +371,14 @@ fn a_reload_does_not_reappraise_an_old_trouble() {
 /// can be identified before it is trusted.
 #[test]
 fn the_header_identifies_the_file() {
-    let bytes = Save { world_seed: 1, day: 1, people: vec![], journal: Journal::new(), ..Default::default() }.to_bytes();
+    let bytes = Save {
+        world_seed: 1,
+        day: 1,
+        people: vec![],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     assert_eq!(&bytes[..8], MAGIC);
     assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), FORMAT);
 }
@@ -338,7 +388,12 @@ fn the_header_identifies_the_file() {
 // =====================================================================
 
 fn key(day: u64, seq: u64, event: u64) -> JournalKey {
-    JournalKey { time: day, phase: 0, sequence: seq, event }
+    JournalKey {
+        time: day,
+        phase: 0,
+        sequence: seq,
+        event,
+    }
 }
 
 /// **Once it has happened, it has happened.**
@@ -360,7 +415,11 @@ fn a_resolved_outcome_is_never_derived_again() {
 fn effects_are_applied_exactly_once() {
     let mut j = Journal::new();
     let outcome = j.resolve(1, key(1, 0, 9), "what happened");
-    assert_eq!(j.unapplied().len(), 1, "a fresh outcome was already counted as applied");
+    assert_eq!(
+        j.unapplied().len(),
+        1,
+        "a fresh outcome was already counted as applied"
+    );
 
     assert_eq!(j.apply_once(9), Some(outcome));
     assert_eq!(j.apply_once(9), None, "the same effects were applied twice");
@@ -387,20 +446,34 @@ fn a_crash_at_any_point_replays_correctly() {
     let reloaded = round_trip(&committed);
     assert_eq!(reloaded.unapplied().len(), 1, "a committed change was lost");
     let mut reloaded = reloaded;
-    assert_eq!(reloaded.apply_once(55), Some(outcome), "replay did not apply it");
+    assert_eq!(
+        reloaded.apply_once(55),
+        Some(outcome),
+        "replay did not apply it"
+    );
 
     // 4. After application: reload must NOT replay.
     let after = round_trip(&reloaded);
-    assert!(after.unapplied().is_empty(), "an applied change replayed after a reload");
+    assert!(
+        after.unapplied().is_empty(),
+        "an applied change replayed after a reload"
+    );
     let mut after = after;
     assert_eq!(after.apply_once(55), None);
 
     // 5. During a checkpoint replacement: folding is what makes an
     //    applied change part of the state instead of a change to it.
-    let mut c = Checkpoint { world_id: 1, checkpoint_id: 7, last_applied_sequence: 0 };
+    let mut c = Checkpoint {
+        world_id: 1,
+        checkpoint_id: 7,
+        last_applied_sequence: 0,
+    };
     let mut folded = after.clone();
     folded.fold_into(&mut c);
-    assert!(folded.is_empty(), "a folded journal still held what the checkpoint has");
+    assert!(
+        folded.is_empty(),
+        "a folded journal still held what the checkpoint has"
+    );
     assert_eq!(c.checkpoint_id, 8);
     assert_eq!(round_trip(&folded), folded);
 }
@@ -423,13 +496,21 @@ fn round_trip(j: &Journal) -> Journal {
 #[test]
 fn duplicate_rules_are_explicit() {
     let mut j = Journal::new();
-    let e = Entry { key: key(1, 0, 3), outcome: 111, applied: false };
+    let e = Entry {
+        key: key(1, 0, 3),
+        outcome: 111,
+        applied: false,
+    };
     j.commit(e).unwrap();
     // Idempotent: a replay must be able to re-offer what it has.
     j.commit(e).unwrap();
     assert_eq!(j.len(), 1);
 
-    let different = Entry { key: key(1, 0, 3), outcome: 222, applied: false };
+    let different = Entry {
+        key: key(1, 0, 3),
+        outcome: 222,
+        applied: false,
+    };
     assert_eq!(j.commit(different).unwrap_err(), SaveError::Conflict(3));
 }
 
@@ -438,9 +519,24 @@ fn duplicate_rules_are_explicit() {
 #[test]
 fn the_journal_replays_in_the_order_things_happened() {
     let mut j = Journal::new();
-    j.commit(Entry { key: key(9, 2, 30), outcome: 3, applied: false }).unwrap();
-    j.commit(Entry { key: key(1, 0, 10), outcome: 1, applied: false }).unwrap();
-    j.commit(Entry { key: key(5, 1, 20), outcome: 2, applied: false }).unwrap();
+    j.commit(Entry {
+        key: key(9, 2, 30),
+        outcome: 3,
+        applied: false,
+    })
+    .unwrap();
+    j.commit(Entry {
+        key: key(1, 0, 10),
+        outcome: 1,
+        applied: false,
+    })
+    .unwrap();
+    j.commit(Entry {
+        key: key(5, 1, 20),
+        outcome: 2,
+        applied: false,
+    })
+    .unwrap();
 
     let order: Vec<u64> = j.in_order().iter().map(|e| e.event()).collect();
     assert_eq!(order, vec![10, 20, 30], "the journal replayed out of order");
@@ -450,8 +546,26 @@ fn the_journal_replays_in_the_order_things_happened() {
 /// **Independent events at one instant commute.**
 #[test]
 fn simultaneous_independent_events_do_not_depend_on_insertion_order() {
-    let a = Entry { key: JournalKey { time: 4, phase: 0, sequence: 0, event: 100 }, outcome: 7, applied: false };
-    let b = Entry { key: JournalKey { time: 4, phase: 0, sequence: 0, event: 200 }, outcome: 8, applied: false };
+    let a = Entry {
+        key: JournalKey {
+            time: 4,
+            phase: 0,
+            sequence: 0,
+            event: 100,
+        },
+        outcome: 7,
+        applied: false,
+    };
+    let b = Entry {
+        key: JournalKey {
+            time: 4,
+            phase: 0,
+            sequence: 0,
+            event: 200,
+        },
+        outcome: 8,
+        applied: false,
+    };
     let mut one = Journal::new();
     one.commit(a).unwrap();
     one.commit(b).unwrap();
@@ -487,7 +601,13 @@ fn a_scheduled_event_keeps_the_inputs_it_was_scheduled_with() {
         resolver_version: 1,
         inputs: vec![("load on the axle".into(), 900), ("road".into(), 3)],
     });
-    j.schedule(Pending { event: 4, scheduled_at: 10, resolver: 1, resolver_version: 1, inputs: vec![] });
+    j.schedule(Pending {
+        event: 4,
+        scheduled_at: 10,
+        resolver: 1,
+        resolver_version: 1,
+        inputs: vec![],
+    });
     assert_eq!(j.pending()[0].event, 4, "the queue was not in time order");
 
     let back = round_trip(&j);
@@ -534,7 +654,13 @@ fn somebody_who_was_there_can_perceive_it_accurately() {
     use scale_sim::witness::{from_the_ground, AMBIENT_STREET_DB};
 
     let seed = 20260828u64;
-    let plan = Plan::lay_out_on(seed, 4242, 2_500_000.0, 32, scale_sim::world::Biome::Grassland);
+    let plan = Plan::lay_out_on(
+        seed,
+        4242,
+        2_500_000.0,
+        32,
+        scale_sim::world::Biome::Grassland,
+    );
     let t = TILES_PER_PLOT as i64;
     let mut spot = None;
     for y in 1..plan.height - 1 {
@@ -556,13 +682,23 @@ fn somebody_who_was_there_can_perceive_it_accurately() {
     // Standing next to it.
     let close = from_the_ground(&g, open[0], open[1], EventKind::Assault, AMBIENT_STREET_DB)
         .expect("a man a metre away perceived nothing");
-    assert!(close.could_identify, "a witness beside it could not say who");
+    assert!(
+        close.could_identify,
+        "a witness beside it could not say who"
+    );
 
     // **And somebody who was not there gets nothing at all**, which is
     // the case an id-derived perception could never express.
     let miles_off = (open[0].0 + 40_000, open[0].1 + 40_000);
     assert!(
-        from_the_ground(&g, miles_off, open[1], EventKind::Assault, AMBIENT_STREET_DB).is_none(),
+        from_the_ground(
+            &g,
+            miles_off,
+            open[1],
+            EventKind::Assault,
+            AMBIENT_STREET_DB
+        )
+        .is_none(),
         "somebody forty kilometres away perceived an assault"
     );
 }
@@ -585,17 +721,27 @@ fn later_testimony_does_not_rewrite_what_was_encoded() {
         place: Place(1),
         day: 3,
         severity: -0.8,
-        facts: Happening { severity: -0.8, deliberate: true, unexpected: 0.9, ..Default::default() },
+        facts: Happening {
+            severity: -0.8,
+            deliberate: true,
+            unexpected: 0.9,
+            ..Default::default()
+        },
     };
     let mut mem = mem;
-    let p = mem.perceive(&ev, None, Source::Witnessed, 0.9, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 0.9, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let id = mem.encode(p, &mind, 3, &felt).expect("nothing was encoded");
     // **The encoded half is private**, which is the guarantee itself:
     // there is no public path by which learning something later could
     // reach what was originally taken in.
     let said_before = scale_sim::memory::testimony(&mem.traces[id]);
-    assert!(said_before.starts_with("I saw"), "he did not witness it: {said_before}");
+    assert!(
+        said_before.starts_with("I saw"),
+        "he did not witness it: {said_before}"
+    );
 
     mem.reattribute(id, PerceivedWho::Known(who(5)), 0.9);
     let said_after = scale_sim::memory::testimony(&mem.traces[id]);
@@ -657,9 +803,16 @@ fn an_event_older_than_the_ring_is_still_the_same_event() {
 fn a_new_consequence_counts_again() {
     let mut c = a_lived_life(93);
     let first = c.appraise(7, 0, 0.4, 0);
-    assert_eq!(c.appraise(7, 0, 0.4, 100), first, "merely looking again counted");
+    assert_eq!(
+        c.appraise(7, 0, 0.4, 100),
+        first,
+        "merely looking again counted"
+    );
     let worse = c.appraise(7, 1, 0.9, 100);
-    assert_ne!(worse, first, "finding out it was far worse did not register");
+    assert_ne!(
+        worse, first,
+        "finding out it was far worse did not register"
+    );
 
     // And once it is over, the same event can be met as new.
     c.closed(7);
@@ -694,15 +847,32 @@ fn nonsense_numbers_are_rejected() {
 /// **Bytes after the end mean the file is not what it says it is.**
 #[test]
 fn trailing_bytes_are_noticed() {
-    let mut bytes = Save { world_seed: 1, day: 1, people: vec![], journal: Journal::new(), ..Default::default() }.to_bytes();
+    let mut bytes = Save {
+        world_seed: 1,
+        day: 1,
+        people: vec![],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     bytes.extend_from_slice(b"and then some");
-    assert!(matches!(Save::from_bytes(&bytes), Err(SaveError::TrailingBytes(_))));
+    assert!(matches!(
+        Save::from_bytes(&bytes),
+        Err(SaveError::TrailingBytes(_))
+    ));
 }
 
 /// **Three versions, because three different things can change.**
 #[test]
 fn the_header_carries_three_versions() {
-    let bytes = Save { world_seed: 1, day: 1, people: vec![], journal: Journal::new(), ..Default::default() }.to_bytes();
+    let bytes = Save {
+        world_seed: 1,
+        day: 1,
+        people: vec![],
+        journal: Journal::new(),
+        ..Default::default()
+    }
+    .to_bytes();
     assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), FORMAT);
     let back = Save::from_bytes(&bytes).unwrap();
     assert_eq!(back.schema, scale_sim::scaling::GENERATION_SCHEMA);
@@ -724,7 +894,8 @@ fn the_awkward_moments_survive_a_save() {
     // and hidden personality effects behind the clamp, all at once.
     let mut c = a_lived_life(97);
     c.growth.took_a_role(Facet::Dutifulness, 2.5, 0);
-    c.growth.shaped_personality(Facet::Dutifulness, ShapesPersonality::Trauma, 1.0, 1.0, 5);
+    c.growth
+        .shaped_personality(Facet::Dutifulness, ShapesPersonality::Trauma, 1.0, 1.0, 5);
     let reference = promote(&c, &cult, 0);
     c.advance_to(700, &reference.mind, 0.2);
     c.strain.crisis_strikes(Acute::Dissociation, 0.85, 700, 12);
@@ -785,7 +956,10 @@ fn four_hundred_daily_reloads_match_four_hundred_days() {
         .to_bytes();
         ferried = Save::from_bytes(&bytes).unwrap().people.remove(0);
     }
-    assert_eq!(ferried, straight, "four hundred reloads was not four hundred days");
+    assert_eq!(
+        ferried, straight,
+        "four hundred reloads was not four hundred days"
+    );
 }
 
 /// **Gate: writing a loaded save back does not relabel what made it.**
@@ -801,7 +975,11 @@ fn four_hundred_daily_reloads_match_four_hundred_days() {
 /// its base chunk.
 #[test]
 fn resaving_an_old_world_keeps_the_version_that_made_it() {
-    let mut old = Save { world_seed: 7, day: 900, ..Default::default() };
+    let mut old = Save {
+        world_seed: 7,
+        day: 900,
+        ..Default::default()
+    };
     // A world built by something older than whatever is running now.
     old.schema = scale_sim::scaling::GENERATION_SCHEMA - 1;
     old.rules = RULES.saturating_sub(3);
@@ -809,8 +987,14 @@ fn resaving_an_old_world_keeps_the_version_that_made_it() {
 
     let once = old.to_bytes();
     let back = Save::from_bytes(&once).expect("an older world would not load");
-    assert_eq!(back.schema, old.schema, "the header forgot which generator made it");
-    assert_eq!(back.rules, old.rules, "the header forgot which rules it was played under");
+    assert_eq!(
+        back.schema, old.schema,
+        "the header forgot which generator made it"
+    );
+    assert_eq!(
+        back.rules, old.rules,
+        "the header forgot which rules it was played under"
+    );
 
     // **And round again.** A save read and written twice is the commonest
     // thing that happens to one, and it must not drift.
@@ -822,7 +1006,11 @@ fn resaving_an_old_world_keeps_the_version_that_made_it() {
 
     // A *new* save is made by what is running now, which is the other half
     // of the same claim.
-    let fresh = Save { world_seed: 1, day: 0, ..Default::default() };
+    let fresh = Save {
+        world_seed: 1,
+        day: 0,
+        ..Default::default()
+    };
     assert_eq!(fresh.schema, scale_sim::scaling::GENERATION_SCHEMA);
     assert_eq!(fresh.rules, RULES);
 }

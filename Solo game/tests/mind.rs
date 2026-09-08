@@ -37,7 +37,10 @@ fn with(seed: u64, set: &[(Facet, f32)]) -> Mind {
 }
 
 fn of(v: &[Episode], what: Emotion) -> f64 {
-    v.iter().find(|e| e.what == what).map(|e| e.strength).unwrap_or(0.0)
+    v.iter()
+        .find(|e| e.what == what)
+        .map(|e| e.strength)
+        .unwrap_or(0.0)
 }
 
 fn corr(a: &[f32], b: &[f32]) -> f64 {
@@ -92,7 +95,10 @@ fn facets_covary_through_their_domain_or_it_is_not_a_five_factor_model() {
     // agreeableness, so it runs against altruism without anybody wiring
     // it by hand.
     let opposed = corr(&col(Facet::Altruism), &col(Facet::Cruelty));
-    assert!(opposed < -0.3, "altruism and cruelty correlate at {opposed:+.2}");
+    assert!(
+        opposed < -0.3,
+        "altruism and cruelty correlate at {opposed:+.2}"
+    );
 
     // And a facet keeps variance of its own, or it is its domain under
     // another name: an anxious but even-tempered person exists.
@@ -145,7 +151,10 @@ fn personality_is_standard_normal_and_extreme_means_two_sigma() {
     let mean = z.iter().map(|x| *x as f64).sum::<f64>() / n;
     let sd = (z.iter().map(|x| (*x as f64 - mean).powi(2)).sum::<f64>() / n).sqrt();
     assert!(mean.abs() < 0.07, "mean z is {mean:+.3}");
-    assert!((0.92..1.08).contains(&sd), "sd is {sd:.3}, so it is not standardised");
+    assert!(
+        (0.92..1.08).contains(&sd),
+        "sd is {sd:.3}, so it is not standardised"
+    );
 
     let share = |k: f64| z.iter().filter(|x| (**x as f64).abs() <= k).count() as f64 / n;
     assert!(
@@ -161,7 +170,11 @@ fn personality_is_standard_normal_and_extreme_means_two_sigma() {
     // **Extreme is |z| > 2.** Defined, so it is reproducible — "under 6%"
     // was not.
     let extreme = 1.0 - share(2.0);
-    assert!((extreme - 0.046).abs() < 0.025, "{:.1}% extreme, not 4.6%", extreme * 100.0);
+    assert!(
+        (extreme - 0.046).abs() < 0.025,
+        "{:.1}% extreme, not 4.6%",
+        extreme * 100.0
+    );
 }
 
 /// **Heritability is a population variance ratio, not a share of one
@@ -284,8 +297,14 @@ fn people_mature_on_average_and_plenty_do_not() {
     let after_n: Vec<f32> = folk.iter().map(|p| p.z(Facet::Anxiety)).collect();
 
     let mean = |v: &Vec<f32>| v.iter().map(|x| *x as f64).sum::<f64>() / v.len() as f64;
-    assert!(mean(&after) > mean(&before), "dutifulness did not rise across adulthood");
-    assert!(mean(&after_n) < mean(&before_n), "anxiety did not fall across adulthood");
+    assert!(
+        mean(&after) > mean(&before),
+        "dutifulness did not rise across adulthood"
+    );
+    assert!(
+        mean(&after_n) < mean(&before_n),
+        "anxiety did not fall across adulthood"
+    );
 
     let against =
         (0..folk.len()).filter(|&i| after[i] < before[i]).count() as f64 / folk.len() as f64;
@@ -329,7 +348,10 @@ fn identical_tempers_and_opposite_convictions_are_different_people() {
     let p = pacifist.appraise(&struck);
     let b = brute.appraise(&struck);
 
-    assert!(of(&p, Emotion::Anger) > 0.3, "the hot-tempered pacifist felt nothing");
+    assert!(
+        of(&p, Emotion::Anger) > 0.3,
+        "the hot-tempered pacifist felt nothing"
+    );
     assert!(
         (of(&p, Emotion::Anger) - of(&b, Emotion::Anger)).abs() < 0.05,
         "the same temper produced different anger"
@@ -365,7 +387,11 @@ fn one_event_produces_several_emotions_and_they_may_disagree() {
     let driven = with(1, &[(Facet::Ambition, 1.9)]);
     let generous = with(
         1,
-        &[(Facet::Envy, -1.9), (Facet::Ambition, -1.9), (Facet::Altruism, 1.9)],
+        &[
+            (Facet::Envy, -1.9),
+            (Facet::Ambition, -1.9),
+            (Facet::Altruism, 1.9),
+        ],
     );
 
     let e = envious.appraise(&promotion);
@@ -380,8 +406,14 @@ fn one_event_produces_several_emotions_and_they_may_disagree() {
     );
     assert!(e.len() >= 3, "a happiness bar with extra steps");
 
-    let crooked = Appraisal { unfair: 0.8, ..promotion };
-    let fearful = Appraisal { confirms_a_fear: 0.8, ..promotion };
+    let crooked = Appraisal {
+        unfair: 0.8,
+        ..promotion
+    };
+    let fearful = Appraisal {
+        confirms_a_fear: 0.8,
+        ..promotion
+    };
     assert!(
         of(&envious.appraise(&crooked), Emotion::Outrage) > of(&e, Emotion::Outrage) + 0.2,
         "a crooked process produced no more outrage than a fair one"
@@ -447,7 +479,10 @@ fn activation_fades_and_the_grievance_stays() {
         "{angry_days} days of anger in a year, which is one long emotion \
          and not a grievance"
     );
-    assert!(m.concerns[0].adaptation > 0.2, "no habituation at all in a year");
+    assert!(
+        m.concerns[0].adaptation > 0.2,
+        "no habituation at all in a year"
+    );
     // **"It hurts less and does not leave" is about depth, not daily
     // load.** A year on it may be going quiet — which is what
     // accommodation is — but the grievance itself is still there to be
@@ -478,7 +513,10 @@ fn grief_comes_in_waves() {
             quiet += 1;
         }
     }
-    assert!(heavy > 15, "only {heavy} hard days in the year after a death");
+    assert!(
+        heavy > 15,
+        "only {heavy} hard days in the year after a death"
+    );
     assert!(
         quiet > 100,
         "only {quiet} bearable days in the year after a death, which is one \
@@ -514,7 +552,10 @@ fn focus_is_taken_by_activation_first_and_by_load_a_little() {
     for _ in 0..14 {
         bereaved.a_day_passes(&mut rng);
     }
-    assert!(bereaved.stress.load > 0.05, "a fortnight and the grief cost nothing");
+    assert!(
+        bereaved.stress.load > 0.05,
+        "a fortnight and the grief cost nothing"
+    );
     assert!(
         bereaved.focus.current > 0.40,
         "a grieving person can concentrate on nothing, which is the case \
@@ -564,7 +605,10 @@ fn people_do_not_all_agree_with_their_own_culture() {
         .iter()
         .filter(|m| m.values.iter().any(|c| c.heterodoxy() > 20))
         .count();
-    assert!(dissenters > folk.len() / 10, "only {dissenters} disagree with anything");
+    assert!(
+        dissenters > folk.len() / 10,
+        "only {dissenters} disagree with anything"
+    );
 }
 
 /// A seed rebuilds the same head.
@@ -600,7 +644,12 @@ fn every_loading_says_where_it_came_from() {
     use LoadingSource::*;
     assert_eq!(Facet::Anxiety.provenance(), MeasuredNeo);
     assert_eq!(Facet::Trust.provenance(), MeasuredNeo);
-    for f in [Facet::Cruelty, Facet::Violence, Facet::Vengefulness, Facet::Greed] {
+    for f in [
+        Facet::Cruelty,
+        Facet::Violence,
+        Facet::Vengefulness,
+        Facet::Greed,
+    ] {
         assert_eq!(
             f.provenance(),
             DesignedExtension,
@@ -627,8 +676,14 @@ fn every_loading_says_where_it_came_from() {
 fn two_observations_of_the_same_person_correlate_at_the_reliability() {
     let mut rng = Rng::new(5150);
     let folk: Vec<Personality> = (0..4000).map(|_| Personality::draw(&mut rng)).collect();
-    let once: Vec<f32> = folk.iter().map(|p| p.observed(Facet::Anxiety, &mut rng)).collect();
-    let twice: Vec<f32> = folk.iter().map(|p| p.observed(Facet::Anxiety, &mut rng)).collect();
+    let once: Vec<f32> = folk
+        .iter()
+        .map(|p| p.observed(Facet::Anxiety, &mut rng))
+        .collect();
+    let twice: Vec<f32> = folk
+        .iter()
+        .map(|p| p.observed(Facet::Anxiety, &mut rng))
+        .collect();
 
     let r = corr(&once, &twice);
     assert!(
@@ -649,7 +704,10 @@ fn two_observations_of_the_same_person_correlate_at_the_reliability() {
     let n = once.len() as f64;
     let m = once.iter().map(|x| *x as f64).sum::<f64>() / n;
     let sd = (once.iter().map(|x| (*x as f64 - m).powi(2)).sum::<f64>() / n).sqrt();
-    assert!((0.94..1.06).contains(&sd), "observations have spread {sd:.3}, not 1");
+    assert!(
+        (0.94..1.06).contains(&sd),
+        "observations have spread {sd:.3}, not 1"
+    );
 }
 
 /// **Two people assign different unfairness to the same event.**
@@ -673,7 +731,11 @@ fn two_people_read_the_same_event_differently() {
         to_me: 0.0,
         ..Default::default()
     };
-    let passed_over = Happening { to_me: 0.9, blocks_a_goal: true, ..choice };
+    let passed_over = Happening {
+        to_me: 0.9,
+        blocks_a_goal: true,
+        ..choice
+    };
 
     let bob = with(21, &[(Facet::Gloom, 1.2), (Facet::Trust, -1.2)]);
     let mut carol = with(21, &[]);
@@ -709,7 +771,14 @@ fn two_people_read_the_same_event_differently() {
     // And the same man, less inclined to think ill of himself, reads it
     // differently again — which is the point of it being his and not the
     // event's.
-    let sanguine = with(21, &[(Facet::Gloom, -1.5), (Facet::Pride, 1.5), (Facet::Trust, 1.2)]);
+    let sanguine = with(
+        21,
+        &[
+            (Facet::Gloom, -1.5),
+            (Facet::Pride, 1.5),
+            (Facet::Trust, 1.2),
+        ],
+    );
     assert!(
         sanguine.read(&passed_over).confirms_a_fear < bobs.confirms_a_fear,
         "a confident man read his own defeat as confirming a fear just as \
@@ -735,7 +804,11 @@ fn old_accommodated_losses_go_quiet_without_going_away() {
     // A long life: a dozen serious losses and grievances, spread out.
     for k in 0..12 {
         m.take_on(
-            if k % 2 == 0 { ConcernKind::Bereavement } else { ConcernKind::Grievance },
+            if k % 2 == 0 {
+                ConcernKind::Bereavement
+            } else {
+                ConcernKind::Grievance
+            },
             0.8,
         );
         for day in 0..600 {
@@ -747,9 +820,18 @@ fn old_accommodated_losses_go_quiet_without_going_away() {
             // ordinary living has to be held still.
             use scale_sim::needs::{Circumstances, Doing};
             if let Some(n) = m.needs.as_mut() {
-                let known = Circumstances { with_somebody_known: true, ..Default::default() };
-                let kin = Circumstances { with_kin: true, ..Default::default() };
-                let taking_part = Circumstances { taking_part: true, ..Default::default() };
+                let known = Circumstances {
+                    with_somebody_known: true,
+                    ..Default::default()
+                };
+                let kin = Circumstances {
+                    with_kin: true,
+                    ..Default::default()
+                };
+                let taking_part = Circumstances {
+                    taking_part: true,
+                    ..Default::default()
+                };
                 n.did(Doing::TalkWithAFriend, 1.0, known);
                 n.did(Doing::SitWithFamily, 2.0, kin);
                 n.did(Doing::WorkTheLoom, 8.0, Circumstances::default());
@@ -790,7 +872,10 @@ fn old_accommodated_losses_go_quiet_without_going_away() {
         !m.overloaded(),
         "an ordinary long life left somebody permanently past breaking point"
     );
-    assert!(m.focus.current > 0.5, "and unable to concentrate on anything, for ever");
+    assert!(
+        m.focus.current > 0.5,
+        "and unable to concentrate on anything, for ever"
+    );
 
     // **But nothing was deleted.** The oldest loss still answers.
     assert!(m.concerns[0].depth() > 0.1, "an old loss stopped existing");

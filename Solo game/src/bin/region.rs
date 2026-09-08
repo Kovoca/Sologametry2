@@ -143,11 +143,7 @@ fn main() {
     println!("works");
     for s in &region.economy.ledger.sites {
         if s.recipe.is_some() {
-            println!(
-                "  {:<24} {:>10.0} /day",
-                s.name,
-                s.throughput.min(1e6)
-            );
+            println!("  {:<24} {:>10.0} /day", s.name, s.throughput.min(1e6));
         }
     }
     println!();
@@ -166,9 +162,7 @@ fn main() {
 
     // Run it.
     let e = &mut region.economy;
-    println!(
-        "yr:day | season | harvest |  grain | grain cover | food | food cover | haul | event"
-    );
+    println!("yr:day | season | harvest |  grain | grain cover | food | food cover | haul | event");
     println!(
         "-------+--------+---------+--------+-------------+------+------------+------+---------"
     );
@@ -204,7 +198,11 @@ fn main() {
                 "unreported"
             };
             if s != last {
-                note = if note.is_empty() { s.into() } else { format!("{note} - {s}") };
+                note = if note.is_empty() {
+                    s.into()
+                } else {
+                    format!("{note} - {s}")
+                };
                 last = s.to_string();
             }
         }

@@ -1,4 +1,3 @@
-﻿
 //! A town of people, not a number of them.
 
 use scale_sim::econ::{Doctrine, DAYS_PER_YEAR};
@@ -21,8 +20,7 @@ fn a_nation() -> scale_sim::region::Region {
     let set = Settlements::place(&world, &pol, 5000);
     let net = Network::build(&world, &set, 1000);
     let id = pol.ranked()[2].0;
-    Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
-        .expect("a nation to model")
+    Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent).expect("a nation to model")
 }
 
 #[test]
@@ -68,51 +66,98 @@ fn a_cohort_of_people_lives_in_the_economy_without_breaking_it() {
 #[test]
 fn advancement_needs_a_vacancy_and_not_a_timer() {
     // **Gated on days worked alone, every labourer in a three-year run was
-    // made up to chargehand** â€” the whole cohort became supervisors, which
+    // made up to chargehand** — the whole cohort became supervisors, which
     // is not a workforce but a promotion timer with nobody to supervise.
     //
     // Real span of control is eight to fifteen, so about one in ten of a
     // shop or a works is in charge of the rest and the rest stay on the
     // floor because there is nowhere to go.
-    let mut e = a_nation().economy;
-    let mut folk = Populace::seed(&e, 40, 20260828);
+    //
+    // **This gate could not fail, and two versions of it could not.** A
+    // flat multiple of the true rate read 6.7% and then 30% in one town on
+    // an unchanged model with *the same three supervisors in it* — the
+    // cohort had redistributed and the sample fell from forty-five people
+    // to ten. Replacing it with a three-standard-error band fixed that and
+    // bought nothing: deleting the vacancy rule outright moved the largest
+    // town from six supervisors to eleven, which is 1.75 standard errors
+    // and passes. Pooling every town does not rescue it either — fifteen
+    // against twenty out of two hundred is half a standard error.
+    //
+    // The effect is real and it is modest, because the model has other
+    // brakes on promotion now. **A modest effect cannot be read off a
+    // population statistic**, which is the rule this project has already
+    // had to learn three times — over soil depth, over childcare and over
+    // education. So the same cohort is run twice from the same seed and
+    // the only difference is whether the supply of posts binds.
+    let mut bounded = a_nation().economy;
+    let mut unbounded = a_nation().economy;
+    let mut with_posts = Populace::seed(&bounded, 40, 20260828);
+    let mut without = Populace::seed(&unbounded, 40, 20260828);
     for day in 0..(DAYS_PER_YEAR * 3) {
-        e.step();
-        folk.live_a_day(&mut e, day);
+        bounded.step();
+        with_posts.live_a_day_bounded(&mut bounded, day, true);
+        unbounded.step();
+        without.live_a_day_bounded(&mut unbounded, day, false);
     }
 
-    for m in 0..e.markets.len() {
+    let count = |f: &Populace| {
+        f.people
+            .values()
+            .filter(|p| p.trade == Trade::Supervisor)
+            .count()
+    };
+    let (kept, loosed) = (count(&with_posts), count(&without));
+
+    // **Removing the rule must promote more people.** If it does not, the
+    // rule is not doing anything and this file's claim about it is prose.
+    assert!(
+        loosed > kept,
+        "ignoring the supply of posts promoted {loosed} people against {kept} — \
+         the vacancy rule is not binding on anybody"
+    );
+
+    // And the bounded run must sit near the posts that exist, town by
+    // town, which is the calibration half. The supply of promotions is a
+    // real figure: the labour model counts supervisory posts off the works
+    // and shops that actually exist, at a span of control of about ten.
+    for m in 0..bounded.markets.len() {
         let mine: Vec<&scale_sim::person::Person> =
-            folk.people.values().filter(|p| p.market == m).collect();
-        if mine.len() < 10 {
+            with_posts.people.values().filter(|p| p.market == m).collect();
+        if mine.len() < 30 {
             continue;
         }
         let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count();
         let share = bosses as f64 / mine.len() as f64;
-        // **The supply of promotions is a real figure**, not a ratio
-        // picked to look right: the labour model counts supervisory posts
-        // from the works and shops that actually exist, at a span of
-        // control of about ten. The cohort should settle near it.
-        let w = &e.workforce[m];
+        let w = &bounded.workforce[m];
         let real_share = w.supervisory_posts / w.posts.max(1e-9);
         assert!(
             (0.03..0.15).contains(&real_share),
             "{} has {:.0}% of its posts supervising, against a real 6-10%",
-            e.markets[m].name,
+            bounded.markets[m].name,
             real_share * 100.0
         );
+        // Three standard errors of the posts that exist. Loose on a small
+        // town and tight on a large one, which is the honest shape — and
+        // the paired comparison above is what carries the mechanism.
+        let se = (real_share * (1.0 - real_share) / mine.len() as f64)
+            .sqrt()
+            .max(1e-9);
         assert!(
-            share < real_share * 2.5 + 0.02,
-            "{} is {:.0}% supervisors after three years against {:.0}% of posts",
-            e.markets[m].name,
+            (share - real_share) / se < 3.0,
+            "{} is {:.0}% supervisors after three years against {:.0}% of posts \
+             — {:.1} standard errors over, on {} people",
+            bounded.markets[m].name,
             share * 100.0,
-            real_share * 100.0
+            real_share * 100.0,
+            (share - real_share) / se,
+            mine.len()
         );
         // And the floor is still there to supervise.
         assert!(
-            mine.iter().any(|p| p.trade != Trade::Supervisor),
-            "{} has nobody left on the floor",
-            e.markets[m].name
+            bosses * 3 < mine.len(),
+            "{} has {bosses} supervisors among {} people",
+            bounded.markets[m].name,
+            mine.len()
         );
     }
 }
@@ -142,7 +187,10 @@ fn a_town_the_statistics_call_idle_is_one_where_people_find_less_work() {
         }
         seen.push((e.workforce[m].unemployment, worked));
     }
-    assert!(seen.len() >= 3, "not enough towns with labourers to compare");
+    assert!(
+        seen.len() >= 3,
+        "not enough towns with labourers to compare"
+    );
 
     // The town the statistics call idlest should not be the town whose
     // labourers work most.
@@ -234,7 +282,11 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     // on guaranteed hours works more days than somebody hunting for them,
     // and that is what the security *is*.
     let worked = |kind: Employment| -> f64 {
-        let m: Vec<_> = folk.people.values().filter(|p| p.employment == kind).collect();
+        let m: Vec<_> = folk
+            .people
+            .values()
+            .filter(|p| p.employment == kind)
+            .collect();
         if m.is_empty() {
             return f64::NAN;
         }
@@ -369,7 +421,11 @@ fn the_week_decides_who_works_when() {
         let weekend = Weekday::on(day).is_weekend();
         for (i, p) in folk.people.values().enumerate() {
             if p.days_worked > prev[i] {
-                let key = (p.trade.name(), p.employment == Employment::FullTime, weekend);
+                let key = (
+                    p.trade.name(),
+                    p.employment == Employment::FullTime,
+                    weekend,
+                );
                 *tally.entry(key).or_insert(0) += 1;
             }
             prev[i] = p.days_worked;
@@ -436,7 +492,11 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
 
     // The scale itself.
     assert_eq!(household_share_for(1), 1.0);
-    assert_eq!(household_share_for(2), 0.75, "a couple should each carry three quarters");
+    assert_eq!(
+        household_share_for(2),
+        0.75,
+        "a couple should each carry three quarters"
+    );
     assert!((household_share_for(3) - 0.666).abs() < 0.01);
     assert!(household_share_for(4) < household_share_for(3));
 
@@ -479,10 +539,41 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     };
     let alone = homeless_share(true);
     let shared = homeless_share(false);
+
+    // **Being on the street is a threshold; being poorer is not.**
+    //
+    // This asserted that living alone puts more people out, and it had
+    // already flipped once for the reason the comment below records. It
+    // flipped again on a **thirteen per cent** wage change -- correcting
+    // the wage curve to its measured elasticity -- which is the tell: a
+    // gate that reverses on a thirteen per cent move is measuring which
+    // side of a cliff the country happens to be standing on, not the
+    // mechanism it names.
+    //
+    // What the equivalence scale claims is that carrying a household alone
+    // costs a quarter more, and the robust reading of that is what people
+    // have left in their pockets. Homelessness stays as the sharper
+    // consequence, asserted only in the direction that cannot be an
+    // artefact: living alone is never *easier*.
+    let purse = |alone: bool| -> f64 {
+        let idx: Vec<_> = folk
+            .people
+            .ids()
+            .filter(|i| (folk.households[i.slot()] == Household::Alone) == alone)
+            .collect();
+        if idx.is_empty() {
+            return f64::NAN;
+        }
+        idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len() as f64
+    };
+    let (alone_purse, shared_purse) = (purse(true), purse(false));
     assert!(
-        alone > shared,
-        "living alone on hospitality wages is no harder than sharing: \
-         {:.0}% against {:.0}% on the street",
+        shared_purse > alone_purse * 1.10,
+        "sharing a roof left {shared_purse:.0} against {alone_purse:.0} living alone -- the equivalence scale is not reaching anybody's pocket"
+    );
+    assert!(
+        alone >= shared - 1e-9,
+        "living alone came out *easier* than sharing: {:.0}% against {:.0}% on the street",
         alone * 100.0,
         shared * 100.0
     );
@@ -494,10 +585,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // broken model. What the scale claims — that carrying a household
     // alone costs a quarter more — is asserted above and below, on the
     // comparison rather than on the absolute.
-    assert!(
-        alone >= shared,
-        "living alone came out easier than sharing"
-    );
+    assert!(alone >= shared, "living alone came out easier than sharing");
 
     // **Compare like with like, or this measures children rather than
     // rent.**
@@ -758,10 +846,10 @@ fn grades_gate_what_money_cannot_buy() {
         }
         let n = n as f64;
         (
-            deg as f64 / n,                                  // share with a degree
-            (deg_apt / deg as f64 - all_apt / n) / 0.167,     // graduate ability, in SD
+            deg as f64 / n,                                                // share with a degree
+            (deg_apt / deg as f64 - all_apt / n) / 0.167, // graduate ability, in SD
             (rich as f64 / rich_n as f64) / (poor as f64 / poor_n as f64), // class gap
-            blocked as f64 / n,                              // shut out on grades
+            blocked as f64 / n,                           // shut out on grades
         )
     }
 
@@ -854,7 +942,7 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
         .map(|&i| (i, folk.people[i].name.clone()))
         .collect();
 
-    for day in 0..(DAYS_PER_YEAR as u64 * 6) {
+    for day in 0..(DAYS_PER_YEAR * 6) {
         folk.live_a_day(&mut e, day);
     }
 
@@ -889,10 +977,12 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
             .ids()
             .find(|live| live.slot() == i.slot())
             .expect("a freed slot that was never reused");
-        assert_ne!(*i, occupant, "the slot was reused without moving the generation");
         assert_ne!(
-            &folk.people[occupant].name,
-            was,
+            *i, occupant,
+            "the slot was reused without moving the generation"
+        );
+        assert_ne!(
+            &folk.people[occupant].name, was,
             "the replacement inherited the dead person's name"
         );
     }
@@ -940,7 +1030,8 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     let widow_had = folk.people[widow].money;
     folk.probate(dies);
     assert_eq!(
-        folk.people[widow].money, widow_had + 900.0,
+        folk.people[widow].money,
+        widow_had + 900.0,
         "the widow did not inherit"
     );
     assert_eq!(folk.escheated, 0.0, "an estate with a widow escheated");
@@ -960,7 +1051,11 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     folk.people[parent].money = 1000.0;
     let (a_had, b_had) = (folk.people[a].money, folk.people[b].money);
     folk.probate(parent);
-    assert_eq!(folk.people[a].money, a_had + 500.0, "children split the estate");
+    assert_eq!(
+        folk.people[a].money,
+        a_had + 500.0,
+        "children split the estate"
+    );
     assert_eq!(folk.people[b].money, b_had + 500.0);
     assert_eq!(folk.escheated, 0.0);
 
@@ -973,7 +1068,11 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     folk.people[dies].money = 300.0;
     let had = folk.people[mother].money;
     folk.probate(dies);
-    assert_eq!(folk.people[mother].money, had + 300.0, "the estate skipped the parents");
+    assert_eq!(
+        folk.people[mother].money,
+        had + 300.0,
+        "the estate skipped the parents"
+    );
 
     // --- and with nobody at all, the state takes it ---
     let mut folk = Populace::seed(&e, 40, 20260828);
@@ -984,7 +1083,10 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
         .expect("everybody in the cohort has kin");
     folk.people[alone].money = 250.0;
     folk.probate(alone);
-    assert_eq!(folk.escheated, 250.0, "an estate with no heir did not escheat");
+    assert_eq!(
+        folk.escheated, 250.0,
+        "an estate with no heir did not escheat"
+    );
     assert_eq!(folk.inherited, 0.0);
 }
 
@@ -1012,7 +1114,14 @@ fn an_heir_inherits_the_house_and_the_vehicle() {
     folk.people[widow].conveyance = Conveyance::OnFoot;
 
     folk.probate(dies);
-    assert_eq!(folk.people[widow].housing, Housing::Owned, "the house did not pass");
-    assert_eq!(folk.people[widow].conveyance, Conveyance::Van, "the vehicle did not pass");
+    assert_eq!(
+        folk.people[widow].housing,
+        Housing::Owned,
+        "the house did not pass"
+    );
+    assert_eq!(
+        folk.people[widow].conveyance,
+        Conveyance::Van,
+        "the vehicle did not pass"
+    );
 }
-

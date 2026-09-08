@@ -11,7 +11,11 @@ use scale_sim::item::{standard_catalogue, Catalogue, ItemInstance, Placement, St
 
 fn a_town(cat: &Catalogue) -> Market {
     let shop = 1u64;
-    let mut m = Market { repairer: Some(45.0), power: Some(0.41), ..Default::default() };
+    let mut m = Market {
+        repairer: Some(45.0),
+        power: Some(0.41),
+        ..Default::default()
+    };
     for (name, price) in [
         ("washing machine", 700.0),
         ("cooking stove", 900.0),
@@ -31,7 +35,10 @@ fn a_town(cat: &Catalogue) -> Market {
     ] {
         m.stock(Stall::new(cat.must(name), price, 999, shop));
     }
-    m.finance = Some(Finance { rates: scale_sim::bank::Rates::ordinary(), lending: true });
+    m.finance = Some(Finance {
+        rates: scale_sim::bank::Rates::ordinary(),
+        lending: true,
+    });
     m.services = vec![
         (Need::Nutrition, 8.5),
         (Need::Health, 2.0),
@@ -55,25 +62,41 @@ fn main() {
             "a labourer, alone",
             Roster::of(1),
             Climate::temperate(),
-            Means { income: 230.0, savings: 20.0, credit: 0.0 },
+            Means {
+                income: 230.0,
+                savings: 20.0,
+                credit: 0.0,
+            },
         ),
         (
             "a couple with two children",
             Roster::of(2).with(1, 1),
             Climate::temperate(),
-            Means { income: 640.0, savings: 900.0, credit: 500.0 },
+            Means {
+                income: 640.0,
+                savings: 900.0,
+                credit: 500.0,
+            },
         ),
         (
             "the same family, in Minnesota",
             Roster::of(2).with(1, 1),
             Climate::cold(),
-            Means { income: 640.0, savings: 900.0, credit: 500.0 },
+            Means {
+                income: 640.0,
+                savings: 900.0,
+                credit: 500.0,
+            },
         ),
         (
             "an office couple",
             Roster::of(2),
             Climate::temperate(),
-            Means { income: 1_400.0, savings: 9_000.0, credit: 4_000.0 },
+            Means {
+                income: 1_400.0,
+                savings: 9_000.0,
+                credit: 4_000.0,
+            },
         ),
     ];
 
@@ -82,7 +105,15 @@ fn main() {
         "", "spent/wk", "food %", "power %", "transport %", "short"
     );
     for (k, (name, who, where_, means)) in cases.iter().enumerate() {
-        let mut home = Household::new(*who, *where_, Placement::Ground { locality: 1, x: 0, y: 0 });
+        let mut home = Household::new(
+            *who,
+            *where_,
+            Placement::Ground {
+                locality: 1,
+                x: 0,
+                y: 0,
+            },
+        );
         let mut market = a_town(&cat);
         let mut spent = 0.0;
         let mut food = 0.0;
@@ -97,9 +128,19 @@ fn main() {
         // to own the machine that gives them their evenings back.
         let mut purse = *means;
         for week in 0..52u64 {
-            let out =
-                a_period(&mut home, &mut store, &cat, &mut market, purse, 7, 1_000 + k as u64 * 100 + week);
-            purse = Means { income: means.income, ..out.left };
+            let out = a_period(
+                &mut home,
+                &mut store,
+                &cat,
+                &mut market,
+                purse,
+                7,
+                1_000 + k as u64 * 100 + week,
+            );
+            purse = Means {
+                income: means.income,
+                ..out.left
+            };
             spent += out.spent;
             power += out.utilities;
             debt += out.debt_service;
@@ -146,9 +187,7 @@ fn main() {
             println!(
                 "  transport 30%, healthcare 14%, household goods 9%, recreation 9%, clothing 4%"
             );
-            println!(
-                "  (BLS 2023, normalised over what this module covers — shelter, pensions"
-            );
+            println!("  (BLS 2023, normalised over what this module covers — shelter, pensions");
             println!("  and insurance are 43% of a real budget and are somebody else's line)");
         }
     }
@@ -158,15 +197,28 @@ fn main() {
     let home = Household::new(
         Roster::of(4),
         Climate::temperate(),
-        Placement::Ground { locality: 1, x: 0, y: 0 },
+        Placement::Ground {
+            locality: 1,
+            x: 0,
+            y: 0,
+        },
     );
-    for (need, machine) in
-        [(Need::CleanClothes, "washing machine"), (Need::CookedFood, "cooking stove")]
-    {
+    for (need, machine) in [
+        (Need::CleanClothes, "washing machine"),
+        (Need::CookedFood, "cooking stove"),
+    ] {
         let level = requirement_for(need, home.who, home.where_);
         let by_hand = hours_to_do_it_by_hand(need, level);
-        let leaves = what_it_does(machine).iter().find(|s| s.need == need).unwrap().leaves;
-        let kwh = what_it_does(machine).iter().find(|s| s.need == need).unwrap().kwh_a_week;
+        let leaves = what_it_does(machine)
+            .iter()
+            .find(|s| s.need == need)
+            .unwrap()
+            .leaves;
+        let kwh = what_it_does(machine)
+            .iter()
+            .find(|s| s.need == need)
+            .unwrap()
+            .kwh_a_week;
         println!(
             "  {:<16} {:>5.1} h a week by hand, {:>4.1} h with a {} ({:.0} kWh a week to run)",
             need.name(),
@@ -179,8 +231,16 @@ fn main() {
 
     // ---- what a household needs, and how it scales -------------------
     println!("\nWHO IS IN IT, AND WHAT THAT COSTS");
-    println!("  {:<20} {:>7} {:>7} {:>7} {:>7}", "", "1 adult", "2", "4", "2+2 kids");
-    for need in [Need::Nutrition, Need::Warmth, Need::CookedFood, Need::Clothed] {
+    println!(
+        "  {:<20} {:>7} {:>7} {:>7} {:>7}",
+        "", "1 adult", "2", "4", "2+2 kids"
+    );
+    for need in [
+        Need::Nutrition,
+        Need::Warmth,
+        Need::CookedFood,
+        Need::Clothed,
+    ] {
         let at = |r: Roster| requirement_for(need, r, Climate::temperate());
         println!(
             "  {:<20} {:>7.2} {:>7.2} {:>7.2} {:>7.2}",
@@ -194,7 +254,10 @@ fn main() {
 
     // ---- and the shop on the other side of the counter ---------------
     println!("\nAND THE SHOP THAT SERVES THEM");
-    println!("  {:<24} {:>10} {:>8} {:>8}", "", "customers", "FTE", "people");
+    println!(
+        "  {:<24} {:>10} {:>8} {:>8}",
+        "", "customers", "FTE", "people"
+    );
     for (what, per_day, m2) in [
         ("a corner shop", 260.0, 180.0),
         ("a convenience store", 900.0, 900.0),
@@ -218,9 +281,10 @@ fn main() {
         "  {:<24} {:>10} {:>10} {:>10} {:>12}",
         "", "notice", "cut off", "owed", "protected"
     );
-    for (name, climate) in
-        [("a mild state", Climate::temperate()), ("Minnesota", Climate::cold())]
-    {
+    for (name, climate) in [
+        ("a mild state", Climate::temperate()),
+        ("Minnesota", Climate::cold()),
+    ] {
         let mut account = scale_sim::utility::Account::new(scale_sim::utility::Tariff::ordinary());
         let (mut noticed, mut cut, mut protected) = (None, None, 0u32);
         for d in 0..365u32 {
@@ -238,10 +302,17 @@ fn main() {
         println!(
             "  {:<24} {:>10} {:>10} {:>10.0} {:>12}",
             name,
-            noticed.map(|d| format!("day {d}")).unwrap_or_else(|| "-".into()),
-            cut.map(|d| format!("day {d}")).unwrap_or_else(|| "-".into()),
+            noticed
+                .map(|d| format!("day {d}"))
+                .unwrap_or_else(|| "-".into()),
+            cut.map(|d| format!("day {d}"))
+                .unwrap_or_else(|| "-".into()),
             account.arrears,
-            if protected > 0 { format!("{protected} days") } else { "-".into() },
+            if protected > 0 {
+                format!("{protected} days")
+            } else {
+                "-".into()
+            },
         );
     }
     let t = scale_sim::utility::Tariff::ordinary();
@@ -294,16 +365,30 @@ fn main() {
         (scale_sim::material::Material::Polyethylene, 0.0087),
         (scale_sim::material::Material::Copper, 0.0050),
     ];
-    println!("  {:<22} {:>12} {:>12} {:>16}", "", "as found", "stripped", "worth stripping?");
-    for (what, bill) in [("a washing machine", &washer[..]), ("a refrigerator", &fridge[..])] {
-        let name = if what.contains("frig") { "refrigerator" } else { "washing machine" };
+    println!(
+        "  {:<22} {:>12} {:>12} {:>16}",
+        "", "as found", "stripped", "worth stripping?"
+    );
+    for (what, bill) in [
+        ("a washing machine", &washer[..]),
+        ("a refrigerator", &fridge[..]),
+    ] {
+        let name = if what.contains("frig") {
+            "refrigerator"
+        } else {
+            "washing machine"
+        };
         println!(
             "  {:<22} {:>12.2} {:>12.2} {:>16}",
             what,
             scale_sim::scrap::worth_as_scrap(name, bill, 5.0, false),
             scale_sim::scrap::worth_as_scrap(name, bill, 5.0, true),
             // Three quarters of an hour with a spanner, at an ordinary wage.
-            if scale_sim::scrap::worth_stripping(bill, 0.75, 22.0) { "yes" } else { "no" }
+            if scale_sim::scrap::worth_stripping(bill, 0.75, 22.0) {
+                "yes"
+            } else {
+                "no"
+            }
         );
     }
 
@@ -332,10 +417,18 @@ fn main() {
 
     // And the same load with a cell left in it.
     let mut with_a_cell = car.clone();
-    with_a_cell.materials.push((scale_sim::material::Material::Lithium, 0.010));
+    with_a_cell
+        .materials
+        .push((scale_sim::material::Material::Lithium, 0.010));
     for (what, yard) in [
-        ("the yard down the road", scale_sim::scrap::Yard::ordinary(1, 5.0)),
-        ("a licensed processor", scale_sim::scrap::Yard::licensed(2, 90.0)),
+        (
+            "the yard down the road",
+            scale_sim::scrap::Yard::ordinary(1, 5.0),
+        ),
+        (
+            "a licensed processor",
+            scale_sim::scrap::Yard::licensed(2, 90.0),
+        ),
     ] {
         let s = scale_sim::scrap::weigh_in(&with_a_cell, &yard, 1_000.0);
         let said = match s {
@@ -365,15 +458,31 @@ fn main() {
             standing: 0.72,
             settled: true,
         };
-        let offer = underwrite(sys.bank(bk), &sys.rates, &who, Credit::CarLoan, 9_000.0, 9_000.0)
-            .expect("refused");
+        let offer = underwrite(
+            sys.bank(bk),
+            &sys.rates,
+            &who,
+            Credit::CarLoan,
+            9_000.0,
+            9_000.0,
+        )
+        .expect("refused");
         sys.advance(bk, Account::Households(0), &offer, &mut t, 1, None);
         let after = (t.total(), sys.bank(bk).reserves, sys.bank(bk).deposits);
 
         println!("  {:<34} {:>12} {:>12}", "", "before", "after");
-        println!("  {:<34} {:>12.0} {:>12.0}", "money in the world", before.0, after.0);
-        println!("  {:<34} {:>12.0} {:>12.0}", "the bank's reserves", before.1, after.1);
-        println!("  {:<34} {:>12.0} {:>12.0}", "the bank's deposits", before.2, after.2);
+        println!(
+            "  {:<34} {:>12.0} {:>12.0}",
+            "money in the world", before.0, after.0
+        );
+        println!(
+            "  {:<34} {:>12.0} {:>12.0}",
+            "the bank's reserves", before.1, after.1
+        );
+        println!(
+            "  {:<34} {:>12.0} {:>12.0}",
+            "the bank's deposits", before.2, after.2
+        );
         println!(
             "\n  the loan created {:.0} and moved no reserves at all, and no saver is a penny",
             offer.principal
@@ -390,7 +499,10 @@ fn main() {
         );
 
         println!("\n  AND WHAT THE SAME CAR COSTS DIFFERENT PEOPLE");
-        println!("  {:<26} {:>8} {:>10} {:>12}", "", "rate", "a month", "paid in all");
+        println!(
+            "  {:<26} {:>8} {:>10} {:>12}",
+            "", "rate", "a month", "paid in all"
+        );
         // The real credit tiers, at the midpoint of each FICO band
         // flattened onto 0..1 by (score - 300) / 550.
         for (what, standing) in [
@@ -401,7 +513,14 @@ fn main() {
             ("deep subprime  <500", 0.18),
         ] {
             let a = Applicant { standing, ..who };
-            match underwrite(sys.bank(bk), &sys.rates, &a, Credit::UsedCarLoan, 9_000.0, 9_000.0) {
+            match underwrite(
+                sys.bank(bk),
+                &sys.rates,
+                &a,
+                Credit::UsedCarLoan,
+                9_000.0,
+                9_000.0,
+            ) {
                 Ok(o) => println!(
                     "  {:<26} {:>7.1}% {:>10.0} {:>12.0}",
                     what,
@@ -416,8 +535,8 @@ fn main() {
     }
 
     // ---- and how they actually get rid of it --------------------------
-    use scale_sim::scrap::{Carrying, Circumstances, Council};
     use scale_sim::material::Material as M;
+    use scale_sim::scrap::{Carrying, Circumstances, Council};
 
     println!("\nHOW A DEAD FRIDGE ACTUALLY LEAVES THE HOUSE");
     println!("  62 kg, and worth less than nothing at the yard once the refrigerant is out\n");
@@ -492,7 +611,11 @@ fn main() {
             "  {:<42} {:>28} {:>7}",
             what,
             did.name(),
-            if did.cost().abs() < 0.005 { "-".to_string() } else { format!("{:.0}", did.cost()) }
+            if did.cost().abs() < 0.005 {
+                "-".to_string()
+            } else {
+                format!("{:.0}", did.cost())
+            }
         );
     }
 
@@ -525,14 +648,25 @@ fn main() {
     let mut home = Household::new(
         Roster::of(2),
         Climate::temperate(),
-        Placement::Ground { locality: 1, x: 0, y: 0 },
+        Placement::Ground {
+            locality: 1,
+            x: 0,
+            y: 0,
+        },
     );
-    let id = store.add(ItemInstance::one(&cat, cat.must("washing machine")), home.home);
+    let id = store.add(
+        ItemInstance::one(&cat, cat.must("washing machine")),
+        home.home,
+    );
     home.owns.push(id);
     let market = a_town(&cat);
     let mut none = a_town(&cat);
     none.repairer = None;
-    let purse = Means { income: 640.0, savings: 900.0, credit: 500.0 };
+    let purse = Means {
+        income: 640.0,
+        savings: 900.0,
+        credit: 500.0,
+    };
     for damage in [0.0, 0.4, 0.6, 0.9] {
         store.get_mut(id).unwrap().condition.damage = damage;
         let with = what_to_do(Need::CleanClothes, 1.0, &home, &store, &cat, &market, purse);

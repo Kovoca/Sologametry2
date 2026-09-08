@@ -20,14 +20,24 @@ fn world() -> (Catalogue, RecipeBook) {
 }
 
 fn a_good_hand() -> Maker {
-    Maker { skill: 0.85, proficiency: 0.8, knows_recipe: true, tool_familiarity: 0.9,
-            focus: 0.9, fatigue: 0.1 }
+    Maker {
+        skill: 0.85,
+        proficiency: 0.8,
+        knows_recipe: true,
+        tool_familiarity: 0.9,
+        focus: 0.9,
+        fatigue: 0.1,
+    }
 }
 
 /// Run until it finishes or stops for a reason. Returns the reason.
-fn run(order: &mut WorkOrder, book: &RecipeBook, cat: &Catalogue, place: &Workplace, m: Maker)
-    -> Halt
-{
+fn run(
+    order: &mut WorkOrder,
+    book: &RecipeBook,
+    cat: &Catalogue,
+    place: &Workplace,
+    m: Maker,
+) -> Halt {
     let mut last = Halt::Running;
     for _ in 0..4000 {
         let before = (order.step, order.step_done, order.elapsed_min);
@@ -55,16 +65,32 @@ fn run(order: &mut WorkOrder, book: &RecipeBook, cat: &Catalogue, place: &Workpl
 fn one_result_has_more_than_one_plan() {
     let (cat, book) = world();
     let ways = book.ways_to_make(cat.must("wooden chair"));
-    assert!(ways.len() >= 3, "only {} way(s) to make a chair", ways.len());
+    assert!(
+        ways.len() >= 3,
+        "only {} way(s) to make a chair",
+        ways.len()
+    );
 
-    let setups: Vec<f64> = ways.iter().map(|&i| book.get(i).unwrap().setup_minutes).collect();
-    assert!(setups.iter().fold(0.0f64, |a, b| a.max(*b)) > 10.0 * setups.iter().fold(f64::MAX, |a, b| a.min(*b)));
+    let setups: Vec<f64> = ways
+        .iter()
+        .map(|&i| book.get(i).unwrap().setup_minutes)
+        .collect();
+    assert!(
+        setups.iter().fold(0.0f64, |a, b| a.max(*b))
+            > 10.0 * setups.iter().fold(f64::MAX, |a, b| a.min(*b))
+    );
 
     // And the same materials come out of every one of them: scale buys
     // speed and consistency, never cheaper timber.
-    let mass: Vec<f64> = ways.iter().map(|&i| book.get(i).unwrap().implied_product_mass(&cat)).collect();
+    let mass: Vec<f64> = ways
+        .iter()
+        .map(|&i| book.get(i).unwrap().implied_product_mass(&cat))
+        .collect();
     for m in &mass {
-        assert!((m - mass[0]).abs() < 1e-9, "one plan made a chair of a different weight");
+        assert!(
+            (m - mass[0]).abs() < 1e-9,
+            "one plan made a chair of a different weight"
+        );
     }
 }
 
@@ -130,13 +156,18 @@ fn no_recipe_swallows_its_own_tools() {
             r.consumes_a_tool(&cat).is_none(),
             "{} eats {:?}",
             r.name,
-            r.consumes_a_tool(&cat).and_then(|d| cat.get(d)).map(|d| d.name)
+            r.consumes_a_tool(&cat)
+                .and_then(|d| cat.get(d))
+                .map(|d| d.name)
         );
     }
     // Whereas welding wire, glue and thread genuinely are consumed, and
     // the catalogue says so.
     for n in ["welding wire", "wood glue", "thread reel"] {
-        assert!(cat.get(cat.must(n)).unwrap().consumable, "{n} was not consumable");
+        assert!(
+            cat.get(cat.must(n)).unwrap().consumable,
+            "{n} was not consumable"
+        );
     }
 }
 
@@ -161,13 +192,23 @@ fn nobody_is_paid_to_watch_glue_dry() {
         o.advance(20.0, &book, &cat, &place, a_good_hand());
         guard += 1;
     }
-    assert_eq!(o.state, Halt::Unattended, "the order never reached a step nobody attends");
+    assert_eq!(
+        o.state,
+        Halt::Unattended,
+        "the order never reached a step nobody attends"
+    );
 
     let labour = o.active_labour_min;
     let elapsed = o.elapsed_min;
     o.advance(600.0, &book, &cat, &place, a_good_hand());
-    assert!((o.active_labour_min - labour).abs() < 1e-9, "somebody was paid to watch glue dry");
-    assert!((o.elapsed_min - elapsed - 600.0).abs() < 1e-6, "the clock did not run");
+    assert!(
+        (o.active_labour_min - labour).abs() < 1e-9,
+        "somebody was paid to watch glue dry"
+    );
+    assert!(
+        (o.elapsed_min - elapsed - 600.0).abs() < 1e-6,
+        "the clock did not run"
+    );
     assert!(o.unattended_min >= 600.0);
 }
 
@@ -179,9 +220,17 @@ fn nobody_is_paid_to_watch_glue_dry() {
 fn work_time_and_elapsed_time_are_different_numbers() {
     let (_cat, book) = world();
     let loaf = book.get(book.must("loaf")).unwrap();
-    assert!((loaf.labour_minutes() - 35.0).abs() < 1e-9, "labour came to {}", loaf.labour_minutes());
+    assert!(
+        (loaf.labour_minutes() - 35.0).abs() < 1e-9,
+        "labour came to {}",
+        loaf.labour_minutes()
+    );
     assert!((loaf.machine_minutes() - 35.0).abs() < 1e-9);
-    assert!(loaf.span_minutes() > 120.0, "elapsed came to {}", loaf.span_minutes());
+    assert!(
+        loaf.span_minutes() > 120.0,
+        "elapsed came to {}",
+        loaf.span_minutes()
+    );
     assert!(
         loaf.span_minutes() > 3.0 * loaf.labour_minutes(),
         "the clock and the wage bill were nearly the same figure"
@@ -190,7 +239,10 @@ fn work_time_and_elapsed_time_are_different_numbers() {
     // Which is the whole point: staffing a bakery off elapsed time hires
     // three and a half times too many people.
     let overstated = loaf.span_minutes() / loaf.labour_minutes();
-    assert!(overstated > 3.4 && overstated < 3.8, "overstatement was {overstated:.2}x");
+    assert!(
+        overstated > 3.4 && overstated < 3.8,
+        "overstatement was {overstated:.2}x"
+    );
 }
 
 /// **Gate: a batch saves setup and nothing else.**
@@ -207,7 +259,10 @@ fn a_batch_amortises_the_setup_and_not_the_work() {
     let per_one = one;
     let per_forty = forty / 40.0;
 
-    assert!(per_forty < per_one, "a run of forty was no cheaper per chair");
+    assert!(
+        per_forty < per_one,
+        "a run of forty was no cheaper per chair"
+    );
     // But never below the labour the chair itself takes.
     assert!(
         per_forty > r.labour_minutes() * 0.999,
@@ -236,8 +291,14 @@ fn one_recipe_two_workshops() {
 
     let mut by_hand = WorkOrder::begin(21, plan, 1, 0, 1);
     let mut by_works = WorkOrder::begin(21, plan, 1, 0, 1);
-    assert_eq!(run(&mut by_hand, &book, &cat, &bench, a_good_hand()), Halt::Done);
-    assert_eq!(run(&mut by_works, &book, &cat, &works, a_good_hand()), Halt::Done);
+    assert_eq!(
+        run(&mut by_hand, &book, &cat, &bench, a_good_hand()),
+        Halt::Done
+    );
+    assert_eq!(
+        run(&mut by_works, &book, &cat, &works, a_good_hand()),
+        Halt::Done
+    );
 
     let a = by_hand.deliver(&book, &cat, 1).unwrap();
     let b = by_works.deliver(&book, &cat, 1).unwrap();
@@ -245,12 +306,19 @@ fn one_recipe_two_workshops() {
     // The same chair, out of the same timber. **Material spoiled over the
     // plan is scrap, not a heavier chair** — so the two come out at the
     // same weight even though the bench got through more board.
-    assert!((a.mass_kg - b.mass_kg).abs() < 1e-6, "the works made a chair of a different weight");
+    assert!(
+        (a.mass_kg - b.mass_kg).abs() < 1e-6,
+        "the works made a chair of a different weight"
+    );
     assert_eq!(a.materials.chiefly(), b.materials.chiefly());
 
     let board = cat.must("oak board");
     let used = |o: &WorkOrder| {
-        o.consumed_items.iter().find(|c| c.0 == board).map(|c| c.1).unwrap_or(0.0)
+        o.consumed_items
+            .iter()
+            .find(|c| c.0 == board)
+            .map(|c| c.1)
+            .unwrap_or(0.0)
     };
     assert!(used(&by_hand) >= 1.0 && used(&by_works) >= 1.0);
     assert!(
@@ -271,7 +339,10 @@ fn one_recipe_two_workshops() {
     assert!(by_works.unattended_min >= 720.0 && by_hand.unattended_min >= 720.0);
 
     // And only the works drew any power.
-    assert!(by_hand.power_kwh == 0.0, "a man with a handsaw used electricity");
+    assert!(
+        by_hand.power_kwh == 0.0,
+        "a man with a handsaw used electricity"
+    );
     assert!(by_works.power_kwh > 0.0, "a bandsaw ran on nothing");
 }
 
@@ -293,10 +364,17 @@ fn the_grid_goes_down_and_the_oven_stops() {
     let mut o = WorkOrder::begin(31, plan, 1, 0, 1);
     let why = run(&mut o, &book, &cat, &dark, a_good_hand());
     assert_eq!(why, Halt::NoPower, "the bakery carried on in the dark");
-    assert_eq!(o.step, 3, "it stopped at step {} rather than at the oven", o.step);
+    assert_eq!(
+        o.step, 3,
+        "it stopped at step {} rather than at the oven",
+        o.step
+    );
     // Mixing, shaping and proving all happened. The dough is real and it
     // is sitting there.
-    assert!(o.intermediates.iter().any(|&(d, n)| d == cat.must("risen dough") && n > 0.0));
+    assert!(o
+        .intermediates
+        .iter()
+        .any(|&(d, n)| d == cat.must("risen dough") && n > 0.0));
 
     // Put the power back and it finishes from where it stopped.
     let lit = Workplace::a_factory(machine_shop(&cat), 2.0, 1);
@@ -318,11 +396,18 @@ fn a_man_with_a_handsaw_does_not_notice_a_blackout() {
     dark_works.power = false;
 
     let mut by_hand = WorkOrder::begin(41, plan, 1, 0, 1);
-    assert_eq!(run(&mut by_hand, &book, &cat, &dark_bench, a_good_hand()), Halt::Done);
+    assert_eq!(
+        run(&mut by_hand, &book, &cat, &dark_bench, a_good_hand()),
+        Halt::Done
+    );
 
     let mut by_works = WorkOrder::begin(41, plan, 1, 0, 1);
     let why = run(&mut by_works, &book, &cat, &dark_works, a_good_hand());
-    assert_eq!(why, Halt::NoPower, "the works ran its bandsaw off the mains it did not have");
+    assert_eq!(
+        why,
+        Halt::NoPower,
+        "the works ran its bandsaw off the mains it did not have"
+    );
 }
 
 /// **Gate: an interruption leaves the intermediates where they are.**
@@ -353,12 +438,17 @@ fn a_stoppage_does_not_swallow_the_work_so_far() {
         "the cut parts vanished when the work stopped"
     );
     assert!(
-        o.waste.iter().any(|&(m, kg)| m == Material::Oak && kg > 1.0),
+        o.waste
+            .iter()
+            .any(|&(m, kg)| m == Material::Oak && kg > 1.0),
         "the offcuts vanished too"
     );
     // And the glue and the screws were never touched, because that step
     // never began.
-    assert!(!o.consumed_items.iter().any(|&(d, n)| d == cat.must("wood glue") && n > 0.0));
+    assert!(!o
+        .consumed_items
+        .iter()
+        .any(|&(d, n)| d == cat.must("wood glue") && n > 0.0));
 }
 
 // =====================================================================
@@ -376,8 +466,14 @@ fn a_botched_weld_stays_botched_across_a_reload() {
     let plan = book.must("chair, hand tools");
     let place = Workplace::a_workshop(hand_tools(&cat));
     // Somebody clumsy, so that something actually goes wrong.
-    let clumsy = Maker { skill: 0.15, proficiency: 0.1, knows_recipe: true,
-                         tool_familiarity: 0.2, focus: 0.3, fatigue: 0.7 };
+    let clumsy = Maker {
+        skill: 0.15,
+        proficiency: 0.1,
+        knows_recipe: true,
+        tool_familiarity: 0.2,
+        focus: 0.3,
+        fatigue: 0.7,
+    };
 
     let mut once = WorkOrder::begin(97, plan, 1, 0, 1);
     run(&mut once, &book, &cat, &place, clumsy);
@@ -385,7 +481,10 @@ fn a_botched_weld_stays_botched_across_a_reload() {
     // The same order run again from scratch.
     let mut twice = WorkOrder::begin(97, plan, 1, 0, 1);
     run(&mut twice, &book, &cat, &place, clumsy);
-    assert_eq!(once.completed, twice.completed, "the same work went two different ways");
+    assert_eq!(
+        once.completed, twice.completed,
+        "the same work went two different ways"
+    );
 
     // And the same order saved part way through and resumed.
     let mut part = WorkOrder::begin(97, plan, 1, 0, 1);
@@ -396,7 +495,10 @@ fn a_botched_weld_stays_botched_across_a_reload() {
     run(&mut a, &book, &cat, &place, clumsy);
     run(&mut b, &book, &cat, &place, clumsy);
     assert_eq!(a.completed, b.completed, "reloading changed what happened");
-    assert_eq!(a.completed, once.completed, "resuming differed from running straight through");
+    assert_eq!(
+        a.completed, once.completed,
+        "resuming differed from running straight through"
+    );
 }
 
 /// **A mishap happens to an operation, not to the object.** A clumsy
@@ -415,8 +517,14 @@ fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
     let place = Workplace::a_workshop(hand_tools(&cat));
 
     let good = a_good_hand();
-    let poor = Maker { skill: 0.12, proficiency: 0.1, knows_recipe: true,
-                       tool_familiarity: 0.2, focus: 0.25, fatigue: 0.8 };
+    let poor = Maker {
+        skill: 0.12,
+        proficiency: 0.1,
+        knows_recipe: true,
+        tool_familiarity: 0.2,
+        focus: 0.25,
+        fatigue: 0.8,
+    };
 
     let over_a_batch = |m: Maker| {
         let (mut quality, mut made, mut accepted, mut reworked, mut scrapped) =
@@ -442,8 +550,14 @@ fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
     let (fine, made_fine, acc_g, rew_g, scr_g) = over_a_batch(good);
     let (rough, made_rough, acc_p, rew_p, scr_p) = over_a_batch(poor);
 
-    assert!(made_fine > 190.0, "a skilled joiner finished only {made_fine} of 200 chairs");
-    assert!(made_rough > 100.0, "the novice finished almost nothing: {made_rough}");
+    assert!(
+        made_fine > 190.0,
+        "a skilled joiner finished only {made_fine} of 200 chairs"
+    );
+    assert!(
+        made_rough > 100.0,
+        "the novice finished almost nothing: {made_rough}"
+    );
     assert!(
         fine > rough + 0.05,
         "workmanship came out the same: {fine:.3} against {rough:.3}"
@@ -473,18 +587,30 @@ fn a_poor_hand_makes_a_poor_chair_and_not_no_chair() {
 #[test]
 fn a_scrap_rate_does_not_imply_a_first_pass_yield() {
     let ordinary = ProcessCapability {
-        baseline: 0.0, worker: 0.0, tool: 0.0, workplace: 0.0, material: 0.0, difficulty: 0.0,
+        baseline: 0.0,
+        worker: 0.0,
+        tool: 0.0,
+        workplace: 0.0,
+        material: 0.0,
+        difficulty: 0.0,
     };
     let y = ordinary.yields();
 
     // They are three fields, and they sum to one because every unit goes
     // somewhere.
     assert!((y.first_pass + y.rework + y.scrap - 1.0).abs() < 1e-9);
-    assert!(y.scrap < y.rework, "an ordinary shop scrapped more than it put right");
+    assert!(
+        y.scrap < y.rework,
+        "an ordinary shop scrapped more than it put right"
+    );
 
     // A scrap rate inside the real 1-5% band sits alongside a first-pass
     // yield well under 99%: the two are simply not the same measurement.
-    assert!((0.005..=0.05).contains(&y.scrap), "scrap came to {:.3}", y.scrap);
+    assert!(
+        (0.005..=0.05).contains(&y.scrap),
+        "scrap came to {:.3}",
+        y.scrap
+    );
     assert!(y.first_pass < 0.99, "an ordinary shop was world class");
     assert!(y.first_pass > 0.90);
     assert!(
@@ -494,8 +620,18 @@ fn a_scrap_rate_does_not_imply_a_first_pass_yield() {
 
     // A better process improves all three, and a worse one is worse on all
     // three — but never by the same factor.
-    let good = ProcessCapability { worker: 0.4, tool: 0.2, workplace: 0.25, ..ordinary };
-    let bad = ProcessCapability { worker: -0.4, tool: -0.2, difficulty: 0.5, ..ordinary };
+    let good = ProcessCapability {
+        worker: 0.4,
+        tool: 0.2,
+        workplace: 0.25,
+        ..ordinary
+    };
+    let bad = ProcessCapability {
+        worker: -0.4,
+        tool: -0.2,
+        difficulty: 0.5,
+        ..ordinary
+    };
     assert!(good.yields().first_pass > y.first_pass);
     assert!(bad.yields().first_pass < y.first_pass);
     assert!(bad.yields().scrap > good.yields().scrap * 10.0);
@@ -521,7 +657,10 @@ fn a_long_plan_is_harder_to_get_right_than_a_short_one() {
 
     let over_all_six = rolled_throughput_yield(fpy, chair.steps.len());
     assert!(over_all_six < fpy, "six operations were as easy as one");
-    assert!(over_all_six > 0.5, "a skilled joiner botched half his chairs: {over_all_six:.2}");
+    assert!(
+        over_all_six > 0.5,
+        "a skilled joiner botched half his chairs: {over_all_six:.2}"
+    );
 }
 
 /// **Gate: the influences combine, then the outcome is calculated once.**
@@ -532,23 +671,41 @@ fn a_long_plan_is_harder_to_get_right_than_a_short_one() {
 #[test]
 fn a_bad_tool_and_a_bad_hand_are_additively_bad() {
     let base = ProcessCapability {
-        baseline: 0.0, worker: 0.0, tool: 0.0, workplace: 0.0, material: 0.0, difficulty: 0.0,
+        baseline: 0.0,
+        worker: 0.0,
+        tool: 0.0,
+        workplace: 0.0,
+        material: 0.0,
+        difficulty: 0.0,
     };
-    let bad_hand = ProcessCapability { worker: -0.3, ..base };
+    let bad_hand = ProcessCapability {
+        worker: -0.3,
+        ..base
+    };
     let bad_tool = ProcessCapability { tool: -0.3, ..base };
-    let both = ProcessCapability { worker: -0.3, tool: -0.3, ..base };
+    let both = ProcessCapability {
+        worker: -0.3,
+        tool: -0.3,
+        ..base
+    };
 
     assert!((both.effective() - (bad_hand.effective() + bad_tool.effective())).abs() < 1e-9);
 
     // And the defect rate that comes out of it is bounded rather than
     // compounding away: two poor contributions do not make the work
     // impossible.
-    assert!(both.yields().first_pass > 0.6, "two setbacks made the job unperformable");
+    assert!(
+        both.yields().first_pass > 0.6,
+        "two setbacks made the job unperformable"
+    );
     assert!(both.yields().first_pass < bad_hand.yields().first_pass);
 
     // A single mapping, so the same total gives the same rates however it
     // was arrived at.
-    let elsewhere = ProcessCapability { workplace: -0.6, ..base };
+    let elsewhere = ProcessCapability {
+        workplace: -0.6,
+        ..base
+    };
     assert_eq!(elsewhere.yields(), both.yields());
 }
 
@@ -583,20 +740,32 @@ fn a_mistake_over_primers_is_not_a_wasted_component() {
     let (cat, book) = world();
     let plan = book.must("cartridge, handloaded");
     let place = Workplace::a_workshop(hand_tools(&cat));
-    let careless = Maker { skill: 0.1, proficiency: 0.05, knows_recipe: true,
-                           tool_familiarity: 0.1, focus: 0.2, fatigue: 0.9 };
+    let careless = Maker {
+        skill: 0.1,
+        proficiency: 0.05,
+        knows_recipe: true,
+        tool_familiarity: 0.1,
+        focus: 0.2,
+        fatigue: 0.9,
+    };
 
     let mut hurt = 0;
     for id in 0..400u64 {
         let mut o = WorkOrder::begin(id, plan, 1, 0, 1);
         run(&mut o, &book, &cat, &place, careless);
         if o.completed.iter().any(|r| {
-            matches!(r.mishap, scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire)
+            matches!(
+                r.mishap,
+                scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire
+            )
         }) {
             hurt += 1;
         }
     }
-    assert!(hurt > 0, "four hundred careless handloading sessions hurt nobody");
+    assert!(
+        hurt > 0,
+        "four hundred careless handloading sessions hurt nobody"
+    );
 
     // And the same person doing something with no hazard in it is never
     // hurt by it, however badly it goes.
@@ -606,7 +775,10 @@ fn a_mistake_over_primers_is_not_a_wasted_component() {
         let mut o = WorkOrder::begin(id, sewing, 1, 0, 1);
         run(&mut o, &book, &cat, &place, careless);
         if o.completed.iter().any(|r| {
-            matches!(r.mishap, scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire)
+            matches!(
+                r.mishap,
+                scale_sim::craft::Mishap::Injury | scale_sim::craft::Mishap::Fire
+            )
         }) {
             sewn_hurt += 1;
         }
@@ -636,7 +808,9 @@ fn what_went_in_is_what_the_record_says() {
     let good_chair = proper.deliver(&book, &cat, 1).unwrap();
 
     let mut bodged = WorkOrder::begin(71, plan, 1, 0, 1);
-    bodged.substituted(oak, cheap, &cat, &book).expect("a sheet would not do");
+    bodged
+        .substituted(oak, cheap, &cat, &book)
+        .expect("a sheet would not do");
     run(&mut bodged, &book, &cat, &place, a_good_hand());
     let cheap_chair = bodged.deliver(&book, &cat, 1).unwrap();
 
@@ -668,16 +842,23 @@ fn what_went_in_is_what_the_record_says() {
             .chiefly()
     };
     assert_eq!(made_of(&good_chair), Some(Material::Oak));
-    assert_eq!(made_of(&cheap_chair), Some(Material::Particleboard),
-               "the definition said oak and the record believed it");
+    assert_eq!(
+        made_of(&cheap_chair),
+        Some(Material::Particleboard),
+        "the definition said oak and the record believed it"
+    );
 
     // **And the board is not in the chair.** A record that listed the
     // stock rather than the parts would hand back the offcuts to anybody
     // who took the chair apart.
     for c in [&good_chair, &cheap_chair] {
         let r = c.assembly.as_ref().unwrap();
-        assert!(!r.components.iter().any(|x| x.definition == oak || x.definition == cheap),
-                "the raw board was listed as part of the chair");
+        assert!(
+            !r.components
+                .iter()
+                .any(|x| x.definition == oak || x.definition == cheap),
+            "the raw board was listed as part of the chair"
+        );
         assert!(
             (r.total_component_mass() - c.mass_kg).abs() < 0.02,
             "the record adds up to {:.3} kg and the chair weighs {:.3}",
@@ -707,11 +888,18 @@ fn the_record_says_how_it_was_held_together() {
     let chair = o.deliver(&book, &cat, 1).unwrap();
     let rec = chair.assembly.as_ref().unwrap();
 
-    assert!(rec.joints.iter().any(|j| j.method == JointMethod::Glued), "nothing was glued");
+    assert!(
+        rec.joints.iter().any(|j| j.method == JointMethod::Glued),
+        "nothing was glued"
+    );
     assert!(rec.work_order == Some(81));
     // Glue went in as a material, not as a bottle.
-    assert!(rec.components.iter().any(|c| c.definition == cat.must("wood glue"))
-        || rec.consumed.iter().any(|c| c.0 == Material::Adhesive));
+    assert!(
+        rec.components
+            .iter()
+            .any(|c| c.definition == cat.must("wood glue"))
+            || rec.consumed.iter().any(|c| c.0 == Material::Adhesive)
+    );
 
     // A pair of trousers is stitched, and knows it.
     let mut t = WorkOrder::begin(82, book.must("work trousers"), 1, 0, 1);
@@ -731,12 +919,20 @@ fn the_record_says_how_it_was_held_together() {
 fn every_run_accounts_for_every_kilogram() {
     let (cat, book) = world();
     let place = Workplace::a_workshop(hand_tools(&cat));
-    for (id, name) in [(1u64, "chair, hand tools"), (2, "loaf"), (3, "work trousers"),
-                       (4, "cartridge, handloaded")] {
+    for (id, name) in [
+        (1u64, "chair, hand tools"),
+        (2, "loaf"),
+        (3, "work trousers"),
+        (4, "cartridge, handloaded"),
+    ] {
         let mut o = WorkOrder::begin(id, book.must(name), 1, 0, 1);
         run(&mut o, &book, &cat, &place, a_good_hand());
         let b = o.balance(&book, &cat);
-        assert!(b.closes(1e-9), "{name}: {:.6} kg unaccounted for", b.residual());
+        assert!(
+            b.closes(1e-9),
+            "{name}: {:.6} kg unaccounted for",
+            b.residual()
+        );
         assert!(b.product_kg > 0.0, "{name} produced nothing");
         assert!(b.inputs_kg >= b.product_kg, "{name} made more than it took");
     }
@@ -750,7 +946,11 @@ fn only_states_worth_having_become_objects() {
     let (cat, book) = world();
     let chair = book.get(book.must("chair, hand tools")).unwrap();
     let leaves: Vec<_> = chair.steps.iter().filter(|s| s.leaves.is_some()).collect();
-    assert_eq!(leaves.len(), 1, "every step in the chair left an object behind");
+    assert_eq!(
+        leaves.len(),
+        1,
+        "every step in the chair left an object behind"
+    );
     assert_eq!(leaves[0].name, "cut members");
 
     let loaf = book.get(book.must("loaf")).unwrap();
@@ -759,7 +959,11 @@ fn only_states_worth_having_become_objects() {
     assert!(named.contains(&cat.must("risen dough")));
 
     // And the resting step is the one nobody attends.
-    let rest = loaf.steps.iter().find(|s| matches!(s.effort, Effort::Unattended { .. })).unwrap();
+    let rest = loaf
+        .steps
+        .iter()
+        .find(|s| matches!(s.effort, Effort::Unattended { .. }))
+        .unwrap();
     assert_eq!(rest.name, "prove");
     assert_eq!(rest.effort.labour_minutes(), 0.0);
 }
@@ -784,13 +988,15 @@ fn a_finished_order_needs_a_destination() {
     let mut store = Store::new();
 
     // Onto the floor: always fine.
-    let mut onto_the_floor =
-        WorkOrder::begin_for(1, plan, 1, 0, 1, Placement::anywhere());
+    let mut onto_the_floor = WorkOrder::begin_for(1, plan, 1, 0, 1, Placement::anywhere());
     run(&mut onto_the_floor, &book, &cat, &place, a_good_hand());
     let id = onto_the_floor
         .deliver_into(&book, &cat, 1, &mut store)
         .expect("a chair would not go on the floor");
-    assert!(matches!(store.placement(id), Some(Placement::Ground { .. })));
+    assert!(matches!(
+        store.placement(id),
+        Some(Placement::Ground { .. })
+    ));
     assert!(onto_the_floor.delivered);
     // And it is handed over exactly once.
     assert_eq!(
@@ -828,21 +1034,34 @@ fn a_finished_order_needs_a_destination() {
         Err(Blocked::NoRoom { parked }) => parked,
         other => panic!("a man already carrying his limit took a chair as well: {other:?}"),
     };
-    assert!(store.get(parked).is_some(), "the chair that could not be handed over vanished");
+    assert!(
+        store.get(parked).is_some(),
+        "the chair that could not be handed over vanished"
+    );
     assert_eq!(
         store.placement(parked).and_then(|p| p.occupying()),
         Some(0),
         "the finished chair is not holding up the bench it is sitting on"
     );
-    assert!(too_heavy.delivered, "the work was not done, though the chair exists");
+    assert!(
+        too_heavy.delivered,
+        "the work was not done, though the chair exists"
+    );
     // And it cannot be rerolled by choosing somewhere else: the same
     // object moves.
     let was = store.get(parked).unwrap().quality.overall();
     too_heavy
         .unload(&mut store, &cat, parked, Placement::anywhere())
         .expect("it would not go on the floor either");
-    assert!(matches!(store.placement(parked), Some(Placement::Ground { .. })));
-    assert_eq!(store.get(parked).unwrap().quality.overall(), was, "moving it rerolled it");
+    assert!(matches!(
+        store.placement(parked),
+        Some(Placement::Ground { .. })
+    ));
+    assert_eq!(
+        store.get(parked).unwrap().quality.overall(),
+        was,
+        "moving it rerolled it"
+    );
 
     // **A mount is not a destination.** You do not finish a chair into a
     // bracket.
@@ -852,7 +1071,10 @@ fn a_finished_order_needs_a_destination() {
         1,
         0,
         1,
-        Placement::Installed { host: scale_sim::item::Host::Vehicle(1), mount: 0 },
+        Placement::Installed {
+            host: scale_sim::item::Host::Vehicle(1),
+            mount: 0,
+        },
     );
     run(&mut nonsense, &book, &cat, &place, a_good_hand());
     assert!(matches!(

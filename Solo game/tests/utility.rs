@@ -43,14 +43,20 @@ fn a_year(
 #[test]
 fn using_nothing_still_costs_something() {
     let t = Tariff::ordinary();
-    assert!(t.bill_for(0.0) > 0.0, "a month of using nothing came to nothing");
+    assert!(
+        t.bill_for(0.0) > 0.0,
+        "a month of using nothing came to nothing"
+    );
     assert!((t.bill_for(0.0) - t.standing_charge).abs() < 1e-9);
 
     // **And the last unit costs more than the first.** An inclining block
     // tariff is how a regulator makes heavy use pay for itself.
     let light = t.bill_for(200.0);
     let heavy = t.bill_for(1_200.0);
-    assert!(heavy > light * 6.0, "six times the units cost less than six times the money");
+    assert!(
+        heavy > light * 6.0,
+        "six times the units cost less than six times the money"
+    );
     assert!(t.marginal_rate(1_000.0) > t.marginal_rate(100.0));
 
     // The fixed charge is a far larger share of a small bill, which is the
@@ -100,8 +106,14 @@ fn the_meter_is_read_once_a_month() {
         "the bill was {first:.2} against a month of use at {:.2}",
         t.bill_for(28.0 * 30.0)
     );
-    assert!(first > t.bill_for(28.0) * 10.0, "a monthly bill covered a day");
-    assert!(first < t.bill_for(28.0) * 30.0, "a month cost thirty standing charges");
+    assert!(
+        first > t.bill_for(28.0) * 10.0,
+        "a monthly bill covered a day"
+    );
+    assert!(
+        first < t.bill_for(28.0) * 30.0,
+        "a month cost thirty standing charges"
+    );
 }
 
 /// **Gate: nobody is cut off the day they cannot pay.**
@@ -134,7 +146,10 @@ fn the_road_to_being_cut_off_has_four_steps_and_takes_months() {
     );
     // Which is months, not a week.
     assert!(cut > 70, "cut off after {cut} days of not paying");
-    assert!(cut < 130, "still on supply after {cut} days of paying nothing at all");
+    assert!(
+        cut < 130,
+        "still on supply after {cut} days of paying nothing at all"
+    );
 
     // **A household that pays keeps its supply**, obviously, and the gate
     // is here because the one above is only meaningful against it.
@@ -162,7 +177,10 @@ fn a_minnesota_winter_forbids_it_and_the_debt_grows_instead() {
     let mut in_mild = Account::new(Tariff::ordinary());
     let (_, cut_mild, _) = a_year(&mut in_mild, 40.0, 0.0, mild, 305);
 
-    assert!(protected > 30, "a Minnesota winter protected nobody for {protected} days");
+    assert!(
+        protected > 30,
+        "a Minnesota winter protected nobody for {protected} days"
+    );
     let cut_cold = cut_cold.expect("never cut off at all, even in May");
     let cut_mild = cut_mild.expect("a temperate household was never cut off");
     assert!(
@@ -180,10 +198,19 @@ fn a_minnesota_winter_forbids_it_and_the_debt_grows_instead() {
     );
 
     // The protection is seasonal, not permanent.
-    assert!(protected_today(cold, 15), "mid-January in Minnesota was not protected");
-    assert!(!protected_today(cold, 190), "July in Minnesota was protected from the cold");
+    assert!(
+        protected_today(cold, 15),
+        "mid-January in Minnesota was not protected"
+    );
+    assert!(
+        !protected_today(cold, 190),
+        "July in Minnesota was protected from the cold"
+    );
     // And where the danger is heat, the rule sits over the summer instead.
-    assert!(protected_today(Climate::hot(), 200), "a July heatwave in Florida was not protected");
+    assert!(
+        protected_today(Climate::hot(), 200),
+        "a July heatwave in Florida was not protected"
+    );
     assert!(!protected_today(Climate::hot(), 15));
 }
 
@@ -213,11 +240,17 @@ fn being_cut_off_is_harder_to_get_out_of_than_into() {
     );
 
     // Part-paying does not do it.
-    assert!(!reconnect(&mut a, to_get_back * 0.9), "it reconnected on nine tenths of the money");
+    assert!(
+        !reconnect(&mut a, to_get_back * 0.9),
+        "it reconnected on nine tenths of the money"
+    );
     assert_eq!(a.standing, Standing::Disconnected);
     assert!(reconnect(&mut a, to_get_back));
     assert_eq!(a.standing, Standing::Current);
-    assert!(a.deposit > 0.0, "a customer with a record of not paying left no deposit");
+    assert!(
+        a.deposit > 0.0,
+        "a customer with a record of not paying left no deposit"
+    );
 
     // **And a disconnected meter records nothing.** Being cut off is not a
     // discount, it is the absence of supply.
@@ -226,7 +259,10 @@ fn being_cut_off_is_harder_to_get_out_of_than_into() {
     for d in 0..40u32 {
         a_day(&mut off, 40.0, 0.0, mild, d);
     }
-    assert!(off.unbilled_kwh < 1e-9, "a cut-off house was still running the meter");
+    assert!(
+        off.unbilled_kwh < 1e-9,
+        "a cut-off house was still running the meter"
+    );
 }
 
 /// **Gate: a levelised plan changes nothing about the bill and everything
@@ -249,7 +285,10 @@ fn budget_billing_does_not_make_it_cheaper() {
     // **What it buys is that the worst month is not the worst month.** A
     // January of 2,000 kWh against a levelised twelfth.
     let january = t.bill_for(2_000.0);
-    assert!(january > monthly * 1.5, "a hard January was no worse than an average month");
+    assert!(
+        january > monthly * 1.5,
+        "a hard January was no worse than an average month"
+    );
 }
 
 /// **Gate: help with the bill is targeted at burden, not at poverty as
@@ -267,11 +306,17 @@ fn assistance_goes_to_the_households_it_costs_most() {
     // A low-income one: an 8.6% burden, which is the real average for the
     // bottom of the distribution.
     let poor = assistance(bill, 18_600.0, 1.0);
-    assert!(poor > 0.0, "a household spending 8.6% of its income on energy got nothing");
+    assert!(
+        poor > 0.0,
+        "a household spending 8.6% of its income on energy got nothing"
+    );
     assert!(poor < bill, "assistance covered the whole bill");
 
     // **And it is cut when the appropriation is.** Same household, a
     // programme funded at a third.
     let squeezed = assistance(bill, 18_600.0, 0.33);
-    assert!(squeezed < poor * 0.4, "cutting the funding by two thirds changed nothing");
+    assert!(
+        squeezed < poor * 0.4,
+        "cutting the funding by two thirds changed nothing"
+    );
 }

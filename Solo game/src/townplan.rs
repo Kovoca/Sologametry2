@@ -433,13 +433,7 @@ impl Plan {
     }
 
     /// The same, on ground of a known kind.
-    pub fn lay_out_on(
-        seed: u64,
-        cell: usize,
-        population: f64,
-        size: usize,
-        ground: Biome,
-    ) -> Self {
+    pub fn lay_out_on(seed: u64, cell: usize, population: f64, size: usize, ground: Biome) -> Self {
         let mut rng = Rng::new(seed ^ (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15));
         let mut lots = vec![Lot::Open; size * size];
         let mid = size as f64 / 2.0;
@@ -698,7 +692,9 @@ impl Plan {
                     continue; // not the front of the store
                 }
                 let mut deep = 1;
-                while deep < SHOP_DEEP && y + deep < size && lots[(y + deep) * size + x] == Lot::Shop
+                while deep < SHOP_DEEP
+                    && y + deep < size
+                    && lots[(y + deep) * size + x] == Lot::Shop
                 {
                     deep += 1;
                 }
@@ -731,12 +727,20 @@ impl Plan {
         let mid = size as f64 / 2.0;
         let mut lines: Vec<(usize, bool, f64)> = Vec::new(); // (index, is_column, offset)
         for x in 0..size {
-            if (0..size).filter(|&y| lots[y * size + x] == Lot::Street).count() > size / 2 {
+            if (0..size)
+                .filter(|&y| lots[y * size + x] == Lot::Street)
+                .count()
+                > size / 2
+            {
                 lines.push((x, true, (x as f64 - mid).abs()));
             }
         }
         for y in 0..size {
-            if (0..size).filter(|&x| lots[y * size + x] == Lot::Street).count() > size / 2 {
+            if (0..size)
+                .filter(|&x| lots[y * size + x] == Lot::Street)
+                .count()
+                > size / 2
+            {
                 lines.push((y, false, (y as f64 - mid).abs()));
             }
         }
@@ -1105,7 +1109,6 @@ fn touching_street(lots: &[Lot], size: usize, x: usize, y: usize) -> bool {
         (x, y.wrapping_sub(1)),
         (x, y + 1),
     ];
-    n.iter().any(|&(nx, ny)| {
-        nx < size && ny < size && lots[ny * size + nx] == Lot::Street
-    })
+    n.iter()
+        .any(|&(nx, ny)| nx < size && ny < size && lots[ny * size + nx] == Lot::Street)
 }

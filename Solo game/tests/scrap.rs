@@ -17,14 +17,23 @@ use scale_sim::scrap::*;
 #[test]
 fn what_gets_recycled_is_what_is_worth_money() {
     assert!(price_a_tonne(Material::Copper) > price_a_tonne(Material::MildSteel) * 20.0);
-    assert!(price_a_tonne(Material::Lead) > 500.0, "lead was not worth collecting");
+    assert!(
+        price_a_tonne(Material::Lead) > 500.0,
+        "lead was not worth collecting"
+    );
     assert!(price_a_tonne(Material::Glass) < price_a_tonne(Material::Aluminium) * 0.05);
 
     // **And some of it is a cost.** A negative price is not a defect in the
     // model; it is the ordinary case for a great deal of a household.
-    assert!(price_a_tonne(Material::Rubber) < 0.0, "tyres were worth money");
+    assert!(
+        price_a_tonne(Material::Rubber) < 0.0,
+        "tyres were worth money"
+    );
     assert!(price_a_tonne(Material::Propellant) < -1_000.0);
-    assert!(price_a_tonne(Material::Lithium) < 0.0, "a cell was an asset at the gate");
+    assert!(
+        price_a_tonne(Material::Lithium) < 0.0,
+        "a cell was an asset at the gate"
+    );
 
     // Every material has an answer, including the ones nobody weighs in.
     for m in ALL_MATERIALS {
@@ -45,7 +54,10 @@ fn copper_will_travel_and_glass_will_not() {
     let glass = economic_range_km(Material::Glass);
     let steel = economic_range_km(Material::MildSteel);
 
-    assert!(copper > 10_000.0, "copper stopped being worth having after {copper:.0} km");
+    assert!(
+        copper > 10_000.0,
+        "copper stopped being worth having after {copper:.0} km"
+    );
     assert!(glass < 300.0, "glass was worth hauling {glass:.0} km");
     assert!(steel > 1_000.0 && steel < copper);
 
@@ -69,10 +81,17 @@ fn a_load_of_what_nobody_wants_is_a_bill() {
     let good = Load::of(&[(Material::Copper, 1.0)]);
     let s = weigh_in(&good, &yard, 0.0);
     match s {
-        Settlement::Taken { paid, ref recovered, residue } => {
+        Settlement::Taken {
+            paid,
+            ref recovered,
+            residue,
+        } => {
             assert!(paid > 8_000.0, "a tonne of copper fetched {paid:.0}");
             assert_eq!(recovered.len(), 1);
-            assert!(residue < 1e-9, "clean copper left {residue:.2} t of residue");
+            assert!(
+                residue < 1e-9,
+                "clean copper left {residue:.2} t of residue"
+            );
         }
         other => panic!("a tonne of copper was refused: {other:?}"),
     }
@@ -87,8 +106,14 @@ fn a_load_of_what_nobody_wants_is_a_bill() {
     );
     match weigh_in(&bad, &yard, 500.0) {
         Settlement::Taken { paid, residue, .. } => {
-            assert!(paid < 0.0, "tyres and plasterboard paid the customer {paid:.0}");
-            assert!(residue > 0.9, "only {residue:.2} t of a tonne of tyres was tipped");
+            assert!(
+                paid < 0.0,
+                "tyres and plasterboard paid the customer {paid:.0}"
+            );
+            assert!(
+                residue > 0.9,
+                "only {residue:.2} t of a tonne of tyres was tipped"
+            );
         }
         other => panic!("{other:?}"),
     }
@@ -96,7 +121,10 @@ fn a_load_of_what_nobody_wants_is_a_bill() {
     // The material layer already knew which was which; this only put a
     // price on it.
     assert_eq!(Material::Copper.recovers(), Recovers::Feedstock);
-    assert!(matches!(Material::Rubber.recovers(), Recovers::Fuel | Recovers::Nothing));
+    assert!(matches!(
+        Material::Rubber.recovers(),
+        Recovers::Fuel | Recovers::Nothing
+    ));
 }
 
 /// **Gate: contamination is a discount and a loss, and past a limit it is a
@@ -113,12 +141,29 @@ fn a_dirty_load_is_worth_less_and_then_worth_nothing() {
     dirty.contamination = 0.10;
 
     let (a, b) = (weigh_in(&clean, &yard, 0.0), weigh_in(&dirty, &yard, 0.0));
-    let (Settlement::Taken { paid: clean_paid, residue: clean_res, .. }, Settlement::Taken { paid: dirty_paid, residue: dirty_res, .. }) = (a, b)
+    let (
+        Settlement::Taken {
+            paid: clean_paid,
+            residue: clean_res,
+            ..
+        },
+        Settlement::Taken {
+            paid: dirty_paid,
+            residue: dirty_res,
+            ..
+        },
+    ) = (a, b)
     else {
         panic!("a clean load of aluminium was refused")
     };
-    assert!(dirty_paid < clean_paid * 0.92, "a tenth of rubbish cost nothing");
-    assert!(dirty_res > clean_res, "the rubbish in it did not go to the hole");
+    assert!(
+        dirty_paid < clean_paid * 0.92,
+        "a tenth of rubbish cost nothing"
+    );
+    assert!(
+        dirty_res > clean_res,
+        "the rubbish in it did not go to the hole"
+    );
 
     // Past the limit it is not a discount, it is the gate closing.
     let mut filthy = Load::of(&[(Material::Aluminium, 1.0)]);
@@ -155,7 +200,10 @@ fn a_cell_in_the_bale_is_turned_away_whatever_the_paperwork_says() {
     let mut sneaky = Load::of(&[(Material::MildSteel, 0.9), (Material::Lithium, 0.1)]);
     // Declared clean, and it is not.
     sneaky.declared_hazard = false;
-    assert!(sneaky.actually_hazardous(), "a load with a lithium cell read as safe");
+    assert!(
+        sneaky.actually_hazardous(),
+        "a load with a lithium cell read as safe"
+    );
     assert_eq!(
         weigh_in(&sneaky, &ordinary, 10_000.0),
         Settlement::Refused(Refusal::Hazardous),
@@ -165,7 +213,10 @@ fn a_cell_in_the_bale_is_turned_away_whatever_the_paperwork_says() {
     // The licensed processor will, further away and for a fee.
     match weigh_in(&sneaky, &licensed, 10_000.0) {
         Settlement::Taken { paid, .. } => {
-            assert!(paid < 300.0, "a hazardous load paid {paid:.0} like clean steel");
+            assert!(
+                paid < 300.0,
+                "a hazardous load paid {paid:.0} like clean steel"
+            );
         }
         other => panic!("a licensed processor refused it: {other:?}"),
     }
@@ -193,7 +244,10 @@ fn a_dead_fridge_is_not_worth_the_trip() {
         (Material::Copper, 0.0035),
     ];
     let near = worth_as_scrap("washing machine", &washer, 5.0, false);
-    assert!(near > 0.0, "a washing machine was worth {near:.2} at the yard down the road");
+    assert!(
+        near > 0.0,
+        "a washing machine was worth {near:.2} at the yard down the road"
+    );
     assert!(near < 100.0, "a scrap washing machine fetched {near:.0}");
 
     // **And the refrigerant is what tips a fridge over.**
@@ -235,12 +289,21 @@ fn you_get_the_clean_price_only_if_you_have_clean_metal() {
         as_found(copper, false) < as_found(copper, true) * 0.25,
         "a motor sold for the price of bare bright wire"
     );
-    assert!(as_found(copper, false) > UNSORTED_RATE, "sorted copper was worth no more than tin");
+    assert!(
+        as_found(copper, false) > UNSORTED_RATE,
+        "sorted copper was worth no more than tin"
+    );
     // Nothing below the mixed rate is improved by being sorted — a tonne of
     // broken glass is a tonne of broken glass however carefully it is
     // presented.
-    assert_eq!(as_found(Material::Glass, false), as_found(Material::Glass, true));
-    assert_eq!(as_found(Material::Rubber, false), as_found(Material::Rubber, true));
+    assert_eq!(
+        as_found(Material::Glass, false),
+        as_found(Material::Glass, true)
+    );
+    assert_eq!(
+        as_found(Material::Rubber, false),
+        as_found(Material::Rubber, true)
+    );
 
     // **And the numbers land where the real ones do.** A 70 kg washing
     // machine at the yard down the road.
@@ -256,11 +319,20 @@ fn you_get_the_clean_price_only_if_you_have_clean_metal() {
         (8.0..22.0).contains(&as_it_stands),
         "a scrap washing machine fetched {as_it_stands:.2} against a real 10-20"
     );
-    assert!(taken_apart > as_it_stands * 2.0, "stripping it was worth nothing");
+    assert!(
+        taken_apart > as_it_stands * 2.0,
+        "stripping it was worth nothing"
+    );
 
     // Which is a real decision, and it turns on somebody's time.
-    assert!(worth_stripping(&washer, 0.75, 22.0), "45 minutes for 30 dollars was not worth it");
-    assert!(!worth_stripping(&washer, 8.0, 22.0), "a whole day for 30 dollars was worth it");
+    assert!(
+        worth_stripping(&washer, 0.75, 22.0),
+        "45 minutes for 30 dollars was not worth it"
+    );
+    assert!(
+        !worth_stripping(&washer, 8.0, 22.0),
+        "a whole day for 30 dollars was worth it"
+    );
 }
 
 /// **Gate: some things cost money to be rid of, and that is why they end up
@@ -291,7 +363,10 @@ fn a_scrap_fridge_costs_money_and_a_scrap_washer_does_not() {
         fridge_worth < 0.0,
         "a scrap fridge was worth {fridge_worth:.2} despite the refrigerant"
     );
-    assert!(washer_worth > 0.0, "a scrap washing machine was a liability");
+    assert!(
+        washer_worth > 0.0,
+        "a scrap washing machine was a liability"
+    );
 
     // **And it is the handling, not the metal.** The identical bill of
     // materials without the certified recovery is worth having.
@@ -350,7 +425,11 @@ fn a_shredded_car_leaves_a_real_pile_of_fluff() {
     );
 
     // And the fluff is a real quantity, not a rounding error.
-    assert!(fluff / total > 0.15, "the shredder residue was {:.0}%", fluff / total * 100.0);
+    assert!(
+        fluff / total > 0.15,
+        "the shredder residue was {:.0}%",
+        fluff / total * 100.0
+    );
 }
 fn a_dead_fridge() -> [(Material, f64); 4] {
     [
@@ -406,7 +485,10 @@ fn most_things_never_become_a_disposal_problem() {
     // most large appliances and costs the household nothing.
     let mut c = getting_rid_of("refrigerator", &fridge, 62.0, &town);
     c.being_replaced = true;
-    assert!(matches!(how_to_get_rid_of_it(&c), HowToGetRidOfIt::TradeIn { .. }));
+    assert!(matches!(
+        how_to_get_rid_of_it(&c),
+        HowToGetRidOfIt::TradeIn { .. }
+    ));
 
     // **A deposit beats everything**, because it is money for doing what
     // you were going to do anyway — and it is the whole reason 99% of
@@ -432,8 +514,14 @@ fn most_things_never_become_a_disposal_problem() {
     c.still_works = true;
     c.charity_nearby = true;
     assert_eq!(how_to_get_rid_of_it(&c), HowToGetRidOfIt::Donate);
-    assert!(!a_charity_would_take_it("radio set", false), "a charity took a broken radio");
-    assert!(!a_charity_would_take_it("bed", true), "a charity took a mattress");
+    assert!(
+        !a_charity_would_take_it("radio set", false),
+        "a charity took a broken radio"
+    );
+    assert!(
+        !a_charity_would_take_it("bed", true),
+        "a charity took a mattress"
+    );
 
     // **Put it on the pavement and it goes** — but only if there is metal
     // in it, because it is the scrappers who take it. Something with a few
@@ -446,7 +534,10 @@ fn most_things_never_become_a_disposal_problem() {
     assert_eq!(how_to_get_rid_of_it(&c), HowToGetRidOfIt::LeaveItOut);
     // And with nobody about to take it, the same thing is a chore.
     c.scrappers_about = false;
-    assert!(!matches!(how_to_get_rid_of_it(&c), HowToGetRidOfIt::LeaveItOut));
+    assert!(!matches!(
+        how_to_get_rid_of_it(&c),
+        HowToGetRidOfIt::LeaveItOut
+    ));
 
     // **Or it goes in the loft**, which is what happens to most things and
     // is a decision deferred rather than taken.
@@ -478,7 +569,10 @@ fn owning_a_truck_is_worth_money_once_you_have_a_load() {
     let mut alone = getting_rid_of("refrigerator", &fridge, 62.0, &town);
     alone.carrying = Carrying::ATruck;
     assert!(
-        !matches!(how_to_get_rid_of_it(&alone), HowToGetRidOfIt::TakeItYourself { .. }),
+        !matches!(
+            how_to_get_rid_of_it(&alone),
+            HowToGetRidOfIt::TakeItYourself { .. }
+        ),
         "he made a special trip for one fridge"
     );
 
@@ -497,7 +591,10 @@ fn owning_a_truck_is_worth_money_once_you_have_a_load() {
     let mut in_a_car = a_load;
     in_a_car.carrying = Carrying::ACar;
     assert!(
-        !matches!(how_to_get_rid_of_it(&in_a_car), HowToGetRidOfIt::TakeItYourself { .. }),
+        !matches!(
+            how_to_get_rid_of_it(&in_a_car),
+            HowToGetRidOfIt::TakeItYourself { .. }
+        ),
         "a fridge went in the back of a car"
     );
     assert!(with_a_truck.cost() < how_to_get_rid_of_it(&in_a_car).cost());
@@ -507,7 +604,10 @@ fn owning_a_truck_is_worth_money_once_you_have_a_load() {
     let mut busy = a_load;
     busy.hourly_worth = 300.0;
     assert!(
-        !matches!(how_to_get_rid_of_it(&busy), HowToGetRidOfIt::TakeItYourself { .. }),
+        !matches!(
+            how_to_get_rid_of_it(&busy),
+            HowToGetRidOfIt::TakeItYourself { .. }
+        ),
         "somebody on 300 an hour spent an afternoon at the tip to save 40"
     );
 
@@ -515,8 +615,14 @@ fn owning_a_truck_is_worth_money_once_you_have_a_load() {
     let (one, hours_one) = cost_of_a_trip(62.0, &town, 22.0, 1);
     let (many, hours_many) = cost_of_a_trip(62.0, &town, 22.0, 6);
     assert!(many < one, "a load of six cost as much per item as one");
-    assert!(hours_many < hours_one / 3.0, "six trips were made instead of one");
-    assert!(many > 22.0, "the refrigerant recovery was divided between six fridges");
+    assert!(
+        hours_many < hours_one / 3.0,
+        "six trips were made instead of one"
+    );
+    assert!(
+        many > 22.0,
+        "the refrigerant recovery was divided between six fridges"
+    );
 }
 
 /// **Gate: what stops people leaving it in the woods is being seen, and
@@ -557,23 +663,37 @@ fn a_hedge_in_the_country_is_full_and_one_in_town_is_not() {
         watched * 100.0,
         unwatched * 100.0
     );
-    assert!(unwatched > 0.35, "only {:.0}% tipped it where nobody was looking", unwatched * 100.0);
+    assert!(
+        unwatched > 0.35,
+        "only {:.0}% tipped it where nobody was looking",
+        unwatched * 100.0
+    );
 
     // **And a scrupulous man does not, wherever he is.** Being unobserved
     // is an opportunity and not a motive.
     let honest = rate(&country, 0.95);
-    assert!(honest < 0.05, "{:.0}% of honest men tipped it in a ditch", honest * 100.0);
+    assert!(
+        honest < 0.05,
+        "{:.0}% of honest men tipped it in a ditch",
+        honest * 100.0
+    );
 
     // Nobody bends a rule for nothing: something free to be rid of is not
     // worth breaking the law over, however few people are watching. **And
     // the country has no free collections at all**, which is itself part of
     // why the hedges are full — so this has to be tested where the service
     // exists.
-    assert_eq!(country.free_collections_a_year, 0, "the country grew a bulky waste service");
+    assert_eq!(
+        country.free_collections_a_year, 0,
+        "the country grew a bulky waste service"
+    );
     let mut free_to_dispose = getting_rid_of("refrigerator", &fridge, 62.0, &town);
     free_to_dispose.scruple = -0.9;
     free_to_dispose.collections_used = 0;
-    assert_eq!(how_to_get_rid_of_it(&free_to_dispose), HowToGetRidOfIt::Kerbside);
+    assert_eq!(
+        how_to_get_rid_of_it(&free_to_dispose),
+        HowToGetRidOfIt::Kerbside
+    );
 
     // **And what gets burnt is what burns.** A bonfire in a yard nobody
     // overlooks is easier than a drive to the woods.
@@ -589,7 +709,10 @@ fn a_hedge_in_the_country_is_full_and_one_in_town_is_not() {
             burnt += 1;
         }
     }
-    assert!(burnt > 20, "only {burnt} of 200 lit a bonfire with a yard and no scruples");
+    assert!(
+        burnt > 20,
+        "only {burnt} of 200 lit a bonfire with a yard and no scruples"
+    );
 
     // A fridge does not burn, so the same man drives it to the woods
     // instead.
@@ -619,7 +742,10 @@ fn every_route_says_what_became_of_the_thing() {
         HowToGetRidOfIt::Donate,
         HowToGetRidOfIt::LeaveItOut,
         HowToGetRidOfIt::Kerbside,
-        HowToGetRidOfIt::TakeItYourself { cost: 30.0, hours: 1.2 },
+        HowToGetRidOfIt::TakeItYourself {
+            cost: 30.0,
+            hours: 1.2,
+        },
         HowToGetRidOfIt::PayAHauler { fee: 90.0 },
         HowToGetRidOfIt::KeepIt,
         HowToGetRidOfIt::Cannibalize,
@@ -640,9 +766,15 @@ fn every_route_says_what_became_of_the_thing() {
     // getting anything back.
     assert!(!HowToGetRidOfIt::BurnIt.survives());
     assert!(HowToGetRidOfIt::GiveItAway.survives());
-    assert!(HowToGetRidOfIt::FlyTip.survives(), "a fly-tipped fridge stopped existing");
+    assert!(
+        HowToGetRidOfIt::FlyTip.survives(),
+        "a fly-tipped fridge stopped existing"
+    );
     assert_eq!(HowToGetRidOfIt::KeepIt.disposition(), Disposition::Stored);
-    assert_eq!(HowToGetRidOfIt::FlyTip.disposition(), Disposition::Abandoned);
+    assert_eq!(
+        HowToGetRidOfIt::FlyTip.disposition(),
+        Disposition::Abandoned
+    );
 }
 
 /// **Gate: every material can be written down and read back.**
@@ -657,7 +789,12 @@ fn the_material_roster_is_complete() {
     use scale_sim::save::{Reader, Store, Writer};
     let mut seen = 0;
     for m in ALL_MATERIALS {
-        assert_eq!(Material::from_name(m.name()), Some(m), "{} does not read back", m.name());
+        assert_eq!(
+            Material::from_name(m.name()),
+            Some(m),
+            "{} does not read back",
+            m.name()
+        );
         let mut w = Writer::new();
         m.store(&mut w);
         let mut r = Reader::new(&w.bytes);

@@ -41,12 +41,12 @@
 use crate::befall::Circumstance;
 use crate::coping::ActualControl;
 use crate::econ::Economy;
+use crate::id::Id;
 use crate::labour::Workforce;
+use crate::memory::Source;
 use crate::memory::{EventKind, Place, WorldEvent};
 use crate::mind::Happening;
 use crate::money::Account;
-use crate::id::Id;
-use crate::memory::Source;
 use crate::person::Person;
 use crate::save::{EventId, Journal, JournalKey};
 
@@ -89,7 +89,10 @@ impl Fact {
 
     /// Whether this is the sort of thing somebody is told outright.
     pub fn is_notified(self) -> bool {
-        matches!(self, Fact::ShiftCancelled | Fact::EmploymentEnded | Fact::PayReduced { .. })
+        matches!(
+            self,
+            Fact::ShiftCancelled | Fact::EmploymentEnded | Fact::PayReduced { .. }
+        )
     }
 }
 
@@ -153,7 +156,11 @@ impl Employer {
         }
         let mut give = |what: Fact, day: u64, out: &mut Vec<Happened>| {
             *seq += 1;
-            out.push(Happened { what, day, event: *seq });
+            out.push(Happened {
+                what,
+                day,
+                event: *seq,
+            });
         };
 
         // Power off is a fact whatever else follows.
@@ -170,7 +177,11 @@ impl Employer {
             return out;
         }
 
-        give(Fact::ShiftCancelled, from_day + self.inventory_days.max(0.0) as u64, &mut out);
+        give(
+            Fact::ShiftCancelled,
+            from_day + self.inventory_days.max(0.0) as u64,
+            &mut out,
+        );
 
         // Pay follows the shifts once the firm stops carrying them.
         let carried = self.liquidity_days * self.retains_labour;
@@ -239,7 +250,10 @@ impl Reemployment {
     /// Read the market half from the labour model rather than inventing
     /// it. What the *person* can do stays where it was.
     pub fn in_this_town(w: &Workforce, personal: Reemployment) -> Self {
-        Reemployment { opportunity: w.chance_of_work(), ..personal }
+        Reemployment {
+            opportunity: w.chance_of_work(),
+            ..personal
+        }
     }
 
     /// **What is actually so**, for `coping::resolve` to settle against.
@@ -290,7 +304,11 @@ pub fn runway_days(liquid: f64, essential_per_day: f64) -> f64 {
 /// what a day costs, which is also what wages are set against.
 pub fn runway_of(econ: &Economy, market: usize, households: f64) -> f64 {
     let pool = econ.treasury.balance(Account::Households(market));
-    let per_household = if households > 1.0 { pool / households } else { pool };
+    let per_household = if households > 1.0 {
+        pool / households
+    } else {
+        pool
+    };
     let a_day = econ
         .workforce
         .get(market)
@@ -416,7 +434,12 @@ impl Consequences {
             let seq = journal.next_sequence();
             journal.resolve(
                 world_seed,
-                JournalKey { time: f.day, phase: 1, sequence: seq, event: f.event },
+                JournalKey {
+                    time: f.day,
+                    phase: 1,
+                    sequence: seq,
+                    event: f.event,
+                },
                 "what came of it",
             );
             fresh.push(*f);

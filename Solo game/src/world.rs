@@ -424,11 +424,9 @@ fn generate_water_table(
             for x in 0..w {
                 let xm = (x + w - 1) % w;
                 let xp = (x + 1) % w;
-                base.data[y * w + x] = (prev[y * w + xm]
-                    + prev[y * w + xp]
-                    + prev[ym * w + x]
-                    + prev[yp * w + x])
-                    * 0.25;
+                base.data[y * w + x] =
+                    (prev[y * w + xm] + prev[y * w + xp] + prev[ym * w + x] + prev[yp * w + x])
+                        * 0.25;
             }
         }
     }
@@ -501,11 +499,9 @@ fn generate_water_table(
                 }
                 let xm = (x + w - 1) % w;
                 let xp = (x + 1) % w;
-                let mean = (prev[y * w + xm]
-                    + prev[y * w + xp]
-                    + prev[ym * w + x]
-                    + prev[yp * w + x])
-                    * 0.25;
+                let mean =
+                    (prev[y * w + xm] + prev[y * w + xp] + prev[ym * w + x] + prev[yp * w + x])
+                        * 0.25;
                 // **Clamped on both sides, every pass.** Never above the
                 // ground, and never further below it than water goes
                 // anywhere on Earth: smoothing across a steep gradient
@@ -628,8 +624,7 @@ fn advect_rainfall(elev: &Field, temp: &Field, sea: f32, wind: i32) -> Field {
             let ym = y.saturating_sub(1);
             let yp = (y + 1).min(h - 1);
             for x in 0..w {
-                rain.data[y * w + x] =
-                    (src[y * w + x] + src[ym * w + x] + src[yp * w + x]) / 3.0;
+                rain.data[y * w + x] = (src[y * w + x] + src[ym * w + x] + src[yp * w + x]) / 3.0;
             }
         }
     }
@@ -1015,7 +1010,14 @@ impl World {
         // 11. Geology: rock provinces, mineral & fossil deposits, soil
         // fertility. Civ placement and the economy read these.
         let geology = geology::generate(
-            &elevation, sea_level, &rain_r, &drain_r, &temperature, &river, &lake, &mut rng,
+            &elevation,
+            sea_level,
+            &rain_r,
+            &drain_r,
+            &temperature,
+            &river,
+            &lake,
+            &mut rng,
         );
 
         // 12. The water table, which closes the hydrology pass. It runs
@@ -1046,8 +1048,14 @@ impl World {
             rain_mm.data[i] = rainfall.data[i] * RAIN_MM_PER_UNIT;
         }
         let seasonality = generate_seasonality(&elevation, sea_level);
-        let soil_depth =
-            generate_soil_depth(&elevation, sea_level, &river, &lake, &flow.accum, &geology.rock);
+        let soil_depth = generate_soil_depth(
+            &elevation,
+            sea_level,
+            &river,
+            &lake,
+            &flow.accum,
+            &geology.rock,
+        );
         let rain_season = generate_rain_season(&elevation, sea_level, &seasonality);
         // Depth to water in metres, which the settling pass needs to know
         // how much of the soil is aerated enough for roots.
@@ -1148,8 +1156,6 @@ impl World {
 
     /// Any water at cell `i`: ocean, shallows, lake, or river.
     pub fn is_water(&self, i: usize) -> bool {
-        self.river[i]
-            || self.lake[i]
-            || matches!(self.biomes[i], Biome::Ocean | Biome::Shallows)
+        self.river[i] || self.lake[i] || matches!(self.biomes[i], Biome::Ocean | Biome::Shallows)
     }
 }

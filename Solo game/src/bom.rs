@@ -43,10 +43,20 @@ pub struct BomEntry {
 }
 
 impl BomEntry {
-    pub fn new(def: DefId, count: u32, kg: f64, placement: &'static str, held_by: JointMethod)
-        -> Self
-    {
-        BomEntry { def, count, kg, placement, held_by }
+    pub fn new(
+        def: DefId,
+        count: u32,
+        kg: f64,
+        placement: &'static str,
+        held_by: JointMethod,
+    ) -> Self {
+        BomEntry {
+            def,
+            count,
+            kg,
+            placement,
+            held_by,
+        }
     }
 }
 
@@ -78,11 +88,17 @@ pub struct Bom {
 impl Bom {
     /// A thing that is simply made of stuff: a board, a sheet, a brick.
     pub fn of_material(comp: &Composition, kg: f64) -> Self {
-        Bom { bulk: comp.masses(kg), ..Default::default() }
+        Bom {
+            bulk: comp.masses(kg),
+            ..Default::default()
+        }
     }
 
     pub fn assembled(components: Vec<BomEntry>) -> Self {
-        Bom { components, ..Default::default() }
+        Bom {
+            components,
+            ..Default::default()
+        }
     }
 
     pub fn with_bulk(mut self, bulk: &[(Material, f64)]) -> Self {
@@ -132,11 +148,17 @@ impl Bom {
     /// Everything that is not a sub-assembly and not a formed part, by
     /// mass. Genuine stuff: sealer, adhesive, paint, grease, trace.
     pub fn loose_mass(&self) -> f64 {
-        [&self.bulk, &self.joints, &self.coatings, &self.fluids, &self.trace]
-            .iter()
-            .flat_map(|v| v.iter())
-            .map(|p| p.1)
-            .sum()
+        [
+            &self.bulk,
+            &self.joints,
+            &self.coatings,
+            &self.fluids,
+            &self.trace,
+        ]
+        .iter()
+        .flat_map(|v| v.iter())
+        .map(|p| p.1)
+        .sum()
     }
 
     /// **The three ways mass gets into a thing**, which is what a printed
@@ -153,9 +175,7 @@ impl Bom {
     /// coatings plus fluids plus declared trace — and no
     /// "miscellaneous parts" line without a mass on it.
     pub fn declared_mass(&self) -> f64 {
-        self.components.iter().map(|c| c.kg).sum::<f64>()
-            + self.formed_mass()
-            + self.loose_mass()
+        self.components.iter().map(|c| c.kg).sum::<f64>() + self.formed_mass() + self.loose_mass()
     }
 
     /// Every material in it, one level down: sub-assemblies contribute
@@ -176,7 +196,13 @@ impl Bom {
         for f in &self.formed {
             add(f.material, f.kg);
         }
-        for v in [&self.bulk, &self.joints, &self.coatings, &self.fluids, &self.trace] {
+        for v in [
+            &self.bulk,
+            &self.joints,
+            &self.coatings,
+            &self.fluids,
+            &self.trace,
+        ] {
             for &(m, kg) in v {
                 add(m, kg);
             }
@@ -203,7 +229,6 @@ impl Reconciliation {
         declared - self.total()
     }
 }
-
 
 // =====================================================================
 // a formed part is neither bulk nor a component
@@ -273,8 +298,12 @@ impl Formed {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Geometry {
     /// Flat stock of a thickness. Still generic: a sheet is a sheet.
-    Sheet { mm: f64 },
-    Bar { mm: f64 },
+    Sheet {
+        mm: f64,
+    },
+    Bar {
+        mm: f64,
+    },
     /// Pressed to a shape. A door skin, an appliance panel.
     Stamping,
     /// Deep-drawn or folded into a body.
@@ -390,8 +419,7 @@ impl NominalMass {
     /// is the **population** question, and it uses manufacturing
     /// variation.
     pub fn an_ordinary_example(&self, actual: f64) -> bool {
-        (actual - self.expected).abs()
-            <= self.expected * self.manufacturing_variation + 1e-9
+        (actual - self.expected).abs() <= self.expected * self.manufacturing_variation + 1e-9
     }
 
     /// Whether the authored figure could plausibly be this instead. This
@@ -461,10 +489,14 @@ pub enum Acquisition {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Origin {
     /// A plan in the recipe book, which somebody can actually run.
-    Made { plan: &'static str },
+    Made {
+        plan: &'static str,
+    },
     /// A real industrial process that is not yet written as a plan. Named
     /// rather than denied, so the gap is visible.
-    Industrial { needs: &'static [&'static str] },
+    Industrial {
+        needs: &'static [&'static str],
+    },
     Gathered(Acquisition),
     /// It is not made here. Somewhere it is made by one of the above.
     Imported,
@@ -532,7 +564,10 @@ pub fn plausible_ends(bill: &Bom, materials: &Composition, family: Family) -> Ve
     }
     // Anything durable enough to have a second owner can have one, and
     // anything that can be taken apart can be put right.
-    if !matches!(family, Family::Foodstuff | Family::Medicine | Family::Ammunition) {
+    if !matches!(
+        family,
+        Family::Foodstuff | Family::Medicine | Family::Ammunition
+    ) {
         out.push(EndOfLife::Reuse);
         out.push(EndOfLife::Repair);
     }
@@ -606,7 +641,11 @@ impl Available {
     }
 
     pub fn pays(&self, route: EndOfLife) -> f64 {
-        self.worth.iter().find(|w| w.0 == route).map(|w| w.1).unwrap_or(0.0)
+        self.worth
+            .iter()
+            .find(|w| w.0 == route)
+            .map(|w| w.1)
+            .unwrap_or(0.0)
     }
 }
 
@@ -718,11 +757,18 @@ pub enum Flaw {
     /// The bill is empty. Even a brick says what a brick is.
     NoBill,
     /// It does not add up.
-    MassMismatch { declared: f64, bill: f64 },
+    MassMismatch {
+        declared: f64,
+        bill: f64,
+    },
     /// A line names a component that is not in the catalogue.
     UnknownComponent(DefId),
     /// A line names a component whose own mass disagrees with the line.
-    ComponentMassMismatch { child: DefId, line: f64, own: f64 },
+    ComponentMassMismatch {
+        child: DefId,
+        line: f64,
+        own: f64,
+    },
     /// Something contains itself, directly or through its children.
     Cycle,
     /// No way it can come into existence.
@@ -736,7 +782,10 @@ pub enum Flaw {
     /// A grouped detail with no mass on it.
     MasslessLine(&'static str),
     /// Taking it apart returns more than it contains.
-    RecoversTooMuch { contains: f64, returns: f64 },
+    RecoversTooMuch {
+        contains: f64,
+        returns: f64,
+    },
     /// A cured, set or reacted joining material came back pristine.
     JoinReturnedPristine(Material),
 }
@@ -759,7 +808,11 @@ pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
         // **A bill either adds up or it does not.** How sure anybody is of
         // the declared figure, and how much real examples vary, are
         // different questions and neither of them excuses arithmetic.
-        let say = |flaw: Flaw| Finding { what: d.id, name: d.name, flaw };
+        let say = |flaw: Flaw| Finding {
+            what: d.id,
+            name: d.name,
+            flaw,
+        };
 
         if d.nominal_mass_kg <= 0.0 {
             out.push(say(Flaw::NoMass));
@@ -777,7 +830,10 @@ pub fn validate(cat: &Catalogue, plans: &[&str]) -> Vec<Finding> {
         if d.nominal_mass_kg > 0.0
             && (bill - d.nominal_mass_kg).abs() > BALANCE_EPSILON * d.nominal_mass_kg.max(1.0)
         {
-            out.push(say(Flaw::MassMismatch { declared: d.nominal_mass_kg, bill }));
+            out.push(say(Flaw::MassMismatch {
+                declared: d.nominal_mass_kg,
+                bill,
+            }));
         }
 
         // ---- nothing is massless ---------------------------------
@@ -850,9 +906,10 @@ fn contains_itself(cat: &Catalogue, root: DefId, here: DefId, depth: usize) -> b
         return true;
     }
     let Some(d) = cat.get(here) else { return false };
-    d.bill.components.iter().any(|c| {
-        c.def == root || contains_itself(cat, root, c.def, depth + 1)
-    })
+    d.bill
+        .components
+        .iter()
+        .any(|c| c.def == root || contains_itself(cat, root, c.def, depth + 1))
 }
 
 /// **The whole tree, flattened to materials.**
@@ -873,14 +930,25 @@ fn walk(cat: &Catalogue, def: DefId, kg: f64, depth: usize, out: &mut Vec<(Mater
         return;
     }
     // Scale, so that exploding half a thing gives half of everything.
-    let scale = if d.nominal_mass_kg > 0.0 { kg / d.nominal_mass_kg } else { 1.0 };
-    let add = |m: Material, kg: f64, out: &mut Vec<(Material, f64)>| {
-        match out.iter_mut().find(|p| p.0 == m) {
-            Some(p) => p.1 += kg,
-            None => out.push((m, kg)),
-        }
+    let scale = if d.nominal_mass_kg > 0.0 {
+        kg / d.nominal_mass_kg
+    } else {
+        1.0
     };
-    for v in [&d.bill.bulk, &d.bill.joints, &d.bill.coatings, &d.bill.fluids, &d.bill.trace] {
+    let add = |m: Material, kg: f64, out: &mut Vec<(Material, f64)>| match out
+        .iter_mut()
+        .find(|p| p.0 == m)
+    {
+        Some(p) => p.1 += kg,
+        None => out.push((m, kg)),
+    };
+    for v in [
+        &d.bill.bulk,
+        &d.bill.joints,
+        &d.bill.coatings,
+        &d.bill.fluids,
+        &d.bill.trace,
+    ] {
         for &(m, mkg) in v {
             add(m, mkg * scale, out);
         }
@@ -929,7 +997,9 @@ impl Node {
     /// up to what it says it weighs is a content error the printed tree
     /// must show rather than hide.
     pub fn residual(&self) -> f64 {
-        self.made_up_of.map(|r| r.residual(self.declared)).unwrap_or(0.0)
+        self.made_up_of
+            .map(|r| r.residual(self.declared))
+            .unwrap_or(0.0)
     }
 }
 
@@ -944,19 +1014,16 @@ pub fn audit(cat: &Catalogue, def: DefId, kg: f64) -> Vec<Node> {
     out
 }
 
-fn audit_into(
-    cat: &Catalogue,
-    def: DefId,
-    kg: f64,
-    depth: usize,
-    role: &str,
-    out: &mut Vec<Node>,
-) {
+fn audit_into(cat: &Catalogue, def: DefId, kg: f64, depth: usize, role: &str, out: &mut Vec<Node>) {
     let Some(d) = cat.get(def) else { return };
     if depth > 24 {
         return;
     }
-    let scale = if d.nominal_mass_kg > 0.0 { kg / d.nominal_mass_kg } else { 1.0 };
+    let scale = if d.nominal_mass_kg > 0.0 {
+        kg / d.nominal_mass_kg
+    } else {
+        1.0
+    };
     // Clamp the floating-point dust, or a tree prints "-0.000" and a
     // reader has to wonder what it means.
     let tidy = |x: f64| if x.abs() < 5e-7 { 0.0 } else { x };
@@ -986,12 +1053,21 @@ fn audit_into(
         return;
     }
     for c in &d.bill.components {
-        let each = if c.count > 0 { c.kg / c.count as f64 } else { c.kg };
+        let each = if c.count > 0 {
+            c.kg / c.count as f64
+        } else {
+            c.kg
+        };
         // **Unambiguous**: three jaws of fifteen grams, not three jaws of
         // forty-five. A count and a total that could be read either way
         // is a report nobody can audit.
-        let role = format!("{} x {:.3} kg = {:.3} kg [{}]", c.count, each * scale,
-                           c.kg * scale, c.placement);
+        let role = format!(
+            "{} x {:.3} kg = {:.3} kg [{}]",
+            c.count,
+            each * scale,
+            c.kg * scale,
+            c.placement
+        );
         audit_into(cat, c.def, c.kg * scale, depth + 1, &role, out);
     }
     for f in &d.bill.formed {
@@ -1044,7 +1120,11 @@ pub fn tree(cat: &Catalogue, def: DefId, kg: f64, indent: usize, into: &mut Stri
                 r.formed,
                 r.direct,
                 n.residual(),
-                if n.detail.is_empty() { String::new() } else { format!("  {}", n.detail) },
+                if n.detail.is_empty() {
+                    String::new()
+                } else {
+                    format!("  {}", n.detail)
+                },
             )),
             None => into.push_str(&format!(
                 "{pad}{}: {:.3} kg  ({})\n",

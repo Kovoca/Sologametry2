@@ -14,7 +14,8 @@
 
 use crate::econ::{
     basket, recipe, Commodity, Crossing, Doctrine, Economy, Grid, Journal, Ledger, Market,
-    Response, Route, Site, SiteKind, Surface, DAYS_PER_YEAR, N_COMMODITIES, Utility};
+    Response, Route, Site, SiteKind, Surface, Utility, DAYS_PER_YEAR, N_COMMODITIES,
+};
 use crate::geology::Geology;
 use crate::network::{Network, Road};
 use crate::polity::Polities;
@@ -125,13 +126,12 @@ struct Endowment {
 /// them to work.
 pub fn place_name(cell: usize, seed: u64) -> String {
     const HEAD: [&str; 24] = [
-        "Ash", "Bex", "Cald", "Dun", "Eller", "Fen", "Gart", "Hal", "Ing", "Kel", "Lang",
-        "Mar", "Nor", "Ott", "Pen", "Quar", "Rhen", "Stan", "Thorn", "Ux", "Vale", "Wex",
-        "Yar", "Zel",
+        "Ash", "Bex", "Cald", "Dun", "Eller", "Fen", "Gart", "Hal", "Ing", "Kel", "Lang", "Mar",
+        "Nor", "Ott", "Pen", "Quar", "Rhen", "Stan", "Thorn", "Ux", "Vale", "Wex", "Yar", "Zel",
     ];
     const TAIL: [&str; 16] = [
-        "ford", "bury", "ton", "wich", "mouth", "dale", "cote", "hurst", "leigh", "stead",
-        "wick", "combe", "field", "gate", "haven", "moor",
+        "ford", "bury", "ton", "wich", "mouth", "dale", "cote", "hurst", "leigh", "stead", "wick",
+        "combe", "field", "gate", "haven", "moor",
     ];
     let mut h = (cell as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ seed;
     h ^= h >> 29;
@@ -183,16 +183,16 @@ fn rate_for(road: Road, navigable: bool) -> f64 {
 /// rather than the distance a crow would fly. Water is impassable to a
 /// lorry; navigable rivers are cheap.
 fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
+    use crate::world::Biome;
     use std::cmp::Reverse;
     use std::collections::BinaryHeap;
-    use crate::world::Biome;
 
     #[derive(Clone, Copy, PartialEq)]
     struct C(f64);
     impl Eq for C {}
     impl PartialOrd for C {
         fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.0.total_cmp(&o.0))
+            Some(self.cmp(o))
         }
     }
     impl Ord for C {
@@ -221,9 +221,14 @@ fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
     heap.push(Reverse((C(0.0), from)));
 
     const D: [(i32, i32); 8] = [
-        (-1, -1), (0, -1), (1, -1),
-        (-1, 0), (1, 0),
-        (-1, 1), (0, 1), (1, 1),
+        (-1, -1),
+        (0, -1),
+        (1, -1),
+        (-1, 0),
+        (1, 0),
+        (-1, 1),
+        (0, 1),
+        (1, 1),
     ];
 
     while let Some(Reverse((C(d), i))) = heap.pop() {
@@ -604,12 +609,9 @@ impl Region {
                 // lorries and a served counter or two. A village shop and
                 // a city supermarket are the same furniture at different
                 // counts.
-                fitted: Some(crate::building::Building::shop(
-                    food_day + goods_day,
-                    4.0,
-                )),
-            cost_factor: 1.0,
-        });
+                fitted: Some(crate::building::Building::shop(food_day + goods_day, 4.0)),
+                cost_factor: 1.0,
+            });
         }
 
         let total_pop: f64 = markets.iter().map(|m| m.population).sum();
@@ -694,10 +696,9 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
-
 
         // --- Pasture and butchers ---
         //
@@ -737,8 +738,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
             }
 
             // **A nation whose ground will not carry stock imports meat**,
@@ -760,8 +761,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
             }
 
             let cuts = meat_day * share * 1.1;
@@ -785,8 +786,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
             }
         }
 
@@ -829,8 +830,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
             sites.push(Site {
                 name: format!("{name} cannery"),
                 kind: SiteKind::Factory,
@@ -854,8 +855,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
         let mill_rate = total_mill;
         let cannery_rate = total_cannery;
@@ -947,8 +948,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
         if imported > 0.5 {
             notes.push(format!(
@@ -1017,8 +1018,7 @@ impl Region {
         let remedies_day = nation_pop * 0.008 / 365.0;
         let chemicals_day = medicine_day * 2.2 + remedies_day * 1.3;
         let oil_day = plastics_day * 1.4 + chemicals_day * 1.1;
-        let steel_day =
-            machinery_day * 0.72 + cannery_rate * 0.035 + fabric_built * 0.06;
+        let steel_day = machinery_day * 0.72 + cannery_rate * 0.035 + fabric_built * 0.06;
         let ore_day = steel_day * DOMESTIC_STEEL_SHARE * 1.4 * 1.35;
         let coking_coal = steel_day * DOMESTIC_STEEL_SHARE * 0.8 * 1.35;
 
@@ -1097,12 +1097,9 @@ impl Region {
                 .iter()
                 .enumerate()
                 .min_by(|(_, &a), (_, &b)| {
-                    distance_km(settlements.list[a].cell, coal_cell, w_cells(world))
-                        .total_cmp(&distance_km(
-                            settlements.list[b].cell,
-                            coal_cell,
-                            w_cells(world),
-                        ))
+                    distance_km(settlements.list[a].cell, coal_cell, w_cells(world)).total_cmp(
+                        &distance_km(settlements.list[b].cell, coal_cell, w_cells(world)),
+                    )
                 })
                 .map(|(m, _)| (m, coal_cell))
         });
@@ -1110,11 +1107,8 @@ impl Region {
         match coal_town {
             Some((m, coal_cell)) if endow.coal_cells > 0 => {
                 let name = markets[m].name.clone();
-                let haul_km = distance_km(
-                    settlements.list[towns[m]].cell,
-                    coal_cell,
-                    w_cells(world),
-                );
+                let haul_km =
+                    distance_km(settlements.list[towns[m]].cell, coal_cell, w_cells(world));
                 // Real coalfields feed mine-mouth power stations: moving
                 // electricity is far cheaper than moving the coal.
                 sites.push(Site {
@@ -1128,24 +1122,27 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                // **A thick surface seam and a thin deep one are not the same
+                    // **A thick surface seam and a thin deep one are not the same
                     // industry.** Real: Powder River coal comes out at $12 a
                     // ton and Appalachian underground at $60-70.
-                cost_factor: Commodity::cost_of_working(endow.coal_grade as f64),
-            });
+                    cost_factor: Commodity::cost_of_working(endow.coal_grade as f64),
+                });
                 sites.push(Site {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
                     market: m,
                     stock: cap(&[(Commodity::Coal, station_coal * 15.0)]),
-                    capacity: cap(&[(Commodity::Coal, station_coal * 30.0), (Commodity::Electricity, 1e9)]),
+                    capacity: cap(&[
+                        (Commodity::Coal, station_coal * 30.0),
+                        (Commodity::Electricity, 1e9),
+                    ]),
                     recipe: Some(recipe::POWER_PLANT),
                     throughput: 1e9,
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
                 notes.push(format!(
                     "{} coalfield cells in the nation; nearest workings {:.0} km from {}, \
                      with a mine-mouth station on them",
@@ -1171,8 +1168,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
                 sites.push(Site {
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
@@ -1187,8 +1184,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
                 notes.push(format!(
                     "no workable coal in this nation — every tonne it burns is landed at {} \
                      {}. Cut that and the lights go out with nothing to mine instead.",
@@ -1250,11 +1247,11 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                // **Grade is the whole of it.** Pilbara ore at 62% Fe costs a
+                    // **Grade is the whole of it.** Pilbara ore at 62% Fe costs a
                     // fifth of Chinese ore at half that, because you have to
                     // move twice the rock for the same iron.
-                cost_factor: Commodity::cost_of_working(endow.ore_grade as f64),
-            });
+                    cost_factor: Commodity::cost_of_working(endow.ore_grade as f64),
+                });
                 notes.push(format!(
                     "{} ore cells in the nation; the workings are {:.0} km from {steel_name} \
                      and railed in",
@@ -1277,8 +1274,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
                 notes.push(format!(
                     "no workable ore — every tonne of iron is landed at {steel_name}"
                 ));
@@ -1312,8 +1309,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
             notes.push(format!(
                 "steelworks at {steel_name}: {:.0} t/day on {:.0} t of ore and {:.0} t of coal, \
                  {:.0}% of what the country works",
@@ -1385,8 +1382,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         // --- Timber, oil, plastic and machines ---
@@ -1411,8 +1408,7 @@ impl Region {
                         m,
                         format!(
                             "{} cells of forest worth felling, worked out of {}",
-                            endow.timber_cells,
-                            markets[m].name
+                            endow.timber_cells, markets[m].name
                         ),
                     )
                 }
@@ -1441,14 +1437,14 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            // A stand carrying 300 m3/ha is cheap to work and scrub is
+                // A stand carrying 300 m3/ha is cheap to work and scrub is
                 // not. An importer pays a world price and does no felling.
-            cost_factor: if recipe == recipe::FORESTRY {
+                cost_factor: if recipe == recipe::FORESTRY {
                     Commodity::cost_of_working(endow.timber_grade as f64)
                 } else {
                     1.0
                 },
-        });
+            });
             notes.push(note);
         }
 
@@ -1470,8 +1466,7 @@ impl Region {
                         recipe::OIL_FIELD,
                         format!(
                             "{} cells of workable petroleum, produced near {}",
-                            endow.oil_cells,
-                            markets[m].name
+                            endow.oil_cells, markets[m].name
                         ),
                     )
                 }
@@ -1496,16 +1491,16 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            // **The largest cost spread of any commodity there is.** Saudi
+                // **The largest cost spread of any commodity there is.** Saudi
                 // crude lifts for about $10 a barrel and Canadian oil sands
                 // for $50-60, and that difference is most of the
                 // geopolitics of oil.
-            cost_factor: if recipe == recipe::OIL_FIELD {
+                cost_factor: if recipe == recipe::OIL_FIELD {
                     Commodity::cost_of_working(endow.oil_grade as f64)
                 } else {
                     1.0
                 },
-        });
+            });
             notes.push(note);
 
             // **A cracker stands on the oil**, which is why refineries are
@@ -1527,8 +1522,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         // **Machine works follow the steel**, for the same reason the
@@ -1564,8 +1559,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
             }
         }
 
@@ -1609,8 +1604,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
         if cement_day > 0.01 {
             notes.push(format!(
@@ -1663,8 +1658,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         if chemicals_day > 0.01 {
@@ -1681,8 +1676,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         // **A pharmaceutical works stands in a chemical cluster**, on the
@@ -1691,10 +1686,7 @@ impl Region {
         // them that is far sharper than the one it takes on for grain.
         if medicine_day > 0.01 {
             let m = if oil_day > 0.01 {
-                endow
-                    .best_oil
-                    .and(Some(port))
-                    .unwrap_or(0)
+                endow.best_oil.and(Some(port)).unwrap_or(0)
             } else {
                 0
             };
@@ -1710,8 +1702,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
             notes.push(format!(
                 "pharmaceutical works at {name}: {:.1} t/day of medicines on \
                  {:.1} t of oil and {:.1} t of plastic",
@@ -1735,8 +1727,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         // **A hospital in every town**, covering its own people. A
@@ -1765,8 +1757,8 @@ impl Region {
                 powered: true,
                 ran: 0.0,
                 fitted: None,
-            cost_factor: 1.0,
-        });
+                cost_factor: 1.0,
+            });
         }
 
         // **A stockholder in every town.** Steel does not spoil and a
@@ -1780,7 +1772,11 @@ impl Region {
                 (Commodity::Timber, recipe::TIMBER_IMPORTS, "timber yard"),
                 (Commodity::Cement, recipe::CEMENT_IMPORTS, "cement depot"),
                 (Commodity::Medicine, recipe::MEDICINE_IMPORTS, "pharmacy"),
-                (Commodity::Chemicals, recipe::CHEMICAL_IMPORTS, "chemical factor"),
+                (
+                    Commodity::Chemicals,
+                    recipe::CHEMICAL_IMPORTS,
+                    "chemical factor",
+                ),
                 (Commodity::Remedies, recipe::REMEDY_IMPORTS, "chemist"),
                 // **A machinery dealer.** Hospitals buy equipment per head
                 // while machine works are sited by where the steel is, so
@@ -1812,9 +1808,8 @@ impl Region {
                     Commodity::Machinery => markets[m].population * 0.0025 / 365.0,
                     _ => 0.0,
                 };
-                let draw = works_draw
-                    + markets[m].population * c.per_capita_annual() / 365.0
-                    + public;
+                let draw =
+                    works_draw + markets[m].population * c.per_capita_annual() / 365.0 + public;
                 let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
                 if bought < 0.01 {
                     continue;
@@ -1831,8 +1826,8 @@ impl Region {
                     powered: true,
                     ran: 0.0,
                     fitted: None,
-                cost_factor: 1.0,
-            });
+                    cost_factor: 1.0,
+                });
             }
         }
 
@@ -1856,8 +1851,8 @@ impl Region {
             powered: true,
             ran: 0.0,
             fitted: None,
-        cost_factor: 1.0,
-    });
+            cost_factor: 1.0,
+        });
 
         // --- Routes, following the roads the country actually built ---
         //
@@ -2049,14 +2044,17 @@ impl Region {
             told_the_day: None,
             opening: None,
             shipments: crate::registry::Registry::new(),
+            power_clearing: None,
+            experiments: Default::default(),
             routing: crate::quote::Routing::default(),
+            reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
             arrivals: Vec::new(),
             staff_today: Vec::new(),
-        payroll_met: Vec::new(),
-        state_afford: 1.0,
-        building_stock: Vec::new(),
-        building_condition: Vec::new(),
+            payroll_met: Vec::new(),
+            state_afford: 1.0,
+            building_stock: Vec::new(),
+            building_condition: Vec::new(),
             services: None,
         };
         // **Hang the distribution network under the transmission**, so a
@@ -2081,10 +2079,10 @@ impl Region {
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
         // And it has money, sized on what that trade is worth.
         economy.issue_currency();
-    // **Before anybody asks what a haul costs.** The table is rebuilt at
-    // the top of every day, but a freshly built world is read before it
-    // has had one.
-    economy.resurvey();
+        // **Before anybody asks what a haul costs.** The table is rebuilt at
+        // the top of every day, but a freshly built world is read before it
+        // has had one.
+        economy.resurvey();
 
         // **Licence areas, not one national utility.**
         //
@@ -2113,8 +2111,7 @@ impl Region {
                     .collect(),
                 // Rounded so the remainder goes to the first, which is
                 // deterministic and mildly favours the capital's company.
-                spares: total_spares / n_utilities
-                    + usize::from(u < total_spares % n_utilities),
+                spares: total_spares / n_utilities + usize::from(u < total_spares % n_utilities),
             })
             .collect();
 
@@ -2293,10 +2290,7 @@ impl Nations {
                 let (ma, mb) = (markets_of[a][0], markets_of[b][0]);
                 let volume = economy.markets[ma]
                     .daily_household_demand(Commodity::ProcessedFood)
-                    .min(
-                        economy.markets[mb]
-                            .daily_household_demand(Commodity::ProcessedFood),
-                    );
+                    .min(economy.markets[mb].daily_household_demand(Commodity::ProcessedFood));
                 economy.routes.push(Route {
                     name: format!(
                         "{} - {} ({:.0} km by {})",
@@ -2310,7 +2304,11 @@ impl Nations {
                     freight_cost: km * rate,
                     sound_cost: km * rate,
                     km,
-                    surface: if by_sea { Surface::Water } else { Surface::Road },
+                    surface: if by_sea {
+                        Surface::Water
+                    } else {
+                        Surface::Road
+                    },
                     crossing: Crossing::Level,
                     snowed_in: false,
                     // International trade is a fraction of what a country
@@ -2336,10 +2334,10 @@ impl Nations {
         // hop on the way.
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
         economy.issue_currency();
-    // **Before anybody asks what a haul costs.** The table is rebuilt at
-    // the top of every day, but a freshly built world is read before it
-    // has had one.
-    economy.resurvey();
+        // **Before anybody asks what a haul costs.** The table is rebuilt at
+        // the top of every day, but a freshly built world is read before it
+        // has had one.
+        economy.resurvey();
 
         let north = economy.markets.iter().filter(|m| !m.southern).count();
         notes.push(format!(
@@ -2428,7 +2426,8 @@ fn absorb(host: &mut Economy, guest: Economy, nation: u16) -> Vec<usize> {
     }
     // ...and its own roads, which it maintains or does not on its own
     // account. Indexed by nation, so `nation` doubles as the index.
-    host.road_condition.push(*guest.road_condition.first().unwrap_or(&1.0));
+    host.road_condition
+        .push(*guest.road_condition.first().unwrap_or(&1.0));
     host.maintenance_funding
         .push(*guest.maintenance_funding.first().unwrap_or(&1.0));
     let _ = site_base;

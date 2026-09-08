@@ -250,11 +250,11 @@ impl Store for Shipment {
             .ok_or(SaveError::UnknownCode("commodity", code as u32))?;
         Ok(Shipment {
             commodity,
-            consignor: r.len()?,
-            consignee: r.len()?,
-            carrier: r.len()?,
-            from_market: r.len()?,
-            to_market: r.len()?,
+            consignor: r.read_len()?,
+            consignee: r.read_len()?,
+            carrier: r.read_len()?,
+            from_market: r.read_len()?,
+            to_market: r.read_len()?,
             left: r.u64()?,
             due: r.u64()?,
             despatched: r.finite_f64()?,

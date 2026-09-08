@@ -130,7 +130,12 @@ fn a_blockade_isolates_a_nation() {
 
     let target: u16 = 1;
     let mut closed = 0;
-    let markets = n.economy.markets.iter().map(|m| m.nation).collect::<Vec<_>>();
+    let markets = n
+        .economy
+        .markets
+        .iter()
+        .map(|m| m.nation)
+        .collect::<Vec<_>>();
     for r in n.economy.routes.iter_mut() {
         let (a, b) = (markets[r.a], markets[r.b]);
         if a != b && (a == target || b == target) {
@@ -341,9 +346,7 @@ fn what_crosses_a_border_is_what_is_worth_carrying() {
         })
         .count();
     let kilns = (0..with.economy.ledger.sites.len())
-        .filter(|&s| {
-            with.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::CementWorks
-        })
+        .filter(|&s| with.economy.ledger.sites[s].kind == scale_sim::econ::SiteKind::CementWorks)
         .count();
     // Not none — one kiln somewhere may genuinely be between batches — but
     // nothing like the half of them that a phantom freight charge once
@@ -365,9 +368,7 @@ fn neglected_roads_decay_and_freight_gets_dearer() {
     let network = Network::build(&world, &settlements, 500);
 
     let run = |doctrine: Doctrine| {
-        let mut n = Nations::build(
-            &world, &polities, &settlements, &network, 4, 4, doctrine,
-        );
+        let mut n = Nations::build(&world, &polities, &settlements, &network, 4, 4, doctrine);
         let before: f64 = n.economy.routes.iter().map(|r| r.freight_cost).sum();
         for _ in 0..(DAYS_PER_YEAR * 20) {
             n.economy.step();
@@ -407,7 +408,13 @@ fn road_decay_is_slow_enough_to_be_a_trap() {
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
     let mut n = Nations::build(
-        &world, &polities, &settlements, &network, 4, 4, Doctrine::Negligent,
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        4,
+        4,
+        Doctrine::Negligent,
     );
 
     for _ in 0..(DAYS_PER_YEAR * 3) {
@@ -444,7 +451,6 @@ fn nobody_starves_in_a_trading_world() {
     }
 }
 
-
 // =====================================================================
 // what a cargo costs, and who is paid for carrying it
 // =====================================================================
@@ -472,7 +478,10 @@ fn a_cargo_arrives_carrying_its_own_price() {
     let mut bare = 0;
     let mut freight_charged = 0.0f64;
     for entry in n.economy.journal.entries().iter().skip(before) {
-        if let Event::Shipped { qty, paid, freight, .. } = &entry.event {
+        if let Event::Shipped {
+            qty, paid, freight, ..
+        } = &entry.event
+        {
             if *qty <= 0.0 {
                 continue;
             }
@@ -484,7 +493,10 @@ fn a_cargo_arrives_carrying_its_own_price() {
             freight_charged += freight;
         }
     }
-    assert!(with_a_price + bare > 0, "a year and nothing was shipped at all");
+    assert!(
+        with_a_price + bare > 0,
+        "a year and nothing was shipped at all"
+    );
     assert!(
         with_a_price > bare,
         "{with_a_price} cargoes carried a price and {bare} carried none"
@@ -493,8 +505,17 @@ fn a_cargo_arrives_carrying_its_own_price() {
     // **And somebody was charged for carrying it.** `Carrier::revenue` was
     // being accumulated and paid to nobody, so a haulage firm could work
     // all year with its account never moving.
-    assert!(freight_charged > 0.0, "a year of freight and nobody charged for any of it");
-    let paid_out = n.economy.treasury.flows.get("freight").copied().unwrap_or(0.0);
+    assert!(
+        freight_charged > 0.0,
+        "a year of freight and nobody charged for any of it"
+    );
+    let paid_out = n
+        .economy
+        .treasury
+        .flows
+        .get("freight")
+        .copied()
+        .unwrap_or(0.0);
     assert!(
         paid_out > 0.0,
         "freight was charged on the cargo and never reached anybody's account"
@@ -515,7 +536,11 @@ fn what_it_costs_here_is_what_it_cost_there_plus_getting_it_here() {
     for m in 0..n.economy.markets.len() {
         for &c in Commodity::ALL.iter() {
             let landed = n.economy.markets[m].landed[c as usize];
-            assert!(landed.is_finite() && landed > 0.0, "{} has no landed cost in market {m}", c.name());
+            assert!(
+                landed.is_finite() && landed > 0.0,
+                "{} has no landed cost in market {m}",
+                c.name()
+            );
         }
     }
 
@@ -540,12 +565,10 @@ fn what_it_costs_here_is_what_it_cost_there_plus_getting_it_here() {
     // Not universally — a market may make its own — but somewhere in a
     // trading world of six nations, carriage has to show.
     let dearer = (0..n.economy.markets.len())
-        .flat_map(|m| {
-            Commodity::ALL
-                .iter()
-                .map(move |&c| (m, c))
+        .flat_map(|m| Commodity::ALL.iter().map(move |&c| (m, c)))
+        .filter(|&(m, c)| {
+            n.economy.markets[m].landed[c as usize] > n.economy.markets[m].cost[c as usize] * 1.02
         })
-        .filter(|&(m, c)| n.economy.markets[m].landed[c as usize] > n.economy.markets[m].cost[c as usize] * 1.02)
         .count();
     assert!(
         dearer > 0,

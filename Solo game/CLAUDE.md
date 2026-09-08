@@ -1906,6 +1906,27 @@ fewer than its payroll. "200-300 staff" is a Walmart Supercenter at
 17,000 m², not a supermarket, and quoting it against a supermarket is the
 denominator error `census.rs` exists to stop wearing a different hat.
 
+### There is no such thing as eating cheaply
+
+A household here has exactly two states: buy the basket, or go without and
+register unmet demand. There is no representation of **eating cheaply** —
+the cheapest calories per pound, cooking from scratch rather than anything
+prepared, using the whole of everything, no waste. That is the commonest
+economic behaviour in a low-income household and the model cannot express
+it at all.
+
+It matters because it is most of the distance between the model and life.
+Real anchor: the USDA **Thrifty Food Plan** — the American government's own
+*minimum adequate* estimate, not a comfortable one — runs about $3,000 a
+head a year for a family, so roughly $1,200-1,250 a month for two adults
+and three children. Households feed five on **half** that, routinely, and
+do it by shopping and cooking in ways this model has no way to describe.
+
+The consequence in the numbers: food comes out near 79% of a two-earner
+labourer household's income here where a real one at that income runs
+closer to 35%. The gap is not the price of food. It is that everybody in
+this simulation shops the same way.
+
 ### Known gaps, named rather than smoothed
 
 - **No car finance, so transport is near zero** against a real 30% of the
@@ -2359,6 +2380,90 @@ builders had it at two thirds — and a town left to rot came out *dearer* to
 buy into than one kept up. What a thing costs to make does not depend on
 whether anybody wants it today. A glut still needs surplus stock, though,
 rather than merely an absence of buyers.
+
+### A trader does not empty its own customer's store
+
+`logistics::ship` has had a guard against buying a works' raw material
+since the day it backed a lorry up to a cannery, carried off its tinplate
+and produced a famine two commodities downstream. **`trade` never got
+one**, and the omission was invisible for as long as almost nothing moved:
+the working reserve is subtracted from *each warehouse*, so a country
+whose grain sits in six farms has no farm individually clearing the bar.
+
+The moment a trader could sell the *market's* surplus it stripped every
+works in the country — food production halved and a nation on seventeen
+days of cover went to a quarter of a day. **A rule that binds hauliers
+binds traders**, which is this file's older rule about firms and people
+arriving in a third place.
+
+Two smaller things fell out of the same measurement:
+
+- **Among sellers in one market, whoever has most to sell.** A trader
+  spends its budget on the first warehouse in the vector and stops, so
+  stock strands in whichever shed sorts late while the market next door
+  stays dear.
+- **A works rated at three times its neighbour needs three times the
+  warehouse.** A test fixture copied a mill's stores and then tripled its
+  throughput, so it had a flour room sized for a third of what it made. It
+  sat on three hundred and forty thousand tonnes of grain with nowhere to
+  put the flour, and the gate read that as a pricing result. The first
+  guess was that a trader had taken its grain; it had the grain.
+
+### A price gap wider than the carriage has to have a reason
+
+Phase 0 item 9. **"No arbitrage" unqualified is the wrong bar** — it was
+the first version of the gate and it failed on gaps that were entirely
+correct. A bound only binds when a trade is actually possible, so it
+carries its preconditions:
+
+```text
+P_B <= P_A + freight + tariffs + losses
+  unless the route is closed,
+  or the route is saturated,
+  or A has not the stock to relieve B,
+  or the two are not directly linked.
+```
+
+That last exemption is the pairwise limitation this file has recorded for
+a long time, and **medicine is excluded by name rather than quietly
+dropped**: made in one town, wanted in every town, sold by no shop and
+consumed by no recipe, so there is no chain of adjacent gaps to walk it
+down and the one end-to-end mechanism decides on cover rather than price.
+Seven directly-linked pairs, worst 72% of its price.
+
+Three pairs of two hundred and forty remain open, worst about half of
+flour's price, and the reason is known rather than mysterious. Labelled a
+**loose regression bound**: tightening the exemptions until the gaps
+vanish is fitting the gate to the model, which is how the first three
+versions of it went wrong. What it catches is a return to the state
+before the missing guard was found, when eighteen of forty-eight grain
+pairs stood open.
+
+### Market-wide trade is not shippable on its own, and the reason is
+### which supplier a buyer picks
+
+Measured across four nations and four hundred days, letting a trader sell
+the market's surplus rather than each warehouse's is the best
+configuration on every aggregate: **cover 9.95 to 17.44 and uniform
+across every town** — which is what a working arbitrage looks like —
+**price exactly equal to cost**, wages up 24%, house-to-income 11.40 to
+9.65, no hungry days.
+
+It still cannot let a cheap new mill displace a dear incumbent, and the
+reason is nothing to do with trade: **`distribute` orders suppliers by
+carriage and settles ties by position in a vector**, so two mills in one
+town are ranked by which was created first. Add a mill a fiftieth of the
+cost and it runs on the remainder.
+
+Drawing on the cheapest *delivered* supplier fixes that and breaks
+something else — a country's food stops being even without hauliers,
+because towns begin sourcing from a cheaper distant works instead of
+their own cannery. That may well be right, since real economies
+specialise, but it is a different model and not a tuning. **Both stay
+behind switches with the measurement recorded**, because a permanent flag
+is a permanent second model nobody tests, and shipping the pair on an
+aggregate that looks good would be shipping the thing that starved a
+country the first time.
 
 ### A sentinel read as a rate, for the third time
 
@@ -2914,6 +3019,312 @@ suite green — and both were turned up while chasing something else.
   it, and none of those quantities are the same number: the maximum
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
+
+## The model has two wage scales and they differ by thirty-five times
+
+Phase 0's recalibration, and what it found is bigger than what it fixed.
+
+**A day's work was buying 4.5 days of food against this file's own stated
+band of 6-10** — the calibration it records as "not a cosmetic error" —
+and house price to income was running 9.6-15.8 against a real 5-9. Wages
+were too low and housing inherited it.
+
+**One of the two causes is fixed.** The slack index used an invented
+exponent of 0.35 clamped to 0.75-1.40, and it sat at its floor in nearly
+every nation. The **wage curve** puts the elasticity of pay to local
+unemployment at about **-0.1** *(Blanchflower & Oswald, replicated across
+many countries and decades)*: double the unemployment rate and pay falls
+about a tenth. Three and a half times the measured response is not a
+sticky wage. Corrected, days of food goes 4.5 to 5.1 and house-to-income
+15.8 to 13.7.
+
+**The other cannot be fixed yet, and the reason is worth more than the
+fix.** The trade multiples are the *floor* of the observed band rather than
+its middle, so any slack puts the outcome below the band the model claims.
+Centring a labourer at 8.0 puts it squarely in — 6.8 to 7.5 days of food,
+house-to-income 6.5 to 10.3 — and it cannot be shipped:
+
+> **A pay rise here reaches no price anywhere.**
+
+Production costs are built on `econ::WAGE_AN_HOUR`, a constant of 22 on the
+commodity scale, making a day about 176. `person::day_rate` gives a
+labourer about 5. **The two wage systems differ by roughly thirty-five
+times and had never met**, so raising incomes by a third moved no cost at
+all: rent fell as a share of what people earn and homelessness among the
+worst-paid went to zero, which is not what happens when everybody gets a
+rise.
+
+Substituting one for the other does not work either — on the person scale
+the recipe labour term goes to almost nothing and labour drops out of every
+production cost in the model. **The scales have to be reconciled first**,
+which is a piece of work rather than a line, and until then wages can be
+calibrated or housing pressure can be realistic and not both.
+
+### A gate that reverses on a thirteen per cent move
+
+`people_share_a_roof` asserted that living alone puts more people on the
+street than sharing does. It had already flipped once — recorded in its own
+comment as "a better country rather than a broken model" — and it flipped
+again on the thirteen per cent that correcting the wage curve produced.
+
+**A gate that reverses on a thirteen per cent move is measuring which side
+of a cliff the country is standing on**, not the mechanism it names.
+Homelessness is a threshold; being poorer is not. What the equivalence
+scale claims is that carrying a household alone costs a quarter more, and
+the robust reading of that is what people have left in their pockets. The
+threshold is kept as the sharper consequence and asserted only in the
+direction that cannot be an artefact: living alone is never *easier*.
+
+## The last plant dispatched sets the price (`src/econ.rs`)
+
+`power.rs` has held the merit-order model since it was written and the
+ledger had never used it. Electricity was priced on **days of cover**,
+which is a category error for something that is never stored — it declares
+zero target cover precisely because none of it is ever held.
+
+It is priced off the marginal generator now: whatever it cost to meet the
+last megawatt-hour of the call, **paid to everybody on the system**. That
+is the least intuitive fact in a real wholesale market and the reason a
+wind farm with no fuel bill earns exactly what the gas turbine that
+happened to be last earns.
+
+And a shortage is a different thing from a high price: real markets cap it
+administratively rather than letting it run away — ERCOT's was $9,000/MWh
+in the February 2021 Texas freeze, about two hundred times an ordinary
+wholesale price, and it sat there for four days and bankrupted several
+retailers.
+
+**Three defects came out of building it, and two of them had been quietly
+wrong for a long time.**
+
+- **`grid_shortfall` was per market and the grid is national.** It compared
+  what one town generated against what that town consumed, so **a town with
+  no power station of its own read as a hundred per cent short every day of
+  its life**. It only mattered once electricity was priced off it, at which
+  point those towns would have paid the shortage price for ever and a real
+  shortage could not have been told from an ordinary Tuesday.
+- **And it built its own demand figure off *rated* capacity**, which is the
+  error this file already records for the grid at large: an idle plant must
+  draw no power. `wanted` therefore exceeded `made` permanently and the
+  shortfall never fell below one whatever the system was doing. There is
+  one definition now, `power_demand`.
+- **Dispatch ignored a station's nameplate.** It read only the fuel on
+  hand, so every station on the system could carry the whole national load
+  alone — which means the cheapest always covers the call and no dearer
+  plant is ever on the margin. **A merit order whose margin is always the
+  cheapest unit is not a merit order**, it is a single supplier. That is
+  the fourth time `throughput`'s "whatever the grid can carry" sentinel has
+  bitten, and the first time it has been read correctly on purpose rather
+  than patched after the fact.
+
+**And the fixture had been in a permanent blackout.** `slice::symmetric`
+sized its grid by adding up recipe draws by hand and got it wrong by half —
+capacity 142 against a demand of 283 — so every measurement taken on it,
+the allocation work and the permutation gates and the whole experiment
+matrix, was taken on a country running at 50% unserved load. It did not
+invalidate them, because it was the same in every case. It is exactly the
+kind of thing that invalidates the next one. The grid is now sized off the
+load it will actually see, with the **15-20% reserve margin** a real system
+plans.
+
+**The gate had to be built twice.** The first version asserted that making
+the marginal plant dearer did not make electricity cheaper — which a
+weighted average also satisfies, so it passed with the mechanism deleted.
+What separates a clearing price from an average is that it is set by the
+*worst* unit running, so it must sit strictly **above** the average.
+
+## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
+
+Four behaviours were introduced together and starved a country. Reverting
+was right; reintroducing them one at a time **by intuition** would not be,
+because the one that did the damage need not be the one that looks
+guiltiest and a pair can do something neither does alone.
+
+So they went behind switches — off by default, and off is exactly what the
+model does today — and the whole matrix was run on one nation for 400 days.
+
+| case | lo cover | food price | food cost | wage/yr | hse/inc | food made | hungry |
+|---|---|---|---|---|---|---|---|
+| `....` baseline | 17.44 | 875.4 | 875.4 | 1113 | 9.74 | 35.8M | 0 |
+| `L...` | 8.60 | 622.5 | 889.4 | 814 | 13.32 | 35.7M | 0 |
+| `.M..` | 17.44 | 875.5 | 875.5 | 1113 | 9.68 | 35.8M | 0 |
+| **`LM..`** | **17.44** | **892.9** | **892.9** | 1123 | 9.59 | 35.8M | 0 |
+| `..S.` | 17.44 | 862.1 | 862.1 | 1108 | 9.76 | 35.8M | 0 |
+| `...T` | **0.41** | **4146** | 889.4 | **5100** | **2.13** | **16.9M** | **370** |
+
+**Every guess was wrong.**
+
+- **T is the whole catastrophe, on its own.** Market-wide trade quantity
+  takes cover from 17.44 to 0.41, food to nearly five times its cost, wages
+  up 4.8x, production halved and the country hungry on 370 days in 400 —
+  and it was introduced as a *fix*, for a no-arbitrage gate.
+- **M is benign alone.** 875.4 to 875.5. The marginal-source decomposition
+  was the centrepiece of the review and of my own suspicion, and by itself
+  it does nothing at all.
+- **L needs M, and they are one change rather than two.** Carrier landed
+  cost alone puts food at 622 against a cost of 889 — a glut, because the
+  landed figure rises and the price model cannot use it. Add M and it lands
+  at 892.9 against a cost of 892.9, cover level, production untouched.
+- **And two interactions no amount of reasoning would have produced:**
+  L+S is worse than either alone (4.87 against 8.60), and M+T is worse than
+  either alone (0.28 against 0.41).
+
+### One nation is not evidence
+
+`LM` was the best of all sixteen cases above and broke a gate on a
+different country. So the matrix was run again across **four** nations,
+reporting the worst reading of the four — because a change is only safe if
+it is safe everywhere — and it contradicts the single-nation result on
+three of the four switches:
+
+| switch | one nation | four nations, worst |
+|---|---|---|
+| baseline | 17.44 | 8.95 |
+| `L` | 8.60 | 8.60 |
+| `M` | 17.44 *(benign)* | **6.20** |
+| `S` | 17.44 *(benign)* | **4.00** |
+| `LM` | **17.44** *(best of sixteen)* | 8.24 |
+| `T` | 0.41 | 0.41 |
+
+**M and S both looked harmless on one country and both cost real cover
+across four.** `LM` is still the best of the non-baseline options and it is
+a *loss* against the baseline rather than a gain, which is the opposite of
+what the first run said. The L+S interaction the first run flagged
+disappears; M+T survives.
+
+**So the switches stay off, and the conclusion is the method rather than
+the answer.** A four-part change measured on a sample of one produced a
+confident and wrong recommendation, and would have been shipped on it. The
+economics here vary enough between countries that a single fixture cannot
+settle anything — which is the same lesson as the symmetric fixture,
+arriving from the other direction: one world proves a mechanism is *broken*
+and cannot prove it is *right*.
+
+## Nine numbers that had been two (`src/value.rs`)
+
+Every figure in the economy is money per tonne, so every one of them is an
+`f64` and the machine cannot tell them apart. They are not the same
+quantity and they do not answer the same question, and collapsing them
+produced the worst defect measured here:
+
+```text
+price = landed x scarcity,  landed = goods + freight
+  =>  price_b - price_a = freight x m
+  =>  arbitrage         = freight x (m - 1)
+```
+
+Writing that is one obvious line. **So the purpose of the module is not to
+hold the numbers — `f64` did that perfectly well — but to make that line
+fail to compile.**
+
+| | question it answers |
+|---|---|
+| `ProductionCost` | what does it cost to *make* here, ex works |
+| `InventoryBasis` | what did the stock on hand cost — historical |
+| `SupplierAsk` | what is a seller asking |
+| `PurchasePrice` | what was actually agreed |
+| `InboundCharges` | freight, duty and handling to get it here |
+| `LandedBasis` | purchase plus inbound, per tonne held |
+| `ReplacementQuote` | what would the **next** tonne cost, now |
+| `ScarcityPremium` | what shortage adds on top |
+| `ClearingPrice` | what it changes hands at |
+
+**A works consumes the inventory basis of what is in its yard**, which is
+an accounting fact about the past. **Anybody deciding whether to move goods
+needs the replacement quote** — what obtaining another tonne would cost
+today. Using the first where the second belongs is the error underneath the
+whole business, and it is now a type error.
+
+The legal arithmetic is deliberately short, and what is missing from it is
+the point: **there is no route from a landed cost and a scarcity factor to
+a clearing price.** Scarcity may only be taken on a `ProductionCost`;
+carriage may only be added afterwards. Three `compile_fail` doctests hold
+it, each checked by running it as an ordinary doctest and reading the
+error — `cannot multiply LandedBasis by Scarcity` is the defect itself,
+refused.
+
+**No behaviour changed, and that was the requirement.** `cost.delivered(
+NONE).plus_premium(cost.scarcity_premium(m))` is `cost + cost x (m-1)`,
+which is `cost x m`. The carriage is `NONE` on purpose: putting the real
+figure in is one line, in one place, with one thing to measure — which
+after four coupled changes starved a country is the only sane way to
+attempt it again. *(Algebraically identical rather than bit-identical: the
+additive form can differ in the last ulp, so the suite is the evidence and
+not a byte comparison.)*
+
+### The same road cannot be promised to everybody
+
+A route table worked out once when the day opens tells every enquiry what
+the road can carry. Without something booking against it, a dozen
+consignments each set off believing they have that road to themselves —
+and **none of them is wrong on its own**, which is what makes it hard to
+see. The tonnage conserves, the money conserves, and the country is quietly
+moving more freight than its roads can hold.
+
+So `Quote::capacity` and `Economy::spare_capacity` are two different
+questions and are kept apart: what the tightest link on the path can carry,
+which is a property of the road, and what is left of it once everything
+already committed is counted.
+
+- **A haul books every link it will use, for every day it is using it**,
+  which is why a saturated bridge in the middle limits a journey between
+  two towns that never touch it. `Routing` keeps the predecessor of each
+  destination so the roads reserved are the same ones the carriage was
+  quoted on, rather than a second guess at the path.
+- **And it gives the road back when the journey ends.** A haul that arrives
+  early is not still occupying the days it will no longer be travelling.
+- **Yesterday's traffic constrains nothing**, so the table is pruned each
+  morning — otherwise it grows with history rather than with what is on
+  the road, which is the unbounded state this project has had to remove
+  four times.
+- **A refusal for want of road is a real outcome**, not a failure. A
+  consignment nobody can carry is not a consignment, and the two-town slice
+  demonstrates it: its road takes 150 t a day, so a second 150 t load on
+  the same morning is turned away with the goods still on the shelf.
+
+The gate is the sum rather than any single haul — across every road and
+every day, what is committed cannot exceed what that road carries — with
+two guards against it passing on an empty country: some traffic must have
+happened, and the busiest road must have been near enough to full that a
+missing reservation would have shown.
+
+### The order things are stored in is not an economic fact
+
+Reversing the site vector caught the original allocation bug, and **one
+reversal is one sample**: a rule that happens to be symmetric under
+reversal and biased under everything else sails straight through it. Six
+deterministic orderings now, including one drawn from a hash so it bears no
+relation to anything the model cares about — and all six permutations of
+the three markets, each fully remapped through every site's `market`, both
+ends of every road and the per-market vectors alongside.
+
+**Results are compared by name, not by slot.** Comparing two permuted runs
+index by index compares a farm against a cannery and calls the difference a
+defect.
+
+It found one immediately, in a place the old reversal test could not see:
+**`generate_power` dispatched in vector order.** It walked the sites and
+handed each station as much of the day's call as it could take until the
+call ran out, so the first plant in the list ran flat out and the last
+never ran at all. In a world of three identical towns one station burnt its
+coal to 9,235 tonnes while another finished on the full 20,000 it started
+with, and which was which depended on nothing whatever.
+
+Dispatch is now **merit order with ties shared**: cheapest fuel first, and
+where two plants are exactly as cheap the load is split between them. Both
+halves are needed and they are gated separately, because the symmetric
+fixture cannot test the first — three identical stations tie, the whole
+fleet is one band, and the cost comparison never discriminates.
+
+- **A tie broken by index is the original bug wearing a cost function.**
+  Deleting the tie-sharing turns the permutation gate red; deleting the
+  cost sort does not, because in that world nothing is cheaper than
+  anything else.
+- **And the gate for the cost sort had to be built so the two orders
+  disagree.** The first attempt made the *first* plant the cheapest, so
+  dispatching by position gave the same answer as dispatching by cost and
+  the test passed with the mechanism deleted. The cheapest station is
+  deliberately last in the vector now.
 
 ### Evenly starving is even
 
