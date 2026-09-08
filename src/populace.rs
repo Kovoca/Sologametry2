@@ -544,6 +544,19 @@ impl Populace {
     /// economy inside the loop would let each person trade against a
     /// slightly different world and quietly break conservation.
     pub fn live_a_day(&mut self, econ: &mut Economy, day: u64) {
+        self.live_a_day_bounded(econ, day, true)
+    }
+
+    /// The same day, with the supply of promotions optionally ignored.
+    ///
+    /// **Public for the reason `biota::settle` and `person::live_a_day`
+    /// are**: a population correlation cannot show a mechanism, so the
+    /// only way to test that advancement is bounded by vacancies is to
+    /// run the same cohort twice and vary that one thing. Passing `false`
+    /// is the bug this rule exists to prevent — promotion on time served
+    /// alone, with nobody to supervise — and is not a mode the game runs
+    /// in.
+    pub fn live_a_day_bounded(&mut self, econ: &mut Economy, day: u64, bounded: bool) {
         // **Is there a post going?**
         //
         // Not a ratio picked to look right: the number of supervisory
@@ -594,7 +607,7 @@ impl Populace {
                 continue;
             }
             let m = self.people[i].market;
-            let free = vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
+            let free = !bounded || vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
             let was = self.people[i].trade;
             live_a_day_with(&mut self.people[i], econ, day, free);
             if was != Trade::Supervisor && self.people[i].trade == Trade::Supervisor {

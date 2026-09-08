@@ -4659,9 +4659,51 @@ impl Economy {
                     self.ledger.sites[s].market == m
                         && self.ledger.sites[s].capacity[c as usize] > 0.0
                 };
-                let source: Vec<usize> = (0..self.ledger.sites.len())
-                    .filter(|&s| holds(s, from_m))
+                // **Never buy a works' raw material out from under it.**
+                //
+                // This took stock from any site in the market that had
+                // storage for it, which includes a mill's grain yard and a
+                // cannery's tinplate. `logistics::ship` has had a guard
+                // against exactly this since the day it backed a lorry up
+                // to a cannery, carried off its tinplate, and produced a
+                // famine two commodities downstream — and `trade` never
+                // got one.
+                //
+                // It went unnoticed because the old per-site reserve meant
+                // almost nothing moved. The moment a trader could sell the
+                // *market's* surplus it stripped every works in the
+                // country: food production halved and a nation that had
+                // been on seventeen days of cover went to a quarter of a
+                // day.
+                //
+                // A trader buys from a producer or a merchant. It does not
+                // empty its own customer's store.
+                let consumes = |s: usize| {
+                    self.ledger.sites[s]
+                        .recipe
+                        .map(|r| {
+                            RECIPES[r].inputs.iter().any(|&(ic, _)| ic == c)
+                                && !RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c)
+                        })
+                        .unwrap_or(false)
+                };
+                let mut source: Vec<usize> = (0..self.ledger.sites.len())
+                    .filter(|&s| holds(s, from_m) && !consumes(s))
                     .collect();
+                // **Whoever has most to sell**, rather than whoever is
+                // earliest in the list.
+                //
+                // A trader with a budget spends it on the first warehouse
+                // in the vector and stops, so stock strands in whichever
+                // shed happens to sort late while the market next door
+                // stays dear. Worth two of the five price gaps this
+                // model's no-arbitrage gate cannot otherwise explain.
+                source.sort_by(|&a, &b| {
+                    self.ledger
+                        .stock(b, c)
+                        .total_cmp(&self.ledger.stock(a, c))
+                        .then(a.cmp(&b))
+                });
                 let sink: Vec<usize> = (0..self.ledger.sites.len())
                     .filter(|&s| holds(s, to_m))
                     .collect();
