@@ -2962,7 +2962,7 @@ impl Economy {
     /// can be very bad.
     fn turn_of_the_year(&mut self) {
         let day = self.ledger.day;
-        if day % DAYS_PER_YEAR != 0 {
+        if !day.is_multiple_of(DAYS_PER_YEAR) {
             return;
         }
         let year = day / DAYS_PER_YEAR;

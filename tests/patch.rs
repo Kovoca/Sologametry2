@@ -37,18 +37,18 @@ fn base_tile(gen: &impl Fn(i64, i64, i64) -> u64, at: (i64, i64, i64)) -> Materi
             1 => Material::Sedimentary,
             _ => Material::Igneous,
         }),
-        construction: if (v >> 7) % 5 == 0 {
+        construction: if (v >> 7).is_multiple_of(5) {
             Some(Construction::Wall)
         } else {
             None
         },
-        ceiling: if (v >> 11) % 4 == 0 {
+        ceiling: if (v >> 11).is_multiple_of(4) {
             Some(Boundary::Solid)
         } else {
             None
         },
         fluid: None,
-        vegetation: if (v >> 13) % 6 == 0 {
+        vegetation: if (v >> 13).is_multiple_of(6) {
             Some(Vegetation::Tree)
         } else {
             None

@@ -448,12 +448,11 @@ impl Person {
     /// than one you have forgotten.
     pub fn practise(&mut self, worked: bool) {
         let here = self.trade.skill() as usize;
-        if worked {
-            if self.level(self.trade.skill()) < self.ceiling() {
+        if worked
+            && self.level(self.trade.skill()) < self.ceiling() {
                 // Somebody diligent gets more out of the same day.
                 self.practice[here] += 0.6 + 0.8 * self.diligence;
             }
-        }
         // **Everything else fades.** Real skill decay is slow — a trade
         // is still there years later, just rusty — so this is set so that
         // a decade away costs a couple of levels rather than all of them.
@@ -2695,7 +2694,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 } else {
                     false
                 };
-                if !moved && (person.days_idle == 3 || person.days_idle % 21 == 0) {
+                if !moved && (person.days_idle == 3 || person.days_idle.is_multiple_of(21)) {
                     person.note(
                         day,
                         format!(

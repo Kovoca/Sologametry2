@@ -62,7 +62,7 @@ fn main() {
          S cheapest-delivered supplier  T market-wide trade\n"
     );
     println!(
-        "{:<6} {:>8} {:>8} {:>9} {:>9} {:>9} {:>7} {:>11} {:>5} {:>5} {:>7} {}",
+        "{:<6} {:>8} {:>8} {:>9} {:>9} {:>9} {:>7} {:>11} {:>5} {:>5} {:>7} cons",
         "case",
         "lo cvr",
         "med cvr",
@@ -73,8 +73,7 @@ fn main() {
         "food made",
         "in?",
         "room",
-        "hungry",
-        "cons"
+        "hungry"
     );
     println!("{}", "-".repeat(110));
 

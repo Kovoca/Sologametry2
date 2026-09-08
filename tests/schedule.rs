@@ -670,7 +670,7 @@ fn a_jig_set_up_wrong_spoils_the_whole_run() {
         if b.setup == Grade::Accepted {
             good_runs += 1;
             if b.units.iter().any(|g| *g != Grade::Accepted)
-                && b.units.iter().any(|g| *g == Grade::Accepted)
+                && b.units.contains(&Grade::Accepted)
             {
                 mixed += 1;
             }

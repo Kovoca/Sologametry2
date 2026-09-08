@@ -53,8 +53,10 @@ pub const CHUNK: i64 = 32;
 /// Three states, because two cannot express taking something away that
 /// the generator put there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum Field<T> {
     /// The generator's answer stands.
+    #[default]
     Unchanged,
     Set(T),
     /// **There is deliberately nothing here**, whatever was generated.
@@ -75,11 +77,6 @@ impl<T: Copy> Field<T> {
     }
 }
 
-impl<T> Default for Field<T> {
-    fn default() -> Self {
-        Field::Unchanged
-    }
-}
 
 /// What the ground *is*, before anything is built on it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]

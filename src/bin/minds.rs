@@ -136,7 +136,7 @@ fn main() {
     let last_day = years * 365;
     let mut people: Vec<Coarse> = Vec::new();
     for i in 0..cast {
-        let mut c = Coarse::new(folk(i as u32), seed ^ (i as u64 + 1) * 0x9E37, 0);
+        let mut c = Coarse::new(folk(i as u32), seed ^ ((i as u64 + 1) * 0x9E37), 0);
         c.perceived_control = ControlAppraisal {
             source: 0.55,
             consequences: 0.6,
@@ -309,8 +309,8 @@ fn main() {
     // is drink to be had. Nothing about him changes at all.
     println!("\n=== the same man, three towns ===========================\n");
     println!(
-        "  {:<33} {:<16} {:<10} {}",
-        "town", "settles on", "after 3 yrs", "debt"
+        "  {:<33} {:<16} {:<10} debt",
+        "town", "settles on", "after 3 yrs"
     );
     let towns: [(&str, f64, bool); 3] = [
         ("work to be had", 0.85, true),

@@ -254,7 +254,7 @@ fn main() {
         let happened: Vec<String> = hal.log[last_log..].to_vec();
         last_log = hal.log.len();
         for line in &happened {
-            let what = line.splitn(2, ": ").nth(1).unwrap_or(line);
+            let what = line.split_once(": ").map(|x| x.1).unwrap_or(line);
             // Strip the running total so repeats of the same job match.
             let shape: String = what
                 .split(" — ")

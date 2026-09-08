@@ -1658,12 +1658,9 @@ impl WorkOrder {
         if grade == Grade::Reworkable {
             self.spoil(step, recipe, cat, 1.0);
         }
-        match mishap {
-            Mishap::Slow(f) => {
-                self.elapsed_min += step.effort.span_minutes() * (f - 1.0);
-                self.active_labour_min += step.effort.labour_minutes() * (f - 1.0);
-            }
-            _ => {}
+        if let Mishap::Slow(f) = mishap {
+            self.elapsed_min += step.effort.span_minutes() * (f - 1.0);
+            self.active_labour_min += step.effort.labour_minutes() * (f - 1.0);
         }
     }
 

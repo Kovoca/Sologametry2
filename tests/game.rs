@@ -254,7 +254,7 @@ fn a_year_passes_with_everything_attached() {
     // And the people are still there and still individuated.
     let folk = g.folk.as_ref().unwrap();
     assert!(
-        folk.people.len() > 0,
+        !folk.people.is_empty(),
         "a year of being driven by the root emptied the sample"
     );
 }

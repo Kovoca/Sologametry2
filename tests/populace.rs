@@ -895,7 +895,7 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
         .map(|&i| (i, folk.people[i].name.clone()))
         .collect();
 
-    for day in 0..(DAYS_PER_YEAR as u64 * 6) {
+    for day in 0..(DAYS_PER_YEAR * 6) {
         folk.live_a_day(&mut e, day);
     }
 

@@ -2653,7 +2653,7 @@ fn below_ground(
             let (w, _h) = (hi_x - lo_x + 1, hi_y - lo_y + 1);
             let core_x = lo_x + w / 2 - 2;
             if lot == Lot::Flats
-                && iy >= lo_y + 1
+                && iy > lo_y
                 && iy <= lo_y + 5
                 && ix <= core_x + 1
                 && ix >= core_x
@@ -2895,7 +2895,7 @@ fn room_at(
             } else {
                 y1 = at - 1
             }
-            id = id * 2;
+            id *= 2;
         } else {
             if vertical {
                 x0 = at + 1
@@ -2925,9 +2925,9 @@ fn furnish(
 ) -> Tile {
     let kind = if depth_from_front <= 1 {
         Room::Living
-    } else if room % 3 == 0 {
+    } else if room.is_multiple_of(3) {
         Room::Kitchen
-    } else if room % 7 == 0 {
+    } else if room.is_multiple_of(7) {
         Room::Hall
     } else {
         Room::Bedroom

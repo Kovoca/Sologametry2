@@ -679,7 +679,7 @@ fn a_room_has_a_door_and_something_in_it() {
     );
     // A stair, because you cannot get to the floors above without one.
     assert!(
-        g.tiles.iter().any(|t| *t == Tile::Stairs),
+        g.tiles.contains(&Tile::Stairs),
         "a block of flats with no stairwell"
     );
 }
@@ -698,7 +698,7 @@ fn down_is_a_direction_like_up() {
     // 3-10 m down, so one level is about right.
     let cellar = Ground::around_on(1, &plan, at, TILES_PER_PLOT, -1);
     assert!(
-        cellar.tiles.iter().any(|t| *t == Tile::Water),
+        cellar.tiles.contains(&Tile::Water),
         "a city street with nothing running under it"
     );
     assert!(
@@ -706,7 +706,7 @@ fn down_is_a_direction_like_up() {
         "the ground either side of a sewer is not solid"
     );
     assert!(
-        !cellar.tiles.iter().any(|t| *t == Tile::Sky),
+        !cellar.tiles.contains(&Tile::Sky),
         "sky below ground"
     );
 
@@ -1001,7 +1001,7 @@ fn a_shop_floor_can_be_walked_round() {
     // tile in the window — that is inside whatever building the corner of
     // the view happens to clip, and flooding *its* interior proves
     // nothing about this one.
-    let (sx, sy) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let (sx, sy) = (((at.0 - g.origin.0)), ((at.1 - g.origin.1)));
     let start = (0..g.w * g.h)
         .filter(|i| walkable[*i] && g.tiles[*i] == Tile::Floor)
         .min_by_key(|i| ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs())
@@ -1138,7 +1138,7 @@ fn a_stockroom_is_worked_by_forklift() {
     // over the whole window reads a gap between two separate stockrooms as
     // a gangway a metre wide. Scope to the dock nearest the shopper and
     // the walls either side of it.
-    let (px, py) = ((at.0 - g.origin.0) as i64, (at.1 - g.origin.1) as i64);
+    let (px, py) = (((at.0 - g.origin.0)), ((at.1 - g.origin.1)));
     let dock_row = (0..g.h)
         .filter(|y| (0..g.w).any(|x| g.tiles[idx(x, *y)] == Tile::Fitting(Fixture::LoadingBay)))
         .min_by_key(|y| (*y as i64 - py).abs())

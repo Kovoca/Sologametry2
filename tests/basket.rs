@@ -265,9 +265,8 @@ fn a_used_machine_washes_the_same_clothes() {
 
     // **And it does the job**, which is the point: the need is met and
     // nothing is outstanding.
-    assert_eq!(
+    assert!(
         provision_for(Need::CleanClothes, 1.0, &home.owns, &store, &cat).met(),
-        true,
         "a second-hand machine washed nothing"
     );
     // It is not as good, though. Less life left in it.

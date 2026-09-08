@@ -475,7 +475,7 @@ impl Polities {
     pub fn colour(id: u16) -> [u8; 3] {
         // Golden-ratio hue walk: consecutive ids land far apart on the
         // wheel, so neighbouring territories never share a shade.
-        let hue = (id as f32 * 0.61803399).fract();
+        let hue = (id as f32 * 0.618_034).fract();
         let sat = 0.52 + ((id % 3) as f32) * 0.12;
         let val = 0.72 + ((id % 2) as f32) * 0.16;
         hsv_to_rgb(hue, sat, val)

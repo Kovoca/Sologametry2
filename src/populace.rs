@@ -605,7 +605,7 @@ impl Populace {
         }
         self.bury_the_dead(day);
         // A year turns.
-        if day > 0 && day % crate::econ::DAYS_PER_YEAR == 0 {
+        if day > 0 && day.is_multiple_of(crate::econ::DAYS_PER_YEAR) {
             self.a_year_passes(econ, day);
         }
     }

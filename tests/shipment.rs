@@ -656,7 +656,7 @@ fn a_consignment(k: u64) -> Shipment {
         how_lost: None,
         goods: 900.0 * (100.0 + k as f64),
         freight: 45.0 * (100.0 + k as f64),
-        refrigerated: k % 2 == 0,
+        refrigerated: k.is_multiple_of(2),
         leg: Leg::OnTheRoad,
     }
 }

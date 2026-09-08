@@ -329,7 +329,7 @@ impl Composition {
         }
         // Deterministic order, so two compositions built in different
         // orders are the same composition.
-        self.parts.sort_by(|a, b| a.0.cmp(&b.0));
+        self.parts.sort_by_key(|a| a.0);
         self.parts.retain(|p| p.1 > 0.0);
     }
 

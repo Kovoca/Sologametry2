@@ -79,7 +79,9 @@ pub enum SocialFact {
 /// perfectly honest with money. General trust is a weighted summary of
 /// these; the domain evidence stays available.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum TrustIn {
+    #[default]
     General,
     Secrets,
     Money,
@@ -326,17 +328,7 @@ pub struct Evidence {
     pub owing: f64,
 }
 
-impl Default for TrustIn {
-    fn default() -> Self {
-        TrustIn::General
-    }
-}
 
-impl Default for Aspect {
-    fn default() -> Self {
-        Aspect::Integrity
-    }
-}
 
 /// Familiarity is the one dimension that really does come free with
 /// contact, so it keeps a plain rate.
@@ -391,8 +383,10 @@ impl Default for Diagnosticity {
 /// So `if negative { weight *= 2.5 }` is wrong. Which way the asymmetry
 /// runs depends on what is being judged.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default)]
 pub enum Aspect {
     /// Would they? A moral judgement.
+    #[default]
     Integrity,
     /// Could they? A judgement of capability.
     Competence,
