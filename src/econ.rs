@@ -126,6 +126,77 @@ impl Commodity {
         Commodity::Remedies,
     ];
 
+    /// **What this commodity is called in a save**, and it is not where
+    /// it sits in the enum.
+    ///
+    /// `Shipment::store` wrote `commodity as u8` and loaded through
+    /// `Commodity::ALL[index]`, so **inserting or reordering a single
+    /// variant silently reinterpreted every cargo in every existing
+    /// save** — a hold of grain becoming a hold of coal, with the file
+    /// intact and the checksum correct. That is the exact failure the
+    /// save design says explicit codes exist to prevent, and `Leg` and
+    /// `Loss` next door already had them.
+    ///
+    /// **These numbers are frozen.** A variant that is removed takes its
+    /// code out of use for ever; a new one takes the next free code in
+    /// its family and never fills a gap. The families leave room
+    /// deliberately, because the resource work coming wants limestone,
+    /// aggregate, copper, bauxite and a dozen more, and appending them to
+    /// one run would put every material in the order somebody happened to
+    /// think of it:
+    ///
+    /// ```text
+    ///   1- 19  food and farm
+    ///  20- 39  energy and fuel
+    ///  40- 59  ores and metals
+    ///  60- 79  materials and manufactures
+    ///  80- 99  chemicals and medicine
+    /// ```
+    ///
+    /// The match is **exhaustive on purpose**. A roster can silently omit
+    /// a variant — this project has already had a save format fail to
+    /// load because `ALL_MATERIALS` was missing `Water`, and what found it
+    /// was an exhaustive match refusing to compile. So adding a commodity
+    /// cannot compile until somebody has decided what it is called on
+    /// disk.
+    pub fn wire_code(self) -> u16 {
+        match self {
+            // food and farm
+            Commodity::Grain => 1,
+            Commodity::Flour => 2,
+            Commodity::ProcessedFood => 3,
+            Commodity::Livestock => 4,
+            Commodity::Meat => 5,
+            // energy and fuel
+            Commodity::Coal => 20,
+            Commodity::Electricity => 21,
+            Commodity::Petroleum => 22,
+            // ores and metals
+            Commodity::IronOre => 40,
+            Commodity::Steel => 41,
+            // materials and manufactures
+            Commodity::Timber => 60,
+            Commodity::Cement => 61,
+            Commodity::Plastics => 62,
+            Commodity::Machinery => 63,
+            Commodity::RetailGoods => 64,
+            // chemicals and medicine
+            Commodity::Chemicals => 80,
+            Commodity::Medicine => 81,
+            Commodity::Remedies => 82,
+        }
+    }
+
+    /// The reverse, and it is a `Result` rather than a panic: an unknown
+    /// code is a save from a newer build or a corrupted one, which is
+    /// something to refuse rather than to guess at.
+    pub fn from_wire_code(code: u16) -> Option<Commodity> {
+        Commodity::ALL
+            .iter()
+            .copied()
+            .find(|c| c.wire_code() == code)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Commodity::Grain => "grain",

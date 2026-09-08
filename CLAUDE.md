@@ -2540,6 +2540,58 @@ from the **library**, and this project keeps its `compile_fail` proofs
 there — the ones showing a listener cannot read a speaker's motives and a
 landed cost cannot be multiplied by a scarcity factor.
 
+### A variant's position is not its name on disk
+
+`Shipment::store` wrote `commodity as u8` and loaded through
+`Commodity::ALL[index]`, so **inserting or reordering one variant would
+silently reinterpret every cargo in every existing save** — a hold of
+grain becoming a hold of coal, with the file intact and the checksum
+correct. `save.rs` already states the rule and `Leg` and `Loss` in the
+same file already had explicit codes; the commodity did not.
+
+The codes are **frozen and grouped by family**, with gaps left on
+purpose — the resource work coming wants limestone, aggregate, copper and
+a dozen more, and appending them to one run would put every material in
+the order somebody happened to think of it. The match is exhaustive, so
+adding a commodity cannot compile until somebody has decided what it is
+called on disk. That is the same mechanism that caught `ALL_MATERIALS`
+missing `Water`: **an exhaustive match is a test a roster cannot fake.**
+
+The gate cannot enforce the freeze — that is a promise, and it lives in
+the doc comment. What it does check is that the mapping is a bijection,
+that an unknown code is *refused* rather than resolved, and that the
+codes do not simply equal the positions again, which would be a cast
+wearing a function's name.
+
+### A save is not a trusted input
+
+Every one of these decodes cleanly — a finite float in a known field, a
+valid `Leg` code, a length inside its bound — so nothing in the codec can
+catch them:
+
+```text
+a negative tonnage aboard          finite_f64 accepts -1e9 quite happily
+a cargo due before it set off
+a manifest missing thirty tonnes   aboard + delivered + lost != despatched
+a cargo in transit with no cargo
+a finished shipment still loaded
+a written-off shipment that delivered
+tonnes lost with no cause, or a cause with nothing lost
+```
+
+The manifest one is the dangerous one, and it is dangerous in this
+project's characteristic way: **`Ledger::total` counts `aboard`**, so a
+load whose parts do not add up to what was despatched makes tonnage
+appear or vanish and *every subsequent conservation check passes*. The
+one defence against a quiet leak is the thing being fooled.
+
+A save has been on a disk, through a backup, possibly through somebody's
+editor. `SaveError::Impossible` is deliberately a third kind of error
+beside `NotANumber` and `UnknownCode`: those are about the bytes, this is
+about the world. And each rejection is provoked in turn by the gate,
+because **a validator that has only ever seen clean data is untested** —
+the rule `bom::validate` already has a second gate for.
+
 ### A sentinel read as a rate, for the third time
 
 `throughput: 1e9` on a power station means *whatever the grid can carry*.
