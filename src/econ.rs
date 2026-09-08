@@ -786,7 +786,7 @@ impl Opening {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -1573,7 +1573,7 @@ pub mod recipe {
 // Markets
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Market {
     pub name: String,
     /// Which nation this market belongs to. Weather is drawn per nation,
@@ -2094,6 +2094,7 @@ impl Crossing {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Route {
     /// **This road's durable name**, and the thing every booking and
     /// every saved reservation refers to.

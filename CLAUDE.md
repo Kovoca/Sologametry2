@@ -2540,6 +2540,61 @@ from the **library**, and this project keeps its `compile_fail` proofs
 there — the ones showing a listener cannot read a speaker's motives and a
 landed cost cannot be multiplied by a scarcity factor.
 
+### Writing the economy down (`src/econ_codec.rs`)
+
+The root save is Phase 0's remaining architectural item, and the first
+thing worth recording is its **size**, measured rather than guessed: seven
+enums and about twenty-two structs for the economy alone, before the item
+store and the population. So it is being built in layers, and this is the
+leaf layer — the enums, the roads, the markets, the works, the shop
+fittings and the basket.
+
+**One file, when the convention elsewhere is a codec beside its type.**
+The wire codes are a single frozen namespace, and keeping them together is
+what makes "these numbers never change" reviewable in one place rather
+than a promise spread over six files.
+
+**A basket is a reading per commodity, not eighteen numbers in a row.** It
+is `[f64; N_COMMODITIES]`, so writing it positionally breaks every save
+the day a nineteenth commodity is added — which the resource work is going
+to do, and which is exactly the defect the shipment's commodity had. It
+goes down as `(wire code, value)` pairs, so a save made before limestone
+existed loads into a world that has it with every figure on the commodity
+it was measured for. **A column this build does not know about is dropped
+rather than fatal**, because refusing a whole world over one unknown
+commodity would make every future commodity a breaking change.
+
+**What is deliberately not saved:** `routing` is an all-pairs table
+derived from the roads and rebuilt by `resurvey` every morning. It is a
+cache, not state, and writing it down would store a value that has to
+agree with the roads and can silently stop agreeing.
+
+The gate names **every variant of every enum** — twenty-one kinds of
+works, five road surfaces, five grid levels, three crossings, seven shop
+fittings — because a round-trip over a generated world exercises only what
+that world happens to contain, and a country with no tunnel never encodes
+a tunnel. That is `save.rs`'s own rule: *an enum variant no test happens
+to exercise is exactly the one that silently does not come back.* Each
+value is written part way through its range, because **a zero survives a
+codec that drops the field**. A second gate checks no two variants share a
+code, which is not a load error but two different things loading as the
+same thing.
+
+**And the loader refuses a world that cannot be true**: a road with no
+name, a road from a town to itself, a road of negative length, a works
+holding more than its own store, a works whose recipe does not exist in
+this build. That last pair matter because the allocation code would then
+spend for ever trying to reconcile them.
+
+**Next, and it is a design decision rather than more of the same.**
+`Ledger` and `Treasury` both hold private totals — produced, consumed,
+spoiled, opening, afloat; balances and opening — so their codecs cannot
+live in another module. They want `restore` constructors documented as
+loader-only, the way `Registry::restore` already is. Which buys something
+better than access: both types already have an `assert_conserved`, so
+**a save whose mass or money does not balance can be refused at the door**
+rather than becoming a leak somebody hunts for later.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,
