@@ -5034,11 +5034,16 @@ impl Economy {
     /// alone asks thousands of times a day, and it used to run a fresh
     /// search for every one of them.
     pub fn resurvey(&mut self) {
-        let edges: Vec<(usize, usize, f64, f64, f64)> = self
+        // **Carry the road's own number through the filter.** Enumerating
+        // *after* filtering renumbers every road past the first shut one,
+        // and the reservation code indexes `self.routes` with what comes
+        // back out.
+        let edges: Vec<(usize, usize, usize, f64, f64, f64)> = self
             .routes
             .iter()
-            .filter(|r| r.usable())
-            .map(|r| (r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .enumerate()
+            .filter(|(_, r)| r.usable())
+            .map(|(road, r)| (road, r.a, r.b, r.freight_cost, r.km, r.capacity))
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
@@ -5273,7 +5278,7 @@ impl Economy {
         tonnes: f64,
         km: f64,
         refrigerated: bool,
-    ) -> Option<crate::shipment::ShipmentId> {
+    ) -> Option<(crate::shipment::ShipmentId, f64)> {
         use crate::shipment::{days_on_the_road, Leg, Shipment};
         if tonnes <= 1e-9 {
             return None;
@@ -5334,7 +5339,13 @@ impl Economy {
                 freight,
             },
         );
-        Some(id)
+        // **The accepted quantity, not the requested one.** The load has
+        // been clamped twice by here — by what the seller holds and by
+        // what is left of the road — and a caller that goes on believing
+        // its own request overstates what moved, what the carrier earned
+        // and what work was done, while understating the demand still
+        // outstanding.
+        Some((id, take))
     }
 
     /// **Tip what will fit.** Returns the tonnage that actually came off.

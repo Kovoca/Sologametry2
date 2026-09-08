@@ -511,7 +511,12 @@ fn ship(
             // kilometres is not the same thing as across town, and a model
             // that cannot say so has nowhere to put goods that are on the
             // road at midnight.
-            let Some(id) = econ.consign(src, dst, carrier, c, take, km, c.needs_cold()) else {
+            // **What the road took, not what was asked for.** `consign`
+            // clamps the load by the seller's stock and by what is left of
+            // the road; crediting the request instead moves tonnes on
+            // paper that no lorry ever carried.
+            let Some((id, take)) = econ.consign(src, dst, carrier, c, take, km, c.needs_cold())
+            else {
                 continue;
             };
             // **A same-day haul is collected and tipped in the same day.**

@@ -116,6 +116,9 @@ pub struct Routing {
     /// came from. Walking these back gives the actual edges a haul uses,
     /// which is what makes it possible to reserve capacity on them rather
     /// than promising the same road to every shipment that wants it.
+    ///
+    /// **These are the caller's route identifiers**, not positions in
+    /// whatever slice `build` was handed. See `build`.
     prev_edge: Vec<usize>,
     prev_node: Vec<usize>,
 }
@@ -132,17 +135,30 @@ impl Routing {
         }
     }
 
-    /// Build from the open routes. `edges` yields `(a, b, freight, km,
-    /// capacity)` for every usable link, in route-index order — the index
-    /// is kept so a haul can say which roads it is actually using.
-    pub fn build(n: usize, edges: &[(usize, usize, f64, f64, f64)]) -> Routing {
+    /// Build from the open routes. `edges` yields `(road, a, b, freight,
+    /// km, capacity)` for every usable link, where **`road` is the caller's
+    /// own stable identifier** — the position of that route in
+    /// `Economy::routes` — and not this slice's index.
+    ///
+    /// **That distinction is the whole signature.** The caller filters out
+    /// the roads that are shut before calling, so this slice is compact
+    /// and its positions mean nothing outside it. Keeping a position as
+    /// the edge identity — which this did — shifts every later road by one
+    /// for each earlier one that closed, and the reservation code then
+    /// books capacity against whatever route happens to sit at that index
+    /// in the unfiltered list. On a triangle with one road shut, a haul
+    /// going the long way round booked the shut road.
+    ///
+    /// Filtering may change an adjacency list. It must never manufacture
+    /// identity.
+    pub fn build(n: usize, edges: &[(usize, usize, usize, f64, f64, f64)]) -> Routing {
         let mut r = Routing::empty(n);
         // Adjacency, both ways: a road is a road in both directions.
         let mut adj: Vec<Vec<(usize, f64, f64, f64, usize)>> = vec![Vec::new(); n];
-        for (i, &(a, b, f, km, cap)) in edges.iter().enumerate() {
+        for &(road, a, b, f, km, cap) in edges.iter() {
             if a < n && b < n {
-                adj[a].push((b, f, km, cap, i));
-                adj[b].push((a, f, km, cap, i));
+                adj[a].push((b, f, km, cap, road));
+                adj[b].push((a, f, km, cap, road));
             }
         }
         for src in 0..n {
