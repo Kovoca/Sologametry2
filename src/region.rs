@@ -1981,6 +1981,7 @@ impl Region {
                     }
                 };
                 routes.push(Route {
+                    id: crate::quote::RouteId(routes.len() as u64 + 1),
                     name: format!(
                         "{} to {} ({:.0} km of road for a {:.0} km gap{how})",
                         markets[a].name, markets[b].name, along, straight
@@ -2025,6 +2026,7 @@ impl Region {
         }
 
         let markets_len = markets.len();
+        let named_roads = routes.len() as u64 + 1;
         let mut economy = Economy {
             ledger: Ledger::new(sites),
             journal: Journal::new(),
@@ -2046,6 +2048,7 @@ impl Region {
             shipments: crate::registry::Registry::new(),
             power_clearing: None,
             experiments: Default::default(),
+            next_route_id: named_roads,
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
@@ -2291,7 +2294,8 @@ impl Nations {
                 let volume = economy.markets[ma]
                     .daily_household_demand(Commodity::ProcessedFood)
                     .min(economy.markets[mb].daily_household_demand(Commodity::ProcessedFood));
-                economy.routes.push(Route {
+                economy.open_a_road(|id| Route {
+                    id,
                     name: format!(
                         "{} - {} ({:.0} km by {})",
                         names[a],

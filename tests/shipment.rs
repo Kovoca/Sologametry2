@@ -772,7 +772,11 @@ fn no_road_is_booked_past_what_it_can_carry() {
     for _ in 0..200 {
         n.economy.step();
         for ((road, day), tonnes) in n.economy.reservations.iter() {
-            let carries = n.economy.routes[road].capacity;
+            let carries = n
+                .economy
+                .road(road)
+                .expect("a booking names a road that is not there")
+                .capacity;
             assert!(
                 tonnes <= carries + 1e-6,
                 "road {road} on day {day} is booked for {tonnes:.1} t against \

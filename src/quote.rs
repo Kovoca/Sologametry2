@@ -119,7 +119,7 @@ pub struct Routing {
     ///
     /// **These are the caller's route identifiers**, not positions in
     /// whatever slice `build` was handed. See `build`.
-    prev_edge: Vec<usize>,
+    prev_edge: Vec<Option<RouteId>>,
     prev_node: Vec<usize>,
 }
 
@@ -130,7 +130,7 @@ impl Routing {
             freight: vec![f64::INFINITY; n * n],
             km: vec![f64::INFINITY; n * n],
             capacity: vec![0.0; n * n],
-            prev_edge: vec![usize::MAX; n * n],
+            prev_edge: vec![None; n * n],
             prev_node: vec![usize::MAX; n * n],
         }
     }
@@ -151,10 +151,10 @@ impl Routing {
     ///
     /// Filtering may change an adjacency list. It must never manufacture
     /// identity.
-    pub fn build(n: usize, edges: &[(usize, usize, usize, f64, f64, f64)]) -> Routing {
+    pub fn build(n: usize, edges: &[(RouteId, usize, usize, f64, f64, f64)]) -> Routing {
         let mut r = Routing::empty(n);
         // Adjacency, both ways: a road is a road in both directions.
-        let mut adj: Vec<Vec<(usize, f64, f64, f64, usize)>> = vec![Vec::new(); n];
+        let mut adj: Vec<Vec<(usize, f64, f64, f64, RouteId)>> = vec![Vec::new(); n];
         for &(road, a, b, f, km, cap) in edges.iter() {
             if a < n && b < n {
                 adj[a].push((b, f, km, cap, road));
@@ -165,7 +165,7 @@ impl Routing {
             let mut best = vec![f64::INFINITY; n];
             let mut dist = vec![f64::INFINITY; n];
             let mut tight = vec![0.0f64; n];
-            let mut pedge = vec![usize::MAX; n];
+            let mut pedge: Vec<Option<RouteId>> = vec![None; n];
             let mut pnode = vec![usize::MAX; n];
             let mut done = vec![false; n];
             best[src] = 0.0;
@@ -188,7 +188,7 @@ impl Routing {
                         best[next] = through;
                         dist[next] = dist[here] + km;
                         tight[next] = tight[here].min(cap);
-                        pedge[next] = edge;
+                        pedge[next] = Some(edge);
                         pnode[next] = here;
                     }
                 }
@@ -239,7 +239,7 @@ impl Routing {
     /// Walked back from the destination, so it is the same path the
     /// carriage was quoted on rather than a second guess at it. Empty when
     /// the two are the same place or nothing connects them.
-    pub fn path_edges(&self, from: usize, to: usize) -> Vec<usize> {
+    pub fn path_edges(&self, from: usize, to: usize) -> Vec<RouteId> {
         let mut out = Vec::new();
         if from == to || self.n == 0 || from >= self.n || to >= self.n {
             return out;
@@ -251,9 +251,11 @@ impl Routing {
             if here == from {
                 break;
             }
-            let e = self.prev_edge[from * self.n + here];
+            let Some(e) = self.prev_edge[from * self.n + here] else {
+                return Vec::new();
+            };
             let p = self.prev_node[from * self.n + here];
-            if e == usize::MAX || p == usize::MAX {
+            if p == usize::MAX {
                 return Vec::new();
             }
             out.push(e);
@@ -304,6 +306,30 @@ impl Routing {
 // what has already been promised
 // =====================================================================
 
+/// **A road's durable name.**
+///
+/// Not its position in `Economy::routes`. The distinction had already
+/// caused one defect — filtering the shut roads out renumbered every road
+/// after them, so a haul going the long way round reserved a closed road
+/// — and that fix carried the *position* through the filter rather than
+/// replacing it. A position is still not identity, and the place it fails
+/// next is the save: bookings written down as "road 7" reload into a world
+/// whose routes were built in a different order and name a different
+/// stretch of road.
+///
+/// Issued from a counter that only goes up, and **the counter is part of
+/// the save** for the reason `registry.rs` states: derive it from the
+/// highest name present and a world that has lost its newest road starts
+/// handing that name out again.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct RouteId(pub u64);
+
+impl std::fmt::Display for RouteId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "road {}", self.0)
+    }
+}
+
 /// **What each road has already been booked to carry, day by day.**
 ///
 /// A quote says what a road *can* take. It cannot say what is left, and a
@@ -312,10 +338,11 @@ impl Routing {
 /// Dispatch reserves; the reservation is what the next enquiry sees.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Reservations {
-    /// `(road, day) -> tonnes`. A `BTreeMap` because a save has to write
-    /// the same bytes every time and a walk has to visit in the same
+    /// `(road, day) -> tonnes`, keyed by the road's **durable name** and
+    /// not by where it sits in a vector. A `BTreeMap` because a save has to
+    /// write the same bytes every time and a walk has to visit in the same
     /// order.
-    booked: std::collections::BTreeMap<(usize, u64), f64>,
+    booked: std::collections::BTreeMap<(RouteId, u64), f64>,
 }
 
 impl Reservations {
@@ -323,11 +350,11 @@ impl Reservations {
         Reservations::default()
     }
 
-    pub fn booked(&self, road: usize, day: u64) -> f64 {
+    pub fn booked(&self, road: RouteId, day: u64) -> f64 {
         self.booked.get(&(road, day)).copied().unwrap_or(0.0)
     }
 
-    pub fn book(&mut self, road: usize, day: u64, tonnes: f64) {
+    pub fn book(&mut self, road: RouteId, day: u64, tonnes: f64) {
         if tonnes <= 0.0 {
             return;
         }
@@ -336,7 +363,7 @@ impl Reservations {
 
     /// **Give back what was booked and not used.** A consignment written
     /// off or tipped early is not still occupying the road.
-    pub fn release(&mut self, road: usize, day: u64, tonnes: f64) {
+    pub fn release(&mut self, road: RouteId, day: u64, tonnes: f64) {
         if let Some(v) = self.booked.get_mut(&(road, day)) {
             *v = (*v - tonnes).max(0.0);
             if *v <= 1e-9 {
@@ -361,7 +388,7 @@ impl Reservations {
         self.booked.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = ((usize, u64), f64)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = ((RouteId, u64), f64)> + '_ {
         self.booked.iter().map(|(&k, &v)| (k, v))
     }
 }

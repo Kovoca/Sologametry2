@@ -2095,6 +2095,20 @@ impl Crossing {
 }
 
 pub struct Route {
+    /// **This road's durable name**, and the thing every booking and
+    /// every saved reservation refers to.
+    ///
+    /// Assigned once when the road is built and never afterwards derived
+    /// from anything. **Creation order does decide which number a road
+    /// gets, and that is correct** — the same world built the same way
+    /// must produce the same names, which is the rule `registry.rs`
+    /// already states. What is ruled out is reading a *position* as a
+    /// name at the point of use, which is where the reservation code went
+    /// wrong twice: once because filtering the shut roads out renumbered
+    /// the rest, and once — waiting to happen — because bookings written
+    /// down as "road 7" reload into a world whose routes were built in a
+    /// different order and name a different stretch of road.
+    pub id: crate::quote::RouteId,
     pub name: String,
     pub a: usize,
     pub b: usize,
@@ -2816,6 +2830,12 @@ pub struct Economy {
     pub power_clearing: Option<f64>,
     /// **Scaffolding**, off by default. See `Experiments`.
     pub experiments: Experiments,
+    /// **The next unused road name.** Written down rather than worked
+    /// out from the highest name present, for the reason `registry.rs`
+    /// states about its own counter: a world that has lost its newest
+    /// road would otherwise start handing that name out again, and a
+    /// saved booking still refers to it.
+    pub next_route_id: u64,
     pub routing: crate::quote::Routing,
     /// **What the roads have already been promised to carry.**
     ///
@@ -5122,12 +5142,11 @@ impl Economy {
         // *after* filtering renumbers every road past the first shut one,
         // and the reservation code indexes `self.routes` with what comes
         // back out.
-        let edges: Vec<(usize, usize, usize, f64, f64, f64)> = self
+        let edges: Vec<(crate::quote::RouteId, usize, usize, f64, f64, f64)> = self
             .routes
             .iter()
-            .enumerate()
-            .filter(|(_, r)| r.usable())
-            .map(|(road, r)| (road, r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .filter(|r| r.usable())
+            .map(|r| (r.id, r.a, r.b, r.freight_cost, r.km, r.capacity))
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
@@ -5255,7 +5274,7 @@ impl Economy {
         }
         let mut least = f64::INFINITY;
         for road in self.routing.path_edges(from, to) {
-            let Some(r) = self.routes.get(road) else {
+            let Some(r) = self.road(road) else {
                 return 0.0;
             };
             for day in from_day..=to_day {
@@ -5263,6 +5282,34 @@ impl Economy {
             }
         }
         least
+    }
+
+    /// **The road with this name**, or nothing if it is not in this world.
+    ///
+    /// Linear, and deliberately so: a country's roads are a spanning tree
+    /// over its towns, so this is a walk of tens of entries and a map
+    /// would be a second structure to keep in step with the first.
+    pub fn road(&self, id: crate::quote::RouteId) -> Option<&Route> {
+        self.routes.iter().find(|r| r.id == id)
+    }
+
+    /// **Open a new road**, giving it a name nothing else has ever had.
+    ///
+    /// The only way a road joins a world after it is built. Pushing onto
+    /// `routes` directly would leave the name to whoever remembered.
+    /// It takes a closure rather than a `Route` so that **the name comes
+    /// from the allocator and no literal has to hold a placeholder**. A
+    /// field that must contain *something* before it means anything is how
+    /// `Nowhere` came to exist in the item store, and it is not going back
+    /// in here.
+    pub fn open_a_road(
+        &mut self,
+        road: impl FnOnce(crate::quote::RouteId) -> Route,
+    ) -> crate::quote::RouteId {
+        let id = crate::quote::RouteId(self.next_route_id);
+        self.next_route_id += 1;
+        self.routes.push(road(id));
+        id
     }
 
     /// **Promise the road**, on every link the haul will use, for every

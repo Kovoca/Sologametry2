@@ -190,6 +190,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     // between the two towns (spec A.7) — cutting it is an economic event,
     // not just a nuisance.
     let routes = vec![Route {
+        id: crate::quote::RouteId(1),
         name: "Ashford–Bexley road".into(),
         a: ASHFORD,
         b: BEXLEY,
@@ -208,6 +209,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     let peak = cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0;
 
     let markets_len = markets.len();
+    let named_roads = routes.len() as u64 + 1;
     let mut economy = Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
@@ -229,6 +231,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         shipments: crate::registry::Registry::new(),
         power_clearing: None,
         experiments: Default::default(),
+        next_route_id: named_roads,
         routing: crate::quote::Routing::default(),
         reservations: crate::quote::Reservations::new(),
         import_duty: Default::default(),
@@ -405,6 +408,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     for a in 0..TOWNS {
         for b in (a + 1)..TOWNS {
             routes.push(Route {
+                id: crate::quote::RouteId(routes.len() as u64 + 1),
                 name: format!("{}–{} road", markets[a].name, markets[b].name),
                 a,
                 b,
@@ -425,6 +429,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     // because adding up the recipe draws by hand gets it wrong.
     let peak = (cannery_rate * 0.35 + mill_rate * 0.08 + farm_rate * 0.05 + 2.0) * TOWNS as f64;
 
+    let named_roads = routes.len() as u64 + 1;
     let mut economy = Economy {
         ledger: Ledger::new(sites),
         journal: Journal::new(),
@@ -446,6 +451,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         shipments: crate::registry::Registry::new(),
         power_clearing: None,
         experiments: Default::default(),
+        next_route_id: named_roads,
         routing: crate::quote::Routing::default(),
         reservations: crate::quote::Reservations::new(),
         import_duty: Default::default(),

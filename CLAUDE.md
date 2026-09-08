@@ -2540,6 +2540,42 @@ from the **library**, and this project keeps its `compile_fail` proofs
 there — the ones showing a listener cannot read a speaker's motives and a
 landed cost cannot be multiplied by a scarcity factor.
 
+### A booking names a road, not a slot
+
+The closed-road fix carried the route's *position* through the filter,
+which is correct and is not identity. Where a position fails next is the
+save: `Reservations` is keyed by road, so a booking written down as
+"road 7" reloads into a world whose routes were built in a different order
+and names a different stretch of tarmac. Nothing catches it — the tonnage
+conserves, the money conserves, and the country is quietly running freight
+over a road that cannot carry it.
+
+So `RouteId` had to exist **before the save format froze**, which is the
+reverse of the order the review's numbered list gives and follows the
+review's own principle: do not serialise raw vector positions into a
+permanent format.
+
+- **Creation order does decide which number a road gets, and that is
+  correct** — the same world built the same way must produce the same
+  names, which is the rule `registry.rs` already states. What is ruled out
+  is reading a position as a name *at the point of use*.
+- **The counter is written down**, not derived from the highest name
+  present. Same reason as the registry's: a world that has lost its newest
+  road would otherwise hand that name out again while a saved booking
+  still refers to it.
+- **`open_a_road` takes a closure**, not a `Route`, so the name comes from
+  the allocator and no literal has to hold a placeholder. A field that must
+  contain *something* before it means anything is how `Nowhere` came to
+  exist in the item store.
+- **The lookup is linear on purpose.** A country's roads are a spanning
+  tree over its towns, so `road(id)` walks tens of entries, and a map would
+  be a second structure to keep in step with the first.
+
+The gate cannot run a reload — there is no root codec yet, which is the
+open Phase 0 item — so it exercises the mechanism underneath one:
+**reorder the routes and every booking must still mean the same two towns,
+the same distance and the same day.**
+
 ### A variant's position is not its name on disk
 
 `Shipment::store` wrote `commodity as u8` and loaded through
