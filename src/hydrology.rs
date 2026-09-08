@@ -24,7 +24,11 @@ struct Elev(f32);
 impl Eq for Elev {}
 impl PartialOrd for Elev {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.total_cmp(&other.0))
+        // Delegates to `Ord`, which is the canonical form and the only one
+        // that cannot drift apart from it. `Ord::cmp` is the total order
+        // over the float; a second copy of it here is a second thing to
+        // get wrong.
+        Some(self.cmp(other))
     }
 }
 impl Ord for Elev {

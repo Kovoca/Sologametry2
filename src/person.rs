@@ -448,11 +448,10 @@ impl Person {
     /// than one you have forgotten.
     pub fn practise(&mut self, worked: bool) {
         let here = self.trade.skill() as usize;
-        if worked
-            && self.level(self.trade.skill()) < self.ceiling() {
-                // Somebody diligent gets more out of the same day.
-                self.practice[here] += 0.6 + 0.8 * self.diligence;
-            }
+        if worked && self.level(self.trade.skill()) < self.ceiling() {
+            // Somebody diligent gets more out of the same day.
+            self.practice[here] += 0.6 + 0.8 * self.diligence;
+        }
         // **Everything else fades.** Real skill decay is slow — a trade
         // is still there years later, just rusty — so this is set so that
         // a decade away costs a couple of levels rather than all of them.
@@ -2609,7 +2608,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 // employment swings about twofold season to season.
                 const LAND_WORK_THAT_IS_SEASONAL: f64 = 0.30;
                 person.employment = if person.trade == Trade::Labourer
-                    && draw(&person.name, day ^ 0x5EA_50_4A) < LAND_WORK_THAT_IS_SEASONAL
+                    && draw(&person.name, day ^ 0x05EA_504A) < LAND_WORK_THAT_IS_SEASONAL
                 {
                     Employment::Seasonal
                 } else if r < full {

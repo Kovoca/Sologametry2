@@ -3342,7 +3342,6 @@ impl Economy {
                     },
                 );
             }
-            remaining -= batches;
         }
     }
 

@@ -1195,7 +1195,7 @@ impl Mind {
         }
 
         if ev.someone_gained {
-            let r = relevance.max(0.4).min(1.0);
+            let r = relevance.clamp(0.4, 1.0);
             add(Emotion::Envy, (0.15 + 0.9 * pct(Facet::Envy)) * r);
             add(Emotion::Frustration, (0.1 + 0.8 * pct(Facet::Ambition)) * r);
             add(

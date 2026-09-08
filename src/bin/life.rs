@@ -222,11 +222,10 @@ fn main() {
                 }
                 _ => {}
             }
-            if args.fault.is_some() {
+            if let Some(fault) = &args.fault {
                 println!(
-                    "{:>6} |          |       |      |      |       | *** {} fails ***",
-                    "",
-                    args.fault.unwrap()
+                    "{:>6} |          |       |      |      |       | *** {fault} fails ***",
+                    ""
                 );
             }
         }

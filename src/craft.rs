@@ -1485,7 +1485,7 @@ impl WorkOrder {
             self.elapsed_min += spend;
             left -= spend;
             match step.effort {
-                Effort::Hands { .. } => self.active_labour_min += spend * hands.min(1.0).max(0.0),
+                Effort::Hands { .. } => self.active_labour_min += spend * hands.clamp(0.0, 1.0),
                 Effort::Machine { minutes, tending } => {
                     self.machine_min += spend * rate;
                     let share = if minutes > 0.0 {
@@ -1971,7 +1971,7 @@ fn add<K: PartialEq + Copy>(v: &mut Vec<(K, f64)>, k: K, amount: f64) {
     }
 }
 
-fn sub<K: PartialEq + Copy>(v: &mut Vec<(K, f64)>, k: K, amount: f64) {
+fn sub<K: PartialEq + Copy>(v: &mut [(K, f64)], k: K, amount: f64) {
     if let Some(p) = v.iter_mut().find(|p| p.0 == k) {
         p.1 = (p.1 - amount).max(0.0);
     }

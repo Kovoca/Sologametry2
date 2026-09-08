@@ -672,7 +672,11 @@ fn compacting_preserves_every_future_value() {
                 Facet::Anxiety,
                 m,
                 0.6,
-                if (i as u64 + k).is_multiple_of(2) { 1.0 } else { -1.0 },
+                if (i as u64 + k).is_multiple_of(2) {
+                    1.0
+                } else {
+                    -1.0
+                },
                 k * 400 + i as u64 * 90,
             );
         }

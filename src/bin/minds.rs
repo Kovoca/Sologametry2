@@ -108,7 +108,7 @@ fn main() {
         .iter()
         .filter(|s| polities.owner[s.cell] == nation)
         .collect::<Vec<_>>();
-    here.sort_by(|a, b| b.population.cmp(&a.population));
+    here.sort_by_key(|a| std::cmp::Reverse(a.population));
     let Some(town) = here.first() else {
         eprintln!("that nation has no towns");
         std::process::exit(1);

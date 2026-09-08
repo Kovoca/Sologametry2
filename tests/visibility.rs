@@ -561,7 +561,7 @@ fn the_walls_of_a_room_you_are_in_are_not_dashed() {
     let at = spot.expect("a town with no shop in it");
     let g = Ground::window(seed, &plan, at, 104, 72);
     // Stand somewhere you can actually stand.
-    let (sx, sy) = (((at.0 - g.origin.0)), ((at.1 - g.origin.1)));
+    let (sx, sy) = ((at.0 - g.origin.0), (at.1 - g.origin.1));
     let stand = (0..g.w * g.h)
         .filter(|i| g.tiles[*i] == Tile::Floor)
         .min_by_key(|i| ((*i % g.w) as i64 - sx).abs() + ((*i / g.w) as i64 - sy).abs())

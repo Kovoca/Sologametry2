@@ -798,7 +798,7 @@ fn print_report(world: &World, gen_ms: f64, out: &str) {
         .iter()
         .map(|&b| (b, counts[b as usize]))
         .collect();
-    rows.sort_by(|a, b| b.1.cmp(&a.1));
+    rows.sort_by_key(|a| std::cmp::Reverse(a.1));
 
     println!("biome distribution");
     for (biome, n) in rows {

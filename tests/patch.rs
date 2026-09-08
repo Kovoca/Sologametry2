@@ -387,7 +387,7 @@ fn a_floor_between_two_levels_is_one_fact() {
     // The level above records nothing about it — there is nowhere for it
     // to, which is what makes the boundary unambiguous.
     assert_eq!(o.len(), 1);
-    assert!(o.tiles.get(&(4, 4, 1)).is_none());
+    assert!(!o.tiles.contains_key(&(4, 4, 1)));
     let after = o.materialise(lower, base_tile(&gen, lower));
     assert_eq!(after.ceiling, Some(Boundary::Open));
 }

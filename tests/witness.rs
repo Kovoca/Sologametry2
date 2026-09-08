@@ -277,8 +277,12 @@ fn a_collapse_carries_where_conversational_words_no_longer_do() {
 
     let crash = from_the_ground(&g, here, there, EventKind::Collapse, AMBIENT_STREET_DB);
     let chat = from_the_ground(&g, here, there, EventKind::Conversation, AMBIENT_STREET_DB);
-    let crash = crash.unwrap_or_else(|| panic!("a roof came in {} m down an open street and nobody noticed",
-        (there.0 - here.0).abs()));
+    let crash = crash.unwrap_or_else(|| {
+        panic!(
+            "a roof came in {} m down an open street and nobody noticed",
+            (there.0 - here.0).abs()
+        )
+    });
     assert!(crash.cues.prosody, "a roof coming in was not even audible");
 
     // **The conversation is not simply unperceived, and saying so would

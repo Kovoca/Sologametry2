@@ -2652,11 +2652,7 @@ fn below_ground(
             // A cellar is storage, and it is where the stair comes down.
             let (w, _h) = (hi_x - lo_x + 1, hi_y - lo_y + 1);
             let core_x = lo_x + w / 2 - 2;
-            if lot == Lot::Flats
-                && iy > lo_y
-                && iy <= lo_y + 5
-                && ix <= core_x + 1
-                && ix >= core_x
+            if lot == Lot::Flats && iy > lo_y && iy <= lo_y + 5 && ix <= core_x + 1 && ix >= core_x
             {
                 return Tile::Stairs;
             }

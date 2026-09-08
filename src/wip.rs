@@ -719,8 +719,10 @@ pub fn join(
     // **The assembly own bill is the joining material and nothing else.**
     // Its components are real objects sitting inside it, and listing them
     // here as well would count them twice when it comes apart.
-    let mut record = crate::item::AssemblyRecord::default();
-    record.consumed = consumed.to_vec();
+    let mut record = crate::item::AssemblyRecord {
+        consumed: consumed.to_vec(),
+        ..Default::default()
+    };
     // **As built**: the actual objects that went in, by handle. The
     // design still says what a door expects; this says what is in this
     // one, and their mass is theirs rather than being counted twice.
@@ -1232,8 +1234,10 @@ pub fn start(
 /// Convenience for a fresh piece with nothing but material in it.
 impl ItemInstance {
     pub fn bare_bill(&mut self, kg: f64) {
-        let mut record = crate::item::AssemblyRecord::default();
-        record.bulk = self.materials.masses(kg);
+        let record = crate::item::AssemblyRecord {
+            bulk: self.materials.masses(kg),
+            ..Default::default()
+        };
         self.assembly = Some(record);
         self.quality = Quality::default();
         self.condition = Condition::fresh();

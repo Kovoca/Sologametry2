@@ -687,9 +687,11 @@ fn a_world_saved_mid_journey_resumes_the_same_journey() {
     );
 
     // Out to a file and back, through the header and the checksum.
-    let mut save = Save::default();
-    save.day = e.ledger.day;
-    save.shipments = e.shipments.clone();
+    let save = Save {
+        day: e.ledger.day,
+        shipments: e.shipments.clone(),
+        ..Default::default()
+    };
     let back = Save::from_bytes(&save.to_bytes()).expect("the world would not load");
 
     let after = back

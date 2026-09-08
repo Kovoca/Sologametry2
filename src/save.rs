@@ -205,7 +205,17 @@ impl<'a> Reader<'a> {
         let s = self.take(n)?;
         String::from_utf8(s.to_vec()).map_err(|_| SaveError::Truncated)
     }
-    pub fn len(&mut self) -> Result<usize, SaveError> {
+    /// **Read a length out of the stream.**
+    ///
+    /// Named `len` once, which is a different thing entirely — a reader's
+    /// own length is `left`, and this consumes four bytes and hands back
+    /// what they said. The old name also drew a lint asking for an
+    /// `is_empty` to go with it, which would have been meaningless, and
+    /// the lint was right about the name rather than about the method.
+    ///
+    /// Use `count` instead wherever the number is about to be allocated
+    /// against.
+    pub fn read_len(&mut self) -> Result<usize, SaveError> {
         Ok(self.u32()? as usize)
     }
 
@@ -1932,7 +1942,7 @@ impl Save {
         let mut b = Reader::new(body);
         let world_seed = b.u64()?;
         let day = b.u64()?;
-        let n = b.len()?;
+        let n = b.read_len()?;
         let people = (0..n)
             .map(|_| Coarse::load(&mut b))
             .collect::<Result<_, _>>()?;

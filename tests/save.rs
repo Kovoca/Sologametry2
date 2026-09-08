@@ -279,16 +279,6 @@ fn habits_are_stored_against_the_strategy_and_not_the_slot() {
 // the journal: what happened is not worked out twice
 // =====================================================================
 
-/// **Once it has happened, it has happened.**
-///
-/// Recomputing an outcome after a balance change, an RNG change or a new
-
-/// **Two witnesses cannot make two accidents.** The objective outcome
-/// comes from the world's seed and the event, never from whoever
-
-/// **A perception is not written down.** It is derived, because it is
-/// not a world fact — and a journal that recorded every witness's view
-
 /// **A save costs what happened**, not how long anybody played.
 #[test]
 fn a_save_grows_with_history_and_not_with_time() {

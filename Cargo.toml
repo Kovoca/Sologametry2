@@ -19,3 +19,41 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 # off deliberately -- it roughly triples compile time and we iterate a lot.
 [profile.release]
 opt-level = 3
+
+# =====================================================================
+# lints turned off on purpose, each with the reason
+# =====================================================================
+#
+# A suppression without a reason is a defect with a lid on it. Every one of
+# these is a case where the advice is either wrong for this codebase or
+# would make it worse, and the argument is written down so it can be
+# disagreed with. Anything not listed is expected to be clean.
+#
+# Here rather than in `lib.rs` because the tests and the diagnostic
+# binaries are separate crates and inner attributes do not reach them --
+# and a rule that holds for the library and not for its gates is not a
+# rule.
+[lints.clippy]
+# **The index is the data, not an accessor.** Loops run over one
+# collection's length while indexing several parallel ones -- markets,
+# workforce, staff_today and payroll_met are all indexed by market -- and
+# the counter is very often stored as a value in its own right, as in
+# `Site { market: m, .. }`. `enumerate()` gives back the same number with
+# more ceremony, and cannot be used at all where the body needs `&mut self`
+# while reading `self.markets[m]`.
+needless_range_loop = "allow"
+# **Seven is not a natural limit on how many things a real process depends
+# on.** What raises these past it is domain arity -- a haul has an origin,
+# a destination, a commodity, a quantity, a distance, a carrier and whether
+# the lorry is refrigerated -- and bundling them into a struct to satisfy a
+# counter would hide the arity rather than reduce it.
+too_many_arguments = "allow"
+# **A type alias for a returned tuple is a name nobody looks up.** These
+# are diagnostic returns read once at the call site and clearer written out.
+type_complexity = "allow"
+# **Asserting a constant is exactly the point.** These guard calibration
+# figures -- that a tolerance is tight enough, that no instrument is
+# perfect, that strain accumulates faster than it recovers -- and exist so
+# that changing the constant fails the build rather than quietly changing
+# the model.
+assertions_on_constants = "allow"

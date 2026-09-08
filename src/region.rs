@@ -192,7 +192,7 @@ fn freight_field(world: &World, net: &Network, from: usize) -> Field4 {
     impl Eq for C {}
     impl PartialOrd for C {
         fn partial_cmp(&self, o: &Self) -> Option<std::cmp::Ordering> {
-            Some(self.0.total_cmp(&o.0))
+            Some(self.cmp(o))
         }
     }
     impl Ord for C {

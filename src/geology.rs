@@ -565,7 +565,7 @@ pub fn generate(
     normalise_over_land(&mut petroleum, &land, region_size);
 
     let mut masses = find_landmasses(elev, sea_level);
-    masses.sort_by(|a, b| b.cells.len().cmp(&a.cells.len()));
+    masses.sort_by_key(|a| std::cmp::Reverse(a.cells.len()));
 
     Geology {
         rock,

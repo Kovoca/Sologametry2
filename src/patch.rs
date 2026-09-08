@@ -52,8 +52,7 @@ pub const CHUNK: i64 = 32;
 ///
 /// Three states, because two cannot express taking something away that
 /// the generator put there.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum Field<T> {
     /// The generator's answer stands.
     #[default]
@@ -76,7 +75,6 @@ impl<T: Copy> Field<T> {
         matches!(self, Field::Unchanged)
     }
 }
-
 
 /// What the ground *is*, before anything is built on it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
