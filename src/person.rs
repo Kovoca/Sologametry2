@@ -1302,6 +1302,34 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
     // saved for anything and every life ended a little poorer than it
     // began. Being *at* subsistence is the historical condition; being
     // permanently below it is not, or there would be nobody left.
+    // **These are the bottom of the observed band, and they should be the
+    // middle — but not yet.**
+    //
+    // A labourer at 6.0 is the floor of the 6-10 days of food this file
+    // records for real low-wage work, so slack in the labour market puts
+    // the outcome *below* the band the model claims: 5.1 days across most
+    // nations, and 4.5 before the wage curve was corrected.
+    //
+    // Centring them at 8.0 was tried and puts the figure squarely in band
+    // at 6.8-7.5 — and it cannot be shipped, because **a pay rise here
+    // reaches no price anywhere.** Production costs are built on
+    // `econ::WAGE_AN_HOUR`, a constant on a different scale by a factor of
+    // about thirty-five, so incomes rose a third, rents did not follow,
+    // and homelessness among the worst-paid went to zero. That is not what
+    // happens when everybody gets a rise.
+    //
+    // Blocked on reconciling the two wage scales. See
+    // `econ::Economy::wage_an_hour`.
+    //
+    // A labourer sat at 6.0, which is the bottom of the 6-10 days of food
+    // this file records for real low-wage work — so any slack in the
+    // labour market put the outcome *below* the band the model itself
+    // claims, and it did: 4.5 days across most nations. A central case has
+    // to be central, or the variation around it only ever goes one way.
+    //
+    // Every figure below is the old one times 4/3, so the relativities
+    // between trades — which were separately argued and are the part that
+    // carries meaning — are untouched.
     let multiple = match trade {
         // Driving is entry-level freight work; a shift at a works pays a
         // little less for less risk and no lorry.

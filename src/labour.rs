@@ -319,15 +319,28 @@ pub fn update(econ: &mut Economy) {
             0.0
         };
 
-        // **Wages sag when hands are idle, and not by much.**
+        // **Wages sag when hands are idle, and there is a measured figure
+        // for how much.**
         //
         // Nominal wages are famously sticky: a doubling of unemployment
         // does not halve anybody's pay, and pretending it does would be as
         // wrong as pretending nothing happens. What actually gives is
         // hiring, which is handled by rationing the work itself. This is
         // the smaller, second-order squeeze on top.
-        let slack = (NATURAL_UNEMPLOYMENT / w.unemployment.max(1e-4)).powf(0.35);
-        w.wage_index = slack.clamp(0.75, 1.40);
+        //
+        // **The wage curve puts it at an elasticity of about -0.1**
+        // *(Blanchflower & Oswald, replicated across many countries and
+        // decades)*: double the local unemployment rate and pay falls
+        // about a tenth. The exponent here was 0.35 with a clamp of
+        // 0.75-1.40, which is three and a half times the measured
+        // response — and it mattered, because it sat at its floor in
+        // nearly every nation and dragged a labourer's pay to **4.5 days
+        // of food a day worked against this file's own stated band of
+        // 6-10**. A calibration that the model states and then multiplies
+        // its way out of is worse than one it never claimed.
+        const WAGE_CURVE: f64 = 0.10;
+        let slack = (NATURAL_UNEMPLOYMENT / w.unemployment.max(1e-4)).powf(WAGE_CURVE);
+        w.wage_index = slack.clamp(0.85, 1.20);
 
         // Pay follows the cost of living at a walk, not a run.
         let today = food_price[m];

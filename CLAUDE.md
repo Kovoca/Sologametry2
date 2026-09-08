@@ -2936,6 +2936,61 @@ suite green — and both were turned up while chasing something else.
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
 
+## The model has two wage scales and they differ by thirty-five times
+
+Phase 0's recalibration, and what it found is bigger than what it fixed.
+
+**A day's work was buying 4.5 days of food against this file's own stated
+band of 6-10** — the calibration it records as "not a cosmetic error" —
+and house price to income was running 9.6-15.8 against a real 5-9. Wages
+were too low and housing inherited it.
+
+**One of the two causes is fixed.** The slack index used an invented
+exponent of 0.35 clamped to 0.75-1.40, and it sat at its floor in nearly
+every nation. The **wage curve** puts the elasticity of pay to local
+unemployment at about **-0.1** *(Blanchflower & Oswald, replicated across
+many countries and decades)*: double the unemployment rate and pay falls
+about a tenth. Three and a half times the measured response is not a
+sticky wage. Corrected, days of food goes 4.5 to 5.1 and house-to-income
+15.8 to 13.7.
+
+**The other cannot be fixed yet, and the reason is worth more than the
+fix.** The trade multiples are the *floor* of the observed band rather than
+its middle, so any slack puts the outcome below the band the model claims.
+Centring a labourer at 8.0 puts it squarely in — 6.8 to 7.5 days of food,
+house-to-income 6.5 to 10.3 — and it cannot be shipped:
+
+> **A pay rise here reaches no price anywhere.**
+
+Production costs are built on `econ::WAGE_AN_HOUR`, a constant of 22 on the
+commodity scale, making a day about 176. `person::day_rate` gives a
+labourer about 5. **The two wage systems differ by roughly thirty-five
+times and had never met**, so raising incomes by a third moved no cost at
+all: rent fell as a share of what people earn and homelessness among the
+worst-paid went to zero, which is not what happens when everybody gets a
+rise.
+
+Substituting one for the other does not work either — on the person scale
+the recipe labour term goes to almost nothing and labour drops out of every
+production cost in the model. **The scales have to be reconciled first**,
+which is a piece of work rather than a line, and until then wages can be
+calibrated or housing pressure can be realistic and not both.
+
+### A gate that reverses on a thirteen per cent move
+
+`people_share_a_roof` asserted that living alone puts more people on the
+street than sharing does. It had already flipped once — recorded in its own
+comment as "a better country rather than a broken model" — and it flipped
+again on the thirteen per cent that correcting the wage curve produced.
+
+**A gate that reverses on a thirteen per cent move is measuring which side
+of a cliff the country is standing on**, not the mechanism it names.
+Homelessness is a threshold; being poorer is not. What the equivalence
+scale claims is that carrying a household alone costs a quarter more, and
+the robust reading of that is what people have left in their pockets. The
+threshold is kept as the sharper consequence and asserted only in the
+direction that cannot be an artefact: living alone is never *easier*.
+
 ## The last plant dispatched sets the price (`src/econ.rs`)
 
 `power.rs` has held the merit-order model since it was written and the

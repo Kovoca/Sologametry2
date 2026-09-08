@@ -627,6 +627,9 @@ pub enum SiteKind {
 /// like everything else to the food chain.
 const WAGE_AN_HOUR: f64 = 22.0;
 
+/// Hours in a working day, for turning a day rate into an hourly one.
+const HOURS_A_DAY: f64 = 8.0;
+
 /// **The sentinel, named once.**
 ///
 /// A power station's `throughput` is not a rate: it means "whatever the
@@ -4987,6 +4990,31 @@ impl Economy {
             .map(|r| (r.a, r.b, r.freight_cost, r.km, r.capacity))
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
+    }
+
+    /// **What an hour of somebody's time costs a firm here** — and it is
+    /// deliberately not used, because it does not agree with the constant
+    /// that is.
+    ///
+    /// **The model has two wage scales and they differ by about
+    /// thirty-five times.** `WAGE_AN_HOUR` is 22 on the commodity scale,
+    /// making a day about 176; `person::day_rate` gives a labourer
+    /// something like 5. Nobody had noticed because the two never met:
+    /// what a person earns and what labour costs the firm employing them
+    /// were separate numbers in separate systems.
+    ///
+    /// Connecting them is right and was tried. It does not work as a
+    /// substitution, because on the person scale the recipe labour term
+    /// goes to almost nothing and labour drops out of every production
+    /// cost in the model. **What it needs first is for the two scales to
+    /// be reconciled**, which is a piece of work rather than a line, and
+    /// until then this exists to name the gap rather than to be called.
+    ///
+    /// The consequence while it stands: a pay rise reaches nobody's costs,
+    /// so wages can be calibrated or housing pressure can be realistic,
+    /// and not both. See `person::day_rate`.
+    pub fn wage_an_hour(&self, m: usize) -> f64 {
+        crate::person::day_rate(self, m, crate::person::Trade::Labourer) / HOURS_A_DAY
     }
 
     /// **What a tonne of `c` costs at this particular works.**

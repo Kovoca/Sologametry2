@@ -55,7 +55,7 @@ fn main() {
     let pol = Polities::partition(&world, 30);
     let set = Settlements::place(&world, &pol, 5000);
     let net = Network::build(&world, &set, 1000);
-    let id = pol.ranked()[2].0;
+
 
     println!(
         "One nation, {DAYS} days, every combination of four changes.\n\

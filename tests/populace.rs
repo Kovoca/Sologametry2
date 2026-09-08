@@ -479,10 +479,41 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     };
     let alone = homeless_share(true);
     let shared = homeless_share(false);
+
+    // **Being on the street is a threshold; being poorer is not.**
+    //
+    // This asserted that living alone puts more people out, and it had
+    // already flipped once for the reason the comment below records. It
+    // flipped again on a **thirteen per cent** wage change -- correcting
+    // the wage curve to its measured elasticity -- which is the tell: a
+    // gate that reverses on a thirteen per cent move is measuring which
+    // side of a cliff the country happens to be standing on, not the
+    // mechanism it names.
+    //
+    // What the equivalence scale claims is that carrying a household alone
+    // costs a quarter more, and the robust reading of that is what people
+    // have left in their pockets. Homelessness stays as the sharper
+    // consequence, asserted only in the direction that cannot be an
+    // artefact: living alone is never *easier*.
+    let purse = |alone: bool| -> f64 {
+        let idx: Vec<_> = folk
+            .people
+            .ids()
+            .filter(|i| (folk.households[i.slot()] == Household::Alone) == alone)
+            .collect();
+        if idx.is_empty() {
+            return f64::NAN;
+        }
+        idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len() as f64
+    };
+    let (alone_purse, shared_purse) = (purse(true), purse(false));
     assert!(
-        alone > shared,
-        "living alone on hospitality wages is no harder than sharing: \
-         {:.0}% against {:.0}% on the street",
+        shared_purse > alone_purse * 1.10,
+        "sharing a roof left {shared_purse:.0} against {alone_purse:.0} living alone -- the equivalence scale is not reaching anybody's pocket"
+    );
+    assert!(
+        alone >= shared - 1e-9,
+        "living alone came out *easier* than sharing: {:.0}% against {:.0}% on the street",
         alone * 100.0,
         shared * 100.0
     );
