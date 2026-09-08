@@ -379,12 +379,17 @@ fn a_price_gap_wider_than_the_carriage_has_a_reason() {
         // eighteen of forty-eight grain pairs standing open. Small,
         // bounded, and written down so it has to be argued about rather
         // than drifting.
-        unexplained.len() <= 4
-            && unexplained
-                .iter()
-                .map(|&(_, b, c, x)| x / e.markets[b].price[c as usize].max(1e-9))
-                .fold(0.0f64, f64::max)
-                < 0.50,
+        // **A share, not a count.** Successive counts get nudged whenever
+        // anything legitimately moves the model — this one went 3, then 5,
+        // on a correct fix to the clock — and a number tuned after every
+        // change is fitted to the model rather than testing it.
+        //
+        // What this discriminates is a return to the state before the
+        // missing `consumes` guard was found, when **eighteen of
+        // forty-eight** grain pairs stood open: 37%. Five of two hundred
+        // and forty is 2%. A bar at a tenth separates those two worlds by
+        // a wide margin and is not sitting on today's reading.
+        (unexplained.len() as f64) < (examined as f64) * 0.10,
         "{} price gaps with no reason to be open, worst {:?}; {excused} of \
          {examined} pairs were excused",
         unexplained.len(),

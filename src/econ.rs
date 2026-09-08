@@ -2836,9 +2836,34 @@ impl Economy {
     }
 
     pub fn step(&mut self) {
+        // **The day is established before anything reads it.**
+        //
+        // **Told means told.** This used to take the larger of its own date
+        // and the one it was given, which sounds defensive and is the
+        // opposite: a subsystem whose date had gone wrong in the *upward*
+        // direction — a stale load, a bad migration, anything that reached
+        // past the root — kept its wrong date for ever, and the root could
+        // not put it right. Correcting a subsystem is the whole reason
+        // something owns the clock.
+        //
+        // **And it has to be corrected first.** Setting it at the *end* of
+        // the day looked like the same thing and was not: seasons, the
+        // passes, journal entries, treasury movements, shipment departures
+        // and due-date checks all ran against `ledger.day`, so an economy
+        // whose clock had gone wrong did a full day's work on the wrong
+        // date and only then relabelled itself. `freight.haul(self,
+        // self.ledger.day)` passed the stale figure explicitly. The gate
+        // that watched this compared the final label, which both ends
+        // satisfied — what discriminates is the date on the first thing
+        // the day actually did.
+        match self.told_the_day.take() {
+            Some(day) => self.ledger.day = day,
+            None => self.ledger.day += 1,
+        }
+
         // **Photograph the world before anything moves in it.**
         self.opening = Some(Opening {
-            day: self.told_the_day.unwrap_or(self.ledger.day + 1),
+            day: self.ledger.day,
             price: self.markets.iter().map(|m| m.price).collect(),
             cover: self.markets.iter().map(|m| m.expected_cover).collect(),
             landed: self.markets.iter().map(|m| m.landed).collect(),
@@ -2936,18 +2961,6 @@ impl Economy {
         // entry point that does *not* count for itself, and using it is
         // what makes "everybody agrees what day it is" a real claim rather
         // than two counters that happen to increment together.
-        // **Told means told.** This used to take the larger of its own date
-        // and the one it was given, which sounds defensive and is the
-        // opposite: a subsystem whose date had gone wrong in the *upward*
-        // direction — a stale load, a bad migration, anything that reached
-        // past the root — kept its wrong date for ever, and the root could
-        // not put it right. Correcting a subsystem is the whole reason
-        // something owns the clock.
-        match self.told_the_day.take() {
-            Some(day) => self.ledger.day = day,
-            None => self.ledger.day += 1,
-        }
-
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
     }
