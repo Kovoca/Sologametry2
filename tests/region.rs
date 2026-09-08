@@ -990,8 +990,18 @@ fn a_works_that_is_not_running_does_not_set_the_price() {
 
     // **And a real cheap mill that does run moves it**, which is the other
     // half: the rule is about supply, not about ignoring low costs.
+    // **A works rated at three times its neighbour needs three times the
+    // warehouse.** Copying the real mill's stores wholesale gave this one
+    // a flour room sized for a third of what it makes, so it filled up and
+    // stopped — it was sitting on three hundred and forty thousand tonnes
+    // of grain with nowhere to put the flour. The site was malformed and
+    // the gate was reading the consequence as a pricing result.
     let last = r.economy.ledger.sites.len() - 1;
-    r.economy.ledger.sites[last].throughput = r.economy.ledger.sites[mill].throughput * 3.0;
+    let scale = 3.0;
+    r.economy.ledger.sites[last].throughput = r.economy.ledger.sites[mill].throughput * scale;
+    for cap in r.economy.ledger.sites[last].capacity.iter_mut() {
+        *cap *= scale;
+    }
     for _ in 0..40 {
         r.economy.step();
     }
