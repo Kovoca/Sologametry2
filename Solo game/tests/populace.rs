@@ -121,8 +121,11 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
     // real figure: the labour model counts supervisory posts off the works
     // and shops that actually exist, at a span of control of about ten.
     for m in 0..bounded.markets.len() {
-        let mine: Vec<&scale_sim::person::Person> =
-            with_posts.people.values().filter(|p| p.market == m).collect();
+        let mine: Vec<&scale_sim::person::Person> = with_posts
+            .people
+            .values()
+            .filter(|p| p.market == m)
+            .collect();
         if mine.len() < 30 {
             continue;
         }

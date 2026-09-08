@@ -341,7 +341,19 @@ fn the_journal_explains_every_change() {
 
     assert!(!econ.journal.is_empty(), "nothing was journalled at all");
     for entry in econ.journal.entries() {
-        assert!(entry.day < econ.ledger.day, "entry dated in the future");
+        // **Today's work is dated today.** This used to require strictly
+        // less, which was right only while the economy did a whole day's
+        // work against its *previous* date and advanced the clock at the
+        // end — so the last day's entries really were dated yesterday.
+        // The clock is now established before anything reads it, and the
+        // assertion this test is making is that nothing is dated in the
+        // future.
+        assert!(
+            entry.day <= econ.ledger.day,
+            "entry dated {} against a clock on {}",
+            entry.day,
+            econ.ledger.day
+        );
         let qty = match &entry.event {
             scale_sim::econ::Event::Produced { qty, .. }
             | scale_sim::econ::Event::Consumed { qty, .. }

@@ -13,6 +13,7 @@ use scale_sim::polity::Polities;
 use scale_sim::populace::Populace;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
+use scale_sim::slice;
 use scale_sim::world::World;
 
 fn a_nation() -> Region {
@@ -407,4 +408,61 @@ fn the_opening_position_does_not_move_during_the_day() {
         .expect("no opening");
     assert!(next.day > day_of, "the day opened on yesterday's figures");
     assert_eq!(next.stock.len(), g.economy.as_ref().unwrap().markets.len());
+}
+
+/// **Told means told, and it has to be told before the day happens.**
+///
+/// `step_at` recorded the day and then ran the entire day against
+/// `ledger.day` — the economy's *own*, previous or corrupted, value —
+/// overwriting it only at the very end. So a subsystem whose clock had
+/// gone wrong performed a full day's seasons, journal entries, treasury
+/// movements, shipment departures and due-date checks as day 9,999, and
+/// then relabelled itself with the root's date. `freight.haul(self,
+/// self.ledger.day)` passed the stale figure explicitly.
+///
+/// **The existing gate could not see it**, because it compared the final
+/// label. Both counters ended where they were told and the day in
+/// between was somebody else's. What discriminates is the date on the
+/// first thing the day actually did.
+#[test]
+fn a_corrupted_clock_does_not_get_to_date_the_day() {
+    let mut e = slice::build(Doctrine::Prudent);
+    for _ in 0..5 {
+        e.step();
+    }
+    let entries_before = e.journal.entries().len();
+
+    // Reach past the root and put the subsystem far into the future,
+    // which is what a stale load or a bad migration does.
+    e.ledger.day = 9_999;
+    e.step_at(500);
+
+    assert_eq!(
+        e.ledger.day, 500,
+        "the economy did not end up where it was told"
+    );
+
+    // The half with teeth: everything the day *did* must be dated 500.
+    let wrong: Vec<u64> = e
+        .journal
+        .entries()
+        .iter()
+        .skip(entries_before)
+        .map(|x| x.day)
+        .filter(|&d| d != 500)
+        .collect();
+    assert!(
+        wrong.is_empty(),
+        "{} of the day's own journal entries are dated elsewhere, first {:?} \
+         — the work was done before the clock was corrected",
+        wrong.len(),
+        wrong.first()
+    );
+
+    // And the snapshot the day's decisions were taken against.
+    assert_eq!(
+        e.opening.as_ref().map(|o| o.day),
+        Some(500),
+        "the opening snapshot was taken on the wrong day"
+    );
 }

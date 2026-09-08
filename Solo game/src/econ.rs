@@ -2836,9 +2836,34 @@ impl Economy {
     }
 
     pub fn step(&mut self) {
+        // **The day is established before anything reads it.**
+        //
+        // **Told means told.** This used to take the larger of its own date
+        // and the one it was given, which sounds defensive and is the
+        // opposite: a subsystem whose date had gone wrong in the *upward*
+        // direction — a stale load, a bad migration, anything that reached
+        // past the root — kept its wrong date for ever, and the root could
+        // not put it right. Correcting a subsystem is the whole reason
+        // something owns the clock.
+        //
+        // **And it has to be corrected first.** Setting it at the *end* of
+        // the day looked like the same thing and was not: seasons, the
+        // passes, journal entries, treasury movements, shipment departures
+        // and due-date checks all ran against `ledger.day`, so an economy
+        // whose clock had gone wrong did a full day's work on the wrong
+        // date and only then relabelled itself. `freight.haul(self,
+        // self.ledger.day)` passed the stale figure explicitly. The gate
+        // that watched this compared the final label, which both ends
+        // satisfied — what discriminates is the date on the first thing
+        // the day actually did.
+        match self.told_the_day.take() {
+            Some(day) => self.ledger.day = day,
+            None => self.ledger.day += 1,
+        }
+
         // **Photograph the world before anything moves in it.**
         self.opening = Some(Opening {
-            day: self.told_the_day.unwrap_or(self.ledger.day + 1),
+            day: self.ledger.day,
             price: self.markets.iter().map(|m| m.price).collect(),
             cover: self.markets.iter().map(|m| m.expected_cover).collect(),
             landed: self.markets.iter().map(|m| m.landed).collect(),
@@ -2936,18 +2961,6 @@ impl Economy {
         // entry point that does *not* count for itself, and using it is
         // what makes "everybody agrees what day it is" a real claim rather
         // than two counters that happen to increment together.
-        // **Told means told.** This used to take the larger of its own date
-        // and the one it was given, which sounds defensive and is the
-        // opposite: a subsystem whose date had gone wrong in the *upward*
-        // direction — a stale load, a bad migration, anything that reached
-        // past the root — kept its wrong date for ever, and the root could
-        // not put it right. Correcting a subsystem is the whole reason
-        // something owns the clock.
-        match self.told_the_day.take() {
-            Some(day) => self.ledger.day = day,
-            None => self.ledger.day += 1,
-        }
-
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
     }
@@ -5034,11 +5047,16 @@ impl Economy {
     /// alone asks thousands of times a day, and it used to run a fresh
     /// search for every one of them.
     pub fn resurvey(&mut self) {
-        let edges: Vec<(usize, usize, f64, f64, f64)> = self
+        // **Carry the road's own number through the filter.** Enumerating
+        // *after* filtering renumbers every road past the first shut one,
+        // and the reservation code indexes `self.routes` with what comes
+        // back out.
+        let edges: Vec<(usize, usize, usize, f64, f64, f64)> = self
             .routes
             .iter()
-            .filter(|r| r.usable())
-            .map(|r| (r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .enumerate()
+            .filter(|(_, r)| r.usable())
+            .map(|(road, r)| (road, r.a, r.b, r.freight_cost, r.km, r.capacity))
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
@@ -5273,7 +5291,7 @@ impl Economy {
         tonnes: f64,
         km: f64,
         refrigerated: bool,
-    ) -> Option<crate::shipment::ShipmentId> {
+    ) -> Option<(crate::shipment::ShipmentId, f64)> {
         use crate::shipment::{days_on_the_road, Leg, Shipment};
         if tonnes <= 1e-9 {
             return None;
@@ -5334,7 +5352,13 @@ impl Economy {
                 freight,
             },
         );
-        Some(id)
+        // **The accepted quantity, not the requested one.** The load has
+        // been clamped twice by here — by what the seller holds and by
+        // what is left of the road — and a caller that goes on believing
+        // its own request overstates what moved, what the carrier earned
+        // and what work was done, while understating the demand still
+        // outstanding.
+        Some((id, take))
     }
 
     /// **Tip what will fit.** Returns the tonnage that actually came off.

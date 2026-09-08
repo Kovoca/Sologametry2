@@ -2431,13 +2431,27 @@ consumed by no recipe, so there is no chain of adjacent gaps to walk it
 down and the one end-to-end mechanism decides on cover rather than price.
 Seven directly-linked pairs, worst 72% of its price.
 
-Three pairs of two hundred and forty remain open, worst about half of
-flour's price, and the reason is known rather than mysterious. Labelled a
-**loose regression bound**: tightening the exemptions until the gaps
-vanish is fitting the gate to the model, which is how the first three
-versions of it went wrong. What it catches is a return to the state
-before the missing guard was found, when eighteen of forty-eight grain
-pairs stood open.
+Five pairs of two hundred and forty remain open, and the reason is known
+rather than mysterious: the working cover is subtracted from *each shed*
+rather than from the market, so a country whose stock sits in several
+warehouses has none of them individually clearing the bar.
+
+**This is regression coverage and it is not item 9's acceptance proof**,
+which an external review was right to say and this file previously
+overclaimed. A gate that deliberately permits unexplained profitable
+gaps, exempts medicine, exempts pairs that are not directly linked and
+reasons about nominal rather than residual path capacity is a bound on
+how bad things may get. It is not a demonstration that no money is being
+left on the table.
+
+**And the bound is a share rather than a count.** Successive counts get
+nudged whenever anything legitimately moves the model — this one went 3,
+then 5, on a correct fix to the clock — and a number re-tuned after every
+change is fitted to the model rather than testing it. What it
+discriminates is a return to the state before the missing guard was
+found, when **eighteen of forty-eight** grain pairs stood open: 37%
+against today's 2%. A bar at a tenth separates those two worlds without
+sitting on today's reading.
 
 ### Market-wide trade is not shippable on its own, and the reason is
 ### which supplier a buyer picks
@@ -2464,6 +2478,67 @@ behind switches with the measurement recorded**, because a permanent flag
 is a permanent second model nobody tests, and shipping the pair on an
 aggregate that looks good would be shipping the thing that starved a
 country the first time.
+
+### Filtering may change an adjacency list; it must never make identity
+
+`resurvey` filters the unusable roads into a compact vector and handed
+that to the router, which kept each **position in that vector** as the
+edge identifier — while `spare_capacity`, `book_the_road` and
+`release_the_road` index `Economy::routes`, the *unfiltered* list. Shut
+any road and every later road's identity shifted by one. On a triangle
+with the first road closed, a haul going the long way round **reserved
+the closed road**.
+
+The router's own doc comment said the route index was kept "so a haul can
+say which roads it is actually using". It kept the filtered index, so the
+comment was the bug written out — the same shape as the dead sentinel
+guard that checked the wrong field while explaining at length what it
+protected against.
+
+**And a consignment reported what it asked for rather than what it
+took.** `consign` clamps a load twice — by what the seller holds and by
+what is left of the road — and returned only a `ShipmentId`, so the
+caller subtracted the *request* from remaining demand and credited the
+carrier's work and revenue on it. Quiet in the way the worst defects here
+are: **tonnage still conserves**, because the ledger only ever saw the
+smaller figure. What was wrong was everything computed from the larger
+one. Changing the return type made the compiler find all seventeen call
+sites, which is the argument for changing a type rather than a value.
+
+### The day is established before anything reads it
+
+`step_at` recorded the day and then did the day on the wrong one.
+Seasons, the passes, journal entries, treasury movements, shipment
+departures and due-date checks all ran against `ledger.day` — the
+economy's own, previous or corrupted value — overwritten only at the very
+end. `freight.haul(self, self.ledger.day)` passed the stale figure
+explicitly. An economy whose clock had gone wrong performed a full day's
+work as day 9,999 and *then* relabelled itself with the root's date: 32
+of the day's own journal entries dated 9,999.
+
+**The gate watching this compared the final label**, which the broken and
+the correct version both satisfy. That is the fifth gate of mine to pass
+without testing its claim, and the discriminator is the same one every
+time: not what the counter says afterwards, but the date on the first
+thing the day actually did.
+
+It moved a test that had been encoding the off-by-one — journal entries
+had to be dated strictly *before* the clock, which was true only because
+the last day's work really was dated yesterday.
+
+### A result nobody else can obtain is a claim, not evidence
+
+There was no CI and no pinned compiler, so every quality figure in this
+file was something seen on one machine. An external review of the source
+could read all of it and confirm no test result at all. `rust-toolchain.
+toml` pins the compiler; the workflow runs format, clippy, the suite and
+the doctests on a clean checkout with `--locked`, because a build that
+silently picks newer dependencies is not the build that was tested.
+
+The doctests are named as their own step on purpose: cargo runs them only
+from the **library**, and this project keeps its `compile_fail` proofs
+there — the ones showing a listener cannot read a speaker's motives and a
+landed cost cannot be multiplied by a scarcity factor.
 
 ### A sentinel read as a rate, for the third time
 
