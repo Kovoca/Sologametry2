@@ -278,7 +278,9 @@ pub fn ask(
     speaker: Id<crate::person::Person>,
     listener: Id<crate::person::Person>,
 ) -> Answer {
-    let trusts = about_the_asker.map(|r| r.trust_in(TrustIn::General)).unwrap_or(0.0);
+    let trusts = about_the_asker
+        .map(|r| r.trust_in(TrustIn::General))
+        .unwrap_or(0.0);
     let fond = about_the_asker.map(|r| r.affection()).unwrap_or(0.0);
     let aggrieved = about_the_asker.map(|r| r.resentment()).unwrap_or(0.0);
 
@@ -332,7 +334,12 @@ pub fn ask(
             } else {
                 "A nod.".to_string()
             };
-            (Content::Remark { about: Topic::Weather }, s)
+            (
+                Content::Remark {
+                    about: Topic::Weather,
+                },
+                s,
+            )
         }
         Asked::HowTheyAre => {
             // **He answers about his life, not his traits.** Which is the
@@ -348,7 +355,12 @@ pub fn ask(
                         .to_string()
                 }
             };
-            (Content::Remark { about: Topic::Themselves }, s)
+            (
+                Content::Remark {
+                    about: Topic::Themselves,
+                },
+                s,
+            )
         }
         Asked::Opinion => {
             let s = if aggrieved > 0.3 {
@@ -358,7 +370,12 @@ pub fn ask(
             } else {
                 "A shrug. He hardly knows the man.".to_string()
             };
-            (Content::Remark { about: Topic::AThirdParty(0) }, s)
+            (
+                Content::Remark {
+                    about: Topic::AThirdParty(0),
+                },
+                s,
+            )
         }
         Asked::About(event) => {
             // **The whole point.** What he says comes out of what he
@@ -366,7 +383,9 @@ pub fn ask(
             // he cannot be made to know what he did not see.
             match what_was_seen(what_they_know, event) {
                 None => (
-                    Content::Remark { about: Topic::Weather },
+                    Content::Remark {
+                        about: Topic::Weather,
+                    },
                     "\"I would not know. I was not there.\"".to_string(),
                 ),
                 Some(t) => {
@@ -389,7 +408,12 @@ pub fn ask(
                     } else {
                         crate::memory::testimony(t)
                     };
-                    (Content::Remark { about: Topic::AnEvent(t.kind()) }, s)
+                    (
+                        Content::Remark {
+                            about: Topic::AnEvent(t.kind()),
+                        },
+                        s,
+                    )
                 }
             }
         }

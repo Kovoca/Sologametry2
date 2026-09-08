@@ -383,8 +383,7 @@ fn populations_are_the_ones_the_world_generated() {
 
     for (m, &s) in r.settlement_of_market.iter().enumerate() {
         assert_eq!(
-            r.economy.markets[m].population,
-            p.settlements.list[s].population as f64,
+            r.economy.markets[m].population, p.settlements.list[s].population as f64,
             "market {} does not match the settlement it came from",
             r.economy.markets[m].name
         );
@@ -410,7 +409,11 @@ fn the_farming_year_has_a_shape() {
         trough = trough.min(h);
         seasons.insert(e.season_at(0).name());
     }
-    assert_eq!(seasons.len(), 4, "the year did not pass through four seasons");
+    assert_eq!(
+        seasons.len(),
+        4,
+        "the year did not pass through four seasons"
+    );
     assert!(
         peak > trough * 20.0,
         "harvest peaked at {peak:.2} against a trough of {trough:.2} — too flat to be a crop"
@@ -500,13 +503,28 @@ fn extraction_is_deterministic() {
     let a = region_of(&p, 0, Doctrine::Negligent).expect("no region");
     let b = region_of(&p, 0, Doctrine::Negligent).expect("no region");
 
-    let names_a: Vec<&str> = a.economy.ledger.sites.iter().map(|s| s.name.as_str()).collect();
-    let names_b: Vec<&str> = b.economy.ledger.sites.iter().map(|s| s.name.as_str()).collect();
+    let names_a: Vec<&str> = a
+        .economy
+        .ledger
+        .sites
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
+    let names_b: Vec<&str> = b
+        .economy
+        .ledger
+        .sites
+        .iter()
+        .map(|s| s.name.as_str())
+        .collect();
     assert_eq!(names_a, names_b, "the same nation produced different works");
 
     let f_a: Vec<f64> = a.economy.routes.iter().map(|r| r.freight_cost).collect();
     let f_b: Vec<f64> = b.economy.routes.iter().map(|r| r.freight_cost).collect();
-    assert_eq!(f_a, f_b, "freight costs differ between identical extractions");
+    assert_eq!(
+        f_a, f_b,
+        "freight costs differ between identical extractions"
+    );
 }
 
 #[test]
@@ -867,7 +885,10 @@ fn no_sentinel_ever_becomes_a_quantity() {
     let unbounded: Vec<usize> = (0..r.economy.ledger.sites.len())
         .filter(|&s| r.economy.ledger.sites[s].throughput >= UNBOUNDED_THROUGHPUT * 0.5)
         .collect();
-    assert!(!unbounded.is_empty(), "no site carries the sentinel, so this proves nothing");
+    assert!(
+        !unbounded.is_empty(),
+        "no site carries the sentinel, so this proves nothing"
+    );
 
     // **And nothing anywhere turns it into tonnes.** A country's entire
     // coal demand has to be a plausible number of tonnes a day, not a
@@ -913,7 +934,6 @@ fn no_sentinel_ever_becomes_a_quantity() {
         "a nation of {biggest:.0} people wants {coal_demand:.0} tonnes of coal a day"
     );
 }
-
 
 /// **Gate: an idle plant does not price a market.**
 ///

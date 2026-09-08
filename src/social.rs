@@ -222,7 +222,11 @@ pub struct AssertedClaim {
 
 impl AssertedClaim {
     pub fn said(proposition: u32, believed: f64, asserted: f64) -> Self {
-        AssertedClaim { proposition, believed, asserted }
+        AssertedClaim {
+            proposition,
+            believed,
+            asserted,
+        }
     }
     /// **Only the speaker's own mind may ask this.** A listener sees the
     /// assertion; the gap between the two is what a lie *is*.
@@ -256,14 +260,26 @@ pub struct Apology {
 /// **What was observably said.**
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Content {
-    Praise { about: Topic, strength: f64 },
-    Remark { about: Topic },
+    Praise {
+        about: Topic,
+        strength: f64,
+    },
+    Remark {
+        about: Topic,
+    },
     Claim(AssertedClaim),
-    Request { costs_them: f64 },
+    Request {
+        costs_them: f64,
+    },
     Apology(Apology),
-    Insult { strength: f64 },
+    Insult {
+        strength: f64,
+    },
     /// Something meant to be funny at somebody's expense.
-    Barb { at: Topic, sharpness: f64 },
+    Barb {
+        at: Topic,
+        sharpness: f64,
+    },
     Console,
 }
 
@@ -328,8 +344,10 @@ impl SpeakerPlan {
 /// seen through by a suspicious man.
 pub fn social_skill(mind: &Mind) -> f64 {
     let z = |f: Facet| (mind.person.z(f) as f64 / 5.0 + 0.5).clamp(0.0, 1.0);
-    (0.4 * z(Facet::Gregariousness) + 0.3 * z(Facet::Assertiveness) + 0.3 * (mind.empathy as f64 / 5.0 + 0.5).clamp(0.0, 1.0))
-        .clamp(0.0, 1.0)
+    (0.4 * z(Facet::Gregariousness)
+        + 0.3 * z(Facet::Assertiveness)
+        + 0.3 * (mind.empathy as f64 / 5.0 + 0.5).clamp(0.0, 1.0))
+    .clamp(0.0, 1.0)
 }
 
 /// **Do it.**
@@ -347,35 +365,82 @@ pub fn perform(plan: &SpeakerPlan, skill: f64, publicly: bool, rng: &mut Rng) ->
 
     let (content, mut delivery) = match plan.strategy {
         Strategy::Ingratiate => (
-            Content::Praise { about: plan.topic, strength: 0.7 },
-            Delivery { warmth: 0.8 * clarity, emphasis: 0.6, smiling: true, ..Default::default() },
+            Content::Praise {
+                about: plan.topic,
+                strength: 0.7,
+            },
+            Delivery {
+                warmth: 0.8 * clarity,
+                emphasis: 0.6,
+                smiling: true,
+                ..Default::default()
+            },
         ),
         Strategy::Encourage => (
-            Content::Praise { about: plan.topic, strength: 0.6 },
-            Delivery { warmth: 0.7 * clarity, emphasis: 0.5, smiling: true, gesturing: true, ..Default::default() },
+            Content::Praise {
+                about: plan.topic,
+                strength: 0.6,
+            },
+            Delivery {
+                warmth: 0.7 * clarity,
+                emphasis: 0.5,
+                smiling: true,
+                gesturing: true,
+                ..Default::default()
+            },
         ),
         Strategy::Tease => (
-            Content::Barb { at: plan.topic, sharpness: 0.5 },
+            Content::Barb {
+                at: plan.topic,
+                sharpness: 0.5,
+            },
             // **The grin is what makes it teasing.** Without it the same
             // words are an insult, which is the whole of the joke that
             // does not land.
-            Delivery { warmth: 0.5 * clarity, emphasis: 0.6, smiling: true, gesturing: true, ..Default::default() },
+            Delivery {
+                warmth: 0.5 * clarity,
+                emphasis: 0.6,
+                smiling: true,
+                gesturing: true,
+                ..Default::default()
+            },
         ),
         Strategy::Intimidate => (
             Content::Insult { strength: 0.6 },
-            Delivery { warmth: -0.7, emphasis: 0.9, edge: 0.8, ..Default::default() },
+            Delivery {
+                warmth: -0.7,
+                emphasis: 0.9,
+                edge: 0.8,
+                ..Default::default()
+            },
         ),
         Strategy::Disclose => (
-            Content::Remark { about: Topic::Themselves },
-            Delivery { warmth: 0.5 * clarity, hesitation: 0.4 * leaks, ..Default::default() },
+            Content::Remark {
+                about: Topic::Themselves,
+            },
+            Delivery {
+                warmth: 0.5 * clarity,
+                hesitation: 0.4 * leaks,
+                ..Default::default()
+            },
         ),
         Strategy::Console => (
             Content::Console,
-            Delivery { warmth: 0.8 * clarity, emphasis: 0.2, smiling: false, gesturing: true, ..Default::default() },
+            Delivery {
+                warmth: 0.8 * clarity,
+                emphasis: 0.2,
+                smiling: false,
+                gesturing: true,
+                ..Default::default()
+            },
         ),
         Strategy::Persuade => (
             Content::Request { costs_them: 0.4 },
-            Delivery { warmth: 0.4 * clarity, emphasis: 0.7, ..Default::default() },
+            Delivery {
+                warmth: 0.4 * clarity,
+                emphasis: 0.7,
+                ..Default::default()
+            },
         ),
         Strategy::Apologise => (
             Content::Apology(Apology {
@@ -386,11 +451,19 @@ pub fn perform(plan: &SpeakerPlan, skill: f64, publicly: bool, rng: &mut Rng) ->
                 repair: 0.3,
                 promise: 0.5 * clarity,
             }),
-            Delivery { warmth: 0.5 * clarity, hesitation: 0.3, ..Default::default() },
+            Delivery {
+                warmth: 0.5 * clarity,
+                hesitation: 0.3,
+                ..Default::default()
+            },
         ),
         Strategy::StateAFact => (
             Content::Claim(AssertedClaim::said(0, 1.0, 1.0)),
-            Delivery { warmth: 0.1, emphasis: 0.4, ..Default::default() },
+            Delivery {
+                warmth: 0.1,
+                emphasis: 0.4,
+                ..Default::default()
+            },
         ),
     };
 
@@ -434,7 +507,8 @@ pub fn anything_to_say(mind: &Mind, opportunity: &Opportunity) -> bool {
         .needs
         .as_ref()
         .map(|n| {
-            n.get(crate::needs::Need::Company).urgency() + n.get(crate::needs::Need::Friendship).urgency()
+            n.get(crate::needs::Need::Company).urgency()
+                + n.get(crate::needs::Need::Friendship).urgency()
         })
         .unwrap_or(0.0);
     let outgoing = (mind.person.z(Facet::Gregariousness) as f64 / 5.0 + 0.5).clamp(0.0, 1.0);

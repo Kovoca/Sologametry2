@@ -202,7 +202,10 @@ impl Routing {
         if from == to {
             return 0.0;
         }
-        self.km.get(from * self.n + to).copied().unwrap_or(f64::INFINITY)
+        self.km
+            .get(from * self.n + to)
+            .copied()
+            .unwrap_or(f64::INFINITY)
     }
 
     pub fn capacity(&self, from: usize, to: usize) -> f64 {
@@ -280,7 +283,6 @@ impl Routing {
         })
     }
 }
-
 
 // =====================================================================
 // what has already been promised

@@ -57,11 +57,13 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "--seed" => a.seed = it.next().and_then(|v| v.parse().ok()).unwrap_or(a.seed),
             "--nations" => {
-                a.nations = it.next().and_then(|v| v.parse().ok()).unwrap_or(6).clamp(2, 20)
+                a.nations = it
+                    .next()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(6)
+                    .clamp(2, 20)
             }
-            "--markets" => {
-                a.markets = it.next().and_then(|v| v.parse().ok()).unwrap_or(4).max(1)
-            }
+            "--markets" => a.markets = it.next().and_then(|v| v.parse().ok()).unwrap_or(4).max(1),
             "--days" => a.days = it.next().and_then(|v| v.parse().ok()).unwrap_or(800),
             "--blockade" => a.blockade = it.next().and_then(|v| v.parse().ok()),
             "--blockade-on" => {
@@ -115,7 +117,10 @@ fn main() {
     println!("nations");
     for (n, name) in nations.names.iter().enumerate() {
         let ms = &nations.markets_of[n];
-        let pop: f64 = ms.iter().map(|&m| nations.economy.markets[m].population).sum();
+        let pop: f64 = ms
+            .iter()
+            .map(|&m| nations.economy.markets[m].population)
+            .sum();
         let southern = nations.economy.markets[ms[0]].southern;
         println!(
             "  {n}. {:<12} {:>8} people   {:<8}   {} markets",
@@ -132,13 +137,18 @@ fn main() {
     // countries.
     let e = &nations.economy;
     let international: Vec<usize> = (0..e.routes.len())
-        .filter(|&r| {
-            e.markets[e.routes[r].a].nation != e.markets[e.routes[r].b].nation
-        })
+        .filter(|&r| e.markets[e.routes[r].a].nation != e.markets[e.routes[r].b].nation)
         .collect();
-    println!("trade lanes ({} of {} routes cross a border)", international.len(), e.routes.len());
+    println!(
+        "trade lanes ({} of {} routes cross a border)",
+        international.len(),
+        e.routes.len()
+    );
     for &r in international.iter().take(14) {
-        println!("  {:<46} {:>7.0} /t", e.routes[r].name, e.routes[r].freight_cost);
+        println!(
+            "  {:<46} {:>7.0} /t",
+            e.routes[r].name, e.routes[r].freight_cost
+        );
     }
     if international.len() > 14 {
         println!("  ... and {} more", international.len() - 14);
@@ -239,11 +249,7 @@ fn main() {
             let doy = e.ledger.day % DAYS_PER_YEAR;
             // Worst-kept network on the planet, and what the world's
             // freight bill has come to because of it.
-            let worst = e
-                .road_condition
-                .iter()
-                .copied()
-                .fold(1.0f64, f64::min);
+            let worst = e.road_condition.iter().copied().fold(1.0f64, f64::min);
             let freight: f64 = e.routes.iter().map(|r| r.freight_cost).sum();
             println!(
                 "{:>6} | {:<6} {:<7} | {:>15.0} {:>8.0} | {:>5} | {:>5.2} | {:>7.0} | {}",

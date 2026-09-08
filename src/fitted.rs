@@ -73,7 +73,14 @@ pub struct Mount {
 
 impl Mount {
     pub fn new(name: &'static str, at: (i32, i32), takes: Fitting, joint: JointMethod) -> Self {
-        Mount { name, at, takes, provides: None, joint, occupant: None }
+        Mount {
+            name,
+            at,
+            takes,
+            provides: None,
+            joint,
+            occupant: None,
+        }
     }
 
     pub fn providing(mut self, part: Part) -> Self {
@@ -139,7 +146,13 @@ impl FittedVehicle {
     pub fn adapt(
         id: u32,
         base: Vehicle,
-        individual: &[(fn(Part) -> bool, &'static str, &'static str, Fitting, JointMethod)],
+        individual: &[(
+            fn(Part) -> bool,
+            &'static str,
+            &'static str,
+            Fitting,
+            JointMethod,
+        )],
         cat: &Catalogue,
         store: &mut Store,
     ) -> (Self, Vec<Id<ItemInstance>>) {
@@ -149,14 +162,10 @@ impl FittedVehicle {
         for &(part, x, y) in &base.parts {
             match individual.iter().find(|(matches, ..)| matches(part)) {
                 Some(&(_, name, def_name, takes, joint)) => {
-                    mounts.push(
-                        Mount::new(name, (x, y), takes, joint).providing(part),
-                    );
+                    mounts.push(Mount::new(name, (x, y), takes, joint).providing(part));
                     if let Some(def) = cat.named(def_name) {
                         let item = ItemInstance::one(cat, def);
-                        loose.push(
-                            store.add(item, Placement::Ground { locality: 0, x, y }),
-                        );
+                        loose.push(store.add(item, Placement::Ground { locality: 0, x, y }));
                     }
                 }
                 None => kept.push((part, x, y)),
@@ -164,7 +173,15 @@ impl FittedVehicle {
         }
         let mut stripped = base.clone();
         stripped.parts = kept;
-        (FittedVehicle { id, base: stripped, mounts, installations: Vec::new() }, loose)
+        (
+            FittedVehicle {
+                id,
+                base: stripped,
+                mounts,
+                installations: Vec::new(),
+            },
+            loose,
+        )
     }
 
     /// **The vehicle as it actually stands**, structure plus whatever is
@@ -230,7 +247,13 @@ impl FittedVehicle {
                 return Err(WontFit::DoesNotFit);
             }
         }
-        store.place(item, Placement::Installed { host: Host::Vehicle(self.id), mount });
+        store.place(
+            item,
+            Placement::Installed {
+                host: Host::Vehicle(self.id),
+                mount,
+            },
+        );
         self.mounts[mount].occupant = Some(item);
         self.installations.push(Installation {
             item,
@@ -287,7 +310,10 @@ impl FittedVehicle {
             .get(item)
             .map(|i| i.quality.structural_integrity * i.condition.serviceability())
             .unwrap_or(0.5);
-        let holds_something = store.get(item).map(|i| !i.contents.is_empty()).unwrap_or(false);
+        let holds_something = store
+            .get(item)
+            .map(|i| !i.contents.is_empty())
+            .unwrap_or(false);
         let outcome = settle_mount(joint, severity, robustness, holds_something, event, mount);
 
         match &outcome {
@@ -316,8 +342,10 @@ impl FittedVehicle {
                 }
             }
             InstallationFailure::ContentsReleased => {
-                let spilt: Vec<_> =
-                    store.get(item).map(|i| i.contents.clone()).unwrap_or_default();
+                let spilt: Vec<_> = store
+                    .get(item)
+                    .map(|i| i.contents.clone())
+                    .unwrap_or_default();
                 for c in spilt {
                     store.place(c, Placement::anywhere());
                 }
@@ -371,13 +399,18 @@ impl FittedVehicle {
         }
         // Everything else is still attached to whatever is left standing,
         // which is the point: a hole in the floor is not a total loss.
-        self.base.parts.retain(|&(_, x, y)| !lost_tiles.contains(&(x, y)));
+        self.base
+            .parts
+            .retain(|&(_, x, y)| !lost_tiles.contains(&(x, y)));
         out
     }
 
     /// Whatever is fitted, in the order the mounts are declared.
     pub fn fitted(&self) -> impl Iterator<Item = (usize, Id<ItemInstance>)> + '_ {
-        self.mounts.iter().enumerate().filter_map(|(i, m)| m.occupant.map(|o| (i, o)))
+        self.mounts
+            .iter()
+            .enumerate()
+            .filter_map(|(i, m)| m.occupant.map(|o| (i, o)))
     }
 }
 
@@ -426,8 +459,7 @@ pub fn chance_detached(joint: JointMethod, severity: f64) -> f64 {
 /// **The chance the component itself is broken**, which the joint has
 /// nothing to do with: it is the impact reaching the thing.
 pub fn chance_destroyed(severity: f64, robustness: f64) -> f64 {
-    (severity.clamp(0.0, 1.0).powf(1.5) * (1.0 - 0.8 * robustness.clamp(0.0, 1.0)))
-        .clamp(0.0, 1.0)
+    (severity.clamp(0.0, 1.0).powf(1.5) * (1.0 - 0.8 * robustness.clamp(0.0, 1.0))).clamp(0.0, 1.0)
 }
 
 /// **The chance the wreckage folds round something that is still
@@ -463,11 +495,15 @@ fn settle_mount(
         return if holds_something {
             InstallationFailure::ContentsReleased
         } else {
-            InstallationFailure::Destroyed { recoverable: severity < 0.85 }
+            InstallationFailure::Destroyed {
+                recoverable: severity < 0.85,
+            }
         };
     }
     if let_go {
-        return InstallationFailure::Detached { damage: 0.25 * severity };
+        return InstallationFailure::Detached {
+            damage: 0.25 * severity,
+        };
     }
     // Still attached — and in a bad enough wreck, folded in where nobody
     // is getting a spanner to it. **Only ever asked about something that
@@ -476,13 +512,20 @@ fn settle_mount(
     if (jam.next_f32() as f64) < chance_jammed(severity) {
         return InstallationFailure::Inaccessible;
     }
-    InstallationFailure::RemainsAttached { damage: 0.15 * severity }
+    InstallationFailure::RemainsAttached {
+        damage: 0.15 * severity,
+    }
 }
 
 /// The parts of a road vehicle worth making individual: the ones that
 /// fail, are replaced, are traded and are serviced.
-pub fn serviceable_parts() -> Vec<(fn(Part) -> bool, &'static str, &'static str, Fitting, JointMethod)>
-{
+pub fn serviceable_parts() -> Vec<(
+    fn(Part) -> bool,
+    &'static str,
+    &'static str,
+    Fitting,
+    JointMethod,
+)> {
     fn is_alternator(p: Part) -> bool {
         matches!(p, Part::Alternator(_))
     }
@@ -493,9 +536,27 @@ pub fn serviceable_parts() -> Vec<(fn(Part) -> bool, &'static str, &'static str,
         matches!(p, Part::Wheel { .. })
     }
     vec![
-        (is_alternator as fn(Part) -> bool, "alternator bracket", "alternator", Fitting::Bracket, JointMethod::Bolted),
-        (is_battery, "battery tray", "battery pack", Fitting::BatteryRail, JointMethod::Clipped),
-        (is_wheel, "hub", "road wheel", Fitting::Hub, JointMethod::Bolted),
+        (
+            is_alternator as fn(Part) -> bool,
+            "alternator bracket",
+            "alternator",
+            Fitting::Bracket,
+            JointMethod::Bolted,
+        ),
+        (
+            is_battery,
+            "battery tray",
+            "battery pack",
+            Fitting::BatteryRail,
+            JointMethod::Clipped,
+        ),
+        (
+            is_wheel,
+            "hub",
+            "road wheel",
+            Fitting::Hub,
+            JointMethod::Bolted,
+        ),
     ]
 }
 
@@ -559,10 +620,26 @@ impl WallAssembly {
         WallAssembly {
             id,
             courses: vec![
-                Course { def: cat.must("stud"), count: 7, held_by: JointMethod::Screwed },
-                Course { def: cat.must("sheathing board"), count: 3, held_by: JointMethod::Screwed },
-                Course { def: cat.must("insulation batt"), count: 12, held_by: JointMethod::Clipped },
-                Course { def: cat.must("plasterboard sheet"), count: 3, held_by: JointMethod::Screwed },
+                Course {
+                    def: cat.must("stud"),
+                    count: 7,
+                    held_by: JointMethod::Screwed,
+                },
+                Course {
+                    def: cat.must("sheathing board"),
+                    count: 3,
+                    held_by: JointMethod::Screwed,
+                },
+                Course {
+                    def: cat.must("insulation batt"),
+                    count: 12,
+                    held_by: JointMethod::Clipped,
+                },
+                Course {
+                    def: cat.must("plasterboard sheet"),
+                    count: 3,
+                    held_by: JointMethod::Screwed,
+                },
             ],
             // Jointing compound and mastic. Set, and not coming back.
             joint_mass: vec![(Material::Gypsum, 2.0), (Material::Adhesive, 0.5)],
@@ -584,7 +661,11 @@ impl WallAssembly {
     pub fn brick(id: u32, cat: &Catalogue, bond: JointMethod) -> Self {
         WallAssembly {
             id,
-            courses: vec![Course { def: cat.must("brick"), count: 430, held_by: bond }],
+            courses: vec![Course {
+                def: cat.must("brick"),
+                count: 430,
+                held_by: bond,
+            }],
             joint_mass: vec![(Material::Mortar, 190.0)],
             fixtures: vec![Mount::new("opening", (0, 0), Fitting::Opening, bond)],
             installations: Vec::new(),
@@ -691,7 +772,13 @@ impl WallAssembly {
                 return Err(WontFit::DoesNotFit);
             }
         }
-        store.place(item, Placement::Installed { host: Host::Building(self.id), mount });
+        store.place(
+            item,
+            Placement::Installed {
+                host: Host::Building(self.id),
+                mount,
+            },
+        );
         self.fixtures[mount].occupant = Some(item);
         self.installations.push(Installation {
             item,
@@ -756,7 +843,9 @@ impl WallAssembly {
             });
         }
         for m in &self.fixtures {
-            let Some(item) = m.occupant.and_then(|i| store.get(i)) else { continue };
+            let Some(item) = m.occupant.and_then(|i| store.get(i)) else {
+                continue;
+            };
             record.components.push(Installed {
                 definition: item.definition,
                 quantity: Quantity::Count(1),

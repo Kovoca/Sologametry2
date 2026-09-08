@@ -158,7 +158,10 @@ impl Services {
     }
 
     pub fn total_in(&self, market: usize) -> f64 {
-        self.posts.get(market).map(|p| p.iter().sum()).unwrap_or(0.0)
+        self.posts
+            .get(market)
+            .map(|p| p.iter().sum())
+            .unwrap_or(0.0)
     }
 
     /// What share of the working-age population all this employs.

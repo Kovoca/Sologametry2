@@ -1,4 +1,3 @@
-﻿
 //! A town of people, not a number of them.
 
 use scale_sim::econ::{Doctrine, DAYS_PER_YEAR};
@@ -21,8 +20,7 @@ fn a_nation() -> scale_sim::region::Region {
     let set = Settlements::place(&world, &pol, 5000);
     let net = Network::build(&world, &set, 1000);
     let id = pol.ranked()[2].0;
-    Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent)
-        .expect("a nation to model")
+    Region::extract(&world, &pol, &set, &net, id, 5, Doctrine::Prudent).expect("a nation to model")
 }
 
 #[test]
@@ -142,7 +140,10 @@ fn a_town_the_statistics_call_idle_is_one_where_people_find_less_work() {
         }
         seen.push((e.workforce[m].unemployment, worked));
     }
-    assert!(seen.len() >= 3, "not enough towns with labourers to compare");
+    assert!(
+        seen.len() >= 3,
+        "not enough towns with labourers to compare"
+    );
 
     // The town the statistics call idlest should not be the town whose
     // labourers work most.
@@ -234,7 +235,11 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     // on guaranteed hours works more days than somebody hunting for them,
     // and that is what the security *is*.
     let worked = |kind: Employment| -> f64 {
-        let m: Vec<_> = folk.people.values().filter(|p| p.employment == kind).collect();
+        let m: Vec<_> = folk
+            .people
+            .values()
+            .filter(|p| p.employment == kind)
+            .collect();
         if m.is_empty() {
             return f64::NAN;
         }
@@ -369,7 +374,11 @@ fn the_week_decides_who_works_when() {
         let weekend = Weekday::on(day).is_weekend();
         for (i, p) in folk.people.values().enumerate() {
             if p.days_worked > prev[i] {
-                let key = (p.trade.name(), p.employment == Employment::FullTime, weekend);
+                let key = (
+                    p.trade.name(),
+                    p.employment == Employment::FullTime,
+                    weekend,
+                );
                 *tally.entry(key).or_insert(0) += 1;
             }
             prev[i] = p.days_worked;
@@ -436,7 +445,11 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
 
     // The scale itself.
     assert_eq!(household_share_for(1), 1.0);
-    assert_eq!(household_share_for(2), 0.75, "a couple should each carry three quarters");
+    assert_eq!(
+        household_share_for(2),
+        0.75,
+        "a couple should each carry three quarters"
+    );
     assert!((household_share_for(3) - 0.666).abs() < 0.01);
     assert!(household_share_for(4) < household_share_for(3));
 
@@ -525,10 +538,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // broken model. What the scale claims — that carrying a household
     // alone costs a quarter more — is asserted above and below, on the
     // comparison rather than on the absolute.
-    assert!(
-        alone >= shared,
-        "living alone came out easier than sharing"
-    );
+    assert!(alone >= shared, "living alone came out easier than sharing");
 
     // **Compare like with like, or this measures children rather than
     // rent.**
@@ -789,10 +799,10 @@ fn grades_gate_what_money_cannot_buy() {
         }
         let n = n as f64;
         (
-            deg as f64 / n,                                  // share with a degree
-            (deg_apt / deg as f64 - all_apt / n) / 0.167,     // graduate ability, in SD
+            deg as f64 / n,                                                // share with a degree
+            (deg_apt / deg as f64 - all_apt / n) / 0.167, // graduate ability, in SD
             (rich as f64 / rich_n as f64) / (poor as f64 / poor_n as f64), // class gap
-            blocked as f64 / n,                              // shut out on grades
+            blocked as f64 / n,                           // shut out on grades
         )
     }
 
@@ -920,10 +930,12 @@ fn a_dead_person_does_not_become_whoever_takes_their_slot() {
             .ids()
             .find(|live| live.slot() == i.slot())
             .expect("a freed slot that was never reused");
-        assert_ne!(*i, occupant, "the slot was reused without moving the generation");
         assert_ne!(
-            &folk.people[occupant].name,
-            was,
+            *i, occupant,
+            "the slot was reused without moving the generation"
+        );
+        assert_ne!(
+            &folk.people[occupant].name, was,
             "the replacement inherited the dead person's name"
         );
     }
@@ -971,7 +983,8 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     let widow_had = folk.people[widow].money;
     folk.probate(dies);
     assert_eq!(
-        folk.people[widow].money, widow_had + 900.0,
+        folk.people[widow].money,
+        widow_had + 900.0,
         "the widow did not inherit"
     );
     assert_eq!(folk.escheated, 0.0, "an estate with a widow escheated");
@@ -991,7 +1004,11 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     folk.people[parent].money = 1000.0;
     let (a_had, b_had) = (folk.people[a].money, folk.people[b].money);
     folk.probate(parent);
-    assert_eq!(folk.people[a].money, a_had + 500.0, "children split the estate");
+    assert_eq!(
+        folk.people[a].money,
+        a_had + 500.0,
+        "children split the estate"
+    );
     assert_eq!(folk.people[b].money, b_had + 500.0);
     assert_eq!(folk.escheated, 0.0);
 
@@ -1004,7 +1021,11 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
     folk.people[dies].money = 300.0;
     let had = folk.people[mother].money;
     folk.probate(dies);
-    assert_eq!(folk.people[mother].money, had + 300.0, "the estate skipped the parents");
+    assert_eq!(
+        folk.people[mother].money,
+        had + 300.0,
+        "the estate skipped the parents"
+    );
 
     // --- and with nobody at all, the state takes it ---
     let mut folk = Populace::seed(&e, 40, 20260828);
@@ -1015,7 +1036,10 @@ fn an_estate_goes_down_the_ladder_and_the_state_takes_the_rest() {
         .expect("everybody in the cohort has kin");
     folk.people[alone].money = 250.0;
     folk.probate(alone);
-    assert_eq!(folk.escheated, 250.0, "an estate with no heir did not escheat");
+    assert_eq!(
+        folk.escheated, 250.0,
+        "an estate with no heir did not escheat"
+    );
     assert_eq!(folk.inherited, 0.0);
 }
 
@@ -1043,7 +1067,14 @@ fn an_heir_inherits_the_house_and_the_vehicle() {
     folk.people[widow].conveyance = Conveyance::OnFoot;
 
     folk.probate(dies);
-    assert_eq!(folk.people[widow].housing, Housing::Owned, "the house did not pass");
-    assert_eq!(folk.people[widow].conveyance, Conveyance::Van, "the vehicle did not pass");
+    assert_eq!(
+        folk.people[widow].housing,
+        Housing::Owned,
+        "the house did not pass"
+    );
+    assert_eq!(
+        folk.people[widow].conveyance,
+        Conveyance::Van,
+        "the vehicle did not pass"
+    );
 }
-

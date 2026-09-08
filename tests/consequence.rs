@@ -39,10 +39,20 @@ fn culture() -> Vec<(Value, i8)> {
 
 /// A town where most hands are working, and one where few are.
 fn a_busy_town() -> Workforce {
-    Workforce { hands: 1000.0, working: 880.0, posts: 900.0, ..Default::default() }
+    Workforce {
+        hands: 1000.0,
+        working: 880.0,
+        posts: 900.0,
+        ..Default::default()
+    }
 }
 fn a_dying_town() -> Workforce {
-    Workforce { hands: 1000.0, working: 180.0, posts: 200.0, ..Default::default() }
+    Workforce {
+        hands: 1000.0,
+        working: 180.0,
+        posts: 200.0,
+        ..Default::default()
+    }
 }
 
 /// A firm with a spare in store loses a few days; one without loses
@@ -61,7 +71,10 @@ fn a_mill() -> Employer {
 /// With no spare a transformer is built to order: twelve to eighteen
 /// months, which is what the economy already models.
 fn a_mill_with_no_spare() -> Employer {
-    Employer { expected_repair_days: 400.0, ..a_mill() }
+    Employer {
+        expected_repair_days: 400.0,
+        ..a_mill()
+    }
 }
 
 // =====================================================================
@@ -83,7 +96,9 @@ fn a_spare_in_store_costs_nobody_their_work() {
         "a four-day outage with a fortnight of stock put somebody out of work"
     );
     assert!(
-        !facts.iter().any(|f| matches!(f.what, Fact::PayReduced { .. })),
+        !facts
+            .iter()
+            .any(|f| matches!(f.what, Fact::PayReduced { .. })),
         "a short outage docked somebody's pay"
     );
     // The mill did stop, which is true and is a different claim.
@@ -100,13 +115,19 @@ fn a_spare_in_store_costs_nobody_their_work() {
     assert!(
         !changes.iter().any(|ch| matches!(
             ch.what,
-            scale_sim::scaling::What::Wellbeing { by: ShapesWellbeing::LostWork, .. }
+            scale_sim::scaling::What::Wellbeing {
+                by: ShapesWellbeing::LostWork,
+                ..
+            }
         )),
         "a short outage left a durable well-being injury"
     );
     let me = promote(&c, &culture(), 0);
     c.advance_through(&me.mind, 0.3, &changes);
-    assert!(c.standing.is_empty(), "he acquired a standing trouble out of nothing");
+    assert!(
+        c.standing.is_empty(),
+        "he acquired a standing trouble out of nothing"
+    );
 }
 
 // =====================================================================
@@ -144,7 +165,10 @@ fn the_firm_decides_and_not_the_grid() {
     );
 
     // And a mill with its own power notices nothing much at all.
-    let with_a_generator = Employer { alternative_power: 1.0, ..hand_to_mouth };
+    let with_a_generator = Employer {
+        alternative_power: 1.0,
+        ..hand_to_mouth
+    };
     assert!(with_a_generator.decides(long, 0, &mut seq).is_empty());
 }
 
@@ -193,7 +217,10 @@ fn one_fact_committed_before_anybody_appraises_it() {
     assert_eq!(fresh.len(), facts.len());
     // It is history now, before anybody has heard it.
     for f in &facts {
-        assert!(journal.already(f.event).is_some(), "a fact reached a mind before the journal");
+        assert!(
+            journal.already(f.event).is_some(),
+            "a fact reached a mind before the journal"
+        );
     }
 
     // Committing the same day again commits nothing.
@@ -205,7 +232,10 @@ fn one_fact_committed_before_anybody_appraises_it() {
     let first = Consequences::delivered_to(&mut journal, Standing::TheWorker, who(2), &facts);
     assert!(!first.is_empty());
     for f in &facts {
-        assert!(journal.apply_once(f.event).is_none(), "a fact was applied twice");
+        assert!(
+            journal.apply_once(f.event).is_none(),
+            "a fact was applied twice"
+        );
     }
 }
 
@@ -251,15 +281,25 @@ fn who_finds_out_depends_on_where_they_stand() {
     assert!(learns(Standing::TheWorker, ended, t).is_some());
     assert!(learns(Standing::Household, ended, t).is_some());
     assert!(learns(Standing::Workmate, ended, t).is_some());
-    assert_eq!(learns(Standing::Otherwise, ended, t), None, "a stranger simply knew");
+    assert_eq!(
+        learns(Standing::Otherwise, ended, t),
+        None,
+        "a stranger simply knew"
+    );
 
     // The household lives on the money, not on the roster.
     assert_eq!(learns(Standing::Household, shift, t), None);
     assert!(learns(Standing::Workmate, shift, t).is_some());
 
     // And how each of them came by it differs, which memory keeps.
-    assert_eq!(learns(Standing::TheWorker, ended, t), Some(Source::Told { by: t }));
-    assert_eq!(learns(Standing::Workmate, ended, t), Some(Source::Overheard));
+    assert_eq!(
+        learns(Standing::TheWorker, ended, t),
+        Some(Source::Told { by: t })
+    );
+    assert_eq!(
+        learns(Standing::Workmate, ended, t),
+        Some(Source::Overheard)
+    );
 }
 
 // =====================================================================
@@ -281,7 +321,10 @@ fn opportunity_is_only_one_part_of_being_able_to_act() {
             ..Default::default()
         },
     );
-    assert!((mobile.opportunity - stuck.opportunity).abs() < 1e-12, "the market differed");
+    assert!(
+        (mobile.opportunity - stuck.opportunity).abs() < 1e-12,
+        "the market differed"
+    );
     assert!(
         mobile.actual(60.0).source > stuck.actual(60.0).source * 3.0,
         "being unable to get to the work made no difference"
@@ -309,7 +352,10 @@ fn what_counts_is_how_long_the_money_lasts() {
     // And consequences are bearable in proportion.
     let r = Reemployment::default();
     assert!(r.actual(120.0).consequences > r.actual(5.0).consequences);
-    assert!(r.actual(5.0).consequences < 0.15, "a week's money made it all survivable");
+    assert!(
+        r.actual(5.0).consequences < 0.15,
+        "a week's money made it all survivable"
+    );
 }
 
 // =====================================================================
@@ -339,8 +385,11 @@ fn run(branch: &str, employer: Employer, market: Workforce, liquid: f64) -> Outc
     let mut c = Coarse::new(who(2), 4242, 0);
     // What he believes he can do — deliberately the same in every
     // branch, so that any difference between them is the world's.
-    c.perceived_control =
-        scale_sim::coping::ControlAppraisal { source: 0.6, consequences: 0.6, own_response: 0.5 };
+    c.perceived_control = scale_sim::coping::ControlAppraisal {
+        source: 0.6,
+        consequences: 0.6,
+        own_response: 0.5,
+    };
     let me = promote(&c, &cult, 0);
 
     let mut event = 9_000u64;
@@ -377,13 +426,26 @@ fn run(branch: &str, employer: Employer, market: Workforce, liquid: f64) -> Outc
 #[test]
 fn one_fault_three_lives() {
     let kept = run("spare", a_mill(), a_busy_town(), 120.0);
-    let busy = run("no spare, busy town", a_mill_with_no_spare(), a_busy_town(), 120.0);
-    let dying = run("no spare, dying town", a_mill_with_no_spare(), a_dying_town(), 20.0);
+    let busy = run(
+        "no spare, busy town",
+        a_mill_with_no_spare(),
+        a_busy_town(),
+        120.0,
+    );
+    let dying = run(
+        "no spare, dying town",
+        a_mill_with_no_spare(),
+        a_dying_town(),
+        20.0,
+    );
 
     // 1. The spare is the difference between an event and no event.
     assert!(!kept.lost_work, "a spare in store still cost him his job");
     assert!(busy.lost_work && dying.lost_work);
-    assert!(kept.wellbeing > -0.01, "a short outage injured his life satisfaction");
+    assert!(
+        kept.wellbeing > -0.01,
+        "a short outage injured his life satisfaction"
+    );
     assert_eq!(kept.state, FunctionalState::Regulated);
 
     // 2. Where there is work, he can actually do something about it.
@@ -401,7 +463,10 @@ fn one_fault_three_lives() {
     //    the same injury — what differs is what it did to their
     //    functioning, which is a separate layer.
     assert!(busy.wellbeing < -0.05 && dying.wellbeing < -0.05);
-    assert!(dying.state >= busy.state, "the dying town was easier to live in");
+    assert!(
+        dying.state >= busy.state,
+        "the dying town was easier to live in"
+    );
 }
 
 // =====================================================================
@@ -499,7 +564,10 @@ fn a_worker_nobody_watched_is_the_same_worker() {
     assert!((watched.strain.debt - ignored.strain.debt).abs() < 1e-9);
     assert_eq!(watched.growth, ignored.growth);
     // And putting him down and picking him up changes nothing.
-    assert_eq!(demote(&promote(&ignored, &cult, 730)).strain, ignored.strain);
+    assert_eq!(
+        demote(&promote(&ignored, &cult, 730)).strain,
+        ignored.strain
+    );
 }
 
 // =====================================================================
@@ -541,15 +609,14 @@ fn what_he_can_fall_back_on_is_read_off_the_ledger() {
     assert!(pool > 0.0, "a town whose households hold nothing");
 
     let runway = runway_of(&e, town, households);
-    assert!(runway.is_finite() && runway > 0.0, "runway came out at {runway}");
+    assert!(
+        runway.is_finite() && runway > 0.0,
+        "runway came out at {runway}"
+    );
 
     // **The same account, and it is the one the counters draw on.**
     e.step();
-    let bought = e
-        .treasury
-        .today
-        .iter()
-        .any(|t| t.why == Why::Purchase);
+    let bought = e.treasury.today.iter().any(|t| t.why == Why::Purchase);
     assert!(bought, "a day in which nobody bought anything");
     let after = e.treasury.balance(Account::Households(town));
     assert_ne!(
@@ -595,7 +662,10 @@ fn he_blames_whoever_told_him_and_can_be_put_right() {
     let manager = who(5);
     let ev = as_world_event(&sacking, Place(3), worker, Some(manager));
     assert_eq!(ev.actor, Some(manager));
-    assert!(ev.facts.deliberate, "being sacked did not read as somebody's doing");
+    assert!(
+        ev.facts.deliberate,
+        "being sacked did not read as somebody's doing"
+    );
 
     let mind = Mind::draw(&mut Rng::new(11), &culture());
     let mut mem = Memory::new();
@@ -606,7 +676,9 @@ fn he_blames_whoever_told_him_and_can_be_put_right() {
         .perceive(&ev, Some(of), Source::Told { by: manager }, 0.95, &mut rng)
         .expect("he did not take it in");
     let felt = mind.appraise(&mind.read(&p.facts));
-    let trace = mem.encode(p, &mind, sacking.day, &felt).expect("nothing was encoded");
+    let trace = mem
+        .encode(p, &mind, sacking.day, &felt)
+        .expect("nothing was encoded");
 
     // He blames the man who told him.
     assert_eq!(
@@ -617,9 +689,13 @@ fn he_blames_whoever_told_him_and_can_be_put_right() {
 
     // **Months later he learns what actually happened.** The blame moves;
     // what he was told does not.
-    mem.reattribute(trace, PerceivedWho::Unknown(scale_sim::memory::Description(
-        "a transformer nobody had a spare for".into(),
-    )), 0.7);
+    mem.reattribute(
+        trace,
+        PerceivedWho::Unknown(scale_sim::memory::Description(
+            "a transformer nobody had a spare for".into(),
+        )),
+        0.7,
+    );
 
     let said_after = scale_sim::memory::testimony(&mem.traces[trace]);
     assert_ne!(said_after, said_before, "being put right changed nothing");
@@ -629,7 +705,11 @@ fn he_blames_whoever_told_him_and_can_be_put_right() {
         "learning the real cause turned hearsay into something he witnessed"
     );
     assert!(
-        mem.traces[trace].blamed.as_ref().and_then(|w| w.person()).is_none(),
+        mem.traces[trace]
+            .blamed
+            .as_ref()
+            .and_then(|w| w.person())
+            .is_none(),
         "he still blames the manager"
     );
 }
@@ -640,12 +720,18 @@ fn he_blames_whoever_told_him_and_can_be_put_right() {
 fn two_men_at_the_same_mill_remember_it_differently() {
     let mut seq = 0u64;
     let facts = a_mill_with_no_spare().decides(200.0, 10, &mut seq);
-    let sacking = *facts.iter().find(|f| f.what == Fact::EmploymentEnded).unwrap();
+    let sacking = *facts
+        .iter()
+        .find(|f| f.what == Fact::EmploymentEnded)
+        .unwrap();
     let teller = who(5);
 
     let his = learns(Standing::TheWorker, sacking.what, teller);
     let theirs = learns(Standing::Workmate, sacking.what, teller);
     assert_eq!(his, Some(Source::Told { by: teller }));
     assert_eq!(theirs, Some(Source::Overheard));
-    assert_ne!(his, theirs, "the man it happened to and a bystander recall it alike");
+    assert_ne!(
+        his, theirs,
+        "the man it happened to and a bystander recall it alike"
+    );
 }

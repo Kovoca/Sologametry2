@@ -27,7 +27,11 @@ fn the_last_plant_called_sets_the_price_for_all_of_them() {
     // the river costs, which is almost nothing.
     let quiet = dispatch(&fleet, 500.0);
     assert!((quiet.clearing_price - Source::Hydro.marginal_cost()).abs() < 1e-9);
-    assert!(quiet.clearing_price < 10.0, "a windy night cleared at {:.0}", quiet.clearing_price);
+    assert!(
+        quiet.clearing_price < 10.0,
+        "a windy night cleared at {:.0}",
+        quiet.clearing_price
+    );
     assert!(quiet.unserved_mw < 1e-9);
 
     // A cold evening: everything runs and the gas turbine sets it.
@@ -37,7 +41,12 @@ fn the_last_plant_called_sets_the_price_for_all_of_them() {
 
     // **And the wind farm is paid the peak price too**, on the same
     // megawatt-hours it would have sold for nothing an hour earlier.
-    let wind_ran = peak.running.iter().find(|(s, _)| *s == Source::Wind).unwrap().1;
+    let wind_ran = peak
+        .running
+        .iter()
+        .find(|(s, _)| *s == Source::Wind)
+        .unwrap()
+        .1;
     assert!(wind_ran > 0.0);
     assert!(
         peak.revenue() > peak.production_cost * 1.5,
@@ -48,7 +57,10 @@ fn the_last_plant_called_sets_the_price_for_all_of_them() {
 
     // Cheapest first, always: the fuel-burners are last on.
     let order: Vec<Source> = quiet.running.iter().map(|r| r.0).collect();
-    assert!(!order.contains(&Source::Coal), "coal ran while the wind was blowing");
+    assert!(
+        !order.contains(&Source::Coal),
+        "coal ran while the wind was blowing"
+    );
 }
 
 /// **Gate: a shortage is not a high price, it is a different thing.**
@@ -60,18 +72,31 @@ fn the_last_plant_called_sets_the_price_for_all_of_them() {
 fn when_there_is_nothing_left_to_call_on() {
     let small = [Plant::new(Source::Gas, 100.0)];
     let short = dispatch(&small, 400.0);
-    assert!(short.unserved_mw > 290.0, "{:.0} MW went unserved", short.unserved_mw);
+    assert!(
+        short.unserved_mw > 290.0,
+        "{:.0} MW went unserved",
+        short.unserved_mw
+    );
     assert_eq!(short.clearing_price, SHORTAGE_PRICE);
-    assert!(short.served_mw() <= 100.0 + 1e-9, "it served more than it had");
+    assert!(
+        short.served_mw() <= 100.0 + 1e-9,
+        "it served more than it had"
+    );
 
     // **And a plant that is not available is not capacity.** A dam in a
     // drought and a wind farm on a still day are the same problem.
-    let mut becalmed = [Plant::new(Source::Wind, 900.0), Plant::new(Source::Gas, 200.0)];
+    let mut becalmed = [
+        Plant::new(Source::Wind, 900.0),
+        Plant::new(Source::Gas, 200.0),
+    ];
     let blowing = dispatch(&becalmed, 600.0);
     assert!(blowing.unserved_mw < 1e-9 && blowing.clearing_price < 1e-9);
     becalmed[0].available = 0.05;
     let still = dispatch(&becalmed, 600.0);
-    assert!(still.unserved_mw > 300.0, "900 MW of becalmed wind kept the lights on");
+    assert!(
+        still.unserved_mw > 300.0,
+        "900 MW of becalmed wind kept the lights on"
+    );
     assert_eq!(still.clearing_price, SHORTAGE_PRICE);
 }
 
@@ -84,7 +109,10 @@ fn a_country_with_a_river_pays_for_its_dam_once() {
         Plant::new(Source::Hydro, 900.0),
         Plant::new(Source::Gas, 700.0),
     ];
-    let without = [Plant::new(Source::Coal, 900.0), Plant::new(Source::Gas, 700.0)];
+    let without = [
+        Plant::new(Source::Coal, 900.0),
+        Plant::new(Source::Gas, 700.0),
+    ];
 
     let river = annual_cost(&with_a_river, demand);
     let burning = annual_cost(&without, demand);
@@ -96,7 +124,11 @@ fn a_country_with_a_river_pays_for_its_dam_once() {
     // **And its power is mostly not burning anything**, which is what
     // decides whether a hard winter costs money or merely costs water.
     let d = dispatch(&with_a_river, demand);
-    assert!(d.share_from_free_fuel() > 0.8, "{:.0}%", d.share_from_free_fuel() * 100.0);
+    assert!(
+        d.share_from_free_fuel() > 0.8,
+        "{:.0}%",
+        d.share_from_free_fuel() * 100.0
+    );
     let d2 = dispatch(&without, demand);
     assert!(d2.share_from_free_fuel() < 0.05);
 }
@@ -167,9 +199,15 @@ fn the_windiest_places_are_exposed_coasts_in_the_westerlies() {
     let scotland = wind_resource(56.0, true, 200.0, 0.2);
     let sahara = wind_resource(28.0, false, 300.0, 0.0);
     let equator = wind_resource(2.0, false, 100.0, 0.8);
-    assert!(scotland > sahara, "56N coast {scotland:.2} against 28N inland {sahara:.2}");
+    assert!(
+        scotland > sahara,
+        "56N coast {scotland:.2} against 28N inland {sahara:.2}"
+    );
     assert!(scotland > equator);
-    assert!(scotland > 0.7, "an exposed Atlantic coast came out at {scotland:.2}");
+    assert!(
+        scotland > 0.7,
+        "an exposed Atlantic coast came out at {scotland:.2}"
+    );
 
     // Exposure matters: nothing upwind to slow it.
     let coast = wind_resource(52.0, true, 50.0, 0.1);
@@ -195,7 +233,10 @@ fn the_windiest_places_are_exposed_coasts_in_the_westerlies() {
 fn the_same_panel_is_worth_twice_as_much_in_arizona() {
     let arizona = solar_resource(34.0, 0.05);
     let germany = solar_resource(51.0, 0.65);
-    assert!(arizona > germany * 1.7, "Arizona {arizona:.2} Germany {germany:.2}");
+    assert!(
+        arizona > germany * 1.7,
+        "Arizona {arizona:.2} Germany {germany:.2}"
+    );
     assert!(solar_resource(70.0, 0.5) < solar_resource(20.0, 0.5));
     // Cloud alone makes a real difference at the same latitude.
     assert!(solar_resource(40.0, 0.0) > solar_resource(40.0, 0.9) * 1.6);
@@ -208,21 +249,51 @@ fn the_endowment_picks_the_mix() {
     let demand = 1_000.0;
 
     // Norway: a great river, and it needs almost nothing else.
-    let norway = Potential { hydro_mw: 1_400.0, wind: 0.7, solar: 0.2, geothermal: 0.1, coal: 0.0 };
+    let norway = Potential {
+        hydro_mw: 1_400.0,
+        wind: 0.7,
+        solar: 0.2,
+        geothermal: 0.1,
+        coal: 0.0,
+    };
     let built = what_they_would_build(&norway, demand, false);
     assert!(built.iter().any(|p| p.source == Source::Hydro));
-    let hydro_mw: f64 = built.iter().filter(|p| p.source == Source::Hydro).map(|p| p.mw).sum();
-    assert!(hydro_mw > demand, "only {hydro_mw:.0} MW of hydro on a river worth 1,400");
+    let hydro_mw: f64 = built
+        .iter()
+        .filter(|p| p.source == Source::Hydro)
+        .map(|p| p.mw)
+        .sum();
+    assert!(
+        hydro_mw > demand,
+        "only {hydro_mw:.0} MW of hydro on a river worth 1,400"
+    );
 
     // Poland: coal under it and not much else.
-    let poland = Potential { hydro_mw: 20.0, wind: 0.35, solar: 0.3, geothermal: 0.02, coal: 0.8 };
+    let poland = Potential {
+        hydro_mw: 20.0,
+        wind: 0.35,
+        solar: 0.3,
+        geothermal: 0.02,
+        coal: 0.8,
+    };
     let built = what_they_would_build(&poland, demand, false);
-    assert!(built.iter().any(|p| p.source == Source::Coal), "a coalfield built no coal station");
-    assert!(!built.iter().any(|p| p.source == Source::Solar), "solar in a cloudy coal country");
+    assert!(
+        built.iter().any(|p| p.source == Source::Coal),
+        "a coalfield built no coal station"
+    );
+    assert!(
+        !built.iter().any(|p| p.source == Source::Solar),
+        "solar in a cloudy coal country"
+    );
 
     // Iceland: hot rock, and it works at night, which is the whole point.
-    let iceland =
-        Potential { hydro_mw: 600.0, wind: 0.8, solar: 0.15, geothermal: 0.9, coal: 0.0 };
+    let iceland = Potential {
+        hydro_mw: 600.0,
+        wind: 0.8,
+        solar: 0.15,
+        geothermal: 0.9,
+        coal: 0.0,
+    };
     let built = what_they_would_build(&iceland, demand, false);
     assert!(built.iter().any(|p| p.source == Source::Geothermal));
 
@@ -274,7 +345,11 @@ fn the_power_price_matters_enormously_to_some_things_and_not_at_all_to_others() 
     // **And remelting is 5% of primary**, which is exactly why scrap
     // aluminium is worth $1,400 a tonne.
     let ratio = Route::SecondaryAluminium.mwh_a_tonne() / Route::PrimaryAluminium.mwh_a_tonne();
-    assert!((0.03..0.08).contains(&ratio), "remelt was {:.0}% of primary", ratio * 100.0);
+    assert!(
+        (0.03..0.08).contains(&ratio),
+        "remelt was {:.0}% of primary",
+        ratio * 100.0
+    );
 }
 
 /// **Gate: the endowment picks the steelmaking route, and it is not the
@@ -333,13 +408,19 @@ fn a_potline_needs_a_contract_rather_than_a_dam_next_door() {
     let market = 55.0;
     let small_and_short = industrial_contract(market, 20.0, 2);
     let big_and_long = industrial_contract(market, 600.0, 40);
-    assert!(big_and_long < small_and_short * 0.75, "{big_and_long:.0} against {small_and_short:.0}");
+    assert!(
+        big_and_long < small_and_short * 0.75,
+        "{big_and_long:.0} against {small_and_short:.0}"
+    );
     assert!(big_and_long < market * 0.7);
     // And there is a floor: nobody sells below what it costs them.
     assert!(industrial_contract(market, 100_000.0, 400) >= market * 0.35 - 1e-9);
 
     // **Almost nowhere is worth a potline**, which is why there are so few.
-    assert!(!worth_a_potline(55.0), "a potline at the ordinary market price");
+    assert!(
+        !worth_a_potline(55.0),
+        "a potline at the ordinary market price"
+    );
     assert!(worth_a_potline(industrial_contract(45.0, 600.0, 40)));
     assert!(
         !worth_a_potline(industrial_contract(120.0, 600.0, 40)),

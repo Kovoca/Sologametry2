@@ -32,8 +32,14 @@ fn a_trade_is_gated_and_that_is_the_point() {
     // Years of training, in order.
     assert_eq!(qualification_for(Trade::Doctor), Qualification::Degree);
     assert_eq!(qualification_for(Trade::Nurse), Qualification::Degree);
-    assert_eq!(qualification_for(Trade::Electrician), Qualification::Vocational);
-    assert_eq!(qualification_for(Trade::Pipefitter), Qualification::Vocational);
+    assert_eq!(
+        qualification_for(Trade::Electrician),
+        Qualification::Vocational
+    );
+    assert_eq!(
+        qualification_for(Trade::Pipefitter),
+        Qualification::Vocational
+    );
     // **The route into healthcare that a degree is not needed for**, which
     // is most of why it exists: a year of practical training against three
     // of university.

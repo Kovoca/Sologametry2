@@ -10,7 +10,10 @@ use scale_sim::needs::{Circumstances, Doing, Need, Needs};
 use scale_sim::rng::Rng;
 
 fn a_mind(seed: u64) -> Mind {
-    Mind::draw(&mut Rng::new(seed), &[(Value::Family, 25), (Value::Craftsmanship, 20)])
+    Mind::draw(
+        &mut Rng::new(seed),
+        &[(Value::Family, 25), (Value::Craftsmanship, 20)],
+    )
 }
 
 /// Somebody built to order.
@@ -35,7 +38,10 @@ fn person(seed: u64, facets: &[(Facet, f32)], values: &[(Value, i8)]) -> Mind {
 }
 
 fn got(v: &[(Need, f64)], n: Need) -> f64 {
-    v.iter().find(|(k, _)| *k == n).map(|(_, a)| *a).unwrap_or(0.0)
+    v.iter()
+        .find(|(k, _)| *k == n)
+        .map(|(_, a)| *a)
+        .unwrap_or(0.0)
 }
 
 /// Drain everything so satisfaction has somewhere to go.
@@ -61,7 +67,10 @@ fn passing_a_stranger_is_not_company() {
     let talking = n.did(
         Doing::TalkWithAFriend,
         1.0,
-        Circumstances { with_somebody_known: true, ..Default::default() },
+        Circumstances {
+            with_somebody_known: true,
+            ..Default::default()
+        },
     );
 
     assert!(
@@ -89,15 +98,24 @@ fn arguing_satisfies_excitement_and_not_friendship() {
     let row = n.did(
         Doing::Argue,
         1.0,
-        Circumstances { with_somebody_known: true, ..Default::default() },
+        Circumstances {
+            with_somebody_known: true,
+            ..Default::default()
+        },
     );
-    assert!(got(&row, Need::Excitement) > 0.2, "a row was not even exciting");
+    assert!(
+        got(&row, Need::Excitement) > 0.2,
+        "a row was not even exciting"
+    );
     assert_eq!(
         got(&row, Need::Friendship),
         0.0,
         "shouting at somebody made him feel closer to them"
     );
-    assert!(got(&row, Need::Company) > 0.0, "an argument is contact of a kind");
+    assert!(
+        got(&row, Need::Company) > 0.0,
+        "an argument is contact of a kind"
+    );
 }
 
 /// **A loom is practice; a design is creation.**
@@ -107,12 +125,19 @@ fn arguing_satisfies_excitement_and_not_friendship() {
 /// them and a weaver of forty years has no reason ever to try anything.
 #[test]
 fn working_a_loom_is_not_making_something_new() {
-    let m = person(3, &[(Facet::LoveOfMaking, 1.5)], &[(Value::Craftsmanship, 40)]);
+    let m = person(
+        3,
+        &[(Facet::LoveOfMaking, 1.5)],
+        &[(Value::Craftsmanship, 40)],
+    );
     let mut n = m.needs.clone().unwrap();
     empty(&mut n);
 
     let weaving = n.did(Doing::WorkTheLoom, 2.0, Circumstances::default());
-    assert!(got(&weaving, Need::Craft) > 0.3, "a day at the loom was not craft");
+    assert!(
+        got(&weaving, Need::Craft) > 0.3,
+        "a day at the loom was not craft"
+    );
     assert_eq!(
         got(&weaving, Need::Creation),
         0.0,
@@ -124,7 +149,10 @@ fn working_a_loom_is_not_making_something_new() {
     let designing = n2.did(
         Doing::DesignSomething,
         2.0,
-        Circumstances { something_new: true, ..Default::default() },
+        Circumstances {
+            something_new: true,
+            ..Default::default()
+        },
     );
     assert!(got(&designing, Need::Craft) > 0.0);
     assert!(
@@ -151,7 +179,10 @@ fn standing_in_a_temple_is_not_worship() {
     empty(&mut n);
 
     let standing = n.did(Doing::StandInATemple, 2.0, Circumstances::default());
-    assert!(standing.is_empty(), "standing about in a temple satisfied something");
+    assert!(
+        standing.is_empty(),
+        "standing about in a temple satisfied something"
+    );
     assert_eq!(n.get(Need::Worship).satisfaction, 0.0);
 
     // At the back, not taking part: still nothing.
@@ -169,7 +200,10 @@ fn standing_in_a_temple_is_not_worship() {
     let taking_part = n.did(
         Doing::AttendTheService,
         1.0,
-        Circumstances { taking_part: true, ..Default::default() },
+        Circumstances {
+            taking_part: true,
+            ..Default::default()
+        },
     );
     assert!(
         got(&taking_part, Need::Worship) > 0.5,
@@ -184,8 +218,16 @@ fn standing_in_a_temple_is_not_worship() {
 /// which is why an unmet need is two numbers and not one.
 #[test]
 fn what_somebody_needs_comes_from_who_they_are() {
-    let sociable = person(5, &[(Facet::Gregariousness, 2.0), (Facet::Privacy, -1.5)], &[]);
-    let solitary = person(5, &[(Facet::Gregariousness, -2.0), (Facet::Privacy, 1.5)], &[]);
+    let sociable = person(
+        5,
+        &[(Facet::Gregariousness, 2.0), (Facet::Privacy, -1.5)],
+        &[],
+    );
+    let solitary = person(
+        5,
+        &[(Facet::Gregariousness, -2.0), (Facet::Privacy, 1.5)],
+        &[],
+    );
     assert!(
         sociable.needs.as_ref().unwrap().get(Need::Company).weight
             > solitary.needs.as_ref().unwrap().get(Need::Company).weight + 0.15,
@@ -211,7 +253,10 @@ fn what_somebody_needs_comes_from_who_they_are() {
     let mut n = sociable.needs.clone().unwrap();
     empty(&mut n);
     n.did(Doing::DrinkWithWorkmates, 3.0, Circumstances::default());
-    assert!(n.get(Need::Company).satisfaction > 0.5, "an evening out was no company");
+    assert!(
+        n.get(Need::Company).satisfaction > 0.5,
+        "an evening out was no company"
+    );
     assert_eq!(
         n.get(Need::Friendship).satisfaction,
         0.0,
@@ -228,7 +273,11 @@ fn what_somebody_needs_comes_from_who_they_are() {
 #[test]
 fn a_contented_man_with_nothing_he_wants_cannot_concentrate() {
     let mut rng = Rng::new(6);
-    let mut m = person(6, &[(Facet::Gregariousness, 1.5), (Facet::Curiosity, 1.5)], &[]);
+    let mut m = person(
+        6,
+        &[(Facet::Gregariousness, 1.5), (Facet::Curiosity, 1.5)],
+        &[],
+    );
     let settled = m.focus.current;
 
     // A month of nothing: no disaster, no grief, no stress — and nothing
@@ -249,7 +298,10 @@ fn a_contented_man_with_nothing_he_wants_cannot_concentrate() {
          ({:.2} against {settled:.2})",
         m.focus.current
     );
-    assert!(m.episodes.is_empty(), "he is not agitated; he is going without");
+    assert!(
+        m.episodes.is_empty(),
+        "he is not agitated; he is going without"
+    );
 
     // And it can be fixed by giving him what he wants, not by calming
     // him down.
@@ -257,7 +309,10 @@ fn a_contented_man_with_nothing_he_wants_cannot_concentrate() {
     n.did(
         Doing::TalkWithAFriend,
         3.0,
-        Circumstances { with_somebody_known: true, ..Default::default() },
+        Circumstances {
+            with_somebody_known: true,
+            ..Default::default()
+        },
     );
     n.did(Doing::ReadABook, 3.0, Circumstances::default());
     let before = m.focus.current;
@@ -275,7 +330,11 @@ fn a_contented_man_with_nothing_he_wants_cannot_concentrate() {
 /// register from a distraction.
 #[test]
 fn long_neglect_becomes_a_grievance_and_not_merely_a_distraction() {
-    let m = person(7, &[(Facet::Gregariousness, 2.0)], &[(Value::Friendship, 45)]);
+    let m = person(
+        7,
+        &[(Facet::Gregariousness, 2.0)],
+        &[(Value::Friendship, 45)],
+    );
     let mut n = m.needs.clone().unwrap();
 
     // A week: distracting, and not yet a complaint.
@@ -302,7 +361,10 @@ fn long_neglect_becomes_a_grievance_and_not_merely_a_distraction() {
     // What he goes looking for is the worst of it.
     let (want, _) = n.most_pressing().expect("he wants nothing at all");
     assert!(
-        matches!(want, Need::Company | Need::Friendship | Need::Occupation | Need::Rest),
+        matches!(
+            want,
+            Need::Company | Need::Friendship | Need::Occupation | Need::Rest
+        ),
         "the thing he most wants after two months alone is {want:?}"
     );
 }
@@ -355,7 +417,10 @@ fn the_worst_want_weighs_more_than_several_small_ones() {
         a_wasted_life.debt() < a_bad_month.debt() * 2.5,
         "twenty months of neglect is twenty times a month of it"
     );
-    assert!(a_bad_month.debt() > 0.1, "a month of nothing at all cost nothing");
+    assert!(
+        a_bad_month.debt() > 0.1,
+        "a month of nothing at all cost nothing"
+    );
 }
 
 /// A seed gives the same wants.

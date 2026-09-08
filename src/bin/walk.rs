@@ -73,9 +73,15 @@ fn main() {
         eprintln!("no nation of rank {rank}");
         std::process::exit(1);
     };
-    let Some(region) =
-        Region::extract(&world, &polities, &settlements, &network, id, 5, Doctrine::Prudent)
-    else {
+    let Some(region) = Region::extract(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        id,
+        5,
+        Doctrine::Prudent,
+    ) else {
         eprintln!("that nation has no settlements to model");
         std::process::exit(1);
     };
@@ -92,7 +98,8 @@ fn main() {
     let (elevation_m, relief_m) = ground_of(&world, cell);
     let loc = Locality::zoom(&world, cell);
     let ground_biome = loc.at(loc.size / 2, loc.size / 2).biome;
-    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome).on_rock(world.geology.rock[cell])
+    let plan = Plan::lay_out_on(seed, cell, pop, 40, ground_biome)
+        .on_rock(world.geology.rock[cell])
         .on_ground(elevation_m, relief_m)
         .with_water_at(world.depth_to_water_m(cell));
 
@@ -264,7 +271,10 @@ fn main() {
     }
 
     if !g
-        .at((centre.0 - g.origin.0) as usize, (centre.1 - g.origin.1) as usize)
+        .at(
+            (centre.0 - g.origin.0) as usize,
+            (centre.1 - g.origin.1) as usize,
+        )
         .walkable()
     {
         let mut best: Option<((i64, i64), i64)> = None;
@@ -399,9 +409,17 @@ fn main() {
     print!(
         "{}",
         if plain {
-            if omniscient { g.render_omniscient(Some(centre), false) } else { g.render(Some(centre)) }
+            if omniscient {
+                g.render_omniscient(Some(centre), false)
+            } else {
+                g.render(Some(centre))
+            }
         } else {
-            if omniscient { g.render_omniscient(Some(centre), true) } else { g.render_in_colour(Some(centre)) }
+            if omniscient {
+                g.render_omniscient(Some(centre), true)
+            } else {
+                g.render_in_colour(Some(centre))
+            }
         }
     );
     println!();
@@ -426,9 +444,7 @@ fn main() {
 /// as close to a loading dock as there is one.
 fn somewhere_to_park(g: &Ground, v: &Vehicle) -> Option<(i64, i64)> {
     let docks: Vec<(i64, i64)> = (0..g.w * g.h)
-        .filter(|i| {
-            g.tiles[*i] == Tile::Fitting(scale_sim::building::Fixture::LoadingBay)
-        })
+        .filter(|i| g.tiles[*i] == Tile::Fitting(scale_sim::building::Fixture::LoadingBay))
         .map(|i| ((i % g.w) as i64, (i / g.w) as i64))
         .collect();
     let (cx, cy) = (g.w as i64 / 2, g.h as i64 / 2);

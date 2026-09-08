@@ -33,11 +33,7 @@ fn construction_and_use_are_different_questions() {
     // Every use must name a construction, or its materials are unknowable.
     for u in Use::ALL {
         let bill = u.materials(10.0);
-        assert!(
-            bill.total() > 0.0,
-            "{} costs nothing to build",
-            u.name()
-        );
+        assert!(bill.total() > 0.0, "{} costs nothing to build", u.name());
     }
 }
 

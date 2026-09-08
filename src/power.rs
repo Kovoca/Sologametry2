@@ -342,7 +342,11 @@ pub struct Plant {
 
 impl Plant {
     pub fn new(source: Source, mw: f64) -> Self {
-        Plant { source, mw, available: 1.0 }
+        Plant {
+            source,
+            mw,
+            available: 1.0,
+        }
     }
 
     /// What it will actually put out if it is called on.
@@ -450,7 +454,12 @@ pub fn dispatch(plants: &[Plant], demand_mw: f64) -> Dispatch {
         clearing = SHORTAGE_PRICE;
     }
 
-    Dispatch { running, clearing_price: clearing, unserved_mw: left, production_cost: cost }
+    Dispatch {
+        running,
+        clearing_price: clearing,
+        unserved_mw: left,
+        production_cost: cost,
+    }
 }
 
 /// What a megawatt-hour is deemed to cost when there is not one to be had.
@@ -522,10 +531,16 @@ pub fn what_they_would_build(have: &Potential, demand_mw: f64, has_gas: bool) ->
     let gap = (demand_mw * 1.15 - firm).max(0.0);
     if gap > 0.0 {
         if have.coal > 0.35 {
-            built.push(Plant::new(Source::Coal, gap / Source::Coal.capacity_factor() * 0.5));
+            built.push(Plant::new(
+                Source::Coal,
+                gap / Source::Coal.capacity_factor() * 0.5,
+            ));
         }
         if has_gas || have.coal <= 0.35 {
-            built.push(Plant::new(Source::Gas, gap / Source::Gas.capacity_factor() * 0.8));
+            built.push(Plant::new(
+                Source::Gas,
+                gap / Source::Gas.capacity_factor() * 0.8,
+            ));
         }
     }
     built

@@ -137,7 +137,10 @@ pub enum EventKind {
 impl EventKind {
     /// **The ordinary run of a life**, which is most of it.
     pub fn routine(self) -> bool {
-        matches!(self, EventKind::Meal | EventKind::Shift | EventKind::Conversation)
+        matches!(
+            self,
+            EventKind::Meal | EventKind::Shift | EventKind::Conversation
+        )
     }
 }
 
@@ -384,7 +387,9 @@ pub enum Cue {
     Place(Place),
     Person(Id<Person>),
     /// A year to the day, or several.
-    Anniversary { day: u64 },
+    Anniversary {
+        day: u64,
+    },
     /// Something of the same sort happening again.
     Similar(EventKind),
     /// Out of nowhere.
@@ -457,7 +462,10 @@ impl Memory {
             if clarity > 0.75 {
                 Some(PerceivedWho::Known(a))
             } else if clarity > 0.45 {
-                Some(PerceivedWho::Believed { person: a, confidence: clarity as f32 })
+                Some(PerceivedWho::Believed {
+                    person: a,
+                    confidence: clarity as f32,
+                })
             } else {
                 None
             }
@@ -567,7 +575,10 @@ impl Memory {
             encoding: appraisal,
             felt: felt
                 .iter()
-                .map(|e| RememberedFeeling { what: e.what, how_strongly: e.strength })
+                .map(|e| RememberedFeeling {
+                    what: e.what,
+                    how_strongly: e.strength,
+                })
                 .collect(),
             provenance: p.source,
             encoded_on: day,
@@ -700,7 +711,13 @@ impl Memory {
         // and it does not consult the encoding.
         let appraisal = mind.read(&facts);
         let episodes = mind.appraise(&appraisal);
-        Some(Recollection { of: which, content, appraisal, episodes, then })
+        Some(Recollection {
+            of: which,
+            content,
+            appraisal,
+            episodes,
+            then,
+        })
     }
 
     /// Time passes: what is not thought about gets harder to reach.

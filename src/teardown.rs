@@ -20,10 +20,10 @@
 //! is that a careful hour and a sledgehammer must not return the same
 //! pile.
 
+use crate::bom::Formed;
 use crate::item::{
     AssemblyRecord, Catalogue, Condition, DefId, ItemInstance, JointMethod, Quality,
 };
-use crate::bom::Formed;
 use crate::material::{Composition, Material, Recovers};
 use crate::rng::Rng;
 use crate::save::channel;
@@ -49,8 +49,8 @@ use crate::save::channel;
 /// for everything — common-mode damage is real and per-component draws
 /// alone cannot produce it.
 fn draw(event: u64, component: usize, unit: u32, what: &str) -> f64 {
-    let h = channel(event, component as u64, what)
-        ^ (unit as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    let h =
+        channel(event, component as u64, what) ^ (unit as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
     Rng::new(h).next_f32() as f64
 }
 
@@ -276,11 +276,19 @@ impl Recovered {
     }
 
     pub fn material(&self, m: Material) -> f64 {
-        self.materials.iter().find(|p| p.0 == m).map(|p| p.1).unwrap_or(0.0)
+        self.materials
+            .iter()
+            .find(|p| p.0 == m)
+            .map(|p| p.1)
+            .unwrap_or(0.0)
     }
 
     pub fn fuel_of(&self, m: Material) -> f64 {
-        self.fuel.iter().find(|p| p.0 == m).map(|p| p.1).unwrap_or(0.0)
+        self.fuel
+            .iter()
+            .find(|p| p.0 == m)
+            .map(|p| p.1)
+            .unwrap_or(0.0)
     }
 
     /// For a caller that has worked out a recovery itself — `wip` releases
@@ -338,8 +346,8 @@ pub fn take_apart(
     match (&item.assembly, how.wants_components()) {
         // ---- there is a record, and somebody wants the parts ----------
         (Some(rec), true) => {
-            let minutes = 4.0 * rec.components.len() as f64 * how.time_multiplier()
-                / (0.4 + 0.6 * skill);
+            let minutes =
+                4.0 * rec.components.len() as f64 * how.time_multiplier() / (0.4 + 0.6 * skill);
             out.minutes = minutes;
             recover_from_record(&mut out, rec, item, how, skill, sound, event);
         }
@@ -376,14 +384,21 @@ fn recover_from_record(
     // have drifted apart — moisture, wear, a repair — the object is the
     // authority, or a teardown would hand back mass that is not there.
     let recorded = rec.total_component_mass();
-    let scale = if recorded > 0.0 { (item.mass_kg / recorded).min(1.0) } else { 0.0 };
+    let scale = if recorded > 0.0 {
+        (item.mass_kg / recorded).min(1.0)
+    } else {
+        0.0
+    };
 
     for (index, comp) in rec.components.iter().enumerate() {
         // **The fastener names the joint**, so a screw comes out of a
         // glued frame by unscrewing.
         let method = comp.held_by;
         if modules_only
-            && !matches!(method, JointMethod::Bolted | JointMethod::Screwed | JointMethod::Clipped)
+            && !matches!(
+                method,
+                JointMethod::Bolted | JointMethod::Screwed | JointMethod::Clipped
+            )
         {
             continue; // left assembled: it is part of a module
         }
@@ -471,10 +486,7 @@ fn recover_from_record(
     // **A formed part is neither.** Taken off carefully it is still that
     // shape — a bent door skin is a door skin — and only cutting,
     // crushing or shredding turns it back into the sheet it came from.
-    let destructive = matches!(
-        how,
-        Teardown::Recycle | Teardown::CutUp | Teardown::Smash
-    );
+    let destructive = matches!(how, Teardown::Recycle | Teardown::CutUp | Teardown::Smash);
     for (k, f) in rec.formed.iter().enumerate() {
         let mut piece = *f;
         piece.kg *= scale;
@@ -488,7 +500,11 @@ fn recover_from_record(
                 .min(1.0);
             out.formed.push((piece, cond));
         } else {
-            deposit_at(out, piece.material, piece.kg * how.care() * (0.6 + 0.4 * skill));
+            deposit_at(
+                out,
+                piece.material,
+                piece.kg * how.care() * (0.6 + 0.4 * skill),
+            );
         }
     }
 
@@ -496,14 +512,22 @@ fn recover_from_record(
     // pressed shell of a toaster is steel, and what it comes back as is
     // decided by the material and by how much care was taken.
     for &(m, kg) in &rec.bulk {
-        deposit_at(out, m, kg * scale * how.care() * (0.55 + 0.45 * skill) * sound);
+        deposit_at(
+            out,
+            m,
+            kg * scale * how.care() * (0.55 + 0.45 * skill) * sound,
+        );
     }
 
     // **Glue, solder, welding wire and thread do not come back pristine.**
     // What the joint gives up is set by the method; what the material can
     // ever be is set by the material.
     for &(m, kg) in &rec.consumed {
-        let via = rec.joints.iter().map(|j| j.method.recovery().fastener).fold(0.0f64, f64::max);
+        let via = rec
+            .joints
+            .iter()
+            .map(|j| j.method.recovery().fastener)
+            .fold(0.0f64, f64::max);
         deposit_at(out, m, kg * scale * via * how.care());
     }
 }
@@ -577,9 +601,11 @@ pub fn possible(item: &ItemInstance, how: Teardown) -> bool {
         // what it is made of, so a board has a record too — and a board
         // still cannot be disassembled, because there is nothing in it
         // that comes out as a component.
-        Teardown::FieldStrip | Teardown::Disassemble => {
-            item.assembly.as_ref().map(|a| !a.components.is_empty()).unwrap_or(false)
-        }
+        Teardown::FieldStrip | Teardown::Disassemble => item
+            .assembly
+            .as_ref()
+            .map(|a| !a.components.is_empty())
+            .unwrap_or(false),
         _ => true,
     }
 }
@@ -595,5 +621,8 @@ pub fn compare(
     skill: f64,
     event: u64,
 ) -> (Recovered, Recovered) {
-    (take_apart(item, a, cat, skill, event), take_apart(item, b, cat, skill, event))
+    (
+        take_apart(item, a, cat, skill, event),
+        take_apart(item, b, cat, skill, event),
+    )
 }

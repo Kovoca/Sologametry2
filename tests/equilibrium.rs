@@ -231,8 +231,15 @@ fn a_country_does_not_leave_grain_money_on_the_table() {
     let polities = Polities::partition(&world, 24);
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
-    let mut n =
-        Nations::build(&world, &polities, &settlements, &network, 4, 4, Doctrine::Prudent);
+    let mut n = Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        4,
+        4,
+        Doctrine::Prudent,
+    );
     for _ in 0..400 {
         n.economy.step();
     }
@@ -318,7 +325,12 @@ fn shufflings(n: usize) -> Vec<Vec<usize>> {
     out.push((0..n).map(|i| (i + 1) % n).collect());
     out.push((0..n).map(|i| (i + n / 2) % n).collect());
     // Evens then odds, which separates neighbours that were adjacent.
-    out.push((0..n).filter(|i| i % 2 == 0).chain((0..n).filter(|i| i % 2 == 1)).collect());
+    out.push(
+        (0..n)
+            .filter(|i| i % 2 == 0)
+            .chain((0..n).filter(|i| i % 2 == 1))
+            .collect(),
+    );
     // A fixed hash, so the ordering has no relationship to anything the
     // economy cares about and is the same every run.
     let mut hashed: Vec<usize> = ident.clone();
@@ -344,7 +356,11 @@ fn no_ordering_of_the_sites_changes_the_answer() {
     let mut expected: Option<std::collections::BTreeMap<String, (f64, f64)>> = None;
     for (which, order) in shufflings(21).into_iter().enumerate() {
         let mut e = slice::symmetric(Doctrine::Prudent);
-        assert_eq!(e.ledger.sites.len(), order.len(), "the fixture changed size");
+        assert_eq!(
+            e.ledger.sites.len(),
+            order.len(),
+            "the fixture changed size"
+        );
         // Permute the storage. Nothing else in a freshly built economy
         // holds a site index — `staff_today` and `payroll_met` are filled
         // by the first day's work, and every site carries its own market.
@@ -360,9 +376,9 @@ fn no_ordering_of_the_sites_changes_the_answer() {
             None => expected = Some(got),
             Some(want) => {
                 for (name, &(a, b)) in want {
-                    let &(x, y) = got.get(name).unwrap_or_else(|| {
-                        panic!("ordering {which} lost {name} altogether")
-                    });
+                    let &(x, y) = got
+                        .get(name)
+                        .unwrap_or_else(|| panic!("ordering {which} lost {name} altogether"));
                     let scale = a.abs().max(1.0);
                     assert!(
                         (a - x).abs() / scale < 1e-6,

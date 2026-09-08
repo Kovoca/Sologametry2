@@ -250,68 +250,192 @@ impl Doing {
             // **Almost nothing.** Proximity is not company, and a model
             // that counts it will have a population whose social needs
             // are met by walking to work.
-            PassAStranger => &[Gives { need: Company, per_hour: 0.02, requires: Nothing }],
+            PassAStranger => &[Gives {
+                need: Company,
+                per_hour: 0.02,
+                requires: Nothing,
+            }],
             TalkWithAFriend => &[
-                Gives { need: Company, per_hour: 0.8, requires: Nothing },
-                Gives { need: Friendship, per_hour: 0.7, requires: SomebodyKnown },
+                Gives {
+                    need: Company,
+                    per_hour: 0.8,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Friendship,
+                    per_hour: 0.7,
+                    requires: SomebodyKnown,
+                },
             ],
             DrinkWithWorkmates => &[
-                Gives { need: Company, per_hour: 0.7, requires: Nothing },
-                Gives { need: Friendship, per_hour: 0.25, requires: SomebodyKnown },
-                Gives { need: Rest, per_hour: 0.3, requires: Nothing },
+                Gives {
+                    need: Company,
+                    per_hour: 0.7,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Friendship,
+                    per_hour: 0.25,
+                    requires: SomebodyKnown,
+                },
+                Gives {
+                    need: Rest,
+                    per_hour: 0.3,
+                    requires: Nothing,
+                },
             ],
             // **An argument is contact and it is not friendship.** It can
             // even be exciting. It does not make anybody less lonely.
             Argue => &[
-                Gives { need: Company, per_hour: 0.3, requires: Nothing },
-                Gives { need: Excitement, per_hour: 0.5, requires: Nothing },
+                Gives {
+                    need: Company,
+                    per_hour: 0.3,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Excitement,
+                    per_hour: 0.5,
+                    requires: Nothing,
+                },
             ],
             SitWithFamily => &[
-                Gives { need: Family, per_hour: 0.8, requires: Kin },
-                Gives { need: Company, per_hour: 0.5, requires: Nothing },
+                Gives {
+                    need: Family,
+                    per_hour: 0.8,
+                    requires: Kin,
+                },
+                Gives {
+                    need: Company,
+                    per_hour: 0.5,
+                    requires: Nothing,
+                },
             ],
             // **A loom is practice, not creation.** Doing well what you
             // already know how to do is a real satisfaction and a
             // different one.
             WorkTheLoom => &[
-                Gives { need: Craft, per_hour: 0.5, requires: Nothing },
-                Gives { need: Occupation, per_hour: 0.6, requires: Nothing },
+                Gives {
+                    need: Craft,
+                    per_hour: 0.5,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Occupation,
+                    per_hour: 0.6,
+                    requires: Nothing,
+                },
             ],
             DesignSomething => &[
-                Gives { need: Craft, per_hour: 0.4, requires: Nothing },
-                Gives { need: Creation, per_hour: 0.6, requires: SomethingNew },
-                Gives { need: Occupation, per_hour: 0.5, requires: Nothing },
+                Gives {
+                    need: Craft,
+                    per_hour: 0.4,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Creation,
+                    per_hour: 0.6,
+                    requires: SomethingNew,
+                },
+                Gives {
+                    need: Occupation,
+                    per_hour: 0.5,
+                    requires: Nothing,
+                },
             ],
             // **Being in the building is not the activity.**
             StandInATemple => &[],
             AttendTheService => &[
-                Gives { need: Worship, per_hour: 0.9, requires: TakingPart },
-                Gives { need: Tradition, per_hour: 0.4, requires: Nothing },
-                Gives { need: Company, per_hour: 0.2, requires: Nothing },
+                Gives {
+                    need: Worship,
+                    per_hour: 0.9,
+                    requires: TakingPart,
+                },
+                Gives {
+                    need: Tradition,
+                    per_hour: 0.4,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Company,
+                    per_hour: 0.2,
+                    requires: Nothing,
+                },
             ],
             ReadABook => &[
-                Gives { need: Learning, per_hour: 0.5, requires: Nothing },
-                Gives { need: Rest, per_hour: 0.3, requires: Nothing },
+                Gives {
+                    need: Learning,
+                    per_hour: 0.5,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Rest,
+                    per_hour: 0.3,
+                    requires: Nothing,
+                },
             ],
             DrillWithTheMilitia => &[
-                Gives { need: MartialPractice, per_hour: 0.7, requires: TakingPart },
-                Gives { need: Company, per_hour: 0.3, requires: Nothing },
+                Gives {
+                    need: MartialPractice,
+                    per_hour: 0.7,
+                    requires: TakingPart,
+                },
+                Gives {
+                    need: Company,
+                    per_hour: 0.3,
+                    requires: Nothing,
+                },
             ],
             WalkInTheFields => &[
-                Gives { need: Nature, per_hour: 0.7, requires: Nothing },
-                Gives { need: Rest, per_hour: 0.4, requires: Nothing },
-                Gives { need: Introspection, per_hour: 0.2, requires: Nothing },
+                Gives {
+                    need: Nature,
+                    per_hour: 0.7,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Rest,
+                    per_hour: 0.4,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Introspection,
+                    per_hour: 0.2,
+                    requires: Nothing,
+                },
             ],
             Feast => &[
-                Gives { need: Celebration, per_hour: 0.8, requires: TakingPart },
-                Gives { need: Company, per_hour: 0.6, requires: Nothing },
-                Gives { need: Tradition, per_hour: 0.3, requires: Nothing },
+                Gives {
+                    need: Celebration,
+                    per_hour: 0.8,
+                    requires: TakingPart,
+                },
+                Gives {
+                    need: Company,
+                    per_hour: 0.6,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Tradition,
+                    per_hour: 0.3,
+                    requires: Nothing,
+                },
             ],
             SitAndThink => &[
-                Gives { need: Introspection, per_hour: 0.6, requires: Nothing },
-                Gives { need: Rest, per_hour: 0.2, requires: Nothing },
+                Gives {
+                    need: Introspection,
+                    per_hour: 0.6,
+                    requires: Nothing,
+                },
+                Gives {
+                    need: Rest,
+                    per_hour: 0.2,
+                    requires: Nothing,
+                },
             ],
-            Sleep => &[Gives { need: Rest, per_hour: 0.4, requires: Nothing }],
+            Sleep => &[Gives {
+                need: Rest,
+                per_hour: 0.4,
+                requires: Nothing,
+            }],
             StareAtAWall => &[],
         }
     }
@@ -380,27 +504,86 @@ impl Needs {
         let f = |x: Facet| (mind.person.z(x) as f64 / 4.0).clamp(-0.5, 0.5);
         let v = |x: Value| (mind.conviction(x) as f64 / 50.0).clamp(-1.0, 1.0);
         let w = |base: f64, terms: f64| (base + terms).clamp(0.05, 1.0);
-        let mut states = [NeedState { weight: 0.3, satisfaction: 1.0, days_since: 0.0 }; 16];
+        let mut states = [NeedState {
+            weight: 0.3,
+            satisfaction: 1.0,
+            days_since: 0.0,
+        }; 16];
         let set = |states: &mut [NeedState; 16], n: Need, weight: f64| {
             states[n.index()].weight = weight;
         };
         // Gregariousness drives the general social need; valuing
         // friendship drives the particular one. They are not the same,
         // which is why a sociable person with no friends is still lonely.
-        set(&mut states, Need::Company, w(0.45, f(Facet::Gregariousness) - 0.5 * f(Facet::Privacy)));
-        set(&mut states, Need::Friendship, w(0.35, 0.4 * v(Value::Friendship) + 0.5 * f(Facet::Altruism)));
+        set(
+            &mut states,
+            Need::Company,
+            w(0.45, f(Facet::Gregariousness) - 0.5 * f(Facet::Privacy)),
+        );
+        set(
+            &mut states,
+            Need::Friendship,
+            w(0.35, 0.4 * v(Value::Friendship) + 0.5 * f(Facet::Altruism)),
+        );
         set(&mut states, Need::Family, w(0.3, 0.5 * v(Value::Family)));
-        set(&mut states, Need::Romance, w(0.3, 0.3 * f(Facet::Gregariousness)));
-        set(&mut states, Need::Worship, w(0.15, 0.6 * v(Value::Tradition)));
-        set(&mut states, Need::Occupation, w(0.4, f(Facet::Perseverance) + 0.3 * f(Facet::Dutifulness)));
-        set(&mut states, Need::Creation, w(0.2, 0.5 * f(Facet::LoveOfMaking) + 0.4 * v(Value::Artistry)));
-        set(&mut states, Need::Learning, w(0.25, f(Facet::Curiosity) + 0.4 * v(Value::Knowledge)));
-        set(&mut states, Need::Excitement, w(0.25, f(Facet::ExcitementSeeking)));
-        set(&mut states, Need::Craft, w(0.3, 0.5 * v(Value::Craftsmanship) + 0.3 * f(Facet::Perseverance)));
-        set(&mut states, Need::MartialPractice, w(0.1, 0.7 * v(Value::MartialProwess)));
-        set(&mut states, Need::Tradition, w(0.15, 0.6 * v(Value::Tradition)));
-        set(&mut states, Need::Introspection, w(0.15, 0.4 * f(Facet::Privacy)));
-        set(&mut states, Need::Celebration, w(0.2, 0.4 * f(Facet::Gregariousness)));
+        set(
+            &mut states,
+            Need::Romance,
+            w(0.3, 0.3 * f(Facet::Gregariousness)),
+        );
+        set(
+            &mut states,
+            Need::Worship,
+            w(0.15, 0.6 * v(Value::Tradition)),
+        );
+        set(
+            &mut states,
+            Need::Occupation,
+            w(0.4, f(Facet::Perseverance) + 0.3 * f(Facet::Dutifulness)),
+        );
+        set(
+            &mut states,
+            Need::Creation,
+            w(0.2, 0.5 * f(Facet::LoveOfMaking) + 0.4 * v(Value::Artistry)),
+        );
+        set(
+            &mut states,
+            Need::Learning,
+            w(0.25, f(Facet::Curiosity) + 0.4 * v(Value::Knowledge)),
+        );
+        set(
+            &mut states,
+            Need::Excitement,
+            w(0.25, f(Facet::ExcitementSeeking)),
+        );
+        set(
+            &mut states,
+            Need::Craft,
+            w(
+                0.3,
+                0.5 * v(Value::Craftsmanship) + 0.3 * f(Facet::Perseverance),
+            ),
+        );
+        set(
+            &mut states,
+            Need::MartialPractice,
+            w(0.1, 0.7 * v(Value::MartialProwess)),
+        );
+        set(
+            &mut states,
+            Need::Tradition,
+            w(0.15, 0.6 * v(Value::Tradition)),
+        );
+        set(
+            &mut states,
+            Need::Introspection,
+            w(0.15, 0.4 * f(Facet::Privacy)),
+        );
+        set(
+            &mut states,
+            Need::Celebration,
+            w(0.2, 0.4 * f(Facet::Gregariousness)),
+        );
         set(&mut states, Need::Rest, w(0.4, 0.0));
         set(&mut states, Need::Nature, w(0.2, 0.4 * v(Value::Nature)));
         Needs { states }

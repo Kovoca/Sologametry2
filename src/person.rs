@@ -21,9 +21,9 @@
 //! market they are in, relationships, beliefs, or a life beyond earning
 //! and eating. Those are specced (A3, B1, B6) and unbuilt.
 
-use crate::id::Id;
-use crate::econ::{Commodity, Economy};
 use crate::building::Fixture;
+use crate::econ::{Commodity, Economy};
+use crate::id::Id;
 use crate::travel::Conveyance;
 
 /// Days a person can go hungry before it kills them.
@@ -492,10 +492,7 @@ pub enum Job {
     ///
     /// The goods have already moved: `logistics.rs` shipped them through
     /// the journal this morning. This is the wage for having driven.
-    Driving {
-        carrier: usize,
-        km: f64,
-    },
+    Driving { carrier: usize, km: f64 },
     /// Move somebody else's goods along a route for a wage. The margin is
     /// theirs; the driver is paid by the day, and ends up at the far end.
     Haul {
@@ -559,10 +556,7 @@ impl Contract {
                 ..
             } => format!(
                 "haul {tonnes:.0} t of {commodity} from {} to {} — {:.0} over {:.1} days",
-                econ.markets[*from_market].name,
-                econ.markets[*to_market].name,
-                self.pay,
-                self.days,
+                econ.markets[*from_market].name, econ.markets[*to_market].name, self.pay, self.days,
             ),
             Job::Venture {
                 commodity,
@@ -571,14 +565,15 @@ impl Contract {
                 to_market,
                 outlay,
                 ..
-            } => format!(
-                "bought {tonnes:.1} t of {commodity} for {outlay:.0} to sell in {} \
+            } => {
+                format!(
+                    "bought {tonnes:.1} t of {commodity} for {outlay:.0} to sell in {} \
                  ({:.1} days on the road)",
-                econ.markets[*to_market].name,
-                self.days,
-            )
-            .replace("  ", " ")
-                + &format!(" — from {}", econ.markets[*from_market].name),
+                    econ.markets[*to_market].name, self.days,
+                )
+                .replace("  ", " ")
+                    + &format!(" — from {}", econ.markets[*from_market].name)
+            }
             Job::Counter { site, role, .. } => format!(
                 "{} at {} — {:.0} for {:.1} days",
                 match role {
@@ -1498,9 +1493,7 @@ pub fn work_available(
             let own_days = (route.km / own_speed).clamp(1.0, 120.0);
 
             let unit = econ.price(from, c).max(1e-6);
-            let affordable = (purse / unit)
-                .min(conveyance.payload())
-                .min(for_sale);
+            let affordable = (purse / unit).min(conveyance.payload()).min(for_sale);
             // Getting there costs something even before the cargo: fodder
             // for an animal that eats whether it earns or not, diesel for
             // a lorry that costs several times its driver's wage to run.
@@ -1994,12 +1987,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
 ///
 /// The person cannot see that: it is a fact about the labour market, and
 /// whoever is running the labour market has to say.
-pub fn live_a_day_with(
-    person: &mut Person,
-    econ: &mut Economy,
-    day: u64,
-    vacancy_above: bool,
-) {
+pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacancy_above: bool) {
     // **What people think of you moves on the days they see you work.**
     //
     // Toward how good you actually are, but never all the way and never
@@ -2221,7 +2209,10 @@ pub fn live_a_day_with(
                         let paid = job.pay * person.worth();
                         person.money += paid;
                         person.earned += paid;
-                        let job = Contract { pay: paid, ..job.clone() };
+                        let job = Contract {
+                            pay: paid,
+                            ..job.clone()
+                        };
                         person.note(
                             day,
                             format!("drove {km:.0} km for a carrier, {:.0}", job.pay),
@@ -2233,7 +2224,10 @@ pub fn live_a_day_with(
                         let paid = job.pay * person.worth();
                         person.money += paid;
                         person.earned += paid;
-                        let job = Contract { pay: paid, ..job.clone() };
+                        let job = Contract {
+                            pay: paid,
+                            ..job.clone()
+                        };
                         person.note(
                             day,
                             format!(
@@ -2350,8 +2344,7 @@ pub fn live_a_day_with(
             // out three weeks later and stayed out for over a year,
             // because once you are on the street you are half as
             // employable and cannot save the deposit to get back in.
-            let cost_of_living = econ.price(person.market, Commodity::ProcessedFood)
-                * FOOD_PER_DAY
+            let cost_of_living = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY
                 + rent_per_day(econ, person.market) * person.housing.share_of_rent();
             let reserve_for_food = cost_of_living * 30.0;
 
@@ -2594,8 +2587,7 @@ pub fn live_a_day_with(
                 // nothing required it.
                 let allowed = person.qualification >= qualification_for(c.trade);
                 let qualified = allowed
-                    && (c.trade == person.trade
-                        || (c.trade == Trade::Supervisor && promotable));
+                    && (c.trade == person.trade || (c.trade == Trade::Supervisor && promotable));
                 qualified
                     && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
@@ -2738,9 +2730,10 @@ fn leave_town(person: &mut Person, econ: &Economy, day: u64) -> bool {
         let days = (r.km / speed).max(1.0).ceil();
         // He must be able to eat the whole way and still land with a few
         // days in hand, or the journey kills him rather than saving him.
-        let fare = food * days * 1.5 + person.conveyance.upkeep_in_wage_days(true)
-            * day_rate(econ, person.market, Trade::Haulier)
-            * days;
+        let fare = food * days * 1.5
+            + person.conveyance.upkeep_in_wage_days(true)
+                * day_rate(econ, person.market, Trade::Haulier)
+                * days;
         if fare > person.money {
             continue;
         }
@@ -2752,8 +2745,8 @@ fn leave_town(person: &mut Person, econ: &Economy, day: u64) -> bool {
         // running, and what they charge for bread there — the second is
         // the thing travellers have always actually carried news of.
         let gain = econ.workforce[person.market].unemployment - w.unemployment;
-        let cheaper = (food - econ.price(there, Commodity::ProcessedFood) * FOOD_PER_DAY)
-            / food.max(1e-9);
+        let cheaper =
+            (food - econ.price(there, Commodity::ProcessedFood) * FOOD_PER_DAY) / food.max(1e-9);
         if gain < 0.15 && cheaper < 0.20 {
             continue;
         }

@@ -2,10 +2,10 @@
 //!
 //!   cargo run --release --bin make
 
+use scale_sim::bom::{audit, depth_of, explode, plan_coverage, tree, validate, Origin};
 use scale_sim::craft::{
     hand_tools, machine_shop, standard_recipes, Halt, Maker, RecipeBook, WorkOrder, Workplace,
 };
-use scale_sim::bom::{audit, depth_of, explode, plan_coverage, tree, validate, Origin};
 use scale_sim::item::{standard_catalogue, Catalogue, Family, ItemInstance};
 use scale_sim::teardown::{heat_mj, take_apart, Teardown};
 
@@ -25,13 +25,33 @@ fn run(o: &mut WorkOrder, book: &RecipeBook, cat: &Catalogue, place: &Workplace,
 fn main() {
     let cat = standard_catalogue();
     let book = standard_recipes(&cat);
-    let hand = Maker { skill: 0.8, proficiency: 0.75, knows_recipe: true, tool_familiarity: 0.9,
-                       focus: 0.85, fatigue: 0.15 };
+    let hand = Maker {
+        skill: 0.8,
+        proficiency: 0.75,
+        knows_recipe: true,
+        tool_familiarity: 0.9,
+        focus: 0.85,
+        fatigue: 0.15,
+    };
 
-    println!("{} item definitions, {} plans\n", cat.len(), book.recipes.len());
-    for f in [Family::Stock, Family::Fastening, Family::Tool, Family::Machine, Family::Furniture,
-              Family::Clothing, Family::Appliance, Family::SparePart, Family::Firearm,
-              Family::Ammunition, Family::Foodstuff] {
+    println!(
+        "{} item definitions, {} plans\n",
+        cat.len(),
+        book.recipes.len()
+    );
+    for f in [
+        Family::Stock,
+        Family::Fastening,
+        Family::Tool,
+        Family::Machine,
+        Family::Furniture,
+        Family::Clothing,
+        Family::Appliance,
+        Family::SparePart,
+        Family::Firearm,
+        Family::Ammunition,
+        Family::Foodstuff,
+    ] {
         let names: Vec<&str> = cat.of_family(f).map(|d| d.name).take(6).collect();
         println!("  {:<12?} {}", f, names.join(", "));
     }
@@ -40,7 +60,13 @@ fn main() {
     println!("\nWHAT IS IN A CORDLESS DRILL");
     let drill = cat.must("cordless drill");
     let mut s = String::new();
-    tree(&cat, drill, cat.get(drill).unwrap().nominal_mass_kg, 1, &mut s);
+    tree(
+        &cat,
+        drill,
+        cat.get(drill).unwrap().nominal_mass_kg,
+        1,
+        &mut s,
+    );
     print!("{s}");
     println!("  flattened to materials:");
     for (m, kg) in explode(&cat, drill, 1.6) {
@@ -48,8 +74,15 @@ fn main() {
     }
 
     println!("\nHOW DEEP THE TREES GO");
-    for name in ["oak board", "wooden chair", "toaster", "cordless drill", "rifle",
-                 "car door", "washing machine"] {
+    for name in [
+        "oak board",
+        "wooden chair",
+        "toaster",
+        "cordless drill",
+        "rifle",
+        "car door",
+        "washing machine",
+    ] {
         let id = cat.must(name);
         let d = cat.get(id).unwrap();
         let flat = explode(&cat, id, d.nominal_mass_kg);
@@ -62,8 +95,10 @@ fn main() {
         );
     }
 
-    println!("
-WHAT IS IN A CAR DOOR");
+    println!(
+        "
+WHAT IS IN A CAR DOOR"
+    );
     let cd = cat.must("car door");
     let mut s = String::new();
     tree(&cat, cd, cat.get(cd).unwrap().nominal_mass_kg, 1, &mut s);
@@ -74,16 +109,29 @@ WHAT IS IN A CAR DOOR");
         .fold(0.0f64, f64::max);
     println!("  worst residual anywhere in the tree: {worst:.6} kg");
 
-    println!("
-WHAT ANYBODY HERE CAN ACTUALLY MAKE");
+    println!(
+        "
+WHAT ANYBODY HERE CAN ACTUALLY MAKE"
+    );
     for (family, made, all) in plan_coverage(&cat) {
-        println!("  {:<12?} {made:>3} / {all:<3}  {:>5.0}%", family, 100.0 * made as f64 / all as f64);
+        println!(
+            "  {:<12?} {made:>3} / {all:<3}  {:>5.0}%",
+            family,
+            100.0 * made as f64 / all as f64
+        );
     }
 
-    let findings = validate(&cat, &book.recipes.iter().map(|r| r.name).collect::<Vec<_>>());
+    let findings = validate(
+        &cat,
+        &book.recipes.iter().map(|r| r.name).collect::<Vec<_>>(),
+    );
     let industrial = cat
         .iter()
-        .filter(|d| d.origin.iter().any(|o| matches!(o, Origin::Industrial { .. })))
+        .filter(|d| {
+            d.origin
+                .iter()
+                .any(|o| matches!(o, Origin::Industrial { .. }))
+        })
         .count();
     println!(
         "\n  {} definitions, {} content errors, {} still awaiting a written plan",
@@ -94,12 +142,24 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
 
     // ---- the same chair, three ways ---------------------------------
     println!("\nA WOODEN CHAIR, THREE WAYS");
-    println!("  {:<22} {:>8} {:>9} {:>8} {:>7} {:>8}", "", "labour", "on the", "power", "mass", "quality");
-    println!("  {:<22} {:>8} {:>9} {:>8} {:>7} {:>8}", "", "hours", "clock", "kWh", "kg", "");
+    println!(
+        "  {:<22} {:>8} {:>9} {:>8} {:>7} {:>8}",
+        "", "labour", "on the", "power", "mass", "quality"
+    );
+    println!(
+        "  {:<22} {:>8} {:>9} {:>8} {:>7} {:>8}",
+        "", "hours", "clock", "kWh", "kg", ""
+    );
     let cases: [(&str, Workplace); 3] = [
         ("a man at a bench", Workplace::a_workshop(hand_tools(&cat))),
-        ("a cabinet shop", Workplace::a_factory(machine_shop(&cat), 2.0, 1)),
-        ("a furniture works", Workplace::a_factory(machine_shop(&cat), 8.0, 6)),
+        (
+            "a cabinet shop",
+            Workplace::a_factory(machine_shop(&cat), 2.0, 1),
+        ),
+        (
+            "a furniture works",
+            Workplace::a_factory(machine_shop(&cat), 8.0, 6),
+        ),
     ];
     for (name, place) in &cases {
         let mut o = WorkOrder::begin(1, book.must("chair, hand tools"), 1, 0, 1);
@@ -121,15 +181,26 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
     println!("\nWHAT A BATCH BUYS");
     let f = book.get(book.must("chair, factory")).unwrap();
     for n in [1u32, 5, 20, 100, 500] {
-        println!("  {n:>4} chairs   {:>7.2} labour-hours each", f.labour_for_batch(n) / 60.0 / n as f64);
+        println!(
+            "  {n:>4} chairs   {:>7.2} labour-hours each",
+            f.labour_for_batch(n) / 60.0 / n as f64
+        );
     }
     println!("  It saves the setup, once. It never saves making the chair.");
 
     // ---- labour against the clock -----------------------------------
     println!("\nLABOUR AGAINST THE CLOCK");
-    println!("  {:<24} {:>8} {:>8} {:>8}", "", "labour", "machine", "clock");
-    for name in ["loaf", "chair, hand tools", "work trousers", "rifle, assembled",
-                 "cartridge, handloaded"] {
+    println!(
+        "  {:<24} {:>8} {:>8} {:>8}",
+        "", "labour", "machine", "clock"
+    );
+    for name in [
+        "loaf",
+        "chair, hand tools",
+        "work trousers",
+        "rifle, assembled",
+        "cartridge, handloaded",
+    ] {
         let r = book.get(book.must(name)).unwrap();
         println!(
             "  {name:<24} {:>8.0} {:>8.0} {:>8.0}   min",
@@ -146,8 +217,13 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
     let make = |cheap: bool| -> ItemInstance {
         let mut o = WorkOrder::begin(9, book.must("chair, hand tools"), 1, 0, 1);
         if cheap {
-            o.substituted(cat.must("oak board"), cat.must("particleboard sheet"), &cat, &book)
-                .expect("a particleboard sheet will not do for a chair");
+            o.substituted(
+                cat.must("oak board"),
+                cat.must("particleboard sheet"),
+                &cat,
+                &book,
+            )
+            .expect("a particleboard sheet will not do for a chair");
         }
         run(&mut o, &book, &cat, &bench, hand);
         o.deliver(&book, &cat, 1).unwrap()
@@ -171,14 +247,32 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
         let back: Vec<String> = apart
             .components
             .iter()
-            .map(|c| format!("{} x{}", cat.get(c.definition).map(|d| d.name).unwrap_or("?"), c.count))
+            .map(|c| {
+                format!(
+                    "{} x{}",
+                    cat.get(c.definition).map(|d| d.name).unwrap_or("?"),
+                    c.count
+                )
+            })
             .collect();
-        println!("    taken apart: {}", if back.is_empty() { "nothing whole".into() } else { back.join(", ") });
+        println!(
+            "    taken apart: {}",
+            if back.is_empty() {
+                "nothing whole".into()
+            } else {
+                back.join(", ")
+            }
+        );
         for (m, kg) in &apart.materials {
             println!("      {:>6.3} kg of {} for the furnace", kg, m.name());
         }
         for (m, kg) in &apart.fuel {
-            println!("      {:>6.3} kg of {} to burn ({:.0} MJ)", kg, m.name(), heat_mj(*m, *kg));
+            println!(
+                "      {:>6.3} kg of {} to burn ({:.0} MJ)",
+                kg,
+                m.name(),
+                heat_mj(*m, *kg)
+            );
         }
         println!("      {:>6.3} kg lost", apart.lost_kg);
     }
@@ -186,9 +280,18 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
     // ---- nine ways to take one thing apart --------------------------
     println!("\nNINE INTENTIONS, ONE CHAIR");
     let chair = make(false);
-    println!("  {:<14} {:>6} {:>9} {:>9} {:>8}", "", "parts", "material", "to burn", "lost");
-    for how in [Teardown::Disassemble, Teardown::Deconstruct, Teardown::Salvage,
-                Teardown::Recycle, Teardown::CutUp, Teardown::Smash] {
+    println!(
+        "  {:<14} {:>6} {:>9} {:>9} {:>8}",
+        "", "parts", "material", "to burn", "lost"
+    );
+    for how in [
+        Teardown::Disassemble,
+        Teardown::Deconstruct,
+        Teardown::Salvage,
+        Teardown::Recycle,
+        Teardown::CutUp,
+        Teardown::Smash,
+    ] {
         let r = take_apart(&chair, how, &cat, 0.8, 1);
         println!(
             "  {:<14} {:>6} {:>8.3} {:>9.3} {:>8.3}   {:.0} min",
@@ -205,7 +308,10 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
     println!("\nTHE GRID GOES DOWN");
     for (name, mut place) in [
         ("a man at a bench", Workplace::a_workshop(hand_tools(&cat))),
-        ("a furniture works", Workplace::a_factory(machine_shop(&cat), 8.0, 6)),
+        (
+            "a furniture works",
+            Workplace::a_factory(machine_shop(&cat), 8.0, 6),
+        ),
     ] {
         place.power = false;
         let mut o = WorkOrder::begin(3, book.must("chair, hand tools"), 1, 0, 1);
@@ -216,6 +322,8 @@ WHAT ANYBODY HERE CAN ACTUALLY MAKE");
     dark.power = false;
     let mut o = WorkOrder::begin(4, book.must("loaf"), 1, 0, 1);
     run(&mut o, &book, &cat, &dark, hand);
-    println!("  {:<22} {:?} at step {} of 4 — the dough is proved and the oven is cold",
-             "a bakery", o.state, o.step);
+    println!(
+        "  {:<22} {:?} at step {} of 4 — the dough is proved and the oven is cold",
+        "a bakery", o.state, o.step
+    );
 }

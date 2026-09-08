@@ -6,8 +6,7 @@
 
 use scale_sim::coping::{regulatory_capacity, Strain};
 use scale_sim::custom::{
-    did_they_know, judged_here, norms_of, places, will_bend, would_keep, Conditions, Custom,
-    Norm,
+    did_they_know, judged_here, norms_of, places, will_bend, would_keep, Conditions, Custom, Norm,
 };
 use scale_sim::mind::{Facet, Mind, Value};
 use scale_sim::rng::Rng;
@@ -33,16 +32,26 @@ fn one_act_two_verdicts() {
     let spoke = 1.0;
     let here = judged_here(&formal, Norm::GreetStrangers, spoke);
     let there = judged_here(&city, Norm::GreetStrangers, spoke);
-    assert!(here.against_them < 0.05, "greeting somebody was held against him");
-    assert!(there.against_them > 0.3, "speaking to a stranger passed unremarked in the city");
+    assert!(
+        here.against_them < 0.05,
+        "greeting somebody was held against him"
+    );
+    assert!(
+        there.against_them > 0.3,
+        "speaking to a stranger passed unremarked in the city"
+    );
 }
 
 /// **And staying silent flips it.**
 #[test]
 fn the_verdict_reverses_with_the_place() {
     let said_nothing = -1.0;
-    assert!(judged_here(&places::old_country(), Norm::GreetStrangers, said_nothing).against_them > 0.3);
-    assert!(judged_here(&places::the_city(), Norm::GreetStrangers, said_nothing).against_them < 0.05);
+    assert!(
+        judged_here(&places::old_country(), Norm::GreetStrangers, said_nothing).against_them > 0.3
+    );
+    assert!(
+        judged_here(&places::the_city(), Norm::GreetStrangers, said_nothing).against_them < 0.05
+    );
 }
 
 /// **Where nobody minds, there is nothing to breach.** Most places have
@@ -84,12 +93,17 @@ fn innocence_is_invisible_from_outside() {
 #[test]
 fn two_places_can_be_named_as_different() {
     let d = places::old_country().differs_from(&places::the_city());
-    assert!(!d.is_empty(), "two very different places agreed about everything");
+    assert!(
+        !d.is_empty(),
+        "two very different places agreed about everything"
+    );
     let names: Vec<Norm> = d.iter().map(|(n, _)| *n).collect();
     assert!(names.contains(&Norm::GreetStrangers));
     assert!(names.contains(&Norm::Directness));
     // And a place does not differ from itself.
-    assert!(places::the_city().differs_from(&places::the_city()).is_empty());
+    assert!(places::the_city()
+        .differs_from(&places::the_city())
+        .is_empty());
 }
 
 /// **Haggling.** Expected in a market, insulting in a shop — which is
@@ -134,7 +148,10 @@ fn a_bad_day_costs_somebody_their_manners() {
     assert!(foul < ordinary, "a terrible mood cost him nothing");
     assert!(cheerful > ordinary);
     // But it does not turn him rude. What erodes is the margin.
-    assert!(foul > 0.3, "one bad day made a courteous man discourteous: {foul:.2}");
+    assert!(
+        foul > 0.3,
+        "one bad day made a courteous man discourteous: {foul:.2}"
+    );
 }
 
 /// **Manners fail for the same reason tempers do.** Keeping a norm is an
@@ -154,7 +171,10 @@ fn strain_and_mood_both_cost_manners_and_they_compound() {
     worn.advance(1500, 0.9, 0.15);
     let fresh_cap = regulatory_capacity(&m, 0.0);
     let worn_cap = regulatory_capacity(&m, worn.debt);
-    assert!(worn_cap < fresh_cap, "a wrecking year left his self-command untouched");
+    assert!(
+        worn_cap < fresh_cap,
+        "a wrecking year left his self-command untouched"
+    );
 
     let ordinary = would_keep(0.9, d, 0.0, fresh_cap);
     let bad_day = would_keep(0.9, d, -1.0, fresh_cap);
@@ -199,7 +219,10 @@ fn a_bad_day_and_a_bad_character_look_the_same() {
     let b = judged_here(&here, Norm::ThankForCourtesy, just_rude);
     // They need not be equal — he was ruder or less so — but neither
     // carries any note about why, and the good man is still marked down.
-    assert!(a.against_them > 0.0, "having a terrible day was a free pass");
+    assert!(
+        a.against_them > 0.0,
+        "having a terrible day was a free pass"
+    );
     assert!(b.against_them > 0.0);
 }
 
@@ -214,7 +237,10 @@ fn scruple_is_what_varies_between_people() {
     let straight = will_bend(45, 1.0, 0.6, 0.3);
     let loose = will_bend(-30, -1.0, 0.6, 0.3);
     assert!(loose > straight, "conviction made no difference at all");
-    assert!(straight < 0.15, "a man of firm principle bent a rule for very little");
+    assert!(
+        straight < 0.15,
+        "a man of firm principle bent a rule for very little"
+    );
 }
 
 /// **What it is worth matters**, which is why almost nobody is honest
@@ -274,14 +300,28 @@ fn how_many_people_there_are_decides_whether_you_greet_them() {
     let village = norms_of(&places::a_village());
     let city = norms_of(&places::a_metropolis());
 
-    assert!(village.holds(Norm::GreetStrangers) > 0.3, "a village of four hundred kept to itself");
-    assert!(city.holds(Norm::GreetStrangers) < -0.3, "eight million people all said good morning");
+    assert!(
+        village.holds(Norm::GreetStrangers) > 0.3,
+        "a village of four hundred kept to itself"
+    );
+    assert!(
+        city.holds(Norm::GreetStrangers) < -0.3,
+        "eight million people all said good morning"
+    );
 
     // And it is the size doing it, not anything else about the place:
     // hold everything still and move only the population.
-    let base = Conditions { population: 300.0, ..places::a_village() };
-    let grown = Conditions { population: 900_000.0, ..base };
-    assert!(norms_of(&base).holds(Norm::GreetStrangers) > norms_of(&grown).holds(Norm::GreetStrangers));
+    let base = Conditions {
+        population: 300.0,
+        ..places::a_village()
+    };
+    let grown = Conditions {
+        population: 900_000.0,
+        ..base
+    };
+    assert!(
+        norms_of(&base).holds(Norm::GreetStrangers) > norms_of(&grown).holds(Norm::GreetStrangers)
+    );
 }
 
 /// **A stranger is remarkable where anybody could know everybody**, and
@@ -291,7 +331,11 @@ fn how_many_people_there_are_decides_whether_you_greet_them() {
 #[test]
 fn the_line_is_drawn_where_relationships_actually_stop() {
     let at = |pop: f64| {
-        Conditions { population: pop, ..places::a_village() }.everybody_knows_everybody()
+        Conditions {
+            population: pop,
+            ..places::a_village()
+        }
+        .everybody_knows_everybody()
     };
     assert!(at(150.0) > 0.95, "a hamlet where nobody knew anybody");
     assert!(at(400.0) > 0.7);
@@ -315,8 +359,14 @@ fn hospitality_comes_from_being_a_long_way_from_anywhere() {
 
     // Hold the place still and move it closer to everything.
     let far = places::a_desert_outpost();
-    let near = Conditions { remoteness: 0.0, ..far };
-    assert!(norms_of(&far).holds(Norm::AcceptHospitality) > norms_of(&near).holds(Norm::AcceptHospitality));
+    let near = Conditions {
+        remoteness: 0.0,
+        ..far
+    };
+    assert!(
+        norms_of(&far).holds(Norm::AcceptHospitality)
+            > norms_of(&near).holds(Norm::AcceptHospitality)
+    );
 }
 
 /// **Personal space is larger where it is cold**, which is measured
@@ -324,8 +374,14 @@ fn hospitality_comes_from_being_a_long_way_from_anywhere() {
 /// character.
 #[test]
 fn the_climate_decides_how_close_anybody_stands() {
-    let cold = Conditions { mean_temp_c: -5.0, ..places::a_market_town() };
-    let hot = Conditions { mean_temp_c: 30.0, ..places::a_market_town() };
+    let cold = Conditions {
+        mean_temp_c: -5.0,
+        ..places::a_market_town()
+    };
+    let hot = Conditions {
+        mean_temp_c: 30.0,
+        ..places::a_market_town()
+    };
     assert!(norms_of(&cold).holds(Norm::KeepDistance) > norms_of(&hot).holds(Norm::KeepDistance));
 }
 
@@ -340,7 +396,10 @@ fn the_price_is_a_conversation_until_somebody_prints_it() {
     assert!(city.holds(Norm::Haggle) < -0.3);
 
     // The same market town, grown into a city with department stores.
-    let grown = Conditions { population: 3_000_000.0, ..places::a_market_town() };
+    let grown = Conditions {
+        population: 3_000_000.0,
+        ..places::a_market_town()
+    };
     assert!(
         norms_of(&grown).holds(Norm::Haggle) < market.holds(Norm::Haggle),
         "haggling survived the arrival of a posted price"
@@ -352,14 +411,33 @@ fn the_price_is_a_conversation_until_somebody_prints_it() {
 /// nations, and it is ecology rather than preference.
 #[test]
 fn threat_and_crowding_tighten_the_rules() {
-    let easy = Conditions { density: 100.0, scarcity: 0.05, remoteness: 0.1, ..Default::default() };
-    let hard = Conditions { density: 5_000.0, scarcity: 0.9, remoteness: 0.9, ..Default::default() };
+    let easy = Conditions {
+        density: 100.0,
+        scarcity: 0.05,
+        remoteness: 0.1,
+        ..Default::default()
+    };
+    let hard = Conditions {
+        density: 5_000.0,
+        scarcity: 0.9,
+        remoteness: 0.9,
+        ..Default::default()
+    };
     assert!(hard.tightness() > easy.tightness() * 1.8);
 
     // Each of the three pulls on its own.
-    let crowded = Conditions { density: 5_000.0, ..easy };
-    let barren = Conditions { scarcity: 0.9, ..easy };
-    let cut_off = Conditions { remoteness: 0.9, ..easy };
+    let crowded = Conditions {
+        density: 5_000.0,
+        ..easy
+    };
+    let barren = Conditions {
+        scarcity: 0.9,
+        ..easy
+    };
+    let cut_off = Conditions {
+        remoteness: 0.9,
+        ..easy
+    };
     for tighter in [crowded, barren, cut_off] {
         assert!(tighter.tightness() > easy.tightness());
     }
@@ -370,11 +448,20 @@ fn threat_and_crowding_tighten_the_rules() {
 /// countries.
 #[test]
 fn a_big_cold_place_runs_faster_than_a_small_warm_one() {
-    let big_cold = Conditions { population: 5_000_000.0, mean_temp_c: 2.0, ..Default::default() };
-    let small_warm = Conditions { population: 800.0, mean_temp_c: 28.0, ..Default::default() };
+    let big_cold = Conditions {
+        population: 5_000_000.0,
+        mean_temp_c: 2.0,
+        ..Default::default()
+    };
+    let small_warm = Conditions {
+        population: 800.0,
+        mean_temp_c: 28.0,
+        ..Default::default()
+    };
     assert!(big_cold.pace() > small_warm.pace() * 2.0);
     assert!(
-        norms_of(&big_cold).holds(Norm::Punctuality) > norms_of(&small_warm).holds(Norm::Punctuality)
+        norms_of(&big_cold).holds(Norm::Punctuality)
+            > norms_of(&small_warm).holds(Norm::Punctuality)
     );
 }
 

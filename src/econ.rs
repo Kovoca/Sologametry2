@@ -565,7 +565,10 @@ impl Journal {
     /// Entries from the last `days` days, most recent first.
     pub fn recent(&self, today: u64, days: u64) -> impl Iterator<Item = &Entry> {
         let cutoff = today.saturating_sub(days);
-        self.entries.iter().rev().take_while(move |e| e.day >= cutoff)
+        self.entries
+            .iter()
+            .rev()
+            .take_while(move |e| e.day >= cutoff)
     }
 }
 
@@ -621,7 +624,6 @@ pub enum SiteKind {
     /// Where goods from outside the modelled region arrive.
     Depot,
 }
-
 
 /// What an hour of work costs a firm, in the model's own currency, pinned
 /// like everything else to the food chain.
@@ -969,10 +971,9 @@ impl Ledger {
     pub fn assert_conserved(&self) {
         for (i, &c) in Commodity::ALL.iter().enumerate() {
             let held = self.total(c);
-            let expected =
-                self.opening_total[i] + self.produced_total[i]
-                    - self.consumed_total[i]
-                    - self.spoiled_total[i];
+            let expected = self.opening_total[i] + self.produced_total[i]
+                - self.consumed_total[i]
+                - self.spoiled_total[i];
             // Tolerance is measured against total *flow*, not against what
             // happens to be in store. Rounding error accumulates with the
             // number and size of transactions, so a commodity that has
@@ -1766,11 +1767,7 @@ impl Grid {
     /// Before this the grid was one pool with one or two lines in it, so
     /// the only failure the model could express was "the country goes
     /// dark" — and a line to a house going down took out everybody.
-    pub fn wire_up(
-        &mut self,
-        markets: &[(String, f64)],
-        sites: &[(usize, usize, String)],
-    ) {
+    pub fn wire_up(&mut self, markets: &[(String, f64)], sites: &[(usize, usize, String)]) {
         /// **One primary substation to about thirty thousand people**, and
         /// six or so feeders off each — real distribution planning. A
         /// substation serves 10,000-50,000 customers and a feeder 500-3,000.
@@ -1786,8 +1783,8 @@ impl Grid {
         const RING_FED_ABOVE: f64 = 50_000.0;
 
         for (m, (name, population)) in markets.iter().enumerate() {
-            let n = ((population / PEOPLE_PER_SUBSTATION).ceil() as usize)
-                .clamp(1, MOST_SUBSTATIONS);
+            let n =
+                ((population / PEOPLE_PER_SUBSTATION).ceil() as usize).clamp(1, MOST_SUBSTATIONS);
             for k in 0..n {
                 let sub = self.lines.len();
                 self.lines.push(Line {
@@ -1814,8 +1811,9 @@ impl Grid {
                         .filter(|(_, mk, _)| *mk == m)
                         .map(|(site, _, _)| *site)
                         .enumerate()
-                        .filter(|(idx, _)| idx % (n * FEEDERS_PER_SUBSTATION)
-                            == k * FEEDERS_PER_SUBSTATION + j)
+                        .filter(|(idx, _)| {
+                            idx % (n * FEEDERS_PER_SUBSTATION) == k * FEEDERS_PER_SUBSTATION + j
+                        })
                         .map(|(_, site)| site)
                         .collect();
                     self.lines.push(Line {
@@ -2545,12 +2543,15 @@ impl Response {
         }
         // Nothing on our own shelf: ask the neighbours. Deterministic
         // order, so a seed rebuilds the same history.
-        if let Some(j) = (0..self.utilities.len())
-            .find(|&j| Some(j) != mine && self.utilities[j].spares > 0)
+        if let Some(j) =
+            (0..self.utilities.len()).find(|&j| Some(j) != mine && self.utilities[j].spares > 0)
         {
             self.utilities[j].spares -= 1;
             let from = self.utilities[j].name.clone();
-            return (self.repair_days + FIT_DAYS + HAUL_DAYS, Sourced::Borrowed { from });
+            return (
+                self.repair_days + FIT_DAYS + HAUL_DAYS,
+                Sourced::Borrowed { from },
+            );
         }
         (self.transformer_lead_days, Sourced::Built)
     }
@@ -3036,8 +3037,7 @@ impl Economy {
             // The season at the end that has the winter.
             let season = self.markets[r.a].season(day);
             let other = self.markets[r.b].season(day);
-            let shut = r.crossing.shut_by_snow(season, 0.0)
-                || r.crossing.shut_by_snow(other, 0.0);
+            let shut = r.crossing.shut_by_snow(season, 0.0) || r.crossing.shut_by_snow(other, 0.0);
             r.snowed_in = shut;
         }
     }
@@ -3104,7 +3104,10 @@ impl Economy {
         // Dispatch, oldest report first, as far as crews allow. The work
         // time is decided here, because whether a spare is on the shelf is
         // known the moment the job is assigned.
-        let free = self.response.crews.saturating_sub(self.response.crews_busy(day));
+        let free = self
+            .response
+            .crews
+            .saturating_sub(self.response.crews_busy(day));
         if free > 0 {
             let travel = self.response.travel_days();
             let mut sent = 0;
@@ -3405,7 +3408,9 @@ impl Economy {
                 // the works running stops the works a fortnight later for
                 // want of metal — the same reasoning that puts the
                 // colliery first.
-                SiteKind::Steelworks | SiteKind::Cracker | SiteKind::CementWorks
+                SiteKind::Steelworks
+                | SiteKind::Cracker
+                | SiteKind::CementWorks
                 | SiteKind::Pharma
                 | SiteKind::ChemicalWorks => 5,
                 // Heavy manufacturing, on an interruptible tariff.
@@ -3828,13 +3833,7 @@ impl Economy {
     /// where one town is short its price rises, its netback rises, and it
     /// is served first — which is exactly how a shortage is supposed to
     /// pull goods toward itself.
-    fn share_out(
-        &mut self,
-        c: Commodity,
-        need: &[f64],
-        reach: &[Vec<usize>],
-        auction: bool,
-    ) {
+    fn share_out(&mut self, c: Commodity, need: &[f64], reach: &[Vec<usize>], auction: bool) {
         let day = self.ledger.day;
         /// **What a firm pays for an input, against what the next one down
         /// the chain sells it for.** Buying and selling at the same price
@@ -3851,8 +3850,7 @@ impl Economy {
                 let Some(r) = self.ledger.sites[s].recipe else {
                     return false;
                 };
-                RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c)
-                    && self.ledger.stock(s, c) > 1e-9
+                RECIPES[r].outputs.iter().any(|&(oc, _)| oc == c) && self.ledger.stock(s, c) > 1e-9
             })
             .collect();
         if suppliers.is_empty() {
@@ -3877,9 +3875,8 @@ impl Economy {
             for &mm in component.iter() {
                 done[mm] = true;
             }
-            let inside = |site: usize, ledger: &Ledger| {
-                component.contains(&ledger.sites[site].market)
-            };
+            let inside =
+                |site: usize, ledger: &Ledger| component.contains(&ledger.sites[site].market);
             let have: f64 = suppliers
                 .iter()
                 .filter(|&&s| inside(s, &self.ledger))
@@ -4038,88 +4035,96 @@ impl Economy {
             let mut order: Vec<usize> = (0..n).filter(|&d| entitlement[d] > 1e-9).collect();
             if pass == 1 {
                 order.sort_by(|&a, &b| {
-                    let sa = if need[a] > 1e-9 { taken[a] / need[a] } else { 1.0 };
-                    let sb = if need[b] > 1e-9 { taken[b] / need[b] } else { 1.0 };
+                    let sa = if need[a] > 1e-9 {
+                        taken[a] / need[a]
+                    } else {
+                        1.0
+                    };
+                    let sb = if need[b] > 1e-9 {
+                        taken[b] / need[b]
+                    } else {
+                        1.0
+                    };
                     sa.total_cmp(&sb).then(a.cmp(&b))
                 });
             }
-        for dst in order {
-            let mut owed = entitlement[dst];
-            if owed <= 1e-9 {
-                continue;
-            }
-            let market = self.ledger.sites[dst].market;
-            // **Cheapest carriage first**, which is where locality lives:
-            // a supplier in the same town is free to reach, so a town with
-            // its own works is served by them before anything is fetched
-            // in. That is a preference and not a priority — it decides who
-            // supplies whom, never who goes without.
-            let mut order: Vec<usize> = suppliers
-                .iter()
-                .copied()
-                .filter(|&src| {
-                    src != dst && reach[market].contains(&self.ledger.sites[src].market)
-                })
-                .collect();
-            // **Experiment S.** Ranking on carriage alone leaves every
-            // supplier in the same town tied, and the tie is broken by
-            // position in a vector — so a mill three times the size of its
-            // neighbour and a fiftieth of the cost can sit with a full
-            // store while the works that happens to be earlier in the list
-            // satisfies the town. A cannery buys from the cheaper mill.
-            let cheapest = self.experiments.cheapest_delivered_supplier;
-            order.sort_by(|&a, &b| {
-                let delivered = |src: usize| -> f64 {
-                    let sm = self.ledger.sites[src].market;
-                    let carriage = self.freight_between(sm, market);
-                    if cheapest {
-                        self.site_cost(src, c).unwrap_or(c.base_cost()) + carriage
-                    } else {
-                        carriage
-                    }
-                };
-                delivered(a).total_cmp(&delivered(b)).then(a.cmp(&b))
-            });
-
-            for src in order {
+            for dst in order {
+                let mut owed = entitlement[dst];
                 if owed <= 1e-9 {
-                    break;
-                }
-                let qty = self.ledger.stock(src, c).min(owed);
-                if qty <= 1e-9 {
                     continue;
                 }
-                let from_m = self.ledger.sites[src].market;
-                let paid = self.markets[from_m].landed[c as usize] * qty;
-                let freight = self.freight_between(from_m, market) * qty;
-                self.ledger.apply(
-                    &mut self.journal,
-                    Event::Shipped {
-                        from: src,
-                        to: dst,
-                        commodity: c,
-                        qty,
-                        paid,
-                        freight,
-                    },
-                );
-                self.take_delivery(market, c, qty, paid + freight);
-                self.pay_the_carrier(dst, freight);
-                // **And the buyer pays the seller.** Only shops took money
-                // from households, so every works upstream of a counter —
-                // farm, mill, mine, steelworks — had no income whatever.
-                let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
-                self.treasury.pay(
-                    day,
-                    crate::money::Account::Firm(dst),
-                    crate::money::Account::Firm(src),
-                    due,
-                    crate::money::Why::Supply,
-                );
-                owed -= qty;
-                taken[dst] += qty;
+                let market = self.ledger.sites[dst].market;
+                // **Cheapest carriage first**, which is where locality lives:
+                // a supplier in the same town is free to reach, so a town with
+                // its own works is served by them before anything is fetched
+                // in. That is a preference and not a priority — it decides who
+                // supplies whom, never who goes without.
+                let mut order: Vec<usize> = suppliers
+                    .iter()
+                    .copied()
+                    .filter(|&src| {
+                        src != dst && reach[market].contains(&self.ledger.sites[src].market)
+                    })
+                    .collect();
+                // **Experiment S.** Ranking on carriage alone leaves every
+                // supplier in the same town tied, and the tie is broken by
+                // position in a vector — so a mill three times the size of its
+                // neighbour and a fiftieth of the cost can sit with a full
+                // store while the works that happens to be earlier in the list
+                // satisfies the town. A cannery buys from the cheaper mill.
+                let cheapest = self.experiments.cheapest_delivered_supplier;
+                order.sort_by(|&a, &b| {
+                    let delivered = |src: usize| -> f64 {
+                        let sm = self.ledger.sites[src].market;
+                        let carriage = self.freight_between(sm, market);
+                        if cheapest {
+                            self.site_cost(src, c).unwrap_or(c.base_cost()) + carriage
+                        } else {
+                            carriage
+                        }
+                    };
+                    delivered(a).total_cmp(&delivered(b)).then(a.cmp(&b))
+                });
+
+                for src in order {
+                    if owed <= 1e-9 {
+                        break;
+                    }
+                    let qty = self.ledger.stock(src, c).min(owed);
+                    if qty <= 1e-9 {
+                        continue;
+                    }
+                    let from_m = self.ledger.sites[src].market;
+                    let paid = self.markets[from_m].landed[c as usize] * qty;
+                    let freight = self.freight_between(from_m, market) * qty;
+                    self.ledger.apply(
+                        &mut self.journal,
+                        Event::Shipped {
+                            from: src,
+                            to: dst,
+                            commodity: c,
+                            qty,
+                            paid,
+                            freight,
+                        },
+                    );
+                    self.take_delivery(market, c, qty, paid + freight);
+                    self.pay_the_carrier(dst, freight);
+                    // **And the buyer pays the seller.** Only shops took money
+                    // from households, so every works upstream of a counter —
+                    // farm, mill, mine, steelworks — had no income whatever.
+                    let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
+                    self.treasury.pay(
+                        day,
+                        crate::money::Account::Firm(dst),
+                        crate::money::Account::Firm(src),
+                        due,
+                        crate::money::Why::Supply,
+                    );
+                    owed -= qty;
+                    taken[dst] += qty;
+                }
             }
-        }
         }
     }
 
@@ -4232,7 +4237,8 @@ impl Economy {
         // Households hold the bulk of narrow money; a firm holds working
         // capital rather than a fortune.
         for m in 0..self.markets.len() {
-            self.treasury.open(Account::Households(m), per_market[m] * 0.55);
+            self.treasury
+                .open(Account::Households(m), per_market[m] * 0.55);
         }
         let firms: Vec<usize> = (0..self.ledger.sites.len()).collect();
         if !firms.is_empty() {
@@ -4334,8 +4340,7 @@ impl Economy {
         for site in 0..self.ledger.sites.len() {
             if self.ledger.sites[site].kind == SiteKind::Hospital {
                 let m = self.ledger.sites[site].market;
-                bill += self.staff_today.get(site).copied().unwrap_or(0.0)
-                    * self.day_rate_here(m);
+                bill += self.staff_today.get(site).copied().unwrap_or(0.0) * self.day_rate_here(m);
             }
         }
         if bill <= 0.0 {
@@ -4420,9 +4425,7 @@ impl Economy {
             return;
         };
         let day = self.ledger.day;
-        let posts: Vec<f64> = (0..self.markets.len())
-            .map(|m| svc.total_in(m))
-            .collect();
+        let posts: Vec<f64> = (0..self.markets.len()).map(|m| svc.total_in(m)).collect();
 
         for m in 0..self.markets.len() {
             if posts[m] <= 0.0 {
@@ -4629,9 +4632,14 @@ impl Economy {
                 // And what an arbitrageur must clear is not the carriage
                 // alone: duty is paid at the border, and a share of a
                 // perishable load does not arrive at all.
-                let Some(q) = self.quote(a, b, c) else { continue };
+                let Some(q) = self.quote(a, b, c) else {
+                    continue;
+                };
                 let carriage = q.carriage();
-                let (pa, pb) = (self.markets[a].price[c as usize], self.markets[b].price[c as usize]);
+                let (pa, pb) = (
+                    self.markets[a].price[c as usize],
+                    self.markets[b].price[c as usize],
+                );
                 let (from_m, to_m, gap) = if pb - pa > carriage {
                     (a, b, pb - pa - carriage)
                 } else if pa - pb > carriage {
@@ -4697,7 +4705,11 @@ impl Economy {
                     let slope = |mm: usize, e: &Economy| {
                         let t = e.target_cover(mm, c).max(0.5);
                         let d = e.daily_draw(mm, c);
-                        if d > 1e-9 { 1.0 / (d * t * elast) } else { 0.0 }
+                        if d > 1e-9 {
+                            1.0 / (d * t * elast)
+                        } else {
+                            0.0
+                        }
                     };
                     let d = slope(from_m, self) + slope(to_m, self);
                     let closes = if d > 1e-12 {
@@ -4867,8 +4879,6 @@ impl Economy {
     fn update_prices(&mut self) {
         self.one_price_pass();
     }
-
-
 
     /// **A delivery arrives and the average moves.**
     ///
@@ -5049,7 +5059,11 @@ impl Economy {
             .sum::<f64>()
             + power * self.markets[m].landed[Commodity::Electricity as usize]
             + labour;
-        let moved = if reference > 1e-9 { actual / reference } else { 1.0 };
+        let moved = if reference > 1e-9 {
+            actual / reference
+        } else {
+            1.0
+        };
         Some(c.base_cost() * moved * site.cost_factor)
     }
 
@@ -5065,7 +5079,9 @@ impl Economy {
     pub fn marginal_source(&self, m: usize, c: Commodity) -> (f64, f64) {
         let mut offers: Vec<(f64, f64, f64, f64)> = Vec::new();
         for s in 0..self.ledger.sites.len() {
-            let Some(goods) = self.site_cost(s, c) else { continue };
+            let Some(goods) = self.site_cost(s, c) else {
+                continue;
+            };
             let p = self.ledger.sites[s].market;
             let carriage = if p == m {
                 0.0
@@ -5130,7 +5146,14 @@ impl Economy {
     }
 
     /// And give it back when the haul is over or was never made.
-    fn release_the_road(&mut self, from: usize, to: usize, from_day: u64, to_day: u64, tonnes: f64) {
+    fn release_the_road(
+        &mut self,
+        from: usize,
+        to: usize,
+        from_day: u64,
+        to_day: u64,
+        tonnes: f64,
+    ) {
         for road in self.routing.path_edges(from, to) {
             for day in from_day..=to_day {
                 self.reservations.release(road, day, tonnes);
@@ -5301,7 +5324,11 @@ impl Economy {
             }
             return 0.0;
         }
-        let (paid, freight) = self.shipments.get(id).map(|s| s.share(off)).unwrap_or((0.0, 0.0));
+        let (paid, freight) = self
+            .shipments
+            .get(id)
+            .map(|s| s.share(off))
+            .unwrap_or((0.0, 0.0));
         self.ledger.apply(
             &mut self.journal,
             Event::Landed {
@@ -5380,7 +5407,11 @@ impl Economy {
         if let Some(s) = self.shipments.get_mut(id) {
             s.aboard -= off;
             s.delivered += off;
-            s.leg = if s.aboard > 1e-9 { Leg::Waiting } else { Leg::Delivered };
+            s.leg = if s.aboard > 1e-9 {
+                Leg::Waiting
+            } else {
+                Leg::Delivered
+            };
         }
         if self.shipments.get(id).map(|s| s.leg) == Some(Leg::Delivered) {
             // **A finished haul is not still on the road.** Give back what
@@ -5469,7 +5500,9 @@ impl Economy {
             .map(|(k, _)| k)
             .collect();
         for id in stuck {
-            let Some(s) = self.shipments.get(id) else { continue };
+            let Some(s) = self.shipments.get(id) else {
+                continue;
+            };
             let (commodity, to_market, aboard) = (s.commodity, s.to_market, s.aboard);
             let c = commodity as usize;
             let mut left = aboard;
@@ -5487,8 +5520,11 @@ impl Economy {
                 if off <= 1e-9 {
                     continue;
                 }
-                let (paid, freight) =
-                    self.shipments.get(id).map(|s| s.share(off)).unwrap_or((0.0, 0.0));
+                let (paid, freight) = self
+                    .shipments
+                    .get(id)
+                    .map(|s| s.share(off))
+                    .unwrap_or((0.0, 0.0));
                 self.ledger.apply(
                     &mut self.journal,
                     Event::Landed {
@@ -5524,7 +5560,11 @@ impl Economy {
                 }
             }
             if let Some(s) = self.shipments.get_mut(id) {
-                s.leg = if s.delivered > 0.0 { Leg::Delivered } else { Leg::WrittenOff };
+                s.leg = if s.delivered > 0.0 {
+                    Leg::Delivered
+                } else {
+                    Leg::WrittenOff
+                };
             }
             self.shipments.end(id, day, "could not be tipped");
         }
@@ -5685,8 +5725,7 @@ impl Economy {
                         .filter(|&s| self.ledger.sites[s].market == m)
                         .map(|s| self.ledger.stock(s, c))
                         .sum();
-                    self.markets[m].price[c as usize] =
-                        if held > 0.0 { cost * 0.7 } else { cost };
+                    self.markets[m].price[c as usize] = if held > 0.0 { cost * 0.7 } else { cost };
                     continue;
                 }
 
@@ -5793,8 +5832,7 @@ impl Economy {
                 // a free good. Producers stop selling long before that, and
                 // in a real surplus the crop is stored or exported rather
                 // than given away.
-                let multiplier =
-                    (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
+                let multiplier = (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
                 // **Price is what it cost to make, times what scarcity is
                 // doing to it.** Not a typed-in constant times scarcity,
                 // which is what this was: a glut of oil could never make
@@ -5924,7 +5962,11 @@ impl Economy {
             // **And what this particular ground costs to work**, which is
             // the whole difference between a rich seam and a thin one and
             // is 1.0 for anything built to a design rather than found.
-            let moved = if reference > 1e-9 { actual / reference } else { 1.0 };
+            let moved = if reference > 1e-9 {
+                actual / reference
+            } else {
+                1.0
+            };
             let here = c.base_cost() * moved * site.cost_factor;
             // **Weighted by what it actually supplies**, not simply the
             // cheapest nameplate in the market.
@@ -5939,7 +5981,11 @@ impl Economy {
             //
             // Rated throughput is the fallback for a site that has not run
             // yet, so a country on its first morning is not costless.
-            let share = if site.ran > 1e-9 { site.ran } else { demand_rate_of(site) };
+            let share = if site.ran > 1e-9 {
+                site.ran
+            } else {
+                demand_rate_of(site)
+            };
             if share > 1e-9 {
                 supplied += share;
                 weighted += here * share;

@@ -321,7 +321,10 @@ impl Overlay {
         if now == b.base_hash {
             Rebase::Matches
         } else {
-            Rebase::BaseChanged { was: b.base_hash, now }
+            Rebase::BaseChanged {
+                was: b.base_hash,
+                now,
+            }
         }
     }
 

@@ -5,9 +5,7 @@
 //! current emotion, and not a substitute for memory.
 
 use scale_sim::id::{Arena, Id};
-use scale_sim::memory::{
-    Description, EventKind, Memory, PerceivedWho, Place, Source, WorldEvent,
-};
+use scale_sim::memory::{Description, EventKind, Memory, PerceivedWho, Place, Source, WorldEvent};
 use scale_sim::mind::{Emotion, Facet, Happening, Mind, Value};
 use scale_sim::person::{Person, Trade};
 use scale_sim::relations::{
@@ -35,7 +33,11 @@ fn a_mind(seed: u64) -> Mind {
 }
 
 fn kindly() -> Evidence {
-    Evidence { contact: 1.0, warmth: 0.6, ..Default::default() }
+    Evidence {
+        contact: 1.0,
+        warmth: 0.6,
+        ..Default::default()
+    }
 }
 
 /// **A day on which he could have done otherwise and did not.** Anything
@@ -69,17 +71,33 @@ fn a_relationship_is_directed() {
 
     for d in 0..30 {
         alice_on_bob.saw(
-            &Evidence { contact: 1.0, reliability: 0.8, telling: Diagnosticity::default(), ..Default::default() },
+            &Evidence {
+                contact: 1.0,
+                reliability: 0.8,
+                telling: Diagnosticity::default(),
+                ..Default::default()
+            },
             d,
         );
         bob_on_alice.saw(
-            &Evidence { contact: 1.0, reliability: -0.6, telling: Diagnosticity::default(), ..Default::default() },
+            &Evidence {
+                contact: 1.0,
+                reliability: -0.6,
+                telling: Diagnosticity::default(),
+                ..Default::default()
+            },
             d,
         );
     }
 
-    assert!(alice_on_bob.trust_in(TrustIn::General) > 0.4, "Alice does not trust Bob");
-    assert!(bob_on_alice.trust_in(TrustIn::General) < -0.3, "Bob trusts Alice");
+    assert!(
+        alice_on_bob.trust_in(TrustIn::General) > 0.4,
+        "Alice does not trust Bob"
+    );
+    assert!(
+        bob_on_alice.trust_in(TrustIn::General) < -0.3,
+        "Bob trusts Alice"
+    );
     assert_eq!(alice_on_bob.subject, alice);
     assert_eq!(alice_on_bob.object, bob);
 }
@@ -99,9 +117,18 @@ fn familiarity_affection_and_trust_are_three_different_things() {
     // A man he sees every day and does not warm to.
     let mut colleague = Relationship::strangers(id[0], id[1]);
     for d in 0..200 {
-        colleague.saw(&Evidence { contact: 1.0, ..Default::default() }, d);
+        colleague.saw(
+            &Evidence {
+                contact: 1.0,
+                ..Default::default()
+            },
+            d,
+        );
     }
-    assert!(colleague.familiarity > 0.9, "two hundred days and still a stranger");
+    assert!(
+        colleague.familiarity > 0.9,
+        "two hundred days and still a stranger"
+    );
     assert!(
         colleague.affection().abs() < 0.05,
         "seeing somebody daily made him fond of them ({:.2})",
@@ -154,8 +181,14 @@ fn familiarity_affection_and_trust_are_three_different_things() {
             d,
         );
     }
-    assert!(comrade.trust_in(TrustIn::Danger) > 0.5, "he would not stand beside him");
-    assert!(comrade.trust_in(TrustIn::Secrets) < -0.4, "he would tell him anything");
+    assert!(
+        comrade.trust_in(TrustIn::Danger) > 0.5,
+        "he would not stand beside him"
+    );
+    assert!(
+        comrade.trust_in(TrustIn::Secrets) < -0.4,
+        "he would tell him anything"
+    );
 }
 
 // --- 4 -----------------------------------------------------------------
@@ -181,7 +214,13 @@ fn an_enemy_can_be_respected_and_still_feared() {
             d,
         );
     }
-    r.saw(&Evidence { wrong: 0.8, ..Default::default() }, 41);
+    r.saw(
+        &Evidence {
+            wrong: 0.8,
+            ..Default::default()
+        },
+        41,
+    );
 
     assert!(r.affection() < -0.3, "he likes his enemy");
     assert!(r.fear() > 0.4, "he does not fear a dangerous man");
@@ -192,7 +231,10 @@ fn an_enemy_can_be_respected_and_still_feared() {
 
     let l = labels(&r, &[]);
     assert!(l.contains(&Label::Feared));
-    assert!(l.contains(&Label::Respected), "a respected enemy is not respected: {l:?}");
+    assert!(
+        l.contains(&Label::Respected),
+        "a respected enemy is not respected: {l:?}"
+    );
     assert!(l.contains(&Label::Enemy));
 }
 
@@ -208,11 +250,22 @@ fn a_hated_parent_is_still_a_parent() {
     let mut r = Relationship::strangers(id[0], id[1]);
     for d in 0..50 {
         r.saw(
-            &Evidence { contact: 1.0, warmth: -0.9, menace: 0.4, ..Default::default() },
+            &Evidence {
+                contact: 1.0,
+                warmth: -0.9,
+                menace: 0.4,
+                ..Default::default()
+            },
             d,
         );
     }
-    r.saw(&Evidence { wrong: 0.9, ..Default::default() }, 51);
+    r.saw(
+        &Evidence {
+            wrong: 0.9,
+            ..Default::default()
+        },
+        51,
+    );
 
     assert!(r.affection() < -0.5);
     assert!(r.resentment() > 0.5);
@@ -227,7 +280,15 @@ fn a_hated_parent_is_still_a_parent() {
     // And a trusted subordinate is the same shape the other way up.
     let mut sub = Relationship::strangers(id[0], id[2]);
     for d in 0..40 {
-        sub.saw(&Evidence { contact: 1.0, warmth: 0.5, reliability: 0.9, ..Default::default() }, d);
+        sub.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: 0.5,
+                reliability: 0.9,
+                ..Default::default()
+            },
+            d,
+        );
     }
     let l = labels(&sub, &[SocialFact::Commands]);
     assert!(l.contains(&Label::Commander) && l.contains(&Label::Friend));
@@ -246,9 +307,22 @@ fn a_disposition_produces_a_feeling_and_is_not_one() {
     let mut mind = a_mind(6);
     let mut r = Relationship::strangers(id[0], id[1]);
     for d in 0..30 {
-        r.saw(&Evidence { contact: 1.0, menace: 0.8, ..Default::default() }, d);
+        r.saw(
+            &Evidence {
+                contact: 1.0,
+                menace: 0.8,
+                ..Default::default()
+            },
+            d,
+        );
     }
-    r.saw(&Evidence { wrong: 0.7, ..Default::default() }, 31);
+    r.saw(
+        &Evidence {
+            wrong: 0.7,
+            ..Default::default()
+        },
+        31,
+    );
 
     // Not in the room: not afraid.
     assert!(
@@ -263,7 +337,10 @@ fn a_disposition_produces_a_feeling_and_is_not_one() {
         felt.iter().any(|e| e.what == Emotion::Fear),
         "meeting a man he fears frightened him not at all"
     );
-    assert!(felt.iter().any(|e| e.what == Emotion::Anger), "and no old anger either");
+    assert!(
+        felt.iter().any(|e| e.what == Emotion::Anger),
+        "and no old anger either"
+    );
     mind.feel(felt);
     assert!(mind.feeling_of(Emotion::Fear) > 0.2);
 
@@ -272,7 +349,10 @@ fn a_disposition_produces_a_feeling_and_is_not_one() {
     for _ in 0..20 {
         mind.a_day_passes(&mut rng);
     }
-    assert!(mind.feeling_of(Emotion::Fear) < 0.05, "still in a panic three weeks later");
+    assert!(
+        mind.feeling_of(Emotion::Fear) < 0.05,
+        "still in a panic three weeks later"
+    );
     assert!(r.fear() > 0.4, "the wariness evaporated with the fright");
 }
 
@@ -286,14 +366,31 @@ fn one_exchange_two_different_conclusions() {
     let mut taker = Relationship::strangers(id[1], id[0]);
 
     // He does her a favour at some cost. She is grateful; he is not.
-    giver.saw(&Evidence { contact: 1.0, warmth: 0.3, ..Default::default() }, 1);
+    giver.saw(
+        &Evidence {
+            contact: 1.0,
+            warmth: 0.3,
+            ..Default::default()
+        },
+        1,
+    );
     taker.saw(
-        &Evidence { contact: 1.0, warmth: 0.3, kindness: 0.9, owing: 0.5, ..Default::default() },
+        &Evidence {
+            contact: 1.0,
+            warmth: 0.3,
+            kindness: 0.9,
+            owing: 0.5,
+            ..Default::default()
+        },
         1,
     );
 
     assert!(taker.gratitude() > 0.1, "she is not grateful");
-    assert_eq!(giver.gratitude(), 0.0, "he is grateful to her for accepting");
+    assert_eq!(
+        giver.gratitude(),
+        0.0,
+        "he is grateful to her for accepting"
+    );
     assert!(taker.obligation > 0.3, "she owes him nothing");
     assert_eq!(giver.obligation, 0.0);
     assert!(labels(&taker, &[]).contains(&Label::Beholden));
@@ -334,32 +431,65 @@ fn resentment_follows_the_belief_and_not_the_truth() {
             ..Default::default()
         },
     };
-    let p = mem.perceive(&ev, None, Source::Witnessed, 0.62, &mut rng).unwrap();
+    let p = mem
+        .perceive(&ev, None, Source::Witnessed, 0.62, &mut rng)
+        .unwrap();
     let felt = mind.appraise(&mind.read(&p.facts));
     let trace = mem.encode(p, &mind, 10, &felt).unwrap();
 
     // He is not certain — which is what makes him correctable.
-    let believed = mem.traces[trace].what_was_perceived().believed_actor.clone();
+    let believed = mem.traces[trace]
+        .what_was_perceived()
+        .believed_actor
+        .clone();
     assert!(
         matches!(believed, Some(PerceivedWho::Believed { .. })),
         "a poor look produced a certain identification: {believed:?}"
     );
 
     // He decides it was Carol, and resents Carol for it.
-    mem.reattribute(trace, PerceivedWho::Believed { person: carol, confidence: 0.7 }, 0.7);
+    mem.reattribute(
+        trace,
+        PerceivedWho::Believed {
+            person: carol,
+            confidence: 0.7,
+        },
+        0.7,
+    );
     let mut on_carol = Relationship::strangers(id[1], carol);
     let on_alice = Relationship::strangers(id[1], alice);
-    on_carol.saw(&Evidence { wrong: 0.7, ..Default::default() }, 11);
+    on_carol.saw(
+        &Evidence {
+            wrong: 0.7,
+            ..Default::default()
+        },
+        11,
+    );
 
-    assert!(on_carol.resentment() > 0.5, "he does not resent the woman he blames");
-    assert_eq!(on_alice.resentment(), 0.0, "he resents the woman he never suspected");
+    assert!(
+        on_carol.resentment() > 0.5,
+        "he does not resent the woman he blames"
+    );
+    assert_eq!(
+        on_alice.resentment(),
+        0.0,
+        "he resents the woman he never suspected"
+    );
 
     // Cleared. The grievance closes; what he saw does not change.
     let seen_before = mem.traces[trace].what_was_perceived().clone();
     on_carol.cleared();
-    mem.reattribute(trace, PerceivedWho::Unknown(Description("somebody".into())), 0.2);
+    mem.reattribute(
+        trace,
+        PerceivedWho::Unknown(Description("somebody".into())),
+        0.2,
+    );
 
-    assert_eq!(on_carol.resentment(), 0.0, "clearing her left the grudge standing");
+    assert_eq!(
+        on_carol.resentment(),
+        0.0,
+        "clearing her left the grudge standing"
+    );
     assert_eq!(
         mem.traces[trace].what_was_perceived().believed_actor,
         seen_before.believed_actor,
@@ -391,9 +521,23 @@ fn the_dead_can_still_be_loved_and_resented() {
 
     let mut r = Relationship::strangers(mourner, gone);
     for d in 0..80 {
-        r.saw(&Evidence { contact: 1.0, warmth: 0.8, kindness: 0.4, ..Default::default() }, d);
+        r.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: 0.8,
+                kindness: 0.4,
+                ..Default::default()
+            },
+            d,
+        );
     }
-    r.saw(&Evidence { wrong: 0.5, ..Default::default() }, 81);
+    r.saw(
+        &Evidence {
+            wrong: 0.5,
+            ..Default::default()
+        },
+        81,
+    );
     let loved = r.affection();
 
     folk.remove(gone);
@@ -407,7 +551,10 @@ fn the_dead_can_still_be_loved_and_resented() {
 
     // And nobody else can become her.
     let newcomer = folk.add(Person::new("Erin", Trade::Labourer, 0, 100.0));
-    assert_ne!(newcomer, gone, "somebody moved into the dead woman's identity");
+    assert_ne!(
+        newcomer, gone,
+        "somebody moved into the dead woman's identity"
+    );
 }
 
 // --- 11 ----------------------------------------------------------------
@@ -437,21 +584,43 @@ fn labels_are_derived_plural_and_impermanent() {
         );
     }
     let l = labels(&r, &[SocialFact::EmployedBy]);
-    assert!(l.contains(&Label::Friend), "sixty days of warmth is not a friendship: {l:?}");
+    assert!(
+        l.contains(&Label::Friend),
+        "sixty days of warmth is not a friendship: {l:?}"
+    );
     assert!(l.contains(&Label::Respected));
-    assert!(l.contains(&Label::Creditor), "the debt is not recorded: {l:?}");
+    assert!(
+        l.contains(&Label::Creditor),
+        "the debt is not recorded: {l:?}"
+    );
     assert!(l.contains(&Label::Employer));
     assert!(l.len() >= 4, "one relationship got one name: {l:?}");
 
     // A falling-out. The friendship goes; the debt and the employment do
     // not.
     for d in 60..90 {
-        r.saw(&Evidence { contact: 1.0, warmth: -0.9, ..Default::default() }, d);
+        r.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: -0.9,
+                ..Default::default()
+            },
+            d,
+        );
     }
     let after = labels(&r, &[SocialFact::EmployedBy]);
-    assert!(!after.contains(&Label::Friend), "they fell out and are still friends");
-    assert!(after.contains(&Label::Creditor), "the debt was forgiven by falling out");
-    assert!(after.contains(&Label::Employer), "he stopped being employed by falling out");
+    assert!(
+        !after.contains(&Label::Friend),
+        "they fell out and are still friends"
+    );
+    assert!(
+        after.contains(&Label::Creditor),
+        "the debt was forgiven by falling out"
+    );
+    assert!(
+        after.contains(&Label::Employer),
+        "he stopped being employed by falling out"
+    );
 }
 
 // --- 12 ----------------------------------------------------------------
@@ -472,20 +641,38 @@ fn an_hour_with_somebody_is_worth_what_the_relationship_is_worth() {
     }
     let mut barely = Relationship::strangers(id[0], id[2]);
     for d in 0..6 {
-        barely.saw(&Evidence { contact: 0.5, ..Default::default() }, d);
+        barely.saw(
+            &Evidence {
+                contact: 0.5,
+                ..Default::default()
+            },
+            d,
+        );
     }
     let mut sore = Relationship::strangers(id[0], id[3]);
     for d in 0..60 {
         sore.saw(&kindly(), d);
     }
-    sore.saw(&Evidence { wrong: 0.9, ..Default::default() }, 61);
+    sore.saw(
+        &Evidence {
+            wrong: 0.9,
+            ..Default::default()
+        },
+        61,
+    );
 
     let good = worth_of_company(&close, 1.0);
     let thin = worth_of_company(&barely, 1.0);
     let bad = worth_of_company(&sore, 1.0);
 
-    assert!(good > 0.4, "an hour with a close friend was worth {good:.2}");
-    assert!(thin < good / 2.0, "an hour with somebody he barely knows was as good");
+    assert!(
+        good > 0.4,
+        "an hour with a close friend was worth {good:.2}"
+    );
+    assert!(
+        thin < good / 2.0,
+        "an hour with somebody he barely knows was as good"
+    );
     assert!(
         bad < good,
         "an evening with a man who wronged him was as good as one with a \
@@ -503,7 +690,11 @@ fn an_hour_with_somebody_is_worth_what_the_relationship_is_worth() {
 fn small_kindnesses_saturate_rather_than_accumulate() {
     let (_folk, id) = a_village();
     let mut r = Relationship::strangers(id[0], id[1]);
-    let trivial = Evidence { contact: 0.3, warmth: 0.1, ..Default::default() };
+    let trivial = Evidence {
+        contact: 0.3,
+        warmth: 0.1,
+        ..Default::default()
+    };
     for d in 0..2000 {
         r.saw(&trivial, d);
     }
@@ -516,7 +707,14 @@ fn small_kindnesses_saturate_rather_than_accumulate() {
     // Whereas a few real ones go much further.
     let mut real = Relationship::strangers(id[0], id[2]);
     for d in 0..30 {
-        real.saw(&Evidence { contact: 1.0, warmth: 0.9, ..Default::default() }, d);
+        real.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: 0.9,
+                ..Default::default()
+            },
+            d,
+        );
     }
     assert!(
         real.affection() > r.affection() * 3.0,
@@ -550,8 +748,11 @@ fn a_betrayal_is_specific_and_an_apology_must_be_credible() {
             d,
         );
     }
-    let (was_fond, was_able, was_known) =
-        (r.affection(), r.respect_for(RespectFor::Competence), r.familiarity);
+    let (was_fond, was_able, was_known) = (
+        r.affection(),
+        r.respect_for(RespectFor::Competence),
+        r.familiarity,
+    );
     let trusted_with_money = r.trust_in(TrustIn::Money);
 
     // He takes the money and runs.
@@ -579,7 +780,10 @@ fn a_betrayal_is_specific_and_an_apology_must_be_credible() {
         r.respect_for(RespectFor::Competence) > was_able - 0.2,
         "being robbed made the man bad at his trade"
     );
-    assert!(r.affection() < was_fond, "and it cost him nothing in affection");
+    assert!(
+        r.affection() < was_fond,
+        "and it cost him nothing in affection"
+    );
     assert!(r.resentment() > 0.5);
 
     // A cheap apology closes nothing.
@@ -591,7 +795,10 @@ fn a_betrayal_is_specific_and_an_apology_must_be_credible() {
     // which has its own evidence and needs new evidence to move.
     let mut proper = r.clone();
     proper.apologised(0.95, 0.9, 0.8);
-    assert!(proper.resentment() < 0.2, "a full apology was worth nothing");
+    assert!(
+        proper.resentment() < 0.2,
+        "a full apology was worth nothing"
+    );
     assert!(
         proper.trust_in(TrustIn::Money) < trusted_with_money - 0.4,
         "saying sorry made him trustworthy with money again"
@@ -621,8 +828,16 @@ fn the_same_history_gives_the_same_relationship() {
 #[test]
 fn a_long_acquaintance_is_harder_to_overturn_than_a_first_impression() {
     let (_folk, id) = a_village();
-    let civil = Evidence { contact: 0.4, warmth: 0.12, ..Default::default() };
-    let rude = Evidence { contact: 0.4, warmth: -0.35, ..Default::default() };
+    let civil = Evidence {
+        contact: 0.4,
+        warmth: 0.12,
+        ..Default::default()
+    };
+    let rude = Evidence {
+        contact: 0.4,
+        warmth: -0.35,
+        ..Default::default()
+    };
 
     let mut one_meeting = Relationship::strangers(id[0], id[1]);
     one_meeting.saw(&civil, 0);
@@ -662,7 +877,10 @@ fn a_long_acquaintance_is_harder_to_overturn_than_a_first_impression() {
         thirty_years.affection() > 0.0,
         "one bad day undid thirty years of civility"
     );
-    assert!(one_meeting.affection() < 0.0, "a stranger who was rude is still liked");
+    assert!(
+        one_meeting.affection() < 0.0,
+        "a stranger who was rude is still liked"
+    );
 }
 
 /// **A betrayal is not another data point.**
@@ -689,7 +907,10 @@ fn treachery_throws_the_evidence_away_and_rudeness_does_not() {
     }
     let earned = r.trust_in(TrustIn::Money);
     let sureness = r.sureness_of_trust(TrustIn::Money);
-    assert!(earned > 0.6 && sureness > 0.8, "two hundred honest days built nothing");
+    assert!(
+        earned > 0.6 && sureness > 0.8,
+        "two hundred honest days built nothing"
+    );
 
     // A small lapse barely registers against that history.
     let mut careless = r.clone();
@@ -754,7 +975,10 @@ fn time_without_temptation_shows_nothing() {
                 reliability: 0.8,
                 reliability_in: Some(TrustIn::Money),
                 reliability_about: Aspect::Integrity,
-                telling: Diagnosticity { opportunity: 0.0, ..Default::default() },
+                telling: Diagnosticity {
+                    opportunity: 0.0,
+                    ..Default::default()
+                },
                 ..Default::default()
             },
             d,
@@ -806,7 +1030,10 @@ fn what_an_act_is_evidence_of_depends_on_what_is_being_judged() {
             reliability: -0.7,
             reliability_in: Some(TrustIn::Money),
             reliability_about: Aspect::Competence,
-            telling: Diagnosticity { intentional: 0.0, ..Default::default() },
+            telling: Diagnosticity {
+                intentional: 0.0,
+                ..Default::default()
+            },
             ..Default::default()
         },
         121,
@@ -880,7 +1107,11 @@ fn a_coerced_act_says_less_about_the_man() {
             reliability_in: Some(TrustIn::Money),
             reliability_about: Aspect::Integrity,
             // He did it, and it was not his idea.
-            telling: Diagnosticity { responsibility: 0.2, intentional: 0.3, ..Default::default() },
+            telling: Diagnosticity {
+                responsibility: 0.2,
+                intentional: 0.3,
+                ..Default::default()
+            },
             ..Default::default()
         },
         151,

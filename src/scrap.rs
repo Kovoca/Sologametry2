@@ -157,7 +157,10 @@ pub struct Load {
 
 impl Load {
     pub fn of(materials: &[(Material, f64)]) -> Self {
-        Load { materials: materials.to_vec(), ..Default::default() }
+        Load {
+            materials: materials.to_vec(),
+            ..Default::default()
+        }
     }
 
     pub fn tonnes(&self) -> f64 {
@@ -168,7 +171,9 @@ impl Load {
     /// Asked of the materials rather than of anybody's paperwork, which is
     /// exactly the difference that catches a yard out.
     pub fn actually_hazardous(&self) -> bool {
-        self.materials.iter().any(|&(m, kg)| kg > 0.0 && m.hazardous())
+        self.materials
+            .iter()
+            .any(|&(m, kg)| kg > 0.0 && m.hazardous())
     }
 }
 
@@ -195,13 +200,25 @@ impl Yard {
     /// An ordinary town scrapyard: metals, no licence for anything nasty,
     /// and it will pick through a load.
     pub fn ordinary(owner: u64, km: f64) -> Self {
-        Yard { owner, km, takes_hazardous: false, sorts: true, contamination_limit: 0.15 }
+        Yard {
+            owner,
+            km,
+            takes_hazardous: false,
+            sorts: true,
+            contamination_limit: 0.15,
+        }
     }
 
     /// A licensed processor, further away and able to take what nobody else
     /// will.
     pub fn licensed(owner: u64, km: f64) -> Self {
-        Yard { owner, km, takes_hazardous: true, sorts: true, contamination_limit: 0.30 }
+        Yard {
+            owner,
+            km,
+            takes_hazardous: true,
+            sorts: true,
+            contamination_limit: 0.30,
+        }
     }
 }
 
@@ -298,13 +315,21 @@ pub fn weigh_in(load: &Load, yard: &Yard, customer_will_pay: f64) -> Settlement 
     let tipping = residue * TIPPING_FEE;
     // Sorting costs labour and a yard that does not sort simply cannot
     // take a mixed load.
-    let sorting = if yard.sorts { tonnes * 18.0 * (1.0 + load.contamination * 4.0) } else { 0.0 };
+    let sorting = if yard.sorts {
+        tonnes * 18.0 * (1.0 + load.contamination * 4.0)
+    } else {
+        0.0
+    };
 
     let net = gross - haul - tipping - sorting;
     if net < 0.0 && -net > customer_will_pay {
         return Settlement::Refused(Refusal::NotWorthTaking);
     }
-    Settlement::Taken { paid: net, recovered, residue }
+    Settlement::Taken {
+        paid: net,
+        recovered,
+        residue,
+    }
 }
 
 /// **Whether it is worth anybody's while to collect this at all.**
@@ -364,15 +389,13 @@ pub fn special_handling(name: &str) -> f64 {
 /// The number that decides whether a dead appliance is worth a trip to the
 /// yard or gets left at the kerb — and for most household goods it is
 /// close to nothing, which is exactly why so much of it is fly-tipped.
-pub fn worth_as_scrap(
-    name: &str,
-    materials: &[(Material, f64)],
-    km: f64,
-    stripped: bool,
-) -> f64 {
+pub fn worth_as_scrap(name: &str, materials: &[(Material, f64)], km: f64, stripped: bool) -> f64 {
     let load = Load::of(materials);
     let tonnes = load.tonnes();
-    let gross: f64 = materials.iter().map(|&(m, t)| as_found(m, stripped) * t).sum();
+    let gross: f64 = materials
+        .iter()
+        .map(|&(m, t)| as_found(m, stripped) * t)
+        .sum();
     gross - tonnes * km * HAULAGE_PER_TONNE_KM - special_handling(name)
 }
 
@@ -636,7 +659,10 @@ pub fn a_charity_would_take_it(name: &str, still_works: bool) -> bool {
     if !still_works {
         return false;
     }
-    !matches!(name, "bed" | "mattress" | "sofa" | "refrigerator" | "cooking stove")
+    !matches!(
+        name,
+        "bed" | "mattress" | "sofa" | "refrigerator" | "cooking stove"
+    )
 }
 
 /// **What comes back on a deposit.**
@@ -709,7 +735,9 @@ pub fn how_to_get_rid_of_it(c: &Circumstances) -> HowToGetRidOfIt {
     //    trip, no fee, no decision — which is why most large appliances
     //    never become a disposal problem at all.
     if c.being_replaced {
-        return TradeIn { allowance: if c.still_works { 25.0 } else { 0.0 } };
+        return TradeIn {
+            allowance: if c.still_works { 25.0 } else { 0.0 },
+        };
     }
 
     // 3. **Reuse before recycling**, which is the waste hierarchy and is
@@ -748,17 +776,28 @@ pub fn how_to_get_rid_of_it(c: &Circumstances) -> HowToGetRidOfIt {
     }
 
     // Now it costs something, and the options are weighed.
-    let (trip_cost, trip_hours) =
-        cost_of_a_trip(c.kg, c.council, special_handling(c.name), c.others_going + 1);
+    let (trip_cost, trip_hours) = cost_of_a_trip(
+        c.kg,
+        c.council,
+        special_handling(c.name),
+        c.others_going + 1,
+    );
     let can_shift = c.kg <= c.carrying.payload_kg() && (!c.bulky || c.carrying.takes_bulky());
 
     let mut options: Vec<(HowToGetRidOfIt, f64)> = Vec::new();
-    let hauler = PayAHauler { fee: hauler_fee(c.kg, c.council.km) + special_handling(c.name) };
+    let hauler = PayAHauler {
+        fee: hauler_fee(c.kg, c.council.km) + special_handling(c.name),
+    };
     options.push((hauler, hauler.cost()));
-    let paid_collection = PayAHauler { fee: c.council.per_item };
+    let paid_collection = PayAHauler {
+        fee: c.council.per_item,
+    };
     options.push((paid_collection, paid_collection.cost()));
     if can_shift {
-        let mine = TakeItYourself { cost: trip_cost, hours: trip_hours };
+        let mine = TakeItYourself {
+            cost: trip_cost,
+            hours: trip_hours,
+        };
         // **Whose afternoon it is matters.** The same trip is cheap for
         // somebody with time and dear for somebody without.
         options.push((mine, mine.cost() + trip_hours * c.hourly_worth));
@@ -808,8 +847,12 @@ pub fn how_to_get_rid_of_it(c: &Circumstances) -> HowToGetRidOfIt {
     // a person is to do it; a keyed draw says whether this one did, so the
     // same man on the same day always answers the same way and reloading a
     // save cannot make him a fly-tipper.
-    let u = crate::rng::Rng::new(crate::save::channel(c.event, c.kg as u64, "getting round it"))
-        .next_f32() as f64;
+    let u = crate::rng::Rng::new(crate::save::channel(
+        c.event,
+        c.kg as u64,
+        "getting round it",
+    ))
+    .next_f32() as f64;
     if u < tempted {
         // **Which corner is cut depends on what is to hand.** A bonfire in
         // a yard nobody overlooks is easier than a drive to the woods, and

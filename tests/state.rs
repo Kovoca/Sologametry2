@@ -35,9 +35,8 @@ fn the_state_is_the_largest_employer_there_is() {
     // Health, education and administration are each about a fortieth of
     // the population and dwarf the uniformed services — which is the real
     // shape of a modern state and not what most people picture.
-    let nationally = |s: Service| -> f64 {
-        (0..e.markets.len()).map(|m| g.posts_for(&e, m, s)).sum()
-    };
+    let nationally =
+        |s: Service| -> f64 { (0..e.markets.len()).map(|m| g.posts_for(&e, m, s)).sum() };
     assert!(
         nationally(Service::Health) > nationally(Service::Defence) * 5.0,
         "more soldiers than nurses"
@@ -182,8 +181,7 @@ fn a_below_replacement_birth_rate_is_only_destiny_if_nobody_pays() {
     // has cheap childcare and the lowest fertility on earth. What family
     // spending reliably buys is that a parent can *work*.
     assert!(
-        Service::Family.peacetime_share() > 0.015
-            && Service::Family.peacetime_share() < 0.045,
+        Service::Family.peacetime_share() > 0.015 && Service::Family.peacetime_share() < 0.045,
         "family spending is outside the real 0.6-4% of GDP range"
     );
 }

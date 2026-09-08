@@ -96,8 +96,14 @@ fn the_chain_runs_from_the_orefield_to_the_shop() {
                 .map(|s| s.ran)
                 .sum()
         };
-        assert!(ran(SiteKind::IronMine) > 0.0, "no ore was raised (seed {seed})");
-        assert!(ran(SiteKind::Steelworks) > 0.0, "nothing was smelted (seed {seed})");
+        assert!(
+            ran(SiteKind::IronMine) > 0.0,
+            "no ore was raised (seed {seed})"
+        );
+        assert!(
+            ran(SiteKind::Steelworks) > 0.0,
+            "nothing was smelted (seed {seed})"
+        );
         assert!(ran(SiteKind::Works) > 0.0, "nothing was made (seed {seed})");
 
         // **A routine economy must not produce a famine.** This chain

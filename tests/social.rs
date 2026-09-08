@@ -45,16 +45,28 @@ fn person(seed: u64, facets: &[(Facet, f32)]) -> Mind {
 
 /// Everything got through: in the room, facing each other.
 fn face_to_face() -> Cues {
-    Cues { words: true, prosody: true, expression: true, gesture: true }
+    Cues {
+        words: true,
+        prosody: true,
+        expression: true,
+        gesture: true,
+    }
 }
 
 /// Every word, and no face.
 fn from_behind() -> Cues {
-    Cues { words: true, prosody: true, expression: false, gesture: false }
+    Cues {
+        words: true,
+        prosody: true,
+        expression: false,
+        gesture: false,
+    }
 }
 
 fn motives(list: &[(Motive, f64)]) -> Vec<WeightedMotive> {
-    list.iter().map(|&(motive, weight)| WeightedMotive { motive, weight }).collect()
+    list.iter()
+        .map(|&(motive, weight)| WeightedMotive { motive, weight })
+        .collect()
 }
 
 // --- 1 and 2 -----------------------------------------------------------
@@ -87,7 +99,10 @@ fn the_same_words_meant_differently_look_the_same() {
     let a = perform(&sincere, 1.0, false, &mut Rng::new(1));
     let b = perform(&calculating, 1.0, false, &mut Rng::new(1));
 
-    assert_eq!(a.content, b.content, "the words differed by intention alone");
+    assert_eq!(
+        a.content, b.content,
+        "the words differed by intention alone"
+    );
     assert_eq!(
         a.delivery.warmth, b.delivery.warmth,
         "the warmth in his voice reported his private reason"
@@ -123,7 +138,12 @@ fn a_listener_is_never_handed_the_plan() {
         "a practised flatterer's angle showed in his voice"
     );
 
-    let read = listener.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.5, 0.5)));
+    let read = listener.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((0.5, 0.5)),
+    );
     assert!(
         read.weight_of(Reading::SincerePraise) > read.weight_of(Reading::Flattery),
         "the listener saw straight through a man who gave nothing away"
@@ -149,8 +169,18 @@ fn the_same_praise_lands_differently_on_different_people() {
     let trusting = person(3, &[(Facet::Trust, 2.0)]);
     let suspicious = person(3, &[(Facet::Trust, -2.0)]);
 
-    let warm = trusting.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.6, 0.6)));
-    let cold = suspicious.read_act(&act.content, &act.delivery, &face_to_face(), Some((-0.5, 0.6)));
+    let warm = trusting.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((0.6, 0.6)),
+    );
+    let cold = suspicious.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((-0.5, 0.6)),
+    );
 
     assert!(
         warm.weight_of(Reading::SincerePraise) > cold.weight_of(Reading::SincerePraise),
@@ -180,16 +210,31 @@ fn a_listener_can_be_pleased_and_suspicious_at_once() {
     };
     // Clumsy enough that the angle shows.
     let act = perform(&plan, 0.35, false, &mut Rng::new(4));
-    assert!(act.delivery.eagerness > 0.3, "his eagerness did not show at all");
+    assert!(
+        act.delivery.eagerness > 0.3,
+        "his eagerness did not show at all"
+    );
 
     let m = person(4, &[]);
-    let read = m.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.3, 0.5)));
-    assert!(read.weight_of(Reading::SincerePraise) > 0.15, "no pleasure at all");
-    assert!(read.weight_of(Reading::Flattery) > 0.15, "no suspicion at all");
+    let read = m.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((0.3, 0.5)),
+    );
+    assert!(
+        read.weight_of(Reading::SincerePraise) > 0.15,
+        "no pleasure at all"
+    );
+    assert!(
+        read.weight_of(Reading::Flattery) > 0.15,
+        "no suspicion at all"
+    );
 
     let felt = m.appraise_reading(&read, 0.5);
     assert!(
-        felt.iter().any(|e| matches!(e.what, Emotion::Joy | Emotion::Pride)),
+        felt.iter()
+            .any(|e| matches!(e.what, Emotion::Joy | Emotion::Pride)),
         "being praised pleased him not at all: {felt:?}"
     );
     assert!(
@@ -214,7 +259,12 @@ fn mockery_can_be_mistaken_for_teasing() {
     let act = perform(&cruel, 0.95, true, &mut Rng::new(5));
 
     let old_friend = person(5, &[(Facet::Trust, 1.5)]);
-    let read = old_friend.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.8, 0.9)));
+    let read = old_friend.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((0.8, 0.9)),
+    );
     assert!(
         read.weight_of(Reading::FriendlyTeasing) > read.weight_of(Reading::Mockery),
         "a friend saw through a well-concealed sneer immediately"
@@ -239,8 +289,18 @@ fn poor_execution_turns_encouragement_into_condescension() {
     let clumsy = perform(&plan, 0.05, false, &mut Rng::new(6));
 
     let m = person(6, &[]);
-    let good = m.read_act(&deft.content, &deft.delivery, &face_to_face(), Some((0.2, 0.4)));
-    let bad = m.read_act(&clumsy.content, &clumsy.delivery, &face_to_face(), Some((0.2, 0.4)));
+    let good = m.read_act(
+        &deft.content,
+        &deft.delivery,
+        &face_to_face(),
+        Some((0.2, 0.4)),
+    );
+    let bad = m.read_act(
+        &clumsy.content,
+        &clumsy.delivery,
+        &face_to_face(),
+        Some((0.2, 0.4)),
+    );
 
     assert!(
         bad.weight_of(Reading::Condescension) > good.weight_of(Reading::Condescension) + 0.1,
@@ -254,7 +314,12 @@ fn poor_execution_turns_encouragement_into_condescension() {
     // **And skill still does not guarantee it.** The same deft words to
     // somebody who does not trust him.
     let mistrustful = person(6, &[(Facet::Trust, -2.0)]);
-    let anyway = mistrustful.read_act(&deft.content, &deft.delivery, &face_to_face(), Some((-0.8, 0.7)));
+    let anyway = mistrustful.read_act(
+        &deft.content,
+        &deft.delivery,
+        &face_to_face(),
+        Some((-0.8, 0.7)),
+    );
     assert!(
         anyway.weight_of(Reading::Flattery) > 0.3,
         "a skilled speaker convinced a man who thinks him a liar"
@@ -276,8 +341,14 @@ fn a_mistake_and_a_lie_are_not_the_same_thing() {
     // Deliberately wrong: he doubts it and says it firmly anyway.
     let lie = AssertedClaim::said(7, 0.05, 0.95);
 
-    assert!(!mistaken.was_deceptive(), "an honest error was filed as a lie");
-    assert!(lie.was_deceptive(), "a flat lie was filed as an honest error");
+    assert!(
+        !mistaken.was_deceptive(),
+        "an honest error was filed as a lie"
+    );
+    assert!(
+        lie.was_deceptive(),
+        "a flat lie was filed as an honest error"
+    );
 
     // **Observably identical**, which is the point.
     assert_eq!(mistaken.asserted, lie.asserted);
@@ -312,13 +383,18 @@ fn gossip_moves_two_relationships_and_keeps_its_chain() {
 
     let heard = Memory::hear(
         EventKind::Theft,
-        Some(PerceivedWho::Believed { person: absent, confidence: 0.6 }),
+        Some(PerceivedWho::Believed {
+            person: absent,
+            confidence: 0.6,
+        }),
         scale_sim::memory::Place(1),
         20,
         Source::Told { by: teller },
     );
     let felt = m.appraise(&m.read(&heard.facts));
-    let trace = mem.encode(heard, &m, 20, &felt).expect("a piece of gossip was not kept");
+    let trace = mem
+        .encode(heard, &m, 20, &felt)
+        .expect("a piece of gossip was not kept");
 
     // **The chain survives**, which is what makes it retractable.
     assert_eq!(mem.traces[trace].source(), Source::Told { by: teller });
@@ -333,7 +409,10 @@ fn gossip_moves_two_relationships_and_keeps_its_chain() {
             reliability_about: Aspect::Integrity,
             // **Hearsay is weak evidence and must say so.** He did not
             // see it, so the quality is low.
-            telling: Diagnosticity { quality: 0.35, ..Default::default() },
+            telling: Diagnosticity {
+                quality: 0.35,
+                ..Default::default()
+            },
             ..Default::default()
         },
         20,
@@ -345,7 +424,14 @@ fn gossip_moves_two_relationships_and_keeps_its_chain() {
 
     // ...and the teller is judged for telling it.
     let mut on_teller = Relationship::strangers(id[1], teller);
-    on_teller.saw(&Evidence { contact: 1.0, warmth: -0.2, ..Default::default() }, 20);
+    on_teller.saw(
+        &Evidence {
+            contact: 1.0,
+            warmth: -0.2,
+            ..Default::default()
+        },
+        20,
+    );
     assert!(on_teller.familiarity > 0.0);
     assert!(
         on_teller.affection() < 0.0,
@@ -364,7 +450,13 @@ fn gossip_moves_two_relationships_and_keeps_its_chain() {
 fn an_apology_is_performed_and_the_listener_decides() {
     let (_folk, id) = a_village();
     let mut wronged = Relationship::strangers(id[1], id[0]);
-    wronged.saw(&Evidence { wrong: 0.8, ..Default::default() }, 10);
+    wronged.saw(
+        &Evidence {
+            wrong: 0.8,
+            ..Default::default()
+        },
+        10,
+    );
     let sore = wronged.resentment();
     assert!(sore > 0.5);
 
@@ -377,7 +469,15 @@ fn an_apology_is_performed_and_the_listener_decides() {
         remorse: 0.1,
         ..Default::default()
     });
-    let read = m.read_act(&shrug, &Delivery { warmth: 0.1, ..Default::default() }, &face_to_face(), Some((-0.2, 0.5)));
+    let read = m.read_act(
+        &shrug,
+        &Delivery {
+            warmth: 0.1,
+            ..Default::default()
+        },
+        &face_to_face(),
+        Some((-0.2, 0.5)),
+    );
     let credited = read.weight_of(Reading::AnApology);
     let mut after_a_shrug = wronged.clone();
     after_a_shrug.apologised(credited, 0.1, 0.0);
@@ -396,8 +496,19 @@ fn an_apology_is_performed_and_the_listener_decides() {
         promise: 0.8,
         explanation: 0.3,
     });
-    let read = m.read_act(&proper, &Delivery { warmth: 0.7, ..Default::default() }, &face_to_face(), Some((0.2, 0.6)));
-    assert!(read.weight_of(Reading::AnApology) > 0.5, "a full apology read as hollow");
+    let read = m.read_act(
+        &proper,
+        &Delivery {
+            warmth: 0.7,
+            ..Default::default()
+        },
+        &face_to_face(),
+        Some((0.2, 0.6)),
+    );
+    assert!(
+        read.weight_of(Reading::AnApology) > 0.5,
+        "a full apology read as hollow"
+    );
     let mut after_a_real_one = wronged.clone();
     after_a_real_one.apologised(read.weight_of(Reading::AnApology), 0.95, 0.8);
     assert!(
@@ -470,15 +581,33 @@ fn an_audience_reads_it_for_themselves() {
         strategy: Strategy::Encourage,
     };
     let public = perform(&plan, 0.6, true, &mut Rng::new(10));
-    assert!(public.delivery.publicly, "a speech for the room was made in private");
+    assert!(
+        public.delivery.publicly,
+        "a speech for the room was made in private"
+    );
 
     let addressed = person(10, &[(Facet::Trust, 1.0)]);
     let rival = person(11, &[(Facet::Envy, 2.0), (Facet::Trust, -1.0)]);
     let veteran = person(12, &[(Facet::Trust, -1.5)]);
 
-    let a = addressed.read_act(&public.content, &public.delivery, &face_to_face(), Some((0.6, 0.7)));
-    let b = rival.read_act(&public.content, &public.delivery, &face_to_face(), Some((-0.3, 0.5)));
-    let c = veteran.read_act(&public.content, &public.delivery, &face_to_face(), Some((-0.4, 0.9)));
+    let a = addressed.read_act(
+        &public.content,
+        &public.delivery,
+        &face_to_face(),
+        Some((0.6, 0.7)),
+    );
+    let b = rival.read_act(
+        &public.content,
+        &public.delivery,
+        &face_to_face(),
+        Some((-0.3, 0.5)),
+    );
+    let c = veteran.read_act(
+        &public.content,
+        &public.delivery,
+        &face_to_face(),
+        Some((-0.4, 0.9)),
+    );
 
     assert!(a.weight_of(Reading::SincerePraise) > b.weight_of(Reading::SincerePraise));
     assert!(
@@ -486,7 +615,10 @@ fn an_audience_reads_it_for_themselves() {
         "an old hand read the speech exactly as the man being praised did"
     );
     // Three separate readings, not one applied three times.
-    assert!(a != b && b != c, "the audience inherited the addressee's verdict");
+    assert!(
+        a != b && b != c,
+        "the audience inherited the addressee's verdict"
+    );
 }
 
 // --- 15 ----------------------------------------------------------------
@@ -510,21 +642,38 @@ fn a_speaker_does_not_know_whether_it_landed() {
 
     // It lands badly: the listener could not see the grin.
     let listener = person(14, &[(Facet::Trust, -1.0)]);
-    let read = listener.read_act(&joke.content, &joke.delivery, &from_behind(), Some((0.0, 0.2)));
+    let read = listener.read_act(
+        &joke.content,
+        &joke.delivery,
+        &from_behind(),
+        Some((0.0, 0.2)),
+    );
     assert!(
         read.weight_of(Reading::Mockery) > read.weight_of(Reading::FriendlyTeasing),
         "without the grin it still read as friendly"
     );
 
     // The listener says something back, coldly.
-    let reply = Content::Remark { about: Topic::Themselves };
-    let cold = Delivery { warmth: -0.6, edge: 0.5, ..Default::default() };
+    let reply = Content::Remark {
+        about: Topic::Themselves,
+    };
+    let cold = Delivery {
+        warmth: -0.6,
+        edge: 0.5,
+        ..Default::default()
+    };
 
     // The teller is looking away and gets nothing.
     let nothing = Cues::default();
     let missed = teller.read_act(&reply, &cold, &nothing, Some((0.2, 0.3)));
-    assert!(missed.understood.is_none(), "he heard a reply he could not hear");
-    assert!(missed.confidence < 0.4, "he was sure of a response he never got");
+    assert!(
+        missed.understood.is_none(),
+        "he heard a reply he could not hear"
+    );
+    assert!(
+        missed.confidence < 0.4,
+        "he was sure of a response he never got"
+    );
 
     // Turning round, he finds out.
     let noticed = teller.read_act(&reply, &cold, &face_to_face(), Some((0.2, 0.3)));
@@ -555,7 +704,10 @@ fn nobody_has_to_say_anything() {
         n.did(
             Doing::TalkWithAFriend,
             4.0,
-            Circumstances { with_somebody_known: true, ..Default::default() },
+            Circumstances {
+                with_somebody_known: true,
+                ..Default::default()
+            },
         );
     }
     assert!(
@@ -570,10 +722,16 @@ fn nobody_has_to_say_anything() {
             n.a_day_passes();
         }
     }
-    assert!(anything_to_say(&lonely, &here), "a month alone and he says nothing");
+    assert!(
+        anything_to_say(&lonely, &here),
+        "a month alone and he says nothing"
+    );
 
     // No time is no conversation, whoever it is.
-    let passing = Opportunity { minutes: 0.2, ..here };
+    let passing = Opportunity {
+        minutes: 0.2,
+        ..here
+    };
     assert!(!anything_to_say(&lonely, &passing));
 }
 
@@ -605,14 +763,20 @@ fn a_conversation_runs_out_of_time_and_of_turns() {
         }
         said += 1;
     }
-    assert!(said > 0 && said <= 8, "a ten-minute chat ran to {said} turns");
+    assert!(
+        said > 0 && said <= 8,
+        "a ten-minute chat ran to {said} turns"
+    );
     assert!(x.over(), "the conversation never ended");
 
     // A minute in a doorway is not a conversation.
     let brief = Opportunity { minutes: 0.5, ..o };
     let mut short = Exchange::opening(&brief);
     let act = perform(&plan, 0.5, false, &mut Rng::new(16));
-    assert!(!short.take_a_turn(act, 1.0), "a full exchange fitted into thirty seconds");
+    assert!(
+        !short.take_a_turn(act, 1.0),
+        "a full exchange fitted into thirty seconds"
+    );
 }
 
 // --- 18 ----------------------------------------------------------------
@@ -630,24 +794,52 @@ fn talking_a_lot_is_not_the_same_as_good_company() {
 
     let mut close = Relationship::strangers(id[0], id[1]);
     for d in 0..60 {
-        close.saw(&Evidence { contact: 1.0, warmth: 0.7, ..Default::default() }, d);
+        close.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: 0.7,
+                ..Default::default()
+            },
+            d,
+        );
     }
     let mut prickly = Relationship::strangers(id[0], id[2]);
     for d in 0..60 {
-        prickly.saw(&Evidence { contact: 1.0, warmth: -0.3, ..Default::default() }, d);
+        prickly.saw(
+            &Evidence {
+                contact: 1.0,
+                warmth: -0.3,
+                ..Default::default()
+            },
+            d,
+        );
     }
 
-    let warm_words = Content::Praise { about: Topic::TheirWork, strength: 0.7 };
+    let warm_words = Content::Praise {
+        about: Topic::TheirWork,
+        strength: 0.7,
+    };
     let good = m.read_act(
         &warm_words,
-        &Delivery { warmth: 0.8, smiling: true, ..Default::default() },
+        &Delivery {
+            warmth: 0.8,
+            smiling: true,
+            ..Default::default()
+        },
         &face_to_face(),
         Some((0.7, 0.8)),
     );
-    let barbed = Content::Barb { at: Topic::TheirWork, sharpness: 0.6 };
+    let barbed = Content::Barb {
+        at: Topic::TheirWork,
+        sharpness: 0.6,
+    };
     let bad = m.read_act(
         &barbed,
-        &Delivery { warmth: -0.2, edge: 0.4, ..Default::default() },
+        &Delivery {
+            warmth: -0.2,
+            edge: 0.4,
+            ..Default::default()
+        },
         &from_behind(),
         Some((-0.2, 0.5)),
     );
@@ -670,7 +862,10 @@ fn talking_a_lot_is_not_the_same_as_good_company() {
     let got = needs.did(
         Doing::TalkWithAFriend,
         worth(&good, &close),
-        Circumstances { with_somebody_known: true, ..Default::default() },
+        Circumstances {
+            with_somebody_known: true,
+            ..Default::default()
+        },
     );
     assert!(
         got.iter().any(|(n, _)| *n == Need::Friendship),
@@ -741,7 +936,15 @@ fn the_observable_half_is_reachable() {
     // `ListenerReading` cannot be built here; it can be obtained from the
     // mind that did the reading, and read freely once it exists.
     let m = person(77, &[]);
-    let r = m.read_act(&act.content, &act.delivery, &face_to_face(), Some((0.0, 0.5)));
+    let r = m.read_act(
+        &act.content,
+        &act.delivery,
+        &face_to_face(),
+        Some((0.0, 0.5)),
+    );
     let _: f64 = r.confidence;
-    assert!(!r.inferred.is_empty(), "a reading with nothing in it proves nothing");
+    assert!(
+        !r.inferred.is_empty(),
+        "a reading with nothing in it proves nothing"
+    );
 }

@@ -54,7 +54,14 @@ pub struct Station {
 impl Station {
     pub fn new(name: &'static str, provides: Vec<Provides>) -> Self {
         let kw = provides.iter().map(|p| p.kw).fold(0.0f64, f64::max);
-        Station { name, provides, capacity: 1, kw, owner: None, serviceable: true }
+        Station {
+            name,
+            provides,
+            capacity: 1,
+            kw,
+            owner: None,
+            serviceable: true,
+        }
     }
 
     pub fn owned_by(mut self, person: u64) -> Self {
@@ -96,11 +103,19 @@ pub struct Worker {
 
 impl Worker {
     pub fn new(person: u64, maker: Maker) -> Self {
-        Worker { person, maker, paid: true }
+        Worker {
+            person,
+            maker,
+            paid: true,
+        }
     }
 
     pub fn owner(person: u64, maker: Maker) -> Self {
-        Worker { person, maker, paid: false }
+        Worker {
+            person,
+            maker,
+            paid: false,
+        }
     }
 }
 
@@ -169,7 +184,8 @@ impl Calendar {
     /// Drop everything booked for an order from a time onward — what a
     /// replan does, and it must not touch what has already happened.
     pub fn release_from(&mut self, order: u64, at: f64) {
-        self.bookings.retain(|b| !(b.order == order && b.from >= at - 1e-9));
+        self.bookings
+            .retain(|b| !(b.order == order && b.from >= at - 1e-9));
     }
 }
 
@@ -209,7 +225,11 @@ impl Shop {
             power: self.powered,
             water: true,
             celsius: 18.0,
-            tools: self.stations.iter().flat_map(|s| s.provides.iter().copied()).collect(),
+            tools: self
+                .stations
+                .iter()
+                .flat_map(|s| s.provides.iter().copied())
+                .collect(),
             workers: self.workers.len() as f64,
             stations: self.stations.iter().map(|s| s.capacity).max().unwrap_or(1),
             jigs: self.jigs,
@@ -217,7 +237,9 @@ impl Shop {
     }
 
     fn station_for(&self, n: Need) -> Option<usize> {
-        self.stations.iter().position(|s| s.can(n, self.powered) && s.serviceable)
+        self.stations
+            .iter()
+            .position(|s| s.can(n, self.powered) && s.serviceable)
     }
 
     /// **Ownership grants permission, not availability.**
@@ -244,7 +266,11 @@ impl Shop {
             .enumerate()
             .filter(|(_, s)| !s.done && s.end > at)
             .filter(|(_, s)| match s.station {
-                Some(k) => self.stations.get(k).map(|st| !st.serviceable).unwrap_or(true),
+                Some(k) => self
+                    .stations
+                    .get(k)
+                    .map(|st| !st.serviceable)
+                    .unwrap_or(true),
                 None => false,
             })
             .map(|(i, _)| i)
@@ -268,7 +294,10 @@ impl Shop {
                 None => {}
             }
         }
-        LabourCost { paid_minutes: paid, owner_minutes: unpaid }
+        LabourCost {
+            paid_minutes: paid,
+            owner_minutes: unpaid,
+        }
     }
 
     /// **Doing the work costs the person doing it.**
@@ -329,14 +358,21 @@ pub enum OnInterruption {
     /// Look at it first, and then usually carry on. An interrupted weld
     /// wants cleaning and inspecting far more often than it wants doing
     /// again.
-    InspectThenResume { inspect_min: f64, restart_chance: f64 },
+    InspectThenResume {
+        inspect_min: f64,
+        restart_chance: f64,
+    },
     /// Carries on regardless — curing, proving, cooling, settling.
     ContinuePassively,
     /// **A thermal process, and the figures are the kiln's, not the
     /// scheduler's.** How much is lost depends on the outage, on how fast
     /// this particular thing loses heat, and on what it has to be brought
     /// back to.
-    ThermalProcess { loss_per_hour: f64, recovery_min_per_degree: f64, holds_at_c: f64 },
+    ThermalProcess {
+        loss_per_hour: f64,
+        recovery_min_per_degree: f64,
+        holds_at_c: f64,
+    },
     /// The workpiece goes on changing while nothing is being done to it,
     /// and after a while it is spoiled.
     SpoilAfter { minutes: f64 },
@@ -386,7 +422,10 @@ impl OnInterruption {
             OnInterruption::PauseResume | OnInterruption::ContinuePassively => (0.0, false),
             OnInterruption::ResumeWithSetup { setup_min } => (setup_min, false),
             OnInterruption::RestartOperation => (progress_min, false),
-            OnInterruption::InspectThenResume { inspect_min, restart_chance } => {
+            OnInterruption::InspectThenResume {
+                inspect_min,
+                restart_chance,
+            } => {
                 // The inspection always happens; whether it sends the job
                 // back is a chance the caller settles.
                 (inspect_min + progress_min * restart_chance, false)
@@ -522,15 +561,27 @@ fn try_book(
     not_before: f64,
     units: u32,
 ) -> Result<Plan, Unschedulable> {
-    let recipe = book_of_recipes.get(order.recipe).ok_or(Unschedulable::NoSuchOrder)?;
+    let recipe = book_of_recipes
+        .get(order.recipe)
+        .ok_or(Unschedulable::NoSuchOrder)?;
     let mut plan = Plan::default();
     let mut t = not_before;
 
     // **Setup happens once**, whatever the batch size. It is somebody's
     // time and it needs a person.
     if recipe.setup_minutes > 0.0 {
-        let slot = fit(shop, order.id, usize::MAX, 0, recipe.setup_minutes, 0.0, &[], t, true,
-                       OnInterruption::PauseResume)?;
+        let slot = fit(
+            shop,
+            order.id,
+            usize::MAX,
+            0,
+            recipe.setup_minutes,
+            0.0,
+            &[],
+            t,
+            true,
+            OnInterruption::PauseResume,
+        )?;
         t = slot.end;
         plan.slots.push(slot);
     }
@@ -618,8 +669,7 @@ fn fit(
     for t in shop.calendar.release_times(not_before) {
         let end = t + duration;
         let worker = if needs_worker {
-            (0..shop.workers.len())
-                .find(|&w| shop.calendar.free(Booked::Worker(w), t, end, 1))
+            (0..shop.workers.len()).find(|&w| shop.calendar.free(Booked::Worker(w), t, end, 1))
         } else {
             None
         };
@@ -627,15 +677,32 @@ fn fit(
             continue;
         }
         if let Some(k) = station {
-            if !shop.calendar.free(Booked::Station(k), t, end, shop.stations[k].capacity) {
+            if !shop
+                .calendar
+                .free(Booked::Station(k), t, end, shop.stations[k].capacity)
+            {
                 continue;
             }
         }
         if let Some(w) = worker {
-            shop.calendar.book(Booking { what: Booked::Worker(w), from: t, to: end, order, step, attempt });
+            shop.calendar.book(Booking {
+                what: Booked::Worker(w),
+                from: t,
+                to: end,
+                order,
+                step,
+                attempt,
+            });
         }
         if let Some(k) = station {
-            shop.calendar.book(Booking { what: Booked::Station(k), from: t, to: end, order, step, attempt });
+            shop.calendar.book(Booking {
+                what: Booked::Station(k),
+                from: t,
+                to: end,
+                order,
+                step,
+                attempt,
+            });
         }
         return Ok(Slot {
             order,
@@ -748,19 +815,18 @@ pub fn labour_spent_by(plan: &Plan, now: f64) -> f64 {
 /// **A machine that fails leaves work in progress**, not a lost order and
 /// certainly not two outputs. What it takes is a replan from the moment it
 /// broke, with everything already finished left alone.
-pub fn machine_failed(
-    shop: &mut Shop,
-    plan: &mut Plan,
-    station: usize,
-    at: f64,
-) -> Vec<Slot> {
+pub fn machine_failed(shop: &mut Shop, plan: &mut Plan, station: usize, at: f64) -> Vec<Slot> {
     advance_to(plan, at);
     let order = plan.slots.first().map(|s| s.order).unwrap_or(0);
     shop.calendar.release_from(order, at);
     // The station is out; anything booked on it after now has to go
     // somewhere else or wait.
-    let stranded: Vec<Slot> =
-        plan.slots.iter().copied().filter(|s| !s.done && s.station == Some(station)).collect();
+    let stranded: Vec<Slot> = plan
+        .slots
+        .iter()
+        .copied()
+        .filter(|s| !s.done && s.station == Some(station))
+        .collect();
     plan.slots.retain(|s| s.done || s.station != Some(station));
     stranded
 }
@@ -877,7 +943,10 @@ pub fn batch_outcome(order: u64, units: u32, yields: Yields, hazard: f64) -> Bat
     let unit_grades = (0..units)
         .map(|u| roll_outcome(order, u as usize, 0, yields, hazard).0)
         .collect();
-    BatchOutcome { setup, units: unit_grades }
+    BatchOutcome {
+        setup,
+        units: unit_grades,
+    }
 }
 
 /// A station built from a named tool in the catalogue, so a shop is

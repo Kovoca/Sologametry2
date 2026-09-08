@@ -37,7 +37,7 @@
 //! memories are already recorded as growth.
 
 use crate::coping::{
-    attempt, propensities, resolve, Acute, ActualControl, Circumstances, ControlAppraisal,
+    attempt, propensities, resolve, ActualControl, Acute, Circumstances, ControlAppraisal,
     ControlEvidence, Coping, FunctionalState, Strain, SupportGiven, ENTER, LEAVE,
 };
 use crate::growth::{Growth, ShapesWellbeing};
@@ -244,14 +244,21 @@ impl Coarse {
     pub fn of(who: Id<Person>, origin: PersonOrigin, mind: &Mind, day: u64) -> Self {
         let mut c = Coarse::new(who, origin.seed, day);
         c.origin = origin;
-        c.baseline = Facet::ALL.iter().map(|&f| mind.person.baseline_of(f)).collect();
+        c.baseline = Facet::ALL
+            .iter()
+            .map(|&f| mind.person.baseline_of(f))
+            .collect();
         c
     }
 
     pub fn new(who: Id<Person>, seed: u64, day: u64) -> Self {
         Coarse {
             who,
-            origin: PersonOrigin { seed, schema: GENERATION_SCHEMA, born: 0 },
+            origin: PersonOrigin {
+                seed,
+                schema: GENERATION_SCHEMA,
+                born: 0,
+            },
             baseline: Vec::new(),
             growth: Growth::new(),
             strain: Strain::default(),
@@ -304,7 +311,11 @@ impl Coarse {
 
     /// What is pressing on them, summed and capped.
     pub fn pressure(&self) -> f64 {
-        self.standing.iter().map(|s| s.severity).sum::<f64>().min(1.0)
+        self.standing
+            .iter()
+            .map(|s| s.severity)
+            .sum::<f64>()
+            .min(1.0)
     }
 
     /// **Bring the record up to a date in one step.**
@@ -339,7 +350,8 @@ impl Coarse {
             let step = if guard >= 64 {
                 remaining
             } else {
-                self.days_to_next_boundary(pressure, tolerance).clamp(1, remaining)
+                self.days_to_next_boundary(pressure, tolerance)
+                    .clamp(1, remaining)
             };
             guard += 1;
             self.habits.used(chose, step);
@@ -377,7 +389,13 @@ impl Coarse {
             read_as_helpful: se,
             obligation: 0.25 * se,
         };
-        let out = resolve(attempt(chose), &worst.actual, &support, raw, worst.worsens_if_ignored);
+        let out = resolve(
+            attempt(chose),
+            &worst.actual,
+            &support,
+            raw,
+            worst.worsens_if_ignored,
+        );
         let left = (raw - out.relief + out.deferred).clamp(0.0, 1.0);
         // Only an attempt on the world says anything about what can be
         // affected; comforting yourself teaches nothing about the roof.
@@ -504,7 +522,10 @@ impl Coarse {
                 continue;
             }
             let (perm, fading) = e.settled_and_fading(today);
-            match settled.iter_mut().find(|(t, c, _, _)| *t == e.target && *c == e.cause) {
+            match settled
+                .iter_mut()
+                .find(|(t, c, _, _)| *t == e.target && *c == e.cause)
+            {
                 Some(slot) => {
                     slot.2 += perm;
                     slot.3 += fading;
@@ -552,7 +573,11 @@ impl Coarse {
                 .cmp(&b.day)
                 .then(a.target.cmp(&b.target))
                 .then(a.cause.cmp(&b.cause))
-                .then(a.persistence.residual_fraction.total_cmp(&b.persistence.residual_fraction))
+                .then(
+                    a.persistence
+                        .residual_fraction
+                        .total_cmp(&b.persistence.residual_fraction),
+                )
         });
         self.growth.episodics = keep;
         self.growth
@@ -589,10 +614,18 @@ pub enum What {
     ControlChanges(ControlAppraisal),
     /// Something catastrophic, which is not chronic strain arriving
     /// early and does not touch the ladder.
-    Crisis { kind: Acute, activation: f64, because_of: u64 },
+    Crisis {
+        kind: Acute,
+        activation: f64,
+        because_of: u64,
+    },
     /// **A blow to how somebody feels about their life**, which is a
     /// different layer from their traits and lands there.
-    Wellbeing { by: ShapesWellbeing, strength: f32, toward: f32 },
+    Wellbeing {
+        by: ShapesWellbeing,
+        strength: f32,
+        toward: f32,
+    },
 }
 
 impl What {
@@ -615,11 +648,19 @@ impl What {
             }
             What::SupportChanges(v) => c.support_expected = v,
             What::ControlChanges(v) => c.perceived_control = v,
-            What::Crisis { kind, activation, because_of } => {
+            What::Crisis {
+                kind,
+                activation,
+                because_of,
+            } => {
                 let day = c.last_update;
                 c.strain.crisis_strikes(kind, activation, day, because_of);
             }
-            What::Wellbeing { by, strength, toward } => {
+            What::Wellbeing {
+                by,
+                strength,
+                toward,
+            } => {
                 let day = c.last_update;
                 c.growth.shaped_wellbeing(by, strength, toward, day);
             }
@@ -694,7 +735,10 @@ pub fn demote(d: &Detailed) -> Coarse {
     Coarse {
         who: d.who,
         origin: d.origin,
-        baseline: Facet::ALL.iter().map(|&f| d.mind.person.baseline_of(f)).collect(),
+        baseline: Facet::ALL
+            .iter()
+            .map(|&f| d.mind.person.baseline_of(f))
+            .collect(),
         growth: d.growth.clone(),
         strain: d.strain,
         perceived_control: d.perceived_control,
@@ -723,7 +767,11 @@ impl Detailed {
     }
 
     pub fn pressure(&self) -> f64 {
-        self.standing.iter().map(|s| s.severity).sum::<f64>().min(1.0)
+        self.standing
+            .iter()
+            .map(|s| s.severity)
+            .sum::<f64>()
+            .min(1.0)
     }
 
     /// The same settlement the coarse path uses, so the two agree.
@@ -740,8 +788,7 @@ impl Detailed {
             company: self.support_expected > 0.2,
             ..Default::default()
         };
-        let mut ranked =
-            propensities(&self.mind, &self.perceived_control, &c, self.strain.debt);
+        let mut ranked = propensities(&self.mind, &self.perceived_control, &c, self.strain.debt);
         for (k, w) in ranked.iter_mut() {
             *w += self.habits.of(*k) as f64;
         }

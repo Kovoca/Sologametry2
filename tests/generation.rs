@@ -68,10 +68,16 @@ fn generation_is_deterministic() {
     let a = World::generate(160, 90, 12345);
     let b = World::generate(160, 90, 12345);
     assert_eq!(a.biomes, b.biomes, "same seed produced different biomes");
-    assert_eq!(a.sea_level, b.sea_level, "same seed produced different sea level");
+    assert_eq!(
+        a.sea_level, b.sea_level,
+        "same seed produced different sea level"
+    );
     assert_eq!(a.river, b.river, "same seed produced different rivers");
     assert_eq!(a.lake, b.lake, "same seed produced different lakes");
-    assert_eq!(a.geology.rock, b.geology.rock, "same seed produced different rock");
+    assert_eq!(
+        a.geology.rock, b.geology.rock,
+        "same seed produced different rock"
+    );
     assert_eq!(
         a.geology.fertility.data, b.geology.fertility.data,
         "same seed produced different fertility"
@@ -136,8 +142,7 @@ fn deposits_are_localised() {
             ("coal", &w.geology.coal),
             ("petroleum", &w.geology.petroleum),
         ] {
-            let workable =
-                land.iter().filter(|&&i| f.data[i] >= 0.45).count() as f32 / land_n;
+            let workable = land.iter().filter(|&&i| f.data[i] >= 0.45).count() as f32 / land_n;
             assert!(
                 workable < 0.35,
                 "seed {seed}: workable {name} covers {:.0}% of land",
@@ -222,7 +227,11 @@ fn state_sizes_are_skewed_not_uniform() {
         let w = World::generate(256, 144, seed);
         let p = Polities::partition(&w, 30);
         let ranked = p.ranked();
-        assert!(ranked.len() >= 10, "seed {seed}: only {} states", ranked.len());
+        assert!(
+            ranked.len() >= 10,
+            "seed {seed}: only {} states",
+            ranked.len()
+        );
 
         let largest = ranked[0].1.cells as f32;
         let median = ranked[ranked.len() / 2].1.cells as f32;
@@ -276,7 +285,10 @@ fn settlements_stand_on_owned_land() {
             t.cell
         );
         assert!(
-            !matches!(w.biomes[t.cell], Biome::Ocean | Biome::Shallows | Biome::Snowcap),
+            !matches!(
+                w.biomes[t.cell],
+                Biome::Ocean | Biome::Shallows | Biome::Snowcap
+            ),
             "settlement at {} is on {:?}",
             t.cell,
             w.biomes[t.cell]
@@ -294,7 +306,11 @@ fn city_sizes_span_orders_of_magnitude() {
         let p = Polities::partition(&w, 24);
         let s = Settlements::place(&w, &p, 3000);
         let ranked = s.ranked();
-        assert!(ranked.len() > 500, "seed {seed}: only {} placed", ranked.len());
+        assert!(
+            ranked.len() > 500,
+            "seed {seed}: only {} placed",
+            ranked.len()
+        );
 
         let largest = ranked[0].population as f64;
         let median = (ranked[ranked.len() / 2].population as f64).max(1.0);
@@ -325,7 +341,10 @@ fn population_is_shared_out_and_never_invented() {
     let country = s.countryside_population();
     let world = Settlements::world_population();
 
-    assert!((stored + country - world).abs() < 1.0, "people appeared or vanished");
+    assert!(
+        (stored + country - world).abs() < 1.0,
+        "people appeared or vanished"
+    );
     assert!(stored > 0.0 && country > 0.0);
 
     // A realistic split: the largest two thousand places on a planet
@@ -351,7 +370,10 @@ fn settlement_placement_is_deterministic() {
 
     let cells_a: Vec<usize> = a.list.iter().map(|s| s.cell).collect();
     let cells_b: Vec<usize> = b.list.iter().map(|s| s.cell).collect();
-    assert_eq!(cells_a, cells_b, "same world placed settlements differently");
+    assert_eq!(
+        cells_a, cells_b,
+        "same world placed settlements differently"
+    );
 
     let pop_a: Vec<u32> = a.list.iter().map(|s| s.population).collect();
     let pop_b: Vec<u32> = b.list.iter().map(|s| s.population).collect();
@@ -456,7 +478,10 @@ fn navigable_water_reaches_the_sea() {
                 continue;
             }
             let nx = (x as i32 + dx).rem_euclid(width as i32) as usize;
-            if matches!(w.biomes[ny as usize * width + nx], Biome::Ocean | Biome::Shallows) {
+            if matches!(
+                w.biomes[ny as usize * width + nx],
+                Biome::Ocean | Biome::Shallows
+            ) {
                 at_sea = true;
             }
         }
@@ -497,8 +522,14 @@ fn network_is_deterministic() {
     let a = Network::build(&w, &s, 400);
     let b = Network::build(&w, &s, 400);
     assert_eq!(a.road, b.road, "same world produced different roads");
-    assert_eq!(a.navigable, b.navigable, "same world produced different waterways");
-    assert_eq!(a.chokepoints, b.chokepoints, "chokepoints differ between runs");
+    assert_eq!(
+        a.navigable, b.navigable,
+        "same world produced different waterways"
+    );
+    assert_eq!(
+        a.chokepoints, b.chokepoints,
+        "chokepoints differ between runs"
+    );
 }
 
 #[test]
@@ -518,8 +549,11 @@ fn fertile_land_exists_and_is_not_everywhere() {
             .collect();
         let land_n = land.len() as f32;
 
-        let prime =
-            land.iter().filter(|&&i| w.geology.fertility.data[i] > 0.55).count() as f32 / land_n;
+        let prime = land
+            .iter()
+            .filter(|&&i| w.geology.fertility.data[i] > 0.55)
+            .count() as f32
+            / land_n;
         assert!(
             (0.005..0.60).contains(&prime),
             "seed {seed}: prime farmland is {:.1}% of land",
@@ -576,7 +610,10 @@ fn rivers_flow_downhill() {
                     }
                 }
             }
-            assert!(has_outlet, "seed 20260828: river cell ({x},{y}) is a local peak");
+            assert!(
+                has_outlet,
+                "seed 20260828: river cell ({x},{y}) is a local peak"
+            );
         }
     }
 }
@@ -660,8 +697,16 @@ fn the_water_table_is_a_subdued_replica_of_the_ground() {
         let mean = |v: &[usize]| {
             v.iter().map(|&i| w.depth_to_water_m(i)).sum::<f64>() / v.len().max(1) as f64
         };
-        let wet: Vec<usize> = land.iter().copied().filter(|&i| w.river[i] || w.lake[i]).collect();
-        let dry: Vec<usize> = land.iter().copied().filter(|&i| !w.river[i] && !w.lake[i]).collect();
+        let wet: Vec<usize> = land
+            .iter()
+            .copied()
+            .filter(|&i| w.river[i] || w.lake[i])
+            .collect();
+        let dry: Vec<usize> = land
+            .iter()
+            .copied()
+            .filter(|&i| !w.river[i] && !w.lake[i])
+            .collect();
         if !wet.is_empty() {
             assert!(
                 mean(&wet) < mean(&dry),
@@ -700,8 +745,14 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
     // both unproductive for opposite reasons.
     use scale_sim::biota::miami_npp;
     // Real reference points, checked against the model directly.
-    assert!(miami_npp(25.0, 2500.0) > 1800.0, "the wet tropics are not productive");
-    assert!(miami_npp(25.0, 50.0) < 150.0, "a hot desert grows something");
+    assert!(
+        miami_npp(25.0, 2500.0) > 1800.0,
+        "the wet tropics are not productive"
+    );
+    assert!(
+        miami_npp(25.0, 50.0) < 150.0,
+        "a hot desert grows something"
+    );
     assert!(miami_npp(-10.0, 400.0) < 250.0, "tundra is not productive");
 
     for seed in [1u64, 20260828] {
@@ -709,9 +760,8 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
         let land: Vec<usize> = (0..w.biomes.len())
             .filter(|&i| w.elevation.data[i] >= w.sea_level)
             .collect();
-        let mean = |f: &dyn Fn(usize) -> f64| {
-            land.iter().map(|&i| f(i)).sum::<f64>() / land.len() as f64
-        };
+        let mean =
+            |f: &dyn Fn(usize) -> f64| land.iter().map(|&i| f(i)).sum::<f64>() / land.len() as f64;
 
         // **Two real anchors**, which is what the climate fields are
         // calibrated on: Earth's land mean annual temperature is ~8.5 °C
@@ -721,8 +771,14 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
         // planet in a drought at 230 mm and dragged productivity with it.
         let t = mean(&|i| w.temperature_c(i) as f64);
         let r = mean(&|i| w.rainfall_mm(i) as f64);
-        assert!((-6.0..20.0).contains(&t), "seed {seed}: land mean {t:.1} °C");
-        assert!((350.0..1400.0).contains(&r), "seed {seed}: land mean {r:.0} mm of rain");
+        assert!(
+            (-6.0..20.0).contains(&t),
+            "seed {seed}: land mean {t:.1} °C"
+        );
+        assert!(
+            (350.0..1400.0).contains(&r),
+            "seed {seed}: land mean {r:.0} mm of rain"
+        );
 
         // The global land mean of net primary productivity is about
         // 700 g/m²/yr.
@@ -746,10 +802,16 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
         use scale_sim::world::Biome::*;
         let npp_of = |b| by_biome(b, &|i| w.biota.npp.data[i] as f64);
         let game_of = |b| by_biome(b, &|i| w.biota.game.data[i] as f64);
-        if let (Some(rf_npp), Some(gr_npp), Some(rf_game), Some(gr_game)) =
-            (npp_of(Rainforest), npp_of(Grassland), game_of(Rainforest), game_of(Grassland))
-        {
-            assert!(rf_npp > gr_npp, "seed {seed}: grassland out-grows rainforest");
+        if let (Some(rf_npp), Some(gr_npp), Some(rf_game), Some(gr_game)) = (
+            npp_of(Rainforest),
+            npp_of(Grassland),
+            game_of(Rainforest),
+            game_of(Grassland),
+        ) {
+            assert!(
+                rf_npp > gr_npp,
+                "seed {seed}: grassland out-grows rainforest"
+            );
             assert!(
                 gr_game > rf_game,
                 "seed {seed}: rainforest carries more game ({rf_game:.0} kg/km²) than \
@@ -772,7 +834,10 @@ fn productivity_comes_from_the_climate_and_feeds_what_lives_on_it() {
         // everywhere and not merely where it is cold.
         let g = mean(&|i| w.biota.game.data[i] as f64);
         let p = mean(&|i| w.biota.predators.data[i] as f64);
-        assert!(p < g * 0.05 && p > 0.0, "seed {seed}: predators at {p:.0} against {g:.0} of prey");
+        assert!(
+            p < g * 0.05 && p > 0.0,
+            "seed {seed}: predators at {p:.0} against {g:.0} of prey"
+        );
     }
 }
 
@@ -808,7 +873,10 @@ fn plant_biomass_shifts_and_populations_do_not() {
     // summer and the end of winter; equatorial grassland barely moves.
     let cold = band(-10.0, 0.0);
     let hot = band(20.0, 40.0);
-    assert!(cold.len() > 100 && hot.len() > 100, "not enough of the world to compare");
+    assert!(
+        cold.len() > 100 && hot.len() > 100,
+        "not enough of the world to compare"
+    );
     let cold_swing = mean(&cold, &summer) / mean(&cold, &winter).max(1.0);
     let hot_swing = mean(&hot, &summer) / mean(&hot, &winter).max(1.0);
     assert!(
@@ -884,7 +952,11 @@ fn a_yield_comes_from_water_and_not_from_a_score() {
     // climate in it — so a dry country and a wet one on the same soil fed
     // the same number of people.
     use scale_sim::biota::crop_yield_t_per_ha;
-    assert_eq!(crop_yield_t_per_ha(80.0), 0.0, "a crop grows on evaporated water");
+    assert_eq!(
+        crop_yield_t_per_ha(80.0),
+        0.0,
+        "a crop grows on evaporated water"
+    );
     let y300 = crop_yield_t_per_ha(300.0);
     assert!(
         (3.5..6.5).contains(&y300),
@@ -940,9 +1012,21 @@ fn people_grow_what_grows() {
     use scale_sim::biota::{best_crop, Crop};
 
     // Each crop wins where it should.
-    assert_eq!(best_crop(8.0, 300.0, 1.0).0, Crop::Barley, "cold and dry is barley country");
-    assert_eq!(best_crop(30.0, 200.0, 1.0).0, Crop::Sorghum, "hot and dry is sorghum country");
-    assert_eq!(best_crop(28.0, 900.0, 1.0).0, Crop::Maize, "hot and watered is maize country");
+    assert_eq!(
+        best_crop(8.0, 300.0, 1.0).0,
+        Crop::Barley,
+        "cold and dry is barley country"
+    );
+    assert_eq!(
+        best_crop(30.0, 200.0, 1.0).0,
+        Crop::Sorghum,
+        "hot and dry is sorghum country"
+    );
+    assert_eq!(
+        best_crop(28.0, 900.0, 1.0).0,
+        Crop::Maize,
+        "hot and watered is maize country"
+    );
 
     // **The one that matters.** Standing water is not a hazard to rice,
     // it is the method — so the ground wheat cannot use at all is the
@@ -990,7 +1074,12 @@ fn people_grow_what_grows() {
             .filter(|&&i| w.biota.crop[i] == c && w.biota.crop_yield.data[i] > 0.3)
             .count() as f64
             / land.len() as f64;
-        assert!(share < 0.45, "{} covers {:.0}% of the land", c.name(), share * 100.0);
+        assert!(
+            share < 0.45,
+            "{} covers {:.0}% of the land",
+            c.name(),
+            share * 100.0
+        );
     }
 }
 
@@ -1010,17 +1099,26 @@ fn a_herder_keeps_what_lives_there() {
     let scrub = 120_000.0;
 
     // Good grass in a temperate climate is cattle country.
-    assert_eq!(best_herd(15.0, 0.9, good_pasture, false, false).0, Herd::Cattle);
+    assert_eq!(
+        best_herd(15.0, 0.9, good_pasture, false, false).0,
+        Herd::Cattle
+    );
     // Dry scrub is not: cattle cannot live on it and a goat can.
     assert_eq!(best_herd(24.0, 0.15, scrub, false, false).0, Herd::Goat);
     // True desert is camel country and nothing else's.
     assert_eq!(best_herd(30.0, 0.04, 40_000.0, false, false).0, Herd::Camel);
     // Hard cold: reindeer on lichen, and yak only where it is also high.
-    assert_eq!(best_herd(-8.0, 0.4, 80_000.0, false, false).0, Herd::Reindeer);
+    assert_eq!(
+        best_herd(-8.0, 0.4, 80_000.0, false, false).0,
+        Herd::Reindeer
+    );
     assert_eq!(best_herd(-8.0, 0.4, 80_000.0, false, true).0, Herd::Yak);
     // **Standing water is the buffalo's whole niche.** Cattle on
     // permanently wet ground get foot rot and cannot work a paddy.
-    assert_eq!(best_herd(27.0, 1.5, good_pasture, true, false).0, Herd::Buffalo);
+    assert_eq!(
+        best_herd(27.0, 1.5, good_pasture, true, false).0,
+        Herd::Buffalo
+    );
 
     // Nothing at all where nothing can live.
     assert_eq!(best_herd(-30.0, 0.5, 10_000.0, false, false).1, 0.0);

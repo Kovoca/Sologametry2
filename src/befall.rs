@@ -130,12 +130,19 @@ pub fn befell(c: &Circumstance, day: u64, event: &mut u64) -> Vec<Change> {
         // a life-satisfaction result and lands there, not on the traits.
         out.push(Change {
             day,
-            what: What::Wellbeing { by: ShapesWellbeing::LostWork, strength: 1.0, toward: -1.0 },
+            what: What::Wellbeing {
+                by: ShapesWellbeing::LostWork,
+                strength: 1.0,
+                toward: -1.0,
+            },
         });
     }
 
     if c.found_work {
-        out.push(Change { day, what: What::StressorEnds });
+        out.push(Change {
+            day,
+            what: What::StressorEnds,
+        });
     }
 
     if c.bereaved {

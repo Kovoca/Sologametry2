@@ -5,14 +5,11 @@
 //! they are carrying. Nothing is looked up in the world's own record.
 
 use scale_sim::converse::{
-    ask, courtesy_exchange, has_anything_to_say, what_was_seen, Approach, Asked, Courtesy,
-    Occasion,
+    ask, courtesy_exchange, has_anything_to_say, what_was_seen, Approach, Asked, Courtesy, Occasion,
 };
 use scale_sim::coping::FunctionalState;
 use scale_sim::id::{Arena, Id};
-use scale_sim::memory::{
-    EventKind, Memory, PerceivedWho, Place, Source, WorldEvent,
-};
+use scale_sim::memory::{EventKind, Memory, PerceivedWho, Place, Source, WorldEvent};
 use scale_sim::mind::{Facet, Happening, Mind, Value};
 use scale_sim::person::{Person, Trade};
 use scale_sim::relations::{Evidence, Relationship, TrustIn};
@@ -110,19 +107,34 @@ fn how_somebody_came_to_know_shows_in_what_they_say() {
     let (heard, heard_mem, of2) = a_witness(3, Source::Rumour { hops: 2 }, 0.5);
 
     let first = ask(
-        &saw, &saw_mem, None, FunctionalState::Regulated, 0.0,
+        &saw,
+        &saw_mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
         &Approach::a_friend(),
-        Asked::About(of), who(9), who(1),
+        Asked::About(of),
+        who(9),
+        who(1),
     );
     let second = ask(
-        &heard, &heard_mem, None, FunctionalState::Regulated, 0.0,
+        &heard,
+        &heard_mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
         &Approach::a_friend(),
-        Asked::About(of2), who(9), who(1),
+        Asked::About(of2),
+        who(9),
+        who(1),
     );
 
     assert_eq!(first.because.how, Some(Source::Witnessed));
     assert_eq!(second.because.how, Some(Source::Rumour { hops: 2 }));
-    assert_ne!(first.said, second.said, "an eyewitness and a rumour said the same thing");
+    assert_ne!(
+        first.said, second.said,
+        "an eyewitness and a rumour said the same thing"
+    );
     assert!(first.said.contains("saw"), "{}", first.said);
 }
 
@@ -136,9 +148,15 @@ fn they_can_be_mistaken_and_go_on_being_mistaken() {
     mem.reattribute(trace, PerceivedWho::Known(who(7)), 0.8);
 
     let a = ask(
-        &mind, &mem, None, FunctionalState::Regulated, 0.0,
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
         &Approach::a_friend(),
-        Asked::About(of), who(9), who(1),
+        Asked::About(of),
+        who(9),
+        who(1),
     );
     assert_eq!(a.because.blames, Some(PerceivedWho::Known(who(7))));
     // He still says he saw it, because he did.
@@ -173,14 +191,26 @@ fn distrust_withholds_what_it_does_not_erase() {
     );
 
     let open = ask(
-        &mind, &mem, None, FunctionalState::Regulated, 0.0,
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
         &Approach::a_friend(),
-        Asked::About(of), who(9), who(1),
+        Asked::About(of),
+        who(9),
+        who(1),
     );
     let closed = ask(
-        &mind, &mem, Some(&wary), FunctionalState::Regulated, 0.0,
+        &mind,
+        &mem,
+        Some(&wary),
+        FunctionalState::Regulated,
+        0.0,
         &Approach::a_friend(),
-        Asked::About(of), who(9), who(1),
+        Asked::About(of),
+        who(9),
+        who(1),
     );
 
     assert_ne!(open.said, closed.said);
@@ -196,18 +226,36 @@ fn somebody_you_have_wronged_is_colder_to_you() {
     let mind = a_mind(13);
     let mem = Memory::new();
     let mut sore = Relationship::strangers(who(1), who(9));
-    sore.saw(&Evidence { wrong: 0.8, ..Default::default() }, 1);
+    sore.saw(
+        &Evidence {
+            wrong: 0.8,
+            ..Default::default()
+        },
+        1,
+    );
     assert!(sore.resentment() > 0.3, "the wrong left no grievance");
 
     let stranger = ask(
-        &mind, &mem, None, FunctionalState::Regulated, 0.5,
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.5,
         &Approach::a_friend(),
-        Asked::Greeting, who(9), who(1),
+        Asked::Greeting,
+        who(9),
+        who(1),
     );
     let wronged = ask(
-        &mind, &mem, Some(&sore), FunctionalState::Regulated, 0.5,
+        &mind,
+        &mem,
+        Some(&sore),
+        FunctionalState::Regulated,
+        0.5,
         &Approach::a_friend(),
-        Asked::Greeting, who(9), who(1),
+        Asked::Greeting,
+        who(9),
+        who(1),
     );
     assert!(wronged.act.delivery.warmth < stranger.act.delivery.warmth);
     assert_ne!(wronged.said, stranger.said);
@@ -224,7 +272,17 @@ fn what_somebody_is_carrying_shows_when_you_talk_to_them() {
     let mind = a_mind(17);
     let mem = Memory::new();
     let says = |state| {
-        ask(&mind, &mem, None, state, 0.0, &Approach::a_friend(), Asked::HowTheyAre, who(9), who(1))
+        ask(
+            &mind,
+            &mem,
+            None,
+            state,
+            0.0,
+            &Approach::a_friend(),
+            Asked::HowTheyAre,
+            who(9),
+            who(1),
+        )
     };
     let well = says(FunctionalState::Regulated);
     let worn = says(FunctionalState::Depleted);
@@ -243,8 +301,28 @@ fn what_somebody_is_carrying_shows_when_you_talk_to_them() {
 fn loneliness_changes_what_a_greeting_is_worth() {
     let mind = a_mind(19);
     let mem = Memory::new();
-    let alone = ask(&mind, &mem, None, FunctionalState::Regulated, 0.9, &Approach::a_friend(), Asked::Greeting, who(9), who(1));
-    let content = ask(&mind, &mem, None, FunctionalState::Regulated, 0.0, &Approach::a_friend(), Asked::Greeting, who(9), who(1));
+    let alone = ask(
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.9,
+        &Approach::a_friend(),
+        Asked::Greeting,
+        who(9),
+        who(1),
+    );
+    let content = ask(
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
+        &Approach::a_friend(),
+        Asked::Greeting,
+        who(9),
+        who(1),
+    );
     assert_ne!(alone.said, content.said);
 
     assert!(
@@ -264,8 +342,28 @@ fn reticence_is_not_distrust() {
     open.person.set_baseline(Facet::Privacy, -2.0);
     let mem = Memory::new();
 
-    let a = ask(&private, &mem, None, FunctionalState::Regulated, 0.0, &Approach::default(), Asked::Greeting, who(9), who(1));
-    let b = ask(&open, &mem, None, FunctionalState::Regulated, 0.0, &Approach::default(), Asked::Greeting, who(9), who(1));
+    let a = ask(
+        &private,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
+        &Approach::default(),
+        Asked::Greeting,
+        who(9),
+        who(1),
+    );
+    let b = ask(
+        &open,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
+        &Approach::default(),
+        Asked::Greeting,
+        who(9),
+        who(1),
+    );
     assert!(a.act.delivery.warmth < b.act.delivery.warmth);
 }
 
@@ -279,7 +377,17 @@ fn reticence_is_not_distrust() {
 #[test]
 fn there_is_no_special_line_to_the_player() {
     let (mind, mem, of) = a_witness(29, Source::Witnessed, 0.9);
-    let a = ask(&mind, &mem, None, FunctionalState::Regulated, 0.0, &Approach::a_friend(), Asked::About(of), who(9), who(1));
+    let a = ask(
+        &mind,
+        &mem,
+        None,
+        FunctionalState::Regulated,
+        0.0,
+        &Approach::a_friend(),
+        Asked::About(of),
+        who(9),
+        who(1),
+    );
 
     // A reader can pick it up, and reads it with their own head.
     let reader = a_mind(31);
@@ -291,7 +399,10 @@ fn there_is_no_special_line_to_the_player() {
     };
     let read = reader.read_act(&a.act.content, &a.act.delivery, &cues, Some((0.0, 0.2)));
     assert!(read.understood.is_some());
-    assert!(!read.inferred.is_empty(), "the answer carried nothing to be read");
+    assert!(
+        !read.inferred.is_empty(),
+        "the answer carried nothing to be read"
+    );
 }
 
 /// The trace search is a search of *their* memory, not the world's.
@@ -322,7 +433,17 @@ fn approaching_a_stranger_in_the_street_is_awkward() {
     let mind = a_mind(41);
     let mem = Memory::new();
     let say = |a: &Approach| {
-        ask(&mind, &mem, None, FunctionalState::Regulated, 0.0, a, Asked::Greeting, who(9), who(1))
+        ask(
+            &mind,
+            &mem,
+            None,
+            FunctionalState::Regulated,
+            0.0,
+            a,
+            Asked::Greeting,
+            who(9),
+            who(1),
+        )
     };
     assert!(say(&cold).act.delivery.warmth < say(&known).act.delivery.warmth);
     assert_ne!(say(&cold).said, say(&known).said);
@@ -340,10 +461,20 @@ fn a_shopkeeper_is_civil_because_of_where_he_is_standing() {
     let mind = a_mind(43);
     let mem = Memory::new();
     let at = |a: &Approach| {
-        ask(&mind, &mem, None, FunctionalState::Regulated, 0.0, a, Asked::Greeting, who(9), who(1))
-            .act
-            .delivery
-            .warmth
+        ask(
+            &mind,
+            &mem,
+            None,
+            FunctionalState::Regulated,
+            0.0,
+            a,
+            Asked::Greeting,
+            who(9),
+            who(1),
+        )
+        .act
+        .delivery
+        .warmth
     };
     assert!(
         at(&counter) > at(&street),
@@ -355,12 +486,22 @@ fn a_shopkeeper_is_civil_because_of_where_he_is_standing() {
 /// is a smaller term than being a stranger.
 #[test]
 fn being_busy_is_a_real_cost_and_not_the_main_one() {
-    let idle = Approach { they_are_busy: 0.0, ..Default::default() };
-    let busy = Approach { they_are_busy: 1.0, ..Default::default() };
+    let idle = Approach {
+        they_are_busy: 0.0,
+        ..Default::default()
+    };
+    let busy = Approach {
+        they_are_busy: 1.0,
+        ..Default::default()
+    };
     assert!(busy.awkwardness() > idle.awkwardness());
 
     let stranger_idle = idle.awkwardness();
-    let friend_busy = Approach { they_are_busy: 1.0, ..Approach::a_friend() }.awkwardness();
+    let friend_busy = Approach {
+        they_are_busy: 1.0,
+        ..Approach::a_friend()
+    }
+    .awkwardness();
     assert!(
         stranger_idle > friend_busy,
         "being a stranger mattered less than being interrupted"
@@ -380,10 +521,20 @@ fn reticence_and_intrusion_compound() {
     let cold = Approach::default();
     let warm = Approach::a_friend();
     let w = |m: &Mind, a: &Approach| {
-        ask(m, &mem, None, FunctionalState::Regulated, 0.0, a, Asked::Greeting, who(9), who(1))
-            .act
-            .delivery
-            .warmth
+        ask(
+            m,
+            &mem,
+            None,
+            FunctionalState::Regulated,
+            0.0,
+            a,
+            Asked::Greeting,
+            who(9),
+            who(1),
+        )
+        .act
+        .delivery
+        .warmth
     };
     let private_cost = w(&private, &warm) - w(&private, &cold);
     let open_cost = w(&open, &warm) - w(&open, &cold);
@@ -397,7 +548,10 @@ fn reticence_and_intrusion_compound() {
 /// most of why people do not do it.
 #[test]
 fn being_stopped_by_a_stranger_costs_the_one_who_was_stopped() {
-    let busy_stranger = Approach { they_are_busy: 0.9, ..Default::default() };
+    let busy_stranger = Approach {
+        they_are_busy: 0.9,
+        ..Default::default()
+    };
     assert!(scale_sim::converse::cost_to_them(&busy_stranger, 10.0) > 0.0);
     assert!(
         scale_sim::converse::cost_to_them(&busy_stranger, 10.0)
@@ -432,10 +586,20 @@ fn an_occasioned_exchange_is_not_awkward() {
     let mind = a_mind(53);
     let mem = Memory::new();
     let w = |a: &Approach| {
-        ask(&mind, &mem, None, FunctionalState::Regulated, 0.0, a, Asked::Greeting, who(9), who(1))
-            .act
-            .delivery
-            .warmth
+        ask(
+            &mind,
+            &mem,
+            None,
+            FunctionalState::Regulated,
+            0.0,
+            a,
+            Asked::Greeting,
+            who(9),
+            who(1),
+        )
+        .act
+        .delivery
+        .warmth
     };
     assert!(w(&door) > w(&stopped));
 }

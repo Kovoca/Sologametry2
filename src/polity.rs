@@ -134,21 +134,14 @@ fn habitability(world: &World) -> Vec<f32> {
         if matches!(world.biomes[i], Biome::Snowcap | Biome::Mountain) {
             continue;
         }
-        let minerals = (g.ore.data[i].max(g.coal.data[i]).max(g.petroleum.data[i]))
-            .min(1.0);
+        let minerals = (g.ore.data[i].max(g.coal.data[i]).max(g.petroleum.data[i])).min(1.0);
         let temp = world.temperature.data[i];
         // Habitable band: hard freeze and blazing desert both suppress.
-        let climate = if temp < 0.18 {
-            temp / 0.18
-        } else {
-            1.0
-        };
+        let climate = if temp < 0.18 { temp / 0.18 } else { 1.0 };
 
-        score[i] = (0.44 * g.fertility.data[i]
-            + 0.28 * water[i]
-            + 0.16 * coast[i]
-            + 0.12 * minerals)
-            * climate;
+        score[i] =
+            (0.44 * g.fertility.data[i] + 0.28 * water[i] + 0.16 * coast[i] + 0.12 * minerals)
+                * climate;
     }
     score
 }
@@ -285,7 +278,10 @@ fn choose_cores(world: &World, score: &[f32], target: usize) -> Vec<usize> {
     // equal-sized states, which is exactly the uniformity this is meant to
     // break. Summing 1/multiplier² over the land gives the map's capacity at
     // unit spacing; solving for `target` yields the scale.
-    let inv_sq: f32 = candidates.iter().map(|&i| 1.0 / multiplier(i).powi(2)).sum();
+    let inv_sq: f32 = candidates
+        .iter()
+        .map(|&i| 1.0 / multiplier(i).powi(2))
+        .sum();
     // 0.72 is the packing efficiency of a Poisson-disc sample; without it
     // the greedy pass falls short of the requested count.
     let base = ((inv_sq / target as f32).sqrt() * 0.72).max(1.5);
@@ -500,9 +496,5 @@ fn hsv_to_rgb(hue: f32, s: f32, v: f32) -> [u8; 3] {
         4 => (t, p, v),
         _ => (v, p, q),
     };
-    [
-        (r * 255.0) as u8,
-        (g * 255.0) as u8,
-        (b * 255.0) as u8,
-    ]
+    [(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8]
 }

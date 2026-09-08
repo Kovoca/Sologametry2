@@ -234,7 +234,11 @@ impl GameState {
     /// Note something worth another system knowing.
     pub fn note(&mut self, phase: Phase, what: impl Into<String>) {
         let day = self.day;
-        self.today.push(Happening { day, phase, what: what.into() });
+        self.today.push(Happening {
+            day,
+            phase,
+            what: what.into(),
+        });
     }
 
     /// **What can be saved of it today**, which is not yet all of it.

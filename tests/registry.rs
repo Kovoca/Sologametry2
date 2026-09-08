@@ -18,7 +18,10 @@ struct Cargo {
 }
 
 fn cargo(what: &str, tonnes: f64) -> Cargo {
-    Cargo { what: what.to_string(), tonnes }
+    Cargo {
+        what: what.to_string(),
+        tonnes,
+    }
 }
 
 impl Store for Cargo {
@@ -27,7 +30,10 @@ impl Store for Cargo {
         w.f64(self.tonnes);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        Ok(Cargo { what: r.str()?, tonnes: r.finite_f64()? })
+        Ok(Cargo {
+            what: r.str()?,
+            tonnes: r.finite_f64()?,
+        })
     }
 }
 
@@ -96,7 +102,10 @@ fn a_key_means_the_same_thing_after_a_reload() {
     // A key survives on its own too, and is still the same key.
     assert_eq!(through_bytes(&one), one);
     assert_eq!(through_bytes(&DefKey::<Cargo>::from_raw(42)).raw(), 42);
-    assert!(matches!(back.look(two), Lookup::Gone(_)), "the dead came back alive");
+    assert!(
+        matches!(back.look(two), Lookup::Gone(_)),
+        "the dead came back alive"
+    );
 
     // **And the counter came with it.** A world reloaded after some deaths
     // must not start handing out keys the tombstones already claim.
@@ -248,7 +257,10 @@ fn walking_the_registry_is_the_same_walk_every_time() {
     let (mut a, mut b) = (Writer::new(), Writer::new());
     r.store(&mut a);
     back.store(&mut b);
-    assert_eq!(a.bytes, b.bytes, "the same registry wrote two different files");
+    assert_eq!(
+        a.bytes, b.bytes,
+        "the same registry wrote two different files"
+    );
 }
 
 /// **Rule 7: one entity keeps one key however closely anybody is
@@ -265,7 +277,8 @@ fn looking_closer_does_not_make_it_a_different_thing() {
 
     // Promote: the same entity, now carried in detail.
     let detailed = cargo("grain, 40 t, in sacks", 40.0);
-    *r.get_mut(coarse).expect("it stopped existing on the way up") = detailed.clone();
+    *r.get_mut(coarse)
+        .expect("it stopped existing on the way up") = detailed.clone();
     assert_eq!(r.get(coarse), Some(&detailed));
     assert_eq!(r.len(), 1, "promoting it created a second entity");
     assert_eq!(r.ever(), 1, "promoting it consumed a second name");
@@ -289,7 +302,13 @@ fn an_unknown_key_is_not_quietly_something_else() {
 
     // A tombstone can be built by a loader and is distinguishable.
     let mut gone = BTreeMap::new();
-    gone.insert(12_345u64, Tombstone { day: 1, how: "before this world".into() });
+    gone.insert(
+        12_345u64,
+        Tombstone {
+            day: 1,
+            how: "before this world".into(),
+        },
+    );
     let r: Registry<Cargo> = Registry::restore(1, BTreeMap::new(), gone);
     assert!(matches!(r.look(made_up), Lookup::Gone(_)));
 }
@@ -310,7 +329,10 @@ fn a_name_used_twice_is_a_broken_file() {
     cargo("coal", 2.0).store(&mut w);
     w.len(0);
     let mut r = Reader::new(&w.bytes);
-    assert!(matches!(Registry::<Cargo>::load(&mut r), Err(SaveError::Conflict(3))));
+    assert!(matches!(
+        Registry::<Cargo>::load(&mut r),
+        Err(SaveError::Conflict(3))
+    ));
 
     // And alive-and-buried at once is the same contradiction.
     let mut w = Writer::new();
@@ -320,9 +342,16 @@ fn a_name_used_twice_is_a_broken_file() {
     cargo("grain", 1.0).store(&mut w);
     w.len(1);
     w.u64(4);
-    Tombstone { day: 1, how: "sank".into() }.store(&mut w);
+    Tombstone {
+        day: 1,
+        how: "sank".into(),
+    }
+    .store(&mut w);
     let mut r = Reader::new(&w.bytes);
-    assert!(matches!(Registry::<Cargo>::load(&mut r), Err(SaveError::Conflict(4))));
+    assert!(matches!(
+        Registry::<Cargo>::load(&mut r),
+        Err(SaveError::Conflict(4))
+    ));
 }
 
 /// **The counter is written down, not worked out.**

@@ -12,10 +12,18 @@ fn a_town_is_the_same_town_every_time() {
     // has to be the place you left, or nothing above it can be trusted.
     let a = Plan::lay_out(20260828, 4242, 250_000.0, 48);
     let b = Plan::lay_out(20260828, 4242, 250_000.0, 48);
-    assert_eq!(a.render(), b.render(), "the same town generated twice differed");
+    assert_eq!(
+        a.render(),
+        b.render(),
+        "the same town generated twice differed"
+    );
 
     let c = Plan::lay_out(20260828, 4243, 250_000.0, 48);
-    assert_ne!(a.render(), c.render(), "two different towns came out identical");
+    assert_ne!(
+        a.render(),
+        c.render(),
+        "two different towns came out identical"
+    );
 }
 
 #[test]
@@ -108,7 +116,10 @@ fn shops_face_the_street_and_crowd_the_middle() {
             ]
             .iter()
             .any(|&(nx, ny)| nx < size && ny < size && plan.at(nx, ny) == Lot::Street);
-            assert!(touches, "a store fronting at {x},{y} with no street to open onto");
+            assert!(
+                touches,
+                "a store fronting at {x},{y} with no street to open onto"
+            );
         }
     }
 }
@@ -196,7 +207,10 @@ fn a_lorry_is_ordinary_traffic_and_a_tank_is_not() {
         Lane.clearance_for(12.0).will_not_fit,
         "twelve metres down a five-and-a-half metre lane"
     );
-    assert!(!Lane.clearance_for(4.5).will_not_fit, "4.5 m fits on 5.5 m of surface");
+    assert!(
+        !Lane.clearance_for(4.5).will_not_fit,
+        "4.5 m fits on 5.5 m of surface"
+    );
 }
 
 #[test]
@@ -280,8 +294,12 @@ fn a_village_is_a_street_and_a_city_is_a_grid() {
     // Chicago's about 100 by 200: a block wants a long side of frontage
     // and a short walk across. Square blocks are the giveaway of a grid
     // nobody measured.
-    let cols = (0..city.width).filter(|&x| city.col_class(x).is_some()).count();
-    let rows = (0..city.height).filter(|&y| city.row_class(y).is_some()).count();
+    let cols = (0..city.width)
+        .filter(|&x| city.col_class(x).is_some())
+        .count();
+    let rows = (0..city.height)
+        .filter(|&y| city.row_class(y).is_some())
+        .count();
     assert!(
         cols as f64 > rows as f64 * 1.8 || rows as f64 > cols as f64 * 1.8,
         "{cols} streets one way and {rows} the other is a square grid"

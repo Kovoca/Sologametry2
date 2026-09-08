@@ -56,7 +56,6 @@ fn main() {
     let set = Settlements::place(&world, &pol, 5000);
     let net = Network::build(&world, &set, 1000);
 
-
     println!(
         "One nation, {DAYS} days, every combination of four changes.\n\
          L landed-from-carriers  M marginal-source pricing  \
@@ -64,8 +63,18 @@ fn main() {
     );
     println!(
         "{:<6} {:>8} {:>8} {:>9} {:>9} {:>9} {:>7} {:>11} {:>5} {:>5} {:>7} {}",
-        "case", "lo cvr", "med cvr", "food px", "food cost", "wage/yr", "hse/inc",
-        "food made", "in?", "room", "hungry", "cons"
+        "case",
+        "lo cvr",
+        "med cvr",
+        "food px",
+        "food cost",
+        "wage/yr",
+        "hse/inc",
+        "food made",
+        "in?",
+        "room",
+        "hungry",
+        "cons"
     );
     println!("{}", "-".repeat(110));
 
@@ -83,8 +92,10 @@ fn main() {
             // leak beats everything.
             let replace = match &worst {
                 None => true,
-                Some(w) => !got.conserves && w.conserves
-                    || got.conserves == w.conserves && got.lowest_cover < w.lowest_cover,
+                Some(w) => {
+                    !got.conserves && w.conserves
+                        || got.conserves == w.conserves && got.lowest_cover < w.lowest_cover
+                }
             };
             if replace {
                 worst = Some(got);
@@ -113,15 +124,24 @@ fn main() {
     // What each switch does on its own, against the baseline.
     let base = &rows[0];
     println!("\nAgainst the baseline (all off), one switch at a time:");
-    for (bit, name) in [(1usize, "L landed"), (2, "M marginal"), (4, "S supplier"), (8, "T trade")] {
+    for (bit, name) in [
+        (1usize, "L landed"),
+        (2, "M marginal"),
+        (4, "S supplier"),
+        (8, "T trade"),
+    ] {
         let r = &rows[bit];
         println!(
             "  {name:<12} cover {:>7.2} -> {:>7.2}   food price {:>8.1} -> {:>8.1}   \
              wage {:>7.0} -> {:>7.0}   hungry days {} -> {}",
-            base.lowest_cover, r.lowest_cover,
-            base.food_price, r.food_price,
-            base.wage_a_year, r.wage_a_year,
-            base.hungry_days, r.hungry_days
+            base.lowest_cover,
+            r.lowest_cover,
+            base.food_price,
+            r.food_price,
+            base.wage_a_year,
+            r.wage_a_year,
+            base.hungry_days,
+            r.hungry_days
         );
     }
 
@@ -191,9 +211,10 @@ fn run(mut e: Economy, x: Experiments) -> Reading {
             .inputs
             .iter()
             .any(|&(ic, q)| e.ledger.stock(s, ic) < q * site.throughput * 0.5);
-        let full = rec.outputs.iter().all(|&(oc, _)| {
-            site.capacity[oc as usize] - e.ledger.stock(s, oc) < 1e-6
-        });
+        let full = rec
+            .outputs
+            .iter()
+            .all(|&(oc, _)| site.capacity[oc as usize] - e.ledger.stock(s, oc) < 1e-6);
         if starved {
             no_inputs += 1;
         } else if full {
@@ -202,10 +223,9 @@ fn run(mut e: Economy, x: Experiments) -> Reading {
     }
 
     let wage = scale_sim::person::day_rate(&e, 0, scale_sim::person::Trade::Labourer) * 260.0;
-    let conserves = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        e.ledger.assert_conserved()
-    }))
-    .is_ok();
+    let conserves =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| e.ledger.assert_conserved()))
+            .is_ok();
 
     Reading {
         label: x.label(),

@@ -332,7 +332,12 @@ pub fn in_the_settlement(
         source: Source::Witnessed,
         could_identify: exposure > 0.4,
         // In the same room: everything.
-        cues: Cues { words: true, prosody: true, expression: true, gesture: true },
+        cues: Cues {
+            words: true,
+            prosody: true,
+            expression: true,
+            gesture: true,
+        },
     })
 }
 
@@ -369,7 +374,10 @@ pub fn told(kind: EventKind, hops: u8, teller: Id<Person>) -> Option<Witnessing>
         could_identify: hops <= 1,
         // **Being told carries the words and nothing else** — which is
         // most of why a remark repeated to you sounds worse than it was.
-        cues: Cues { words: true, ..Default::default() },
+        cues: Cues {
+            words: true,
+            ..Default::default()
+        },
     })
 }
 
@@ -403,7 +411,10 @@ fn walk(
     let (mut x, mut y) = (from.0 - g.origin.0, from.1 - g.origin.1);
     let end = (to.0 - g.origin.0, to.1 - g.origin.1);
     let (dx, dy) = ((end.0 - x).abs(), -(end.1 - y).abs());
-    let (sx, sy) = (if x < end.0 { 1 } else { -1 }, if y < end.1 { 1 } else { -1 });
+    let (sx, sy) = (
+        if x < end.0 { 1 } else { -1 },
+        if y < end.1 { 1 } else { -1 },
+    );
     let mut err = dx + dy;
     loop {
         if (x, y) == end {

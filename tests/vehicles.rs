@@ -78,16 +78,8 @@ fn width_is_read_off_the_tiles_but_not_linearly() {
 #[test]
 fn every_part_has_a_frame_under_it() {
     for v in fleet() {
-        assert!(
-            v.well_formed(),
-            "{} has a part hanging in mid-air",
-            v.name
-        );
-        assert!(
-            v.supported(),
-            "{} does not stand on its own wheels",
-            v.name
-        );
+        assert!(v.well_formed(), "{} has a part hanging in mid-air", v.name);
+        assert!(v.supported(), "{} does not stand on its own wheels", v.name);
         // One object, not several: a vehicle is one connected structure.
         assert_eq!(
             v.sections().len(),
@@ -128,7 +120,10 @@ fn breaking_the_structure_can_break_the_vehicle_in_two() {
     // destroyed.
     assert!(pieces[0].footprint().0 >= pieces[1].footprint().0);
     let total: i32 = pieces.iter().map(|p| p.footprint().0).sum();
-    assert!(total < len, "the pieces cannot add up to more than the whole");
+    assert!(
+        total < len,
+        "the pieces cannot add up to more than the whole"
+    );
 
     // **The half with the engine and the controls is the half that can be
     // driven away.** The other is wreckage on the carriageway.

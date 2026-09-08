@@ -113,7 +113,11 @@ impl Custom {
         // where courtesy is the rule is not rudeness, and the first
         // version of this said it was.
         let did = did.clamp(-1.0, 1.0);
-        let shortfall = if expected > 0.0 { expected - did } else { did - expected };
+        let shortfall = if expected > 0.0 {
+            expected - did
+        } else {
+            did - expected
+        };
         (shortfall.max(0.0) / 2.0 * expected.abs()).clamp(0.0, 1.0)
     }
 
@@ -189,7 +193,8 @@ pub fn did_they_know(theirs: &Custom, n: Norm) -> bool {
 /// - `mood` is today, from `Mind::mood`.
 /// - `capacity` is what they have left to spend.
 pub fn would_keep(holds_it: f64, dutifulness: f64, mood: f64, capacity: f64) -> f64 {
-    let disposition = (holds_it.clamp(-1.0, 1.0) + 0.25 * dutifulness.clamp(-2.0, 2.0)).clamp(-1.0, 1.0);
+    let disposition =
+        (holds_it.clamp(-1.0, 1.0) + 0.25 * dutifulness.clamp(-2.0, 2.0)).clamp(-1.0, 1.0);
     if disposition <= 0.0 {
         // They do not hold it. A good mood does not invent a custom.
         return disposition;
@@ -218,8 +223,8 @@ pub fn would_keep(holds_it: f64, dutifulness: f64, mood: f64, capacity: f64) -> 
 /// A designed model, and labelled as one: the shape is defensible and
 /// the coefficients are not measured.
 pub fn will_bend(regard_for_law: i8, dutifulness: f64, gain: f64, chance_seen: f64) -> f64 {
-    let scruple = (regard_for_law as f64 / 50.0).clamp(-1.0, 1.0)
-        + 0.3 * dutifulness.clamp(-2.0, 2.0) / 2.0;
+    let scruple =
+        (regard_for_law as f64 / 50.0).clamp(-1.0, 1.0) + 0.3 * dutifulness.clamp(-2.0, 2.0) / 2.0;
     // **The gain gates it, and does not merely add to it.** Subtracting
     // scruple gave an unscrupulous man a standing appetite for breaking
     // rules with nothing whatever in it — which is not wickedness, it is
@@ -365,7 +370,8 @@ pub fn norms_of(c: &Conditions) -> Custom {
 
     // **Guest-right is strongest where travel is dangerous and there is
     // no inn** — deserts, mountains, the far edges of anywhere.
-    let hospitality = (0.25 + 0.6 * c.remoteness + 0.35 * c.scarcity - 0.4 * (c.population.max(1.0).log10() / 6.0))
+    let hospitality = (0.25 + 0.6 * c.remoteness + 0.35 * c.scarcity
+        - 0.4 * (c.population.max(1.0).log10() / 6.0))
         .clamp(-1.0, 1.0);
 
     // Punctuality follows the pace of the place and the clock the work
@@ -375,7 +381,8 @@ pub fn norms_of(c: &Conditions) -> Custom {
     // **Age is deferred to where what an old person knows is still worth
     // knowing**, which is farming and craft rather than a mobile
     // industrial town.
-    let elders = (0.7 * c.farming_share + 0.4 * tight - 0.5 * (c.population.max(1.0).log10() / 6.0))
+    let elders = (0.7 * c.farming_share + 0.4 * tight
+        - 0.5 * (c.population.max(1.0).log10() / 6.0))
         .clamp(-1.0, 1.0);
 
     // **Haggling is what happens where the price is not posted.** Fixed

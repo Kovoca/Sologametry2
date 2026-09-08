@@ -87,7 +87,11 @@ fn main() {
          {} spare transformer(s)",
         args.doctrine,
         econ.grid.lines.len(),
-        if econ.grid.survives_n1(peak) { "satisfied" } else { "NOT satisfied" },
+        if econ.grid.survives_n1(peak) {
+            "satisfied"
+        } else {
+            "NOT satisfied"
+        },
         econ.response.crews,
         econ.response.depot_km,
         econ.response.spare_transformers,
@@ -157,8 +161,7 @@ fn main() {
             }
         }
 
-        let interesting =
-            !note.is_empty() || day < 2 || day % 14 == 0 || day + 1 == args.days;
+        let interesting = !note.is_empty() || day < 2 || day % 14 == 0 || day + 1 == args.days;
         if !interesting {
             continue;
         }
@@ -170,8 +173,16 @@ fn main() {
             econ.price(slice::BEXLEY, f),
             econ.markets[slice::ASHFORD].cover[f as usize],
             econ.markets[slice::BEXLEY].cover[f as usize],
-            if econ.arbitrage(0, f) > 0.0 { "yes" } else { "-" },
-            if econ.unserved_power > 0.01 { "SHED" } else { "ok" },
+            if econ.arbitrage(0, f) > 0.0 {
+                "yes"
+            } else {
+                "-"
+            },
+            if econ.unserved_power > 0.01 {
+                "SHED"
+            } else {
+                "ok"
+            },
             note,
         );
     }
@@ -204,7 +215,10 @@ fn summary(econ: &Economy) {
             Fault::Transformer(n) => format!("transformer at {n}"),
         };
         match (inc.reported, inc.resolved) {
-            (None, _) => println!("  {what}: still unreported after {} days", econ.ledger.day - inc.occurred),
+            (None, _) => println!(
+                "  {what}: still unreported after {} days",
+                econ.ledger.day - inc.occurred
+            ),
             (Some(_), None) => println!("  {what}: reported, still out"),
             (Some(_), Some(done)) => println!(
                 "  {what}: out for {} days ({} to notice and reach it, {} to fix)",

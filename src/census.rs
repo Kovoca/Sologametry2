@@ -104,7 +104,10 @@ impl Census {
 
     pub fn share(&self, n: f64, of: Base) -> Share {
         let b = self.base(of);
-        Share { value: if b > 0.0 { n / b } else { 0.0 }, of }
+        Share {
+            value: if b > 0.0 { n / b } else { 0.0 },
+            of,
+        }
     }
 
     /// **`Workforce::hands` is not a denominator.** It is what it says it

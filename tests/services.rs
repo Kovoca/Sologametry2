@@ -26,7 +26,10 @@ fn somebody_has_to_fix_things_and_somewhere_has_to_be_open() {
     // merely to eat in: somebody has to fix things, and somewhere has to
     // be open in the evening.
     let e = a_nation().economy;
-    let s = e.services.as_ref().expect("a nation with no services in it");
+    let s = e
+        .services
+        .as_ref()
+        .expect("a nation with no services in it");
     let g = e.government.as_ref().expect("a nation with no state in it");
 
     let private = s.share_of_workforce(&e);
@@ -48,7 +51,11 @@ fn somebody_has_to_fix_things_and_somewhere_has_to_be_open() {
     // Every sector actually employs somebody.
     for sector in Sector::ALL {
         let n: f64 = (0..e.markets.len()).map(|m| s.posts_in(m, sector)).sum();
-        assert!(n > 0.0, "{} employs nobody in the whole nation", sector.name());
+        assert!(
+            n > 0.0,
+            "{} employs nobody in the whole nation",
+            sector.name()
+        );
     }
 
     // Offices are the largest block and construction is a real one — real
@@ -112,7 +119,10 @@ fn offices_concentrate_and_a_kitchen_does_not() {
         "a village has as much office work per head as a city"
     );
     // A kitchen and a building site do not care.
-    let hosp = (per_head(0, Sector::Hospitality), per_head(1, Sector::Hospitality));
+    let hosp = (
+        per_head(0, Sector::Hospitality),
+        per_head(1, Sector::Hospitality),
+    );
     assert!(
         (hosp.0 - hosp.1).abs() < hosp.1 * 0.05,
         "hospitality concentrates in cities, which it does not"

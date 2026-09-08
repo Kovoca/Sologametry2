@@ -67,12 +67,18 @@ pub struct Rates {
 impl Rates {
     /// An ordinary modern setting.
     pub fn ordinary() -> Self {
-        Rates { policy: 0.0525, on_deposits: 0.021 }
+        Rates {
+            policy: 0.0525,
+            on_deposits: 0.021,
+        }
     }
 
     /// The decade of cheap money.
     pub fn cheap() -> Self {
-        Rates { policy: 0.0025, on_deposits: 0.001 }
+        Rates {
+            policy: 0.0025,
+            on_deposits: 0.001,
+        }
     }
 
     /// **What this borrower pays for this kind of credit.**
@@ -170,7 +176,10 @@ impl Credit {
     /// a mortgage cheap and a credit card dear, and it is nearly the whole
     /// of the difference.
     pub fn secured(self) -> bool {
-        matches!(self, Credit::Mortgage | Credit::CarLoan | Credit::UsedCarLoan | Credit::Pawn)
+        matches!(
+            self,
+            Credit::Mortgage | Credit::CarLoan | Credit::UsedCarLoan | Credit::Pawn
+        )
     }
 
     /// **How much a poor credit record adds**, and it is not a small
@@ -619,7 +628,10 @@ pub fn underwrite(
     // **And can the bank?** Not a reserve multiplier — the capital ratio,
     // which is what actually binds, and the leverage backstop that exists
     // because risk weights can be gamed and were.
-    let after = Bank { loans: bank.loans + principal, ..bank.clone() };
+    let after = Bank {
+        loans: bank.loans + principal,
+        ..bank.clone()
+    };
     if after.capital_ratio() < REQUIRED_CAPITAL_RATIO {
         return Err(Refused::NotEnoughCapital);
     }
@@ -633,7 +645,14 @@ pub fn underwrite(
         return Err(Refused::NotEnoughLiquidity);
     }
 
-    Ok(Offer { kind, principal, rate, monthly, months, deposit_required: deposit })
+    Ok(Offer {
+        kind,
+        principal,
+        rate,
+        monthly,
+        months,
+        deposit_required: deposit,
+    })
 }
 
 // =====================================================================
@@ -799,12 +818,21 @@ impl System {
         let Some(loan) = self.loans.get_mut(&loan_id) else {
             return Payment::default();
         };
-        let due = loan.monthly.min(loan.outstanding + loan.interest_this_month());
+        let due = loan
+            .monthly
+            .min(loan.outstanding + loan.interest_this_month());
         if available + 1e-9 < due {
             loan.missed += 1;
             let missed = loan.missed;
             let defaulted = loan.defaulted();
-            return Payment { due, paid: 0.0, missed: true, defaulted, arrears: missed, ..Default::default() };
+            return Payment {
+                due,
+                paid: 0.0,
+                missed: true,
+                defaulted,
+                arrears: missed,
+                ..Default::default()
+            };
         }
 
         let interest = loan.interest_this_month();
@@ -834,7 +862,14 @@ impl System {
         if cleared {
             self.loans.remove(&loan_id);
         }
-        Payment { due, paid: due, interest, principal, cleared, ..Default::default() }
+        Payment {
+            due,
+            paid: due,
+            interest,
+            principal,
+            cleared,
+            ..Default::default()
+        }
     }
 
     /// **What happens when they stop paying.**
@@ -848,7 +883,11 @@ impl System {
         let Some(loan) = self.loans.remove(&loan_id) else {
             return Foreclosure::default();
         };
-        let recovered = if loan.kind.secured() { security_fetches.max(0.0) } else { 0.0 };
+        let recovered = if loan.kind.secured() {
+            security_fetches.max(0.0)
+        } else {
+            0.0
+        };
         let shortfall = (loan.outstanding - recovered).max(0.0);
         let b = &mut self.banks[loan.bank];
         // What comes back is money the borrower does not owe any more, so

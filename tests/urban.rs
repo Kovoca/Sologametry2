@@ -49,49 +49,49 @@ fn cities(seed: u64, how_many: usize) -> Vec<(String, Plan, f64)> {
 #[test]
 fn city_centre_context_reaches_all_visible_plots() {
     for seed in [4242u64, 20260828, 1] {
-      for (which, plan, pop) in cities(seed, 6) {
-        if pop < 250_000.0 {
-            continue;
-        }
-        let (cx, cy) = (plan.width / 2, plan.height / 2);
+        for (which, plan, pop) in cities(seed, 6) {
+            if pop < 250_000.0 {
+                continue;
+            }
+            let (cx, cy) = (plan.width / 2, plan.height / 2);
 
-        // Everything within four plots of the middle — which is the 160 m
-        // a person can see on foot, and more.
-        let r = 4usize;
-        let mut built = 0;
-        let mut street = 0;
-        let mut open = 0;
-        for y in cy.saturating_sub(r)..(cy + r).min(plan.height) {
-            for x in cx.saturating_sub(r)..(cx + r).min(plan.width) {
-                match plan.at(x, y) {
-                    Lot::Street => street += 1,
-                    Lot::Open => open += 1,
-                    _ => built += 1,
+            // Everything within four plots of the middle — which is the 160 m
+            // a person can see on foot, and more.
+            let r = 4usize;
+            let mut built = 0;
+            let mut street = 0;
+            let mut open = 0;
+            for y in cy.saturating_sub(r)..(cy + r).min(plan.height) {
+                for x in cx.saturating_sub(r)..(cx + r).min(plan.width) {
+                    match plan.at(x, y) {
+                        Lot::Street => street += 1,
+                        Lot::Open => open += 1,
+                        _ => built += 1,
+                    }
                 }
             }
-        }
-        let total = (built + street + open) as f64;
-        assert!(total > 0.0);
+            let total = (built + street + open) as f64;
+            assert!(total > 0.0);
 
-        // **Open ground in a city centre is the exception.** Real central
-        // districts run 60-80% site coverage; a park is deliberate and a
-        // field is not.
-        assert!(
-            open as f64 / total < 0.30,
-            "seed {seed} {which}: {:.0}% of the middle of a town of {pop:.0} \
+            // **Open ground in a city centre is the exception.** Real central
+            // districts run 60-80% site coverage; a park is deliberate and a
+            // field is not.
+            assert!(
+                open as f64 / total < 0.30,
+                "seed {seed} {which}: {:.0}% of the middle of a town of {pop:.0} \
              is open country ({open} plots of {total:.0}), so the centre \
              looks out onto wilderness",
-            open as f64 / total * 100.0
-        );
-        // And there is more building than road, which is what a district
-        // is: blocks with streets between them, not streets with the
-        // occasional block.
-        assert!(
-            built > street,
-            "seed {seed} {which}: {street} street plots against {built} built \
+                open as f64 / total * 100.0
+            );
+            // And there is more building than road, which is what a district
+            // is: blocks with streets between them, not streets with the
+            // occasional block.
+            assert!(
+                built > street,
+                "seed {seed} {which}: {street} street plots against {built} built \
              ones in the middle of a city of {pop:.0}"
-        );
-      }
+            );
+        }
     }
 }
 
@@ -105,51 +105,51 @@ fn city_centre_context_reaches_all_visible_plots() {
 #[test]
 fn every_quadrant_of_a_central_junction_is_developed() {
     for seed in [4242u64, 20260828, 1] {
-      for (which, plan, pop) in cities(seed, 6) {
-        if pop < 250_000.0 {
-            continue;
-        }
-        // The junction `walk --where corner` would find: the one nearest
-        // the middle with streets on both axes.
-        let (cx, cy) = (plan.width as i64 / 2, plan.height as i64 / 2);
-        let mut best: Option<(usize, usize, i64)> = None;
-        for y in 1..plan.height - 1 {
-            for x in 1..plan.width - 1 {
-                let junction = plan.at(x, y) == Lot::Street
-                    && (plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street)
-                    && (plan.at(x - 1, y) == Lot::Street || plan.at(x + 1, y) == Lot::Street);
-                if !junction {
-                    continue;
-                }
-                let d = (x as i64 - cx).abs().max(y as i64 - cy).abs();
-                if best.is_none_or(|(_, _, bd)| d < bd) {
-                    best = Some((x, y, d));
-                }
-            }
-        }
-        let Some((jx, jy, _)) = best else { continue };
-
-        // The four corners of the crossroads. Each is what somebody
-        // standing on the junction is looking at.
-        let mut open_corners = Vec::new();
-        for (dx, dy) in [(-1i64, -1i64), (1, -1), (-1, 1), (1, 1)] {
-            let (x, y) = (jx as i64 + dx, jy as i64 + dy);
-            if x < 0 || y < 0 || x >= plan.width as i64 || y >= plan.height as i64 {
+        for (which, plan, pop) in cities(seed, 6) {
+            if pop < 250_000.0 {
                 continue;
             }
-            if plan.at(x as usize, y as usize) == Lot::Open {
-                open_corners.push((dx, dy));
+            // The junction `walk --where corner` would find: the one nearest
+            // the middle with streets on both axes.
+            let (cx, cy) = (plan.width as i64 / 2, plan.height as i64 / 2);
+            let mut best: Option<(usize, usize, i64)> = None;
+            for y in 1..plan.height - 1 {
+                for x in 1..plan.width - 1 {
+                    let junction = plan.at(x, y) == Lot::Street
+                        && (plan.at(x, y - 1) == Lot::Street || plan.at(x, y + 1) == Lot::Street)
+                        && (plan.at(x - 1, y) == Lot::Street || plan.at(x + 1, y) == Lot::Street);
+                    if !junction {
+                        continue;
+                    }
+                    let d = (x as i64 - cx).abs().max(y as i64 - cy).abs();
+                    if best.is_none_or(|(_, _, bd)| d < bd) {
+                        best = Some((x, y, d));
+                    }
+                }
             }
-        }
-        assert!(
-            open_corners.len() <= 1,
-            "seed {seed} {which}: {} of the four corners of the most central \
+            let Some((jx, jy, _)) = best else { continue };
+
+            // The four corners of the crossroads. Each is what somebody
+            // standing on the junction is looking at.
+            let mut open_corners = Vec::new();
+            for (dx, dy) in [(-1i64, -1i64), (1, -1), (-1, 1), (1, 1)] {
+                let (x, y) = (jx as i64 + dx, jy as i64 + dy);
+                if x < 0 || y < 0 || x >= plan.width as i64 || y >= plan.height as i64 {
+                    continue;
+                }
+                if plan.at(x as usize, y as usize) == Lot::Open {
+                    open_corners.push((dx, dy));
+                }
+            }
+            assert!(
+                open_corners.len() <= 1,
+                "seed {seed} {which}: {} of the four corners of the most central \
              junction in a town of {pop:.0} are open country \
              ({open_corners:?}), so standing there you look at a city on one \
              side and reserve on the other",
-            open_corners.len()
-        );
-      }
+                open_corners.len()
+            );
+        }
     }
 }
 
@@ -229,7 +229,11 @@ fn density_falls_off_with_distance_from_the_middle() {
     let edge = bands[bands.len() - 1].1;
     // A village centre is not solid frontage; half its plots are gardens,
     // yards and the odd park.
-    assert!(core > 0.35, "a town centre only {:.0}% built up", core * 100.0);
+    assert!(
+        core > 0.35,
+        "a town centre only {:.0}% built up",
+        core * 100.0
+    );
     assert!(
         core > edge,
         "the edge of the town ({edge:.2}) is as built up as the middle \
@@ -248,6 +252,9 @@ fn density_falls_off_with_distance_from_the_middle() {
         r < -0.7,
         "density against distance correlates at {r:+.2}, which is not a \
          decay: {:?}",
-        bands.iter().map(|(_, v)| (v * 100.0) as i32).collect::<Vec<_>>()
+        bands
+            .iter()
+            .map(|(_, v)| (v * 100.0) as i32)
+            .collect::<Vec<_>>()
     );
 }

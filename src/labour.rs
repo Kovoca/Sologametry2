@@ -191,10 +191,13 @@ pub fn update(econ: &mut Economy) {
                 / crate::building::Fixture::Till.staff()
                 * crate::building::Fixture::Till.throughput_t();
             let busy = if rated > 0.0 { site.ran / rated } else { 0.0 };
-            let stocked = Commodity::ALL
-                .iter()
-                .any(|&c| site.stock[c as usize] > 0.0);
-            let afford = econ.payroll_met.get(idx).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+            let stocked = Commodity::ALL.iter().any(|&c| site.stock[c as usize] > 0.0);
+            let afford = econ
+                .payroll_met
+                .get(idx)
+                .copied()
+                .unwrap_or(1.0)
+                .clamp(0.0, 1.0);
             let on_today = if stocked { b.staff_today(busy) } else { 0.0 } * afford;
             working[site.market] += on_today;
             per_site[idx] += on_today;
@@ -261,7 +264,12 @@ pub fn update(econ: &mut Economy) {
         // year and keep its whole staff on. Now a sustained shortfall in
         // what it can actually pay shows up as hands, which is what a
         // demand-side recession is and what this model has never had.
-        let afford = econ.payroll_met.get(idx).copied().unwrap_or(1.0).clamp(0.0, 1.0);
+        let afford = econ
+            .payroll_met
+            .get(idx)
+            .copied()
+            .unwrap_or(1.0)
+            .clamp(0.0, 1.0);
         let on_today = with_charge(hands_for(actual, labour)) * afford;
         working[site.market] += on_today;
         per_site[idx] += on_today;
