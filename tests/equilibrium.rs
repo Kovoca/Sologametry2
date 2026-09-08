@@ -241,8 +241,15 @@ fn a_price_gap_wider_than_the_carriage_has_a_reason() {
     let polities = Polities::partition(&world, 24);
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
-    let mut n =
-        Nations::build(&world, &polities, &settlements, &network, 4, 4, Doctrine::Prudent);
+    let mut n = Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        4,
+        4,
+        Doctrine::Prudent,
+    );
     for _ in 0..400 {
         n.economy.step();
     }
@@ -318,8 +325,7 @@ fn a_price_gap_wider_than_the_carriage_has_a_reason() {
                 }
                 // **Not neighbours** — nothing is looking at it. See above.
                 let adjacent = e.routes.iter().any(|r| {
-                    r.usable()
-                        && ((r.a == cheap && r.b == dear) || (r.a == dear && r.b == cheap))
+                    r.usable() && ((r.a == cheap && r.b == dear) || (r.a == dear && r.b == cheap))
                 });
                 if !adjacent {
                     excused += 1;
@@ -791,13 +797,12 @@ fn a_closed_road_is_never_the_road_that_gets_booked() {
     // And the same must be true of what actually gets reserved. A haul is
     // consigned and the shut road must hold no booking whatever.
     let seller = (0..e.ledger.sites.len())
-        .find(|&s| {
-            e.ledger.sites[s].market == 0 && e.ledger.stock(s, Commodity::Grain) > 1.0
-        })
+        .find(|&s| e.ledger.sites[s].market == 0 && e.ledger.stock(s, Commodity::Grain) > 1.0)
         .expect("nobody in town 0 is holding grain");
     let buyer = (0..e.ledger.sites.len())
         .find(|&s| {
-            e.ledger.sites[s].market == 1 && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
+            e.ledger.sites[s].market == 1
+                && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
         })
         .expect("nobody in town 1 has a grain store");
     let km = e.routing.km(0, 1);
@@ -842,7 +847,10 @@ fn a_consignment_reports_what_it_actually_took() {
     let road = e.spare_capacity(0, 1, e.ledger.day, e.ledger.day + 10);
     let held = e.ledger.stock(seller, Commodity::Grain);
     let ask = (road.max(held) + 1.0) * 10.0;
-    assert!(ask.is_finite() && ask > road, "the fixture's road is unbounded");
+    assert!(
+        ask.is_finite() && ask > road,
+        "the fixture's road is unbounded"
+    );
 
     let (id, accepted) = e
         .consign(seller, buyer, seller, Commodity::Grain, ask, km, false)

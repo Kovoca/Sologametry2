@@ -1,0 +1,64 @@
+# **A clean checkout builds, tests, formats and lints — or the badge is
+# red.**
+#
+# Phase 0 item 1. Until this ran, every quality claim in this repository
+# was something the author had seen on his own machine: an external review
+# of the source could read the code and could not confirm a single test
+# result, because there was no workflow and no pinned compiler.
+#
+# `--locked` is deliberate: a build that silently picks newer dependencies
+# is not the build that was tested.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: build, test, fmt, clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Rust project lives in a subdirectory of the repository. Find it
+      # rather than hard-coding a path that a rename would silently break.
+      - name: Locate the crate
+        id: crate
+        run: |
+          dir=$(dirname "$(find . -name Cargo.toml -not -path '*/target/*' | head -1)")
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "Crate at: $dir"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.98.0"
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ steps.crate.outputs.dir }}
+
+      - name: Format
+        working-directory: ${{ steps.crate.outputs.dir }}
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        working-directory: ${{ steps.crate.outputs.dir }}
+        run: cargo clippy --locked --release --all-targets -- -D warnings
+
+      - name: Test
+        working-directory: ${{ steps.crate.outputs.dir }}
+        run: cargo test --locked --release
+
+      # Doctests are where the `compile_fail` proofs live — the ones that
+      # show telepathy and the illegal price arithmetic cannot be written.
+      # They run only from the library, so they need saying out loud.
+      - name: Doctests
+        working-directory: ${{ steps.crate.outputs.dir }}
+        run: cargo test --locked --release --doc

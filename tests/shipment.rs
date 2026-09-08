@@ -454,8 +454,12 @@ fn what_is_on_the_lorry_is_not_still_on_the_shelf() {
     // be refused outright** — not for want of goods but for want of road,
     // since the first booking takes the day's capacity with it, and a
     // consignment that cannot be carried is not a consignment.
-    let first = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false).map(|(id, _)| id);
-    let second = e.consign(from, to, 0, c, have * 0.75, 1_300.0, false).map(|(id, _)| id);
+    let first = e
+        .consign(from, to, 0, c, have * 0.75, 1_300.0, false)
+        .map(|(id, _)| id);
+    let second = e
+        .consign(from, to, 0, c, have * 0.75, 1_300.0, false)
+        .map(|(id, _)| id);
     assert!(first.is_some(), "nothing set off at all");
 
     let sent: f64 = [first, second]

@@ -1,0 +1,12 @@
+# **Pin the compiler, so "824 green" means something to somebody else.**
+#
+# An external review could not reproduce the reported test count because
+# there was no CI and no pinned toolchain: a clean checkout built with
+# whatever rustc happened to be installed, and a result nobody else can
+# obtain is a developer claim rather than evidence.
+#
+# Bump this deliberately, with the suite run against the new compiler in
+# the same commit.
+[toolchain]
+channel = "1.98.0"
+components = ["rustfmt", "clippy"]
