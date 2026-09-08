@@ -2381,6 +2381,90 @@ buy into than one kept up. What a thing costs to make does not depend on
 whether anybody wants it today. A glut still needs surplus stock, though,
 rather than merely an absence of buyers.
 
+### A trader does not empty its own customer's store
+
+`logistics::ship` has had a guard against buying a works' raw material
+since the day it backed a lorry up to a cannery, carried off its tinplate
+and produced a famine two commodities downstream. **`trade` never got
+one**, and the omission was invisible for as long as almost nothing moved:
+the working reserve is subtracted from *each warehouse*, so a country
+whose grain sits in six farms has no farm individually clearing the bar.
+
+The moment a trader could sell the *market's* surplus it stripped every
+works in the country — food production halved and a nation on seventeen
+days of cover went to a quarter of a day. **A rule that binds hauliers
+binds traders**, which is this file's older rule about firms and people
+arriving in a third place.
+
+Two smaller things fell out of the same measurement:
+
+- **Among sellers in one market, whoever has most to sell.** A trader
+  spends its budget on the first warehouse in the vector and stops, so
+  stock strands in whichever shed sorts late while the market next door
+  stays dear.
+- **A works rated at three times its neighbour needs three times the
+  warehouse.** A test fixture copied a mill's stores and then tripled its
+  throughput, so it had a flour room sized for a third of what it made. It
+  sat on three hundred and forty thousand tonnes of grain with nowhere to
+  put the flour, and the gate read that as a pricing result. The first
+  guess was that a trader had taken its grain; it had the grain.
+
+### A price gap wider than the carriage has to have a reason
+
+Phase 0 item 9. **"No arbitrage" unqualified is the wrong bar** — it was
+the first version of the gate and it failed on gaps that were entirely
+correct. A bound only binds when a trade is actually possible, so it
+carries its preconditions:
+
+```text
+P_B <= P_A + freight + tariffs + losses
+  unless the route is closed,
+  or the route is saturated,
+  or A has not the stock to relieve B,
+  or the two are not directly linked.
+```
+
+That last exemption is the pairwise limitation this file has recorded for
+a long time, and **medicine is excluded by name rather than quietly
+dropped**: made in one town, wanted in every town, sold by no shop and
+consumed by no recipe, so there is no chain of adjacent gaps to walk it
+down and the one end-to-end mechanism decides on cover rather than price.
+Seven directly-linked pairs, worst 72% of its price.
+
+Three pairs of two hundred and forty remain open, worst about half of
+flour's price, and the reason is known rather than mysterious. Labelled a
+**loose regression bound**: tightening the exemptions until the gaps
+vanish is fitting the gate to the model, which is how the first three
+versions of it went wrong. What it catches is a return to the state
+before the missing guard was found, when eighteen of forty-eight grain
+pairs stood open.
+
+### Market-wide trade is not shippable on its own, and the reason is
+### which supplier a buyer picks
+
+Measured across four nations and four hundred days, letting a trader sell
+the market's surplus rather than each warehouse's is the best
+configuration on every aggregate: **cover 9.95 to 17.44 and uniform
+across every town** — which is what a working arbitrage looks like —
+**price exactly equal to cost**, wages up 24%, house-to-income 11.40 to
+9.65, no hungry days.
+
+It still cannot let a cheap new mill displace a dear incumbent, and the
+reason is nothing to do with trade: **`distribute` orders suppliers by
+carriage and settles ties by position in a vector**, so two mills in one
+town are ranked by which was created first. Add a mill a fiftieth of the
+cost and it runs on the remainder.
+
+Drawing on the cheapest *delivered* supplier fixes that and breaks
+something else — a country's food stops being even without hauliers,
+because towns begin sourcing from a cheaper distant works instead of
+their own cannery. That may well be right, since real economies
+specialise, but it is a different model and not a tuning. **Both stay
+behind switches with the measurement recorded**, because a permanent flag
+is a permanent second model nobody tests, and shipping the pair on an
+aggregate that looks good would be shipping the thing that starved a
+country the first time.
+
 ### A sentinel read as a rate, for the third time
 
 `throughput: 1e9` on a power station means *whatever the grid can carry*.
