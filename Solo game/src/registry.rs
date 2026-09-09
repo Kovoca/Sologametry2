@@ -85,6 +85,18 @@ pub struct Key<T> {
     of: PhantomData<fn() -> T>,
 }
 
+impl<T> Key<T> {
+    /// **The number, and it is deliberately not arithmetic.**
+    ///
+    /// Exposed so a registry can ask whether it ever issued this name and
+    /// a codec can write it down. It is not an index into anything and
+    /// nothing may do sums on it — that is the whole distinction between a
+    /// name and a position this type exists to keep.
+    pub fn number(self) -> u64 {
+        self.n
+    }
+}
+
 /// **What a *kind* of thing is called.** A separate type on purpose: the
 /// commonest way an identity system goes wrong is a definition handle and
 /// an instance handle being the same integer, so that "a car door" and
@@ -309,6 +321,20 @@ impl<T> Registry<T> {
     /// one.
     pub fn forget_graves_before(&mut self, day: u64) {
         self.gone.retain(|_, t| t.day >= day);
+    }
+
+    /// **Was this name ever issued by this registry?**
+    ///
+    /// The one question a pruned grave cannot answer and the counter can.
+    /// `look` returns `Unknown` both for a name this world has never used
+    /// and for one whose grave has been collected, and those are entirely
+    /// different facts: the first is almost always a bug, the second is
+    /// ordinary history. Anything holding a durable reference — a journal
+    /// entry, a debt, an investigation — needs to tell them apart.
+    ///
+    /// It costs one comparison, because the counter only ever goes up.
+    pub fn ever_issued(&self, key: Key<T>) -> bool {
+        key.number() < self.next
     }
 
     /// **Put back what a save wrote down**, keys and all.

@@ -2665,8 +2665,15 @@ fn deepen(c: &mut Catalogue) {
         0.05,
         &[(ToolSteel, 1.0)],
     ));
+    // **"firearm hammer", because a catalogue with a by-name lookup cannot
+    // have two of anything.** This was plain "hammer" and so is the
+    // carpenter's tool, and `hand_tools` resolves that name to give a
+    // bench its striking capability — it got the right one only because
+    // the tool was added first. Flip the order and a workshop silently
+    // loses the ability to hit things, which is not a failure anybody
+    // would trace back to a gun part.
     let hammer = c.add(def(
-        "hammer",
+        "firearm hammer",
         Family::SparePart,
         Form::Rigid,
         d(0.04, 0.01, 0.04),
@@ -4008,5 +4015,101 @@ impl ItemLot {
             out.push(item);
         }
         out
+    }
+}
+
+/// **What a definition is called in a save, and it is not where it sits in
+/// the catalogue.**
+///
+/// `Catalogue::add` assigns `DefId(self.defs.len())` and the codec writes
+/// that bare number, so **inserting one definition earlier in the
+/// catalogue reinterprets every saved item** — a cordless drill becoming a
+/// brick, with the file intact. Exactly the defect the shipment's
+/// commodity had, in the one place where there are a hundred and fifty-six
+/// of them and the resource work wants dozens more.
+///
+/// The key is **derived from the authored name** rather than hand-written
+/// beside it. A hundred and fifty-six hand-authored keys are a hundred and
+/// fifty-six chances to drift from the thing they name, and the name is
+/// already the authored identity — `Catalogue::named` has resolved by it
+/// since it was written.
+///
+/// The contract that follows is worth stating plainly: **renaming a
+/// definition is a change of identity**, not a cosmetic edit, and wants a
+/// migration the way any other identity change does. That is a real cost
+/// and it is the honest one — the alternative is a second name that can
+/// silently disagree with the first.
+/// **The family is part of the key, and it had to be.**
+///
+/// The first version keyed on the name alone and the gate found two
+/// definitions called "hammer" within a minute: a carpenter's hammer of
+/// 0.6 kg in steel and pine, and the **hammer of a rifle's fire control
+/// group** at 0.07 kg of tool steel. Genuinely different objects that
+/// share an English word, and `Catalogue::named` has quietly been
+/// returning whichever was added first ever since — an eight-fold mass
+/// error and the wrong material, waiting for somebody to look one up by
+/// name.
+///
+/// A family-qualified key is unique, readable, and says what kind of thing
+/// it is: `core:item/tool/hammer` against `core:item/part/hammer`.
+pub fn family_slug(f: Family) -> &'static str {
+    match f {
+        Family::Stock => "stock",
+        Family::Fastening => "fastening",
+        Family::Tool => "tool",
+        Family::Machine => "machine",
+        Family::Furniture => "furniture",
+        Family::Clothing => "clothing",
+        Family::Appliance => "appliance",
+        Family::Ammunition => "ammunition",
+        Family::Firearm => "firearm",
+        Family::SparePart => "part",
+        Family::Foodstuff => "food",
+        Family::Container => "container",
+        Family::Medicine => "medicine",
+    }
+}
+
+pub fn authored_key(family: Family, name: &str) -> String {
+    let mut out = String::with_capacity(name.len() + 24);
+    out.push_str("core:item/");
+    out.push_str(family_slug(family));
+    out.push('/');
+    let mut last_was_break = true;
+    for ch in name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.extend(ch.to_lowercase());
+            last_was_break = false;
+        } else if !last_was_break {
+            out.push('_');
+            last_was_break = true;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    out
+}
+
+impl ItemDefinition {
+    /// This definition's stable namespaced name. See `authored_key`.
+    pub fn key(&self) -> String {
+        authored_key(self.family, self.name)
+    }
+}
+
+impl Catalogue {
+    /// **Resolve an authored key to whatever number this build uses.**
+    ///
+    /// The lookup a save needs: a file says `core:item/cordless_drill` and
+    /// this build says which `DefId` that is today, whoever inserted what
+    /// into the catalogue in between.
+    pub fn by_key(&self, key: &str) -> Option<DefId> {
+        self.defs.iter().find(|d| d.key() == key).map(|d| d.id)
+    }
+
+    /// Every definition, for a caller checking the catalogue as a whole.
+    pub fn all(&self) -> &[ItemDefinition] {
+        &self.defs
     }
 }

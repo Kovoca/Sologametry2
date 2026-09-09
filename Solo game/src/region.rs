@@ -1981,6 +1981,7 @@ impl Region {
                     }
                 };
                 routes.push(Route {
+                    id: crate::quote::RouteId(routes.len() as u64 + 1),
                     name: format!(
                         "{} to {} ({:.0} km of road for a {:.0} km gap{how})",
                         markets[a].name, markets[b].name, along, straight
@@ -2025,6 +2026,7 @@ impl Region {
         }
 
         let markets_len = markets.len();
+        let named_roads = routes.len() as u64 + 1;
         let mut economy = Economy {
             ledger: Ledger::new(sites),
             journal: Journal::new(),
@@ -2046,6 +2048,7 @@ impl Region {
             shipments: crate::registry::Registry::new(),
             power_clearing: None,
             experiments: Default::default(),
+            next_route_id: named_roads,
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
@@ -2291,7 +2294,8 @@ impl Nations {
                 let volume = economy.markets[ma]
                     .daily_household_demand(Commodity::ProcessedFood)
                     .min(economy.markets[mb].daily_household_demand(Commodity::ProcessedFood));
-                economy.routes.push(Route {
+                economy.open_a_road(|id| Route {
+                    id,
                     name: format!(
                         "{} - {} ({:.0} km by {})",
                         names[a],
@@ -2417,7 +2421,14 @@ fn absorb(host: &mut Economy, guest: Economy, nation: u16) -> Vec<usize> {
     for mut r in guest.routes {
         r.a += market_base;
         r.b += market_base;
-        host.routes.push(r);
+        // **A guest's road names are its own, and they collide.** Every
+        // nation numbers its roads from one, so folding two together gives
+        // two different stretches of tarmac the same name — and a booking
+        // then refers to both, which is precisely the defect `RouteId`
+        // exists to prevent. `open_a_road` issues a name nothing in the
+        // host has ever used, which is what it is for. Found by the save
+        // codec refusing to load a four-nation world.
+        host.open_a_road(move |id| Route { id, ..r });
     }
     // Each nation keeps its own grid and repair service; they are separate
     // states, and a blackout in one is not a blackout in the other.

@@ -218,7 +218,7 @@ impl Store for Loss {
 
 impl Store for Shipment {
     fn store(&self, w: &mut Writer) {
-        w.u8(self.commodity as u8);
+        w.u16(self.commodity.wire_code());
         w.len(self.consignor);
         w.len(self.consignee);
         w.len(self.carrier);
@@ -244,11 +244,10 @@ impl Store for Shipment {
     }
 
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
-        let code = r.u8()?;
-        let commodity = *Commodity::ALL
-            .get(code as usize)
+        let code = r.u16()?;
+        let commodity = Commodity::from_wire_code(code)
             .ok_or(SaveError::UnknownCode("commodity", code as u32))?;
-        Ok(Shipment {
+        let s = Shipment {
             commodity,
             consignor: r.read_len()?,
             consignee: r.read_len()?,
@@ -270,6 +269,82 @@ impl Store for Shipment {
             freight: r.finite_f64()?,
             refrigerated: r.bool()?,
             leg: Leg::load(r)?,
-        })
+        };
+        s.check()?;
+        Ok(s)
+    }
+}
+
+impl Shipment {
+    /// **What a manifest cannot say and still be a manifest.**
+    ///
+    /// Every one of these decodes cleanly: a finite float in a known
+    /// field, a valid `Leg` code, a length inside its bound. Nothing in
+    /// the codec can catch them, and letting one through puts a
+    /// contradiction *inside* the conservation assertion that is this
+    /// project's only defence against a quiet leak — `Ledger::total`
+    /// counts `aboard`, so a load whose parts do not add up to what was
+    /// despatched makes tonnage appear or vanish and every subsequent
+    /// check passes.
+    ///
+    /// A save is not a trusted input. It has been on a disk, through a
+    /// backup, possibly through somebody's editor.
+    fn check(&self) -> Result<(), SaveError> {
+        // **A negative tonnage is not a small one.** `finite_f64` refuses
+        // a NaN and accepts -1e9 quite happily.
+        for q in [self.despatched, self.aboard, self.delivered, self.lost] {
+            if q < 0.0 {
+                return Err(SaveError::Impossible("shipment holds a negative tonnage"));
+            }
+        }
+        if self.goods < 0.0 || self.freight < 0.0 {
+            return Err(SaveError::Impossible("shipment has a negative value"));
+        }
+        // **Nothing arrives before it leaves.**
+        if self.due < self.left {
+            return Err(SaveError::Impossible("shipment is due before it set off"));
+        }
+        // **The manifest has to reconcile.** What is still aboard, what
+        // was tipped and what did not survive are the whole of what set
+        // off, and this is the invariant the ledger's own arithmetic
+        // rests on. The tolerance is relative, because these are tonnages
+        // that have been through a weighted average.
+        let parts = self.aboard + self.delivered + self.lost;
+        if (parts - self.despatched).abs() > 1e-6 * self.despatched.max(1.0) {
+            return Err(SaveError::Impossible(
+                "shipment manifest does not add up to what was despatched",
+            ));
+        }
+        // **A leg and a state cannot contradict each other.** A cargo
+        // still on the road with nothing aboard is not on the road; one
+        // written off that arrived was not written off; and a loss needs
+        // a reason, which is the pair `how_lost` exists to carry.
+        match self.leg {
+            Leg::OnTheRoad | Leg::Waiting => {
+                if self.aboard <= 0.0 {
+                    return Err(SaveError::Impossible(
+                        "shipment in transit with an empty hold",
+                    ));
+                }
+            }
+            Leg::Delivered | Leg::WrittenOff => {
+                if self.aboard > 1e-9 {
+                    return Err(SaveError::Impossible(
+                        "finished shipment still holding cargo",
+                    ));
+                }
+            }
+        }
+        if self.leg == Leg::WrittenOff && self.delivered > 1e-9 {
+            return Err(SaveError::Impossible(
+                "a written-off shipment that delivered",
+            ));
+        }
+        if (self.lost > 1e-9) != self.how_lost.is_some() {
+            return Err(SaveError::Impossible(
+                "shipment loss and its cause disagree about whether anything was lost",
+            ));
+        }
+        Ok(())
     }
 }

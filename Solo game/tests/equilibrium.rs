@@ -775,12 +775,13 @@ fn a_closed_road_is_never_the_road_that_gets_booked() {
 
     // Three towns, three roads. Shut the direct one between the first
     // pair, so anything between them has to go round through the third.
-    let direct = e
+    let slot = e
         .routes
         .iter()
         .position(|r| (r.a == 0 && r.b == 1) || (r.a == 1 && r.b == 0))
         .expect("the fixture has no road between the first two towns");
-    e.routes[direct].open = false;
+    let direct = e.routes[slot].id;
+    e.routes[slot].open = false;
     e.resurvey();
 
     let path = e.routing.path_edges(0, 1);
@@ -794,7 +795,7 @@ fn a_closed_road_is_never_the_road_that_gets_booked() {
     );
     for &road in path.iter() {
         assert!(
-            e.routes.get(road).map(|r| r.usable()).unwrap_or(false),
+            e.road(road).map(|r| r.usable()).unwrap_or(false),
             "road {road} on the diverted path is shut or does not exist"
         );
     }
@@ -873,5 +874,99 @@ fn a_consignment_reports_what_it_actually_took() {
     assert!(
         accepted <= held + 1e-9,
         "consigned {accepted:.1} t from a seller holding {held:.1}"
+    );
+}
+
+/// **A booking names a road, not a slot in a vector.**
+///
+/// The closed-road gate above fixed one half of this: filtering the shut
+/// roads out renumbered every road after them, so a haul going the long
+/// way round reserved a closed road. The fix carried the *position*
+/// through the filter — which is right, and a position is still not
+/// identity.
+///
+/// Where it fails next is the save. `Reservations` is keyed by road, and a
+/// booking written down as "road 7" reloads into a world whose routes were
+/// built in a different order and names a different stretch of tarmac.
+/// Nothing catches it: the tonnage conserves, the money conserves, and the
+/// country is quietly moving freight over a road that cannot carry it.
+///
+/// A reload cannot be run here — there is no root codec yet, which is the
+/// open Phase 0 item — so what is exercised is the mechanism underneath
+/// it: **reorder the routes and every booking must still mean the same
+/// physical road.** That is what a reload into a differently built world
+/// does, and it is the reason `RouteId` had to exist before the save
+/// format froze rather than after.
+#[test]
+fn a_booking_names_a_road_and_not_a_slot() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    e.step();
+
+    // Every road has a name, no two share one, and the counter is past
+    // all of them — the rule `registry.rs` states about its own.
+    let mut names: Vec<u64> = e.routes.iter().map(|r| r.id.0).collect();
+    names.sort_unstable();
+    let unique = {
+        let mut n = names.clone();
+        n.dedup();
+        n.len()
+    };
+    assert_eq!(unique, names.len(), "two roads share a name: {names:?}");
+    assert!(!names.contains(&0), "a road was never named");
+    assert!(
+        e.next_route_id > *names.last().unwrap(),
+        "the counter is at {} and a road is already called {}",
+        e.next_route_id,
+        names.last().unwrap()
+    );
+
+    // Put some traffic on the roads.
+    let seller = (0..e.ledger.sites.len())
+        .find(|&s| e.ledger.sites[s].market == 0 && e.ledger.stock(s, Commodity::Grain) > 1.0)
+        .expect("nobody in town 0 is holding grain");
+    let buyer = (0..e.ledger.sites.len())
+        .find(|&s| {
+            e.ledger.sites[s].market == 1
+                && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
+        })
+        .expect("nobody in town 1 has a grain store");
+    let km = e.routing.km(0, 1);
+    e.consign(seller, buyer, seller, Commodity::Grain, 40.0, km, false)
+        .expect("nothing was consigned, so there is nothing booked to check");
+
+    // What each booking means *physically* — which two towns, how far, on
+    // what day, for how much. None of that may move.
+    let physical = |e: &scale_sim::econ::Economy| {
+        let mut v: Vec<(usize, usize, u64, u64)> = e
+            .reservations
+            .iter()
+            .map(|((road, day), tonnes)| {
+                let r = e
+                    .road(road)
+                    .unwrap_or_else(|| panic!("{road} is booked and is not in this world"));
+                let (a, b) = (r.a.min(r.b), r.a.max(r.b));
+                (a, b, day, tonnes.to_bits())
+            })
+            .collect();
+        v.sort_unstable();
+        v
+    };
+    let before = physical(&e);
+    assert!(!before.is_empty(), "nothing was booked at all");
+    let spare_before = e.spare_capacity(0, 1, e.ledger.day, e.ledger.day + 3);
+
+    // **Now build the world's roads in a different order**, which is what
+    // a reload does when anything upstream of route construction changes.
+    e.routes.reverse();
+    e.resurvey();
+
+    assert_eq!(
+        physical(&e),
+        before,
+        "reordering the route vector moved what the bookings refer to"
+    );
+    assert!(
+        (e.spare_capacity(0, 1, e.ledger.day, e.ledger.day + 3) - spare_before).abs() < 1e-9,
+        "the road between two towns has a different amount left after a reorder"
     );
 }

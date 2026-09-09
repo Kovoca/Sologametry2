@@ -255,7 +255,7 @@ pub const MOST_LAYERS: usize = 8;
 const SMALL_ENOUGH_TO_RUN_YOURSELF: f64 = 6.0;
 
 /// A building: a count of each fixture in it.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Building {
     pub fixtures: Vec<(Fixture, f64)>,
 }

@@ -126,6 +126,77 @@ impl Commodity {
         Commodity::Remedies,
     ];
 
+    /// **What this commodity is called in a save**, and it is not where
+    /// it sits in the enum.
+    ///
+    /// `Shipment::store` wrote `commodity as u8` and loaded through
+    /// `Commodity::ALL[index]`, so **inserting or reordering a single
+    /// variant silently reinterpreted every cargo in every existing
+    /// save** — a hold of grain becoming a hold of coal, with the file
+    /// intact and the checksum correct. That is the exact failure the
+    /// save design says explicit codes exist to prevent, and `Leg` and
+    /// `Loss` next door already had them.
+    ///
+    /// **These numbers are frozen.** A variant that is removed takes its
+    /// code out of use for ever; a new one takes the next free code in
+    /// its family and never fills a gap. The families leave room
+    /// deliberately, because the resource work coming wants limestone,
+    /// aggregate, copper, bauxite and a dozen more, and appending them to
+    /// one run would put every material in the order somebody happened to
+    /// think of it:
+    ///
+    /// ```text
+    ///   1- 19  food and farm
+    ///  20- 39  energy and fuel
+    ///  40- 59  ores and metals
+    ///  60- 79  materials and manufactures
+    ///  80- 99  chemicals and medicine
+    /// ```
+    ///
+    /// The match is **exhaustive on purpose**. A roster can silently omit
+    /// a variant — this project has already had a save format fail to
+    /// load because `ALL_MATERIALS` was missing `Water`, and what found it
+    /// was an exhaustive match refusing to compile. So adding a commodity
+    /// cannot compile until somebody has decided what it is called on
+    /// disk.
+    pub fn wire_code(self) -> u16 {
+        match self {
+            // food and farm
+            Commodity::Grain => 1,
+            Commodity::Flour => 2,
+            Commodity::ProcessedFood => 3,
+            Commodity::Livestock => 4,
+            Commodity::Meat => 5,
+            // energy and fuel
+            Commodity::Coal => 20,
+            Commodity::Electricity => 21,
+            Commodity::Petroleum => 22,
+            // ores and metals
+            Commodity::IronOre => 40,
+            Commodity::Steel => 41,
+            // materials and manufactures
+            Commodity::Timber => 60,
+            Commodity::Cement => 61,
+            Commodity::Plastics => 62,
+            Commodity::Machinery => 63,
+            Commodity::RetailGoods => 64,
+            // chemicals and medicine
+            Commodity::Chemicals => 80,
+            Commodity::Medicine => 81,
+            Commodity::Remedies => 82,
+        }
+    }
+
+    /// The reverse, and it is a `Result` rather than a panic: an unknown
+    /// code is a save from a newer build or a corrupted one, which is
+    /// something to refuse rather than to guess at.
+    pub fn from_wire_code(code: u16) -> Option<Commodity> {
+        Commodity::ALL
+            .iter()
+            .copied()
+            .find(|c| c.wire_code() == code)
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Commodity::Grain => "grain",
@@ -715,7 +786,7 @@ impl Opening {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Site {
     pub name: String,
     pub kind: SiteKind,
@@ -1502,7 +1573,7 @@ pub mod recipe {
 // Markets
 // ---------------------------------------------------------------------------
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Market {
     pub name: String,
     /// Which nation this market belongs to. Weather is drawn per nation,
@@ -2023,7 +2094,22 @@ impl Crossing {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub struct Route {
+    /// **This road's durable name**, and the thing every booking and
+    /// every saved reservation refers to.
+    ///
+    /// Assigned once when the road is built and never afterwards derived
+    /// from anything. **Creation order does decide which number a road
+    /// gets, and that is correct** — the same world built the same way
+    /// must produce the same names, which is the rule `registry.rs`
+    /// already states. What is ruled out is reading a *position* as a
+    /// name at the point of use, which is where the reservation code went
+    /// wrong twice: once because filtering the shut roads out renumbered
+    /// the rest, and once — waiting to happen — because bookings written
+    /// down as "road 7" reload into a world whose routes were built in a
+    /// different order and name a different stretch of road.
+    pub id: crate::quote::RouteId,
     pub name: String,
     pub a: usize,
     pub b: usize,
@@ -2745,6 +2831,12 @@ pub struct Economy {
     pub power_clearing: Option<f64>,
     /// **Scaffolding**, off by default. See `Experiments`.
     pub experiments: Experiments,
+    /// **The next unused road name.** Written down rather than worked
+    /// out from the highest name present, for the reason `registry.rs`
+    /// states about its own counter: a world that has lost its newest
+    /// road would otherwise start handing that name out again, and a
+    /// saved booking still refers to it.
+    pub next_route_id: u64,
     pub routing: crate::quote::Routing,
     /// **What the roads have already been promised to carry.**
     ///
@@ -5051,12 +5143,11 @@ impl Economy {
         // *after* filtering renumbers every road past the first shut one,
         // and the reservation code indexes `self.routes` with what comes
         // back out.
-        let edges: Vec<(usize, usize, usize, f64, f64, f64)> = self
+        let edges: Vec<(crate::quote::RouteId, usize, usize, f64, f64, f64)> = self
             .routes
             .iter()
-            .enumerate()
-            .filter(|(_, r)| r.usable())
-            .map(|(road, r)| (road, r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .filter(|r| r.usable())
+            .map(|r| (r.id, r.a, r.b, r.freight_cost, r.km, r.capacity))
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
@@ -5184,7 +5275,7 @@ impl Economy {
         }
         let mut least = f64::INFINITY;
         for road in self.routing.path_edges(from, to) {
-            let Some(r) = self.routes.get(road) else {
+            let Some(r) = self.road(road) else {
                 return 0.0;
             };
             for day in from_day..=to_day {
@@ -5192,6 +5283,34 @@ impl Economy {
             }
         }
         least
+    }
+
+    /// **The road with this name**, or nothing if it is not in this world.
+    ///
+    /// Linear, and deliberately so: a country's roads are a spanning tree
+    /// over its towns, so this is a walk of tens of entries and a map
+    /// would be a second structure to keep in step with the first.
+    pub fn road(&self, id: crate::quote::RouteId) -> Option<&Route> {
+        self.routes.iter().find(|r| r.id == id)
+    }
+
+    /// **Open a new road**, giving it a name nothing else has ever had.
+    ///
+    /// The only way a road joins a world after it is built. Pushing onto
+    /// `routes` directly would leave the name to whoever remembered.
+    /// It takes a closure rather than a `Route` so that **the name comes
+    /// from the allocator and no literal has to hold a placeholder**. A
+    /// field that must contain *something* before it means anything is how
+    /// `Nowhere` came to exist in the item store, and it is not going back
+    /// in here.
+    pub fn open_a_road(
+        &mut self,
+        road: impl FnOnce(crate::quote::RouteId) -> Route,
+    ) -> crate::quote::RouteId {
+        let id = crate::quote::RouteId(self.next_route_id);
+        self.next_route_id += 1;
+        self.routes.push(road(id));
+        id
     }
 
     /// **Promise the road**, on every link the haul will use, for every
@@ -5647,6 +5766,11 @@ impl Economy {
         // road.
         self.reservations.forget_before(day);
 
+        // **And a collected grave is not a forgotten consignment.** The
+        // journal is permanent and goes on naming this cargo for ever, so
+        // what the registry stops being able to answer, `what_became_of`
+        // still can — see there for why elapsed time is not a proof that
+        // nothing refers to an entity.
         const REMEMBER_DELIVERIES_FOR: u64 = 90;
         self.shipments
             .forget_graves_before(day.saturating_sub(REMEMBER_DELIVERIES_FOR));
@@ -6279,5 +6403,407 @@ impl Economy {
         let r = &self.routes[route];
         let (pa, pb) = (self.price(r.a, c), self.price(r.b, c));
         (pb - pa).abs() - r.freight_cost
+    }
+}
+
+// =====================================================================
+// the ledger, written down
+// =====================================================================
+
+/// **Beside the type, because the totals are private.**
+///
+/// The rest of the economy's codec lives in `econ_codec.rs`, where the wire
+/// codes are one reviewable namespace. This one cannot: the running totals
+/// are private precisely so that `apply` is the only thing that can move a
+/// stockpile, and a `restore` constructor taking them as arguments would be
+/// that same back door with a longer name.
+///
+/// **Which buys the strongest property in the whole save format.** The
+/// ledger already knows how to check itself, so a load can do the
+/// arithmetic before handing anything back: **a save whose mass does not
+/// balance is refused at the door** rather than becoming a leak somebody
+/// hunts for a fortnight later. That is what the conservation assertion has
+/// been for since it was written, arriving at persistence.
+impl crate::save::Store for Ledger {
+    fn store(&self, w: &mut crate::save::Writer) {
+        use crate::econ_codec::store_basket;
+        w.u64(self.day);
+        w.len(self.sites.len());
+        for s in self.sites.iter() {
+            s.store(w);
+        }
+        store_basket(w, &self.produced_total);
+        store_basket(w, &self.consumed_total);
+        store_basket(w, &self.spoiled_total);
+        store_basket(w, &self.opening_total);
+        store_basket(w, &self.afloat);
+    }
+
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::econ_codec::load_basket;
+        use crate::save::SaveError;
+        let day = r.u64()?;
+        let n = r.count()?;
+        let mut sites = Vec::with_capacity(n);
+        for _ in 0..n {
+            sites.push(Site::load(r)?);
+        }
+        let ledger = Ledger {
+            day,
+            sites,
+            produced_total: load_basket(r)?,
+            consumed_total: load_basket(r)?,
+            spoiled_total: load_basket(r)?,
+            opening_total: load_basket(r)?,
+            afloat: load_basket(r)?,
+        };
+
+        // **Every site has to live in a market that exists.** A dangling
+        // market index is a site whose goods are counted into a town that
+        // is not there, which the price pass would then read as a famine.
+        // The bound cannot be checked here — the markets are a sibling
+        // field of `Economy` — so it is checked there, and what is caught
+        // here is the arithmetic.
+        for &c in Commodity::ALL.iter() {
+            let i = c as usize;
+            if ledger.afloat[i] < 0.0 {
+                return Err(SaveError::Impossible("a negative tonnage on the road"));
+            }
+            if ledger.produced_total[i] < 0.0
+                || ledger.consumed_total[i] < 0.0
+                || ledger.spoiled_total[i] < 0.0
+                || ledger.opening_total[i] < 0.0
+            {
+                return Err(SaveError::Impossible("a negative running total"));
+            }
+            // The same arithmetic `assert_conserved` runs, and the same
+            // tolerance: measured against total flow rather than against
+            // what happens to be in store, because rounding accumulates
+            // with the number and size of transactions.
+            let held = ledger.total(c);
+            let expected = ledger.opening_total[i] + ledger.produced_total[i]
+                - ledger.consumed_total[i]
+                - ledger.spoiled_total[i];
+            let gross = ledger.opening_total[i]
+                + ledger.produced_total[i]
+                + ledger.consumed_total[i]
+                + ledger.spoiled_total[i];
+            if (held - expected).abs() / gross.abs().max(1.0) >= 1e-9 {
+                return Err(SaveError::Impossible(
+                    "a saved world whose mass does not conserve",
+                ));
+            }
+        }
+        Ok(ledger)
+    }
+}
+
+// =====================================================================
+// the journal, written down
+// =====================================================================
+
+impl crate::save::Store for Use {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.u8(match self {
+            Use::Household => 1,
+            Use::Input => 2,
+        });
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        Ok(match r.u8()? {
+            1 => Use::Household,
+            2 => Use::Input,
+            n => return Err(SaveError::UnknownCode("what it was used for", n as u32)),
+        })
+    }
+}
+
+/// **Why a stockpile moved, and it is the only account of it there is.**
+///
+/// `Ledger::apply` is the single write path, so the journal is not a log
+/// beside the truth — it *is* the explanation of every figure in the world,
+/// and a save that loses an event loses the reason a silo is the size it
+/// is. Which is also why every variant carries an explicit code: inserting
+/// one tomorrow must not turn every despatch in an old world into a
+/// spoilage.
+impl crate::save::Store for Event {
+    fn store(&self, w: &mut crate::save::Writer) {
+        match self {
+            Event::Produced {
+                site,
+                commodity,
+                qty,
+            } => {
+                w.u8(1);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+            }
+            Event::Consumed {
+                site,
+                commodity,
+                qty,
+                reason,
+            } => {
+                w.u8(2);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                reason.store(w);
+            }
+            Event::Shipped {
+                from,
+                to,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(3);
+                w.len(*from);
+                w.len(*to);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::Spoiled {
+                site,
+                commodity,
+                qty,
+            } => {
+                w.u8(4);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+            }
+            Event::Despatched {
+                shipment,
+                from,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(5);
+                shipment.store(w);
+                w.len(*from);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::Landed {
+                shipment,
+                to,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(6);
+                shipment.store(w);
+                w.len(*to);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::LostInTransit {
+                shipment,
+                commodity,
+                qty,
+                how,
+            } => {
+                w.u8(7);
+                shipment.store(w);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                how.store(w);
+            }
+        }
+    }
+
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        fn commodity(r: &mut crate::save::Reader) -> Result<Commodity, SaveError> {
+            let code = r.u16()?;
+            Commodity::from_wire_code(code).ok_or(SaveError::UnknownCode("commodity", code as u32))
+        }
+        let event = match r.u8()? {
+            1 => Event::Produced {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+            },
+            2 => Event::Consumed {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                reason: Use::load(r)?,
+            },
+            3 => Event::Shipped {
+                from: r.read_len()?,
+                to: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            4 => Event::Spoiled {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+            },
+            5 => Event::Despatched {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                from: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            6 => Event::Landed {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                to: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            7 => Event::LostInTransit {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                how: crate::shipment::Loss::load(r)?,
+            },
+            n => return Err(SaveError::UnknownCode("journalled event", n as u32)),
+        };
+        // **A journalled quantity is positive by construction.** The
+        // existing gate over the whole journal asserts it — an
+        // unattributed or empty delta is a bug rather than data — so a
+        // file claiming otherwise is broken, not newer.
+        let qty = match &event {
+            Event::Produced { qty, .. }
+            | Event::Consumed { qty, .. }
+            | Event::Shipped { qty, .. }
+            | Event::Despatched { qty, .. }
+            | Event::Landed { qty, .. }
+            | Event::LostInTransit { qty, .. }
+            | Event::Spoiled { qty, .. } => *qty,
+        };
+        if qty <= 0.0 {
+            return Err(SaveError::Impossible(
+                "a journal entry for a quantity that never moved",
+            ));
+        }
+        Ok(event)
+    }
+}
+
+/// **Beside the type, because the entries are private.**
+///
+/// The same reason the ledger's codec is here: nothing outside `Journal`
+/// may append except through `apply`, and a `restore` taking the entries as
+/// an argument would be that door with another name.
+impl crate::save::Store for Journal {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.len(self.entries.len());
+        for e in self.entries.iter() {
+            w.u64(e.day);
+            e.event.store(w);
+        }
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        let n = r.count()?;
+        let mut entries = Vec::with_capacity(n);
+        let mut last = 0u64;
+        for _ in 0..n {
+            let day = r.u64()?;
+            // **History runs forwards.** The journal is appended to as the
+            // days pass, so an entry dated before the one in front of it is
+            // a file that has been reordered or spliced — and anything
+            // replaying it would apply yesterday after tomorrow.
+            if day < last {
+                return Err(SaveError::Impossible("a journal that runs backwards"));
+            }
+            last = day;
+            entries.push(Entry {
+                day,
+                event: Event::load(r)?,
+            });
+        }
+        Ok(Journal { entries })
+    }
+}
+
+// =====================================================================
+// what became of a consignment
+// =====================================================================
+
+/// **What happened to a cargo, from whichever record still holds it.**
+///
+/// The registry answers `Unknown` for two entirely different facts: a name
+/// this world has never issued, and one whose grave has been collected.
+/// The first is almost always a bug; the second is ordinary history, and
+/// the permanent journal is full of references to it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fate {
+    /// On the road, or standing at a full bay waiting to be tipped.
+    OnItsWay,
+    /// It ended. What arrived and what did not, out of the journal.
+    Ended { delivered: f64, lost: f64 },
+    /// **This world has never issued that name.** Not "I have forgotten" —
+    /// no such consignment was ever raised, which is a bug in whatever is
+    /// holding the reference.
+    NeverRaised,
+}
+
+impl Economy {
+    /// **Age alone cannot prove that nothing still refers to a
+    /// consignment.**
+    ///
+    /// `roll_the_road` collects a shipment's grave ninety days after it
+    /// ended, which keeps the registry growing with the world rather than
+    /// with history — the unbounded state this project has had to remove
+    /// four times. But the journal is *permanent* and goes on naming that
+    /// consignment for ever, so the lookup silently changed from "it
+    /// existed and ended" to "never heard of it", and an external review
+    /// was right that elapsed time is not a proof.
+    ///
+    /// The resolution is the one that keeps both properties. The registry
+    /// stays bounded; **the journal becomes the authority for history**,
+    /// which is what it is for — it already records every despatch, every
+    /// landing and every loss, so a delivered cargo's story is in there
+    /// whether or not its grave survives.
+    ///
+    /// The counter does the rest, and does it in one comparison: a
+    /// registry knows whether it ever issued a name, so a collected grave
+    /// and a name nobody has heard of stop being the same answer without
+    /// anything having to scan.
+    pub fn what_became_of(&self, id: crate::shipment::ShipmentId) -> Fate {
+        use crate::registry::Lookup;
+        match self.shipments.look(id) {
+            Lookup::Live(s) if s.in_transit() => return Fate::OnItsWay,
+            Lookup::Live(_) | Lookup::Gone(_) => {}
+            Lookup::Unknown => {
+                if !self.shipments.ever_issued(id) {
+                    return Fate::NeverRaised;
+                }
+            }
+        }
+        // It ended. The journal says how, and it says so for ever.
+        let mut delivered = 0.0;
+        let mut lost = 0.0;
+        for e in self.journal.entries() {
+            match &e.event {
+                Event::Landed { shipment, qty, .. } if *shipment == id => delivered += qty,
+                Event::LostInTransit { shipment, qty, .. } if *shipment == id => lost += qty,
+                _ => {}
+            }
+        }
+        Fate::Ended { delivered, lost }
     }
 }

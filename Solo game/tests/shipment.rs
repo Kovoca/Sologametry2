@@ -772,7 +772,11 @@ fn no_road_is_booked_past_what_it_can_carry() {
     for _ in 0..200 {
         n.economy.step();
         for ((road, day), tonnes) in n.economy.reservations.iter() {
-            let carries = n.economy.routes[road].capacity;
+            let carries = n
+                .economy
+                .road(road)
+                .expect("a booking names a road that is not there")
+                .capacity;
             assert!(
                 tonnes <= carries + 1e-6,
                 "road {road} on day {day} is booked for {tonnes:.1} t against \
@@ -805,4 +809,286 @@ fn no_road_is_booked_past_what_it_can_carry() {
         n.economy.reservations.len()
     );
     n.economy.ledger.assert_conserved();
+}
+
+/// A manifest that is sound in every respect, to be spoiled one field at a
+/// time by the gate below.
+fn a_sound_manifest() -> Shipment {
+    Shipment {
+        commodity: Commodity::Grain,
+        consignor: 0,
+        consignee: 1,
+        carrier: 0,
+        from_market: 0,
+        to_market: 1,
+        left: 100,
+        due: 103,
+        despatched: 60.0,
+        aboard: 60.0,
+        delivered: 0.0,
+        lost: 0.0,
+        how_lost: None,
+        goods: 5_400.0,
+        freight: 780.0,
+        refrigerated: false,
+        leg: Leg::OnTheRoad,
+    }
+}
+
+fn round_trip(s: &Shipment) -> Result<Shipment, scale_sim::save::SaveError> {
+    let mut w = Writer::new();
+    s.store(&mut w);
+    Shipment::load(&mut Reader::new(&w.bytes))
+}
+
+/// **A commodity's name on disk is not where it sits in an enum.**
+///
+/// `Shipment::store` wrote `commodity as u8` and loaded through
+/// `Commodity::ALL[index]`, so inserting or reordering one variant
+/// silently reinterpreted every cargo in every existing save — a hold of
+/// grain becoming a hold of coal, with the file intact and the checksum
+/// correct. That is the exact failure the save design says explicit codes
+/// prevent, and `Leg` and `Loss` in the same file already had them.
+///
+/// What this gate can check is that the mapping is a bijection and that it
+/// does not agree with the declaration order, which is what makes it a
+/// wire code rather than a cast wearing a function's name. The freeze
+/// itself is a promise a test cannot keep — the doc comment carries it.
+#[test]
+fn a_commodity_is_saved_by_a_frozen_code_and_not_by_its_position() {
+    let mut seen: Vec<u16> = Vec::new();
+    for &c in Commodity::ALL.iter() {
+        let code = c.wire_code();
+        assert!(code > 0, "{c} has no wire code");
+        assert!(
+            !seen.contains(&code),
+            "two commodities share wire code {code}, so a save cannot tell them apart"
+        );
+        seen.push(code);
+        assert_eq!(
+            Commodity::from_wire_code(code),
+            Some(c),
+            "{c} does not survive its own code"
+        );
+    }
+
+    // **An unknown code is refused, not guessed at.** A save from a build
+    // that has limestone in it must fail to load here rather than
+    // arriving as whatever sits at that index.
+    assert!(
+        Commodity::from_wire_code(9_999).is_none(),
+        "an unknown commodity code resolved to something"
+    );
+    let mut w = Writer::new();
+    a_sound_manifest().store(&mut w);
+    w.bytes[0..2].copy_from_slice(&9_999u16.to_le_bytes());
+    assert!(
+        matches!(
+            Shipment::load(&mut Reader::new(&w.bytes)),
+            Err(scale_sim::save::SaveError::UnknownCode("commodity", 9_999))
+        ),
+        "a cargo of an unknown commodity loaded anyway"
+    );
+
+    // And the codes must not merely be the positions again, or nothing
+    // has changed but the name of the function.
+    assert!(
+        Commodity::ALL
+            .iter()
+            .enumerate()
+            .any(|(i, c)| c.wire_code() as usize != i),
+        "every wire code equals its enum position — this is a cast, not a code"
+    );
+}
+
+/// **A save is not a trusted input**, and every one of these decodes
+/// cleanly.
+///
+/// A finite float in a known field, a valid `Leg` code, a length inside
+/// its bound — so nothing in the codec can catch them. The manifest one
+/// is the dangerous one: `Ledger::total` counts `aboard`, so a load whose
+/// parts do not add up to what was despatched makes tonnage appear or
+/// vanish and **every subsequent conservation check passes**, which is
+/// this project's only defence against a quiet leak.
+///
+/// The gate provokes each rejection in turn, because a validator that has
+/// only ever seen clean data is untested — the same rule the bill-of-
+/// materials validator already has a second gate for.
+#[test]
+fn a_manifest_that_cannot_be_true_is_refused() {
+    use scale_sim::save::SaveError::Impossible;
+
+    // The sound one has to survive, or the gate below proves nothing.
+    let sound = round_trip(&a_sound_manifest()).expect("a sound manifest was refused");
+    assert_eq!(sound.commodity, Commodity::Grain);
+    assert_eq!(sound.leg, Leg::OnTheRoad);
+
+    let spoil = |f: &dyn Fn(&mut Shipment), what: &str| {
+        let mut s = a_sound_manifest();
+        f(&mut s);
+        match round_trip(&s) {
+            Err(Impossible(_)) => {}
+            other => panic!("{what} was accepted: {other:?}"),
+        }
+    };
+
+    spoil(&|s| s.aboard = -60.0, "a negative tonnage aboard");
+    spoil(&|s| s.despatched = -60.0, "a negative tonnage despatched");
+    spoil(&|s| s.goods = -1.0, "a negative cargo value");
+    spoil(&|s| s.freight = -1.0, "a negative carriage charge");
+    spoil(&|s| s.due = 99, "a cargo due before it set off");
+    spoil(&|s| s.aboard = 30.0, "a manifest missing thirty tonnes");
+    spoil(
+        &|s| {
+            s.aboard = 90.0;
+            s.despatched = 60.0;
+        },
+        "a manifest holding more than set off",
+    );
+    spoil(&|s| s.aboard = 0.0, "a cargo in transit with an empty hold");
+    spoil(
+        &|s| {
+            s.leg = Leg::Delivered;
+            s.delivered = 0.0;
+        },
+        "a finished shipment still holding its cargo",
+    );
+    spoil(
+        &|s| {
+            s.leg = Leg::WrittenOff;
+            s.aboard = 0.0;
+            s.delivered = 60.0;
+        },
+        "a written-off shipment that delivered",
+    );
+    spoil(
+        &|s| {
+            s.aboard = 50.0;
+            s.lost = 10.0;
+        },
+        "ten tonnes lost for no reason at all",
+    );
+    spoil(
+        &|s| s.how_lost = Some(Loss::Spoiled),
+        "a cause of loss with nothing lost",
+    );
+
+    // And the legitimate finished states still load, or the rules above
+    // have banned ordinary history.
+    let mut done = a_sound_manifest();
+    done.leg = Leg::Delivered;
+    done.aboard = 0.0;
+    done.delivered = 55.0;
+    done.lost = 5.0;
+    done.how_lost = Some(Loss::Spoiled);
+    let back = round_trip(&done).expect("a delivered part-spoiled cargo was refused");
+    assert_eq!(back.delivered, 55.0);
+    assert_eq!(back.how_lost, Some(Loss::Spoiled));
+}
+
+/// **A collected grave is not a consignment nobody has heard of.**
+///
+/// `roll_the_road` collects a shipment's tombstone ninety days after it
+/// ended, which keeps the registry growing with the world rather than with
+/// history — the unbounded state this project has removed four times. But
+/// the journal is **permanent** and goes on naming that consignment for
+/// ever, so `look` silently changed its answer from `Gone` to `Unknown`,
+/// and those are entirely different facts: one is ordinary history, the
+/// other is almost always a bug in whatever is holding the reference.
+///
+/// Elapsed time cannot prove that nothing still refers to an entity. What
+/// can is the counter, which only ever goes up — so a name that was issued
+/// and a name that never existed stay distinguishable however many graves
+/// have been collected.
+#[test]
+fn a_cargo_delivered_long_ago_is_still_a_cargo_that_existed() {
+    use scale_sim::econ::Fate;
+
+    let mut e = world();
+    let (from, to, c, qty) = a_load(&mut e);
+    let (id, _) = e
+        .consign(from, to, 0, c, qty, 173.0, false)
+        .expect("nothing was consigned");
+    e.tip(id);
+
+    // While the grave is fresh, the registry itself answers.
+    assert!(
+        matches!(e.what_became_of(id), Fate::Ended { .. }),
+        "a cargo tipped this morning is not recorded as having ended"
+    );
+
+    // **Now run well past the ninety days the grave survives.**
+    for _ in 0..140 {
+        e.step();
+    }
+    assert!(
+        matches!(e.shipments.look(id), Lookup::Unknown),
+        "the grave was not collected, so this gate is not testing what it says"
+    );
+
+    // The registry has forgotten and the world has not.
+    match e.what_became_of(id) {
+        Fate::Ended { delivered, lost } => {
+            assert!(
+                delivered + lost > 0.0,
+                "the journal has no record of a cargo it certainly carried"
+            );
+        }
+        other => panic!(
+            "a cargo delivered four months ago reads as {other:?} — the grave went and \
+             took the history with it"
+        ),
+    }
+
+    // **And a name this world never issued is still a different answer.**
+    // That is the half a permanent tombstone would get right by accident
+    // and a journal scan alone would get wrong: nothing in the journal
+    // mentions it either.
+    let never = e.shipments.add(Shipment {
+        commodity: c,
+        consignor: from,
+        consignee: to,
+        carrier: 0,
+        from_market: 0,
+        to_market: 1,
+        left: 0,
+        due: 0,
+        despatched: 1.0,
+        aboard: 1.0,
+        delivered: 0.0,
+        lost: 0.0,
+        how_lost: None,
+        goods: 0.0,
+        freight: 0.0,
+        refrigerated: false,
+        leg: Leg::OnTheRoad,
+    });
+    let mut beyond = never;
+    for _ in 0..5 {
+        beyond = e.shipments.add(Shipment {
+            commodity: c,
+            consignor: from,
+            consignee: to,
+            carrier: 0,
+            from_market: 0,
+            to_market: 1,
+            left: 0,
+            due: 0,
+            despatched: 1.0,
+            aboard: 1.0,
+            delivered: 0.0,
+            lost: 0.0,
+            how_lost: None,
+            goods: 0.0,
+            freight: 0.0,
+            refrigerated: false,
+            leg: Leg::OnTheRoad,
+        });
+    }
+    let _ = beyond;
+    assert_eq!(
+        e.what_became_of(never),
+        Fate::OnItsWay,
+        "a consignment still on the road does not read as being on the road"
+    );
 }

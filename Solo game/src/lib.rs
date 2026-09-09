@@ -17,6 +17,7 @@ pub mod coping;
 pub mod craft;
 pub mod custom;
 pub mod econ;
+pub mod econ_codec;
 pub mod field;
 pub mod fitted;
 pub mod game;

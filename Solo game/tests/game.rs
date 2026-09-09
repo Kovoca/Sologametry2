@@ -217,15 +217,37 @@ fn a_day_happens_in_a_stated_order() {
 #[test]
 fn the_save_gap_is_a_number_rather_than_a_claim() {
     let g = a_world();
-    let (saved, owned) = g.saveable_parts();
-    assert!(saved <= owned, "it claims to save more than it owns");
-    assert!(owned > 0);
+    let (saved, missing) = g.parts();
+    let (n, owned) = g.saveable_parts();
+    assert_eq!(n, saved.len());
+    assert_eq!(owned, saved.len() + missing.len());
+
+    // **The count is measured, not claimed.** Every part in `saved` was
+    // arrived at by actually serialising it, so this cannot drift the way
+    // two typed-in numbers did — and the parts still missing are named, so
+    // the gap says *what* rather than only how much.
+    assert!(
+        saved.contains(&"the economy"),
+        "the economy has a codec and the root does not know it: {saved:?}"
+    );
+    assert!(
+        saved.contains(&"the ground"),
+        "the ground overlay has a codec and the root does not know it: {saved:?}"
+    );
+
     // **Deliberately failing to be complete**, and recorded as such: when
     // this reaches parity the assertion below is what has to change, and
     // changing it means the migration actually happened.
     assert!(
-        saved < owned,
+        !missing.is_empty(),
         "the root now saves everything it owns — update this gate and say so"
+    );
+
+    // A world with no economy in it must say so rather than counting one.
+    let bare = scale_sim::game::GameState::new(1);
+    assert!(
+        !bare.parts().0.contains(&"the economy"),
+        "a root with no economy claimed to have saved one"
     );
 }
 
@@ -369,36 +391,190 @@ fn nothing_leaks_when_a_cargo_moves() {
     );
 }
 
-/// **Gate: a cargo cannot change the figures that authorised it.**
+/// **Gate: a decision is taken on the morning position, and proving that
+/// means changing the world underneath it.**
 ///
-/// The day opens with a photograph of the world. Anybody deciding what to
-/// do today reads that; what they do changes the live state and becomes
-/// tomorrow's photograph. A decision that can read state its own
-/// consequences have altered turns a day into an argument about ordering.
+/// The first version of this gate cloned the opening snapshot, ran a day,
+/// and asserted the clone still equalled the snapshot it was cloned from.
+/// That proves Rust values do not mutate each other. It says nothing
+/// whatever about whether any decision *reads* the snapshot, which is the
+/// entire claim — and an external review was right to call it out. Sixth
+/// time a gate of mine has passed without testing what it names.
+///
+/// What discriminates is making the live world say **the opposite** of the
+/// photograph and then watching what the haulier does. So the stock of the
+/// best-covered town and the worst-covered town is swapped after the day
+/// has opened: the snapshot still says the first is desperate, live state
+/// now says the second is. A dispatcher reading the morning position sends
+/// the lorries to the first. One reading live state sends them to the
+/// second.
+///
+/// The swap moves tonnage between towns and creates none, so the ledger
+/// still conserves — which matters, because a gate that has to break
+/// conservation to make its point is testing a world that cannot exist.
 #[test]
-fn the_opening_position_does_not_move_during_the_day() {
+fn a_decision_is_taken_on_the_morning_position() {
+    use scale_sim::econ::Commodity;
+
+    let mut e = a_nation().economy;
+    let mut freight = scale_sim::logistics::Logistics::found(&e);
+    for _ in 0..40 {
+        e.step();
+    }
+
+    // Find a commodity and two towns the morning position disagrees about.
+    let opened = e.opening().cloned().expect("no opening was taken");
+    // **Steel, because the choice has to be a real one.**
+    //
+    // Two things have to be true of the commodity or the gate watches an
+    // empty road. It has to be genuinely short somewhere — food in this
+    // country runs twelve days against a target of four, so no town is
+    // below target and the dispatcher correctly sends nothing. And it has
+    // to be worth carrying: timber has a far wider spread, four days
+    // against a hundred and thirty-five, and is never hauled at all
+    // because `logistics` refuses a load whose freight exceeds half what
+    // the goods are worth, which is exactly why there is a cement works in
+    // every region on earth.
+    //
+    // Steel is the most-hauled commodity this country has, and it runs
+    // 24.4 days in the worst town against 42.9 in the best on a target of
+    // twenty-five. There is something to decide, and somebody willing to
+    // carry it.
+    let c = Commodity::Steel;
+    let cover_at = |m: usize| {
+        let draw = e.daily_draw(m, c);
+        if draw > 1e-9 {
+            opened.stock(m, c) / draw
+        } else {
+            f64::INFINITY
+        }
+    };
+    let towns: Vec<usize> = (0..e.markets.len())
+        .filter(|&m| e.daily_draw(m, c) > 1e-9)
+        .collect();
+    assert!(
+        towns.len() >= 2,
+        "this country has fewer than two towns that eat, so there is nothing to choose between"
+    );
+    let worst = *towns
+        .iter()
+        .min_by(|&&a, &&b| cover_at(a).total_cmp(&cover_at(b)))
+        .unwrap();
+    let best = *towns
+        .iter()
+        .max_by(|&&a, &&b| cover_at(a).total_cmp(&cover_at(b)))
+        .unwrap();
+    assert_ne!(worst, best, "every town is covered identically");
+    assert!(
+        cover_at(worst) < cover_at(best),
+        "the morning position does not distinguish the two towns"
+    );
+
+    // **Empty the flush town into a third one.**
+    //
+    // The obvious construction — swap the two extremes — does not work,
+    // and the reason is worth recording: piling the flush town's stock
+    // into the short one leaves nobody able to supply it, so the
+    // dispatcher correctly sends nothing and the gate watches an empty
+    // road. The stock has to go somewhere that is *not* the destination.
+    //
+    // Tonnage moves between towns and none is created, so the ledger still
+    // balances. A gate that has to break conservation to make its point is
+    // testing a world that cannot exist.
+    let sink = *towns
+        .iter()
+        .find(|&&m| m != worst && m != best)
+        .expect("this country has only two towns, so there is nowhere to put the stock");
+    let held = |e: &scale_sim::econ::Economy, m: usize| -> f64 {
+        (0..e.ledger.sites.len())
+            .filter(|&s| e.ledger.sites[s].market == m)
+            .map(|s| e.ledger.stock(s, c))
+            .sum()
+    };
+    let emptied = held(&e, best);
+    assert!(emptied > 0.0, "the best-covered town is holding nothing");
+    for s in 0..e.ledger.sites.len() {
+        if e.ledger.sites[s].market == best {
+            e.ledger.sites[s].stock[c as usize] = 0.0;
+        }
+    }
+    let into = (0..e.ledger.sites.len())
+        .find(|&s| e.ledger.sites[s].market == sink)
+        .expect("a town with no sites in it");
+    e.ledger.sites[into].stock[c as usize] += emptied;
+    e.ledger.assert_conserved();
+
+    // **Live state now says the opposite of the photograph.** The morning
+    // position has `best` comfortably above target and `worst` below it;
+    // live state has `best` holding nothing at all.
+    assert!(
+        held(&e, best) < held(&e, worst),
+        "the move did not reverse who is short"
+    );
+
+    // ---------------------------------------------------------------
+    // and now the dispatcher decides
+    // ---------------------------------------------------------------
+    let before: std::collections::BTreeSet<_> = e.shipments.iter().map(|(id, _)| id).collect();
+    let day = e.ledger.day;
+    freight.haul(&mut e, day);
+    let raised: Vec<usize> = e
+        .shipments
+        .iter()
+        .filter(|(id, _)| !before.contains(id))
+        .filter(|(_, s)| s.commodity == c)
+        .map(|(_, s)| s.to_market)
+        .collect();
+
+    // **One assertion, carrying both ways it can fail.** A dispatcher
+    // reading live state does not merely send the lorries somewhere else —
+    // it may send none at all, because live state says the town the
+    // morning position is worried about is comfortably stocked. Splitting
+    // that into two assertions makes the sabotage report the wrong reason.
+    let went = |v: &Vec<usize>, e: &scale_sim::econ::Economy| -> String {
+        if v.is_empty() {
+            "nowhere at all".to_string()
+        } else {
+            format!(
+                "to {}",
+                v.iter()
+                    .map(|&m| e.markets[m].name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        }
+    };
+    assert!(
+        raised.contains(&worst),
+        "the morning position said {} was the town short of {c}, and the lorries went {}.          Live state disagrees on purpose — the stock of {} was moved to {} after the day          opened — so a dispatcher reading the live figures sends them elsewhere, or sends          none.",
+        e.markets[worst].name,
+        went(&raised, &e),
+        e.markets[best].name,
+        e.markets[sink].name
+    );
+    assert!(
+        !raised.contains(&best),
+        "the lorries went to {}, which only live state says needs them",
+        e.markets[best].name
+    );
+}
+
+/// **And the photograph is a photograph**: last day's opening is not a
+/// window onto today. Kept because it is cheap and it is the other half of
+/// the claim, but it is deliberately *not* the gate — on its own it proves
+/// only that a value does not change itself.
+#[test]
+fn yesterdays_opening_is_not_todays() {
     let mut g = a_world();
     g.a_day();
-
-    let opened = g
+    let day_of = g
         .economy
         .as_ref()
         .unwrap()
         .opening()
-        .cloned()
-        .expect("no opening");
-    let day_of = opened.day;
-
-    // Run the whole of the next day and the previous opening is untouched —
-    // it is a photograph, not a view.
-    let before = opened.clone();
+        .expect("no opening")
+        .day;
     g.a_day();
-    assert_eq!(
-        before, opened,
-        "the snapshot was a window rather than a photograph"
-    );
-
-    // And the new day has its own, taken after the last one closed.
     let next = g
         .economy
         .as_ref()

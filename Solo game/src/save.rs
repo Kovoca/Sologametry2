@@ -109,6 +109,16 @@ pub enum SaveError {
     Conflict(u64),
     /// Bytes after the end of what the format says is there.
     TrailingBytes(usize),
+    /// **A value that decoded cleanly and cannot be true.**
+    ///
+    /// Distinct from `NotANumber` and `UnknownCode`, which are about the
+    /// bytes. This is about the world: a negative tonnage, a cargo that
+    /// arrived before it left, a manifest whose parts do not add up to
+    /// what was despatched. Every one of those is a finite number in a
+    /// known field, so nothing upstream can catch it — and letting it
+    /// through puts a contradiction inside the conservation assertion
+    /// that is this project's only defence against quiet leaks.
+    Impossible(&'static str),
 }
 
 // ---------------------------------------------------------------------

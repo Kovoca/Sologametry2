@@ -2540,6 +2540,333 @@ from the **library**, and this project keeps its `compile_fail` proofs
 there — the ones showing a listener cannot read a speaker's motives and a
 landed cost cannot be multiplied by a scarcity factor.
 
+### Writing the economy down (`src/econ_codec.rs`)
+
+The root save is Phase 0's remaining architectural item, and the first
+thing worth recording is its **size**, measured rather than guessed: seven
+enums and about twenty-two structs for the economy alone, before the item
+store and the population. So it is being built in layers, and this is the
+leaf layer — the enums, the roads, the markets, the works, the shop
+fittings and the basket.
+
+**One file, when the convention elsewhere is a codec beside its type.**
+The wire codes are a single frozen namespace, and keeping them together is
+what makes "these numbers never change" reviewable in one place rather
+than a promise spread over six files.
+
+**A basket is a reading per commodity, not eighteen numbers in a row.** It
+is `[f64; N_COMMODITIES]`, so writing it positionally breaks every save
+the day a nineteenth commodity is added — which the resource work is going
+to do, and which is exactly the defect the shipment's commodity had. It
+goes down as `(wire code, value)` pairs, so a save made before limestone
+existed loads into a world that has it with every figure on the commodity
+it was measured for. **A column this build does not know about is dropped
+rather than fatal**, because refusing a whole world over one unknown
+commodity would make every future commodity a breaking change.
+
+**What is deliberately not saved:** `routing` is an all-pairs table
+derived from the roads and rebuilt by `resurvey` every morning. It is a
+cache, not state, and writing it down would store a value that has to
+agree with the roads and can silently stop agreeing.
+
+The gate names **every variant of every enum** — twenty-one kinds of
+works, five road surfaces, five grid levels, three crossings, seven shop
+fittings — because a round-trip over a generated world exercises only what
+that world happens to contain, and a country with no tunnel never encodes
+a tunnel. That is `save.rs`'s own rule: *an enum variant no test happens
+to exercise is exactly the one that silently does not come back.* Each
+value is written part way through its range, because **a zero survives a
+codec that drops the field**. A second gate checks no two variants share a
+code, which is not a load error but two different things loading as the
+same thing.
+
+**And the loader refuses a world that cannot be true**: a road with no
+name, a road from a town to itself, a road of negative length, a works
+holding more than its own store, a works whose recipe does not exist in
+this build. That last pair matter because the allocation code would then
+spend for ever trying to reconcile them.
+
+**Next, and it is a design decision rather than more of the same.**
+`Ledger` and `Treasury` both hold private totals — produced, consumed,
+spoiled, opening, afloat; balances and opening — so their codecs cannot
+live in another module. They want `restore` constructors documented as
+loader-only, the way `Registry::restore` already is. Which buys something
+better than access: both types already have an `assert_conserved`, so
+**a save whose mass or money does not balance can be refused at the door**
+rather than becoming a leak somebody hunts for later.
+
+### A world saved mid-journey, continued on both sides
+
+The economic root goes through real bytes now, and the gate is the one an
+external review specified: run a country until freight is on the road,
+serialise the whole economy, load a second branch from those bytes, **play
+both on for thirty days**, and compare.
+
+The test this replaces was named for saving a world and did not save one.
+It built a `Save` by hand holding the day and a cloned shipment registry,
+and left out the stocks, the afloat balance, the markets, the roads, the
+reservations, the carriers, the treasury and the journal — and it never
+advanced the reloaded branch to arrival, so nothing it asserted depended
+on the reload having worked.
+
+**The comparison is the bytes.** `save.rs` already establishes that
+identical state gives identical bytes — floats as bit patterns, a
+`BTreeMap` wherever order would otherwise be arbitrary — which is what
+makes a byte comparison a canonical-state comparison rather than a
+shortcut. A field-by-field compare tests whatever fields somebody
+remembered to list, which is the same weakness as a roster that can omit a
+variant.
+
+**And playing both on is the half that catches a real codec.** A field
+that is lost but only needed *tomorrow* is indistinguishable from a
+correct one until somebody plays tomorrow.
+
+Three things the loader itself now refuses, each of which decodes cleanly
+and none of which panics:
+
+- **A world whose mass does not conserve.** `Ledger`'s totals are private
+  so that `apply` is the only write path, which means its codec has to sit
+  beside it — and that turns out to buy the strongest property in the
+  format: the ledger already knows how to check itself, so a save that is
+  out of balance is refused at the door rather than firing the
+  conservation assertion somewhere else days later for no visible reason.
+  The treasury does the same for money.
+- **A dangling reference.** A works in a town that is not there has its
+  goods counted into a town nobody lives in; a booking on a road nobody
+  built is capacity promised out of nothing. The price pass reads both as
+  ordinary figures.
+- **Two roads with one name**, which is `RouteId`'s whole purpose arriving
+  through a file rather than through a vector.
+
+**That last check found a real bug within a minute of existing.** Every
+nation numbers its roads from one, and `absorb` folds one nation into
+another while renumbering the markets and the sites — and was pushing the
+guest's roads across **with their own names**, so a four-nation world had
+four roads called 1. A booking would have referred to all of them. It goes
+through `open_a_road` now, which is what that function is for.
+
+**And an infinity in a basket is a real reading.** Electricity declares an
+infinite days of cover on purpose — none of it is ever held, so the
+question has no finite answer — and reading baskets with `finite_f64`
+made every real world unloadable. A NaN is still refused: unlike an
+infinity it is not a measurement of anything.
+
+Still open, and named rather than implied: the item store, the population
+and the ground overlay are not in this codec, so `GameState` is not yet
+saveable whole. What is saveable whole is the economy.
+
+### The save gap is measured, not typed in
+
+`saveable_parts` returned `(3, 4)` with a comment beside it saying what
+those numbers meant. An external review named it for what it was: a
+hard-coded progress claim rather than a reachable capability. **A number
+somebody types cannot go out of date honestly** — it goes out of date
+silently, in whichever direction flatters.
+
+Every part that claims to be saveable is now **arrived at by actually
+serialising it**, so removing a codec stops the root compiling and adding
+one moves the figure without anybody remembering to. The bytes are thrown
+away; what is being established is that a codec exists and runs.
+
+And **the parts still missing are named rather than counted** — the item
+store, the people, buildings and utilities, vehicles and work orders —
+because a gap that says *what* is a plan and a gap that says *how much* is
+a score. The gate proves the measurement rather than the number: a root
+with no economy in it must not claim to have saved one, which is what
+turns red when the claim is made without the write.
+
+### A gate that compared a clone with itself
+
+The sixth. `the_opening_position_does_not_move_during_the_day` cloned the
+opening snapshot, ran a day, and asserted the clone still equalled the
+snapshot it was cloned from. **That proves Rust values do not mutate each
+other.** It says nothing about whether any decision *reads* the snapshot,
+which is the entire claim.
+
+What discriminates is making the live world say the opposite of the
+photograph and watching what the haulier does. Two things had to be got
+right before it worked, and both are the gate teaching something:
+
+- **The commodity has to be one there is something to decide about.** Food
+  runs twelve days of cover against a target of four in this country, so
+  no town is below target, the dispatcher correctly sends nothing, and a
+  gate watching an empty road proves nothing. Timber has a far wider
+  spread — four days against a hundred and thirty-five — and is *never*
+  hauled at all, because a load whose freight exceeds half the value of
+  the goods is refused. Steel is the one: most-hauled in the country,
+  24.4 days in the worst town against 42.9 in the best on a target of 25.
+- **The stock has to go somewhere that is not the destination.** The
+  obvious construction is to swap the two extremes, and it fails: piling
+  the flush town's stock into the short one leaves nobody able to supply
+  it, so the dispatcher correctly sends nothing again. The flush town is
+  emptied into a *third* town instead, which leaves a source standing.
+
+The move relocates tonnage and creates none, so the ledger still conserves
+— **a gate that has to break conservation to make its point is testing a
+world that cannot exist.**
+
+And the assertion is deliberately **one assertion carrying both ways it
+can fail**, because a dispatcher reading live state does not merely send
+the lorries elsewhere; it may send none at all. Split in two, the sabotage
+reports the wrong reason.
+
+### Age is not a proof that nothing refers to a thing
+
+`roll_the_road` collects a consignment's grave ninety days after it ended,
+which keeps the registry growing with the world rather than with history —
+the unbounded state this project has removed four times. But **the journal
+is permanent** and goes on naming that cargo for ever, so `look` silently
+changed its answer from `Gone` to `Unknown`. Those are entirely different
+facts: one is ordinary history, the other is almost always a bug in
+whatever is holding the reference.
+
+The resolution keeps both properties rather than trading one away. The
+registry stays bounded; **the journal becomes the authority for history**,
+which is what it is for — it already records every despatch, every landing
+and every loss, so a delivered cargo's story is in there whether or not
+its grave survives.
+
+**And the counter does the rest in one comparison.** A registry knows
+whether it ever issued a name, because the counter only goes up — so a
+collected grave and a name nobody has heard of stop being the same answer
+without anything having to scan. `Key::number` is exposed for that and for
+codecs, and is documented as **not arithmetic**: it is not an index into
+anything and nothing may do sums on it, which is the whole distinction
+between a name and a position.
+
+The gate runs a cargo four months past its own grave and requires the
+world to still know it existed, while a name never issued stays a
+different answer — the half a permanent tombstone would get right by
+accident and a journal scan alone would get wrong.
+
+### A definition's name on disk is not where it sits in the catalogue
+
+`Catalogue::add` assigns `DefId(defs.len())` and the codec writes that bare
+number, so **inserting one definition earlier reinterprets every saved
+item** — a cordless drill becoming a brick, with the file intact. The same
+defect the shipment's commodity had, in the one place where there are a
+hundred and fifty-six of them and the resource work wants dozens more.
+
+It is latent rather than live: `DefId` is written by the WIP codec, and
+the item store is not in the save yet. Which is exactly why it is worth
+doing now — the same reason `RouteId` came before the save format froze
+rather than after.
+
+**The key is derived from the authored name, not hand-written beside it.**
+A hundred and fifty-six hand-authored keys are a hundred and fifty-six
+chances to drift from the thing they name, and the name is already the
+authored identity. The contract that follows is worth stating plainly:
+**renaming a definition is a change of identity**, not a cosmetic edit,
+and wants a migration like any other. That is a real cost and it is the
+honest one.
+
+**The family had to be in the key, and the gate found out why within a
+minute of existing:** two definitions called "hammer". A carpenter's
+hammer of 0.6 kg in steel and pine, and the **hammer of a rifle's fire
+control group** at 0.07 kg of tool steel. Genuinely different objects that
+share an English word.
+
+And that is not only a save problem. `craft::hand_tools` resolves
+`"hammer"` by name to give a bench its striking capability, and it has
+been getting the right one **only because the tool was added before the
+gun part**. Flip the order and a workshop silently loses the ability to
+hit things, which is not a failure anybody would trace back to a firearm
+component. So the gun part is `"firearm hammer"` now, and a gate requires
+no two definitions to answer to one name — fixing the data rather than
+making the lookup defensive.
+
+Wiring the key into the codec belongs with the item store joining the
+save, because what a file should do with a key that no longer resolves is
+a decision that wants a consumer to test it against.
+
+### A booking names a road, not a slot
+
+The closed-road fix carried the route's *position* through the filter,
+which is correct and is not identity. Where a position fails next is the
+save: `Reservations` is keyed by road, so a booking written down as
+"road 7" reloads into a world whose routes were built in a different order
+and names a different stretch of tarmac. Nothing catches it — the tonnage
+conserves, the money conserves, and the country is quietly running freight
+over a road that cannot carry it.
+
+So `RouteId` had to exist **before the save format froze**, which is the
+reverse of the order the review's numbered list gives and follows the
+review's own principle: do not serialise raw vector positions into a
+permanent format.
+
+- **Creation order does decide which number a road gets, and that is
+  correct** — the same world built the same way must produce the same
+  names, which is the rule `registry.rs` already states. What is ruled out
+  is reading a position as a name *at the point of use*.
+- **The counter is written down**, not derived from the highest name
+  present. Same reason as the registry's: a world that has lost its newest
+  road would otherwise hand that name out again while a saved booking
+  still refers to it.
+- **`open_a_road` takes a closure**, not a `Route`, so the name comes from
+  the allocator and no literal has to hold a placeholder. A field that must
+  contain *something* before it means anything is how `Nowhere` came to
+  exist in the item store.
+- **The lookup is linear on purpose.** A country's roads are a spanning
+  tree over its towns, so `road(id)` walks tens of entries, and a map would
+  be a second structure to keep in step with the first.
+
+The gate cannot run a reload — there is no root codec yet, which is the
+open Phase 0 item — so it exercises the mechanism underneath one:
+**reorder the routes and every booking must still mean the same two towns,
+the same distance and the same day.**
+
+### A variant's position is not its name on disk
+
+`Shipment::store` wrote `commodity as u8` and loaded through
+`Commodity::ALL[index]`, so **inserting or reordering one variant would
+silently reinterpret every cargo in every existing save** — a hold of
+grain becoming a hold of coal, with the file intact and the checksum
+correct. `save.rs` already states the rule and `Leg` and `Loss` in the
+same file already had explicit codes; the commodity did not.
+
+The codes are **frozen and grouped by family**, with gaps left on
+purpose — the resource work coming wants limestone, aggregate, copper and
+a dozen more, and appending them to one run would put every material in
+the order somebody happened to think of it. The match is exhaustive, so
+adding a commodity cannot compile until somebody has decided what it is
+called on disk. That is the same mechanism that caught `ALL_MATERIALS`
+missing `Water`: **an exhaustive match is a test a roster cannot fake.**
+
+The gate cannot enforce the freeze — that is a promise, and it lives in
+the doc comment. What it does check is that the mapping is a bijection,
+that an unknown code is *refused* rather than resolved, and that the
+codes do not simply equal the positions again, which would be a cast
+wearing a function's name.
+
+### A save is not a trusted input
+
+Every one of these decodes cleanly — a finite float in a known field, a
+valid `Leg` code, a length inside its bound — so nothing in the codec can
+catch them:
+
+```text
+a negative tonnage aboard          finite_f64 accepts -1e9 quite happily
+a cargo due before it set off
+a manifest missing thirty tonnes   aboard + delivered + lost != despatched
+a cargo in transit with no cargo
+a finished shipment still loaded
+a written-off shipment that delivered
+tonnes lost with no cause, or a cause with nothing lost
+```
+
+The manifest one is the dangerous one, and it is dangerous in this
+project's characteristic way: **`Ledger::total` counts `aboard`**, so a
+load whose parts do not add up to what was despatched makes tonnage
+appear or vanish and *every subsequent conservation check passes*. The
+one defence against a quiet leak is the thing being fooled.
+
+A save has been on a disk, through a backup, possibly through somebody's
+editor. `SaveError::Impossible` is deliberately a third kind of error
+beside `NotANumber` and `UnknownCode`: those are about the bytes, this is
+about the world. And each rejection is provoked in turn by the gate,
+because **a validator that has only ever seen clean data is untested** —
+the rule `bom::validate` already has a second gate for.
+
 ### A sentinel read as a rate, for the third time
 
 `throughput: 1e9` on a power station means *whatever the grid can carry*.

@@ -336,3 +336,177 @@ fn reason_name(why: Why) -> &'static str {
         Why::Interest => "interest",
     }
 }
+
+// =====================================================================
+// the treasury, written down
+// =====================================================================
+
+impl crate::save::Store for Account {
+    fn store(&self, w: &mut crate::save::Writer) {
+        match self {
+            Account::Firm(i) => {
+                w.u8(1);
+                w.len(*i);
+            }
+            Account::Households(i) => {
+                w.u8(2);
+                w.len(*i);
+            }
+            Account::ServiceSector(i) => {
+                w.u8(3);
+                w.len(*i);
+            }
+            Account::Bank(i) => {
+                w.u8(4);
+                w.len(*i);
+            }
+            Account::State => w.u8(5),
+            Account::Abroad => w.u8(6),
+        }
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        Ok(match r.u8()? {
+            1 => Account::Firm(r.read_len()?),
+            2 => Account::Households(r.read_len()?),
+            3 => Account::ServiceSector(r.read_len()?),
+            4 => Account::Bank(r.read_len()?),
+            5 => Account::State,
+            6 => Account::Abroad,
+            n => return Err(SaveError::UnknownCode("account", n as u32)),
+        })
+    }
+}
+
+impl crate::save::Store for Why {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.u8(match self {
+            Why::Purchase => 1,
+            Why::Supply => 2,
+            Why::Payroll => 3,
+            Why::Freight => 4,
+            Why::Tax => 5,
+            Why::PublicSpending => 6,
+            Why::Rent => 7,
+            Why::Profit => 8,
+            Why::Trade => 9,
+            Why::Lending => 10,
+            Why::Repayment => 11,
+            Why::Interest => 12,
+        });
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        Ok(match r.u8()? {
+            1 => Why::Purchase,
+            2 => Why::Supply,
+            3 => Why::Payroll,
+            4 => Why::Freight,
+            5 => Why::Tax,
+            6 => Why::PublicSpending,
+            7 => Why::Rent,
+            8 => Why::Profit,
+            9 => Why::Trade,
+            10 => Why::Lending,
+            11 => Why::Repayment,
+            12 => Why::Interest,
+            n => return Err(SaveError::UnknownCode("why money moved", n as u32)),
+        })
+    }
+}
+
+impl crate::save::Store for Transfer {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.u64(self.day);
+        self.from.store(w);
+        self.to.store(w);
+        w.f64(self.amount);
+        self.why.store(w);
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        Ok(Transfer {
+            day: r.u64()?,
+            from: Account::load(r)?,
+            to: Account::load(r)?,
+            amount: r.finite_f64()?,
+            why: Why::load(r)?,
+        })
+    }
+}
+
+/// **Beside the type, because the balances are private.**
+///
+/// The same reason the ledger's codec is in `econ.rs`: the map and the
+/// opening stock are private so that `apply` is the only thing that can
+/// move money, and a `restore` taking them as arguments would be that back
+/// door with a longer name.
+///
+/// And it buys the same property. **A save whose money does not balance is
+/// refused at the door**, which is what `assert_conserved` has been for
+/// since credit made the total something other than a constant.
+///
+/// `flows` is not stored: it is keyed by `&'static str` and is a reporting
+/// tally of the day, rebuilt as the day is played. `today` *is* stored,
+/// because a save taken mid-day has transfers in it that the day's later
+/// phases have not seen yet.
+impl crate::save::Store for Treasury {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.len(self.balances.len());
+        for (a, v) in self.balances.iter() {
+            a.store(w);
+            w.f64(*v);
+        }
+        w.f64(self.opening);
+        w.len(self.today.len());
+        for t in self.today.iter() {
+            t.store(w);
+        }
+        w.f64(self.unpaid);
+        w.f64(self.created);
+        w.f64(self.destroyed);
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        let n = r.count()?;
+        let mut balances = std::collections::BTreeMap::new();
+        for _ in 0..n {
+            let a = Account::load(r)?;
+            let v = r.finite_f64()?;
+            if balances.insert(a, v).is_some() {
+                return Err(SaveError::Impossible("one account listed twice"));
+            }
+        }
+        let opening = r.finite_f64()?;
+        let n = r.count()?;
+        let mut today = Vec::with_capacity(n);
+        for _ in 0..n {
+            today.push(Transfer::load(r)?);
+        }
+        let t = Treasury {
+            balances,
+            opening,
+            today,
+            flows: std::collections::BTreeMap::new(),
+            unpaid: r.finite_f64()?,
+            created: r.finite_f64()?,
+            destroyed: r.finite_f64()?,
+        };
+        if t.created < 0.0 || t.destroyed < 0.0 {
+            return Err(SaveError::Impossible(
+                "money lent or repaid a negative amount",
+            ));
+        }
+        // The same arithmetic `assert_conserved` runs, and the same
+        // tolerance: measured against the stock of money, because a
+        // currency that has changed hands a billion times accumulates
+        // rounding.
+        let should_be = t.opening + t.created - t.destroyed;
+        let tolerance = ((t.opening.abs() + t.created) * 1e-9).max(1e-6);
+        if (t.total() - should_be).abs() > tolerance {
+            return Err(SaveError::Impossible(
+                "a saved world whose money does not conserve",
+            ));
+        }
+        Ok(t)
+    }
+}
