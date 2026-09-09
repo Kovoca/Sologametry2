@@ -385,7 +385,12 @@ fn an_armourer_sees_further_than_a_soldier() {
         .iter()
         .filter_map(|c| cat.get(c.def).map(|x| x.name))
         .collect();
-    for want in ["trigger", "hammer", "sear", "pin", "spring"] {
+    // **"firearm hammer", because a carpenter has one too.** A catalogue
+    // with a by-name lookup cannot hold two things called the same thing:
+    // `craft::hand_tools` asks for "hammer" to give a bench its striking
+    // capability, and got the tool rather than this part only because the
+    // tool was added first.
+    for want in ["trigger", "firearm hammer", "sear", "pin", "spring"] {
         assert!(
             inner.contains(&want),
             "a fire control group has no {want}: {inner:?}"

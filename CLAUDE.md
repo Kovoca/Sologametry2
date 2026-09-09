@@ -2739,6 +2739,46 @@ world to still know it existed, while a name never issued stays a
 different answer — the half a permanent tombstone would get right by
 accident and a journal scan alone would get wrong.
 
+### A definition's name on disk is not where it sits in the catalogue
+
+`Catalogue::add` assigns `DefId(defs.len())` and the codec writes that bare
+number, so **inserting one definition earlier reinterprets every saved
+item** — a cordless drill becoming a brick, with the file intact. The same
+defect the shipment's commodity had, in the one place where there are a
+hundred and fifty-six of them and the resource work wants dozens more.
+
+It is latent rather than live: `DefId` is written by the WIP codec, and
+the item store is not in the save yet. Which is exactly why it is worth
+doing now — the same reason `RouteId` came before the save format froze
+rather than after.
+
+**The key is derived from the authored name, not hand-written beside it.**
+A hundred and fifty-six hand-authored keys are a hundred and fifty-six
+chances to drift from the thing they name, and the name is already the
+authored identity. The contract that follows is worth stating plainly:
+**renaming a definition is a change of identity**, not a cosmetic edit,
+and wants a migration like any other. That is a real cost and it is the
+honest one.
+
+**The family had to be in the key, and the gate found out why within a
+minute of existing:** two definitions called "hammer". A carpenter's
+hammer of 0.6 kg in steel and pine, and the **hammer of a rifle's fire
+control group** at 0.07 kg of tool steel. Genuinely different objects that
+share an English word.
+
+And that is not only a save problem. `craft::hand_tools` resolves
+`"hammer"` by name to give a bench its striking capability, and it has
+been getting the right one **only because the tool was added before the
+gun part**. Flip the order and a workshop silently loses the ability to
+hit things, which is not a failure anybody would trace back to a firearm
+component. So the gun part is `"firearm hammer"` now, and a gate requires
+no two definitions to answer to one name — fixing the data rather than
+making the lookup defensive.
+
+Wiring the key into the codec belongs with the item store joining the
+save, because what a file should do with a key that no longer resolves is
+a decision that wants a consumer to test it against.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,
