@@ -985,3 +985,110 @@ fn a_manifest_that_cannot_be_true_is_refused() {
     assert_eq!(back.delivered, 55.0);
     assert_eq!(back.how_lost, Some(Loss::Spoiled));
 }
+
+/// **A collected grave is not a consignment nobody has heard of.**
+///
+/// `roll_the_road` collects a shipment's tombstone ninety days after it
+/// ended, which keeps the registry growing with the world rather than with
+/// history — the unbounded state this project has removed four times. But
+/// the journal is **permanent** and goes on naming that consignment for
+/// ever, so `look` silently changed its answer from `Gone` to `Unknown`,
+/// and those are entirely different facts: one is ordinary history, the
+/// other is almost always a bug in whatever is holding the reference.
+///
+/// Elapsed time cannot prove that nothing still refers to an entity. What
+/// can is the counter, which only ever goes up — so a name that was issued
+/// and a name that never existed stay distinguishable however many graves
+/// have been collected.
+#[test]
+fn a_cargo_delivered_long_ago_is_still_a_cargo_that_existed() {
+    use scale_sim::econ::Fate;
+
+    let mut e = world();
+    let (from, to, c, qty) = a_load(&mut e);
+    let (id, _) = e
+        .consign(from, to, 0, c, qty, 173.0, false)
+        .expect("nothing was consigned");
+    e.tip(id);
+
+    // While the grave is fresh, the registry itself answers.
+    assert!(
+        matches!(e.what_became_of(id), Fate::Ended { .. }),
+        "a cargo tipped this morning is not recorded as having ended"
+    );
+
+    // **Now run well past the ninety days the grave survives.**
+    for _ in 0..140 {
+        e.step();
+    }
+    assert!(
+        matches!(e.shipments.look(id), Lookup::Unknown),
+        "the grave was not collected, so this gate is not testing what it says"
+    );
+
+    // The registry has forgotten and the world has not.
+    match e.what_became_of(id) {
+        Fate::Ended { delivered, lost } => {
+            assert!(
+                delivered + lost > 0.0,
+                "the journal has no record of a cargo it certainly carried"
+            );
+        }
+        other => panic!(
+            "a cargo delivered four months ago reads as {other:?} — the grave went and \
+             took the history with it"
+        ),
+    }
+
+    // **And a name this world never issued is still a different answer.**
+    // That is the half a permanent tombstone would get right by accident
+    // and a journal scan alone would get wrong: nothing in the journal
+    // mentions it either.
+    let never = e.shipments.add(Shipment {
+        commodity: c,
+        consignor: from,
+        consignee: to,
+        carrier: 0,
+        from_market: 0,
+        to_market: 1,
+        left: 0,
+        due: 0,
+        despatched: 1.0,
+        aboard: 1.0,
+        delivered: 0.0,
+        lost: 0.0,
+        how_lost: None,
+        goods: 0.0,
+        freight: 0.0,
+        refrigerated: false,
+        leg: Leg::OnTheRoad,
+    });
+    let mut beyond = never;
+    for _ in 0..5 {
+        beyond = e.shipments.add(Shipment {
+            commodity: c,
+            consignor: from,
+            consignee: to,
+            carrier: 0,
+            from_market: 0,
+            to_market: 1,
+            left: 0,
+            due: 0,
+            despatched: 1.0,
+            aboard: 1.0,
+            delivered: 0.0,
+            lost: 0.0,
+            how_lost: None,
+            goods: 0.0,
+            freight: 0.0,
+            refrigerated: false,
+            leg: Leg::OnTheRoad,
+        });
+    }
+    let _ = beyond;
+    assert_eq!(
+        e.what_became_of(never),
+        Fate::OnItsWay,
+        "a consignment still on the road does not read as being on the road"
+    );
+}

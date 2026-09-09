@@ -2710,6 +2710,35 @@ can fail**, because a dispatcher reading live state does not merely send
 the lorries elsewhere; it may send none at all. Split in two, the sabotage
 reports the wrong reason.
 
+### Age is not a proof that nothing refers to a thing
+
+`roll_the_road` collects a consignment's grave ninety days after it ended,
+which keeps the registry growing with the world rather than with history —
+the unbounded state this project has removed four times. But **the journal
+is permanent** and goes on naming that cargo for ever, so `look` silently
+changed its answer from `Gone` to `Unknown`. Those are entirely different
+facts: one is ordinary history, the other is almost always a bug in
+whatever is holding the reference.
+
+The resolution keeps both properties rather than trading one away. The
+registry stays bounded; **the journal becomes the authority for history**,
+which is what it is for — it already records every despatch, every landing
+and every loss, so a delivered cargo's story is in there whether or not
+its grave survives.
+
+**And the counter does the rest in one comparison.** A registry knows
+whether it ever issued a name, because the counter only goes up — so a
+collected grave and a name nobody has heard of stop being the same answer
+without anything having to scan. `Key::number` is exposed for that and for
+codecs, and is documented as **not arithmetic**: it is not an index into
+anything and nothing may do sums on it, which is the whole distinction
+between a name and a position.
+
+The gate runs a cargo four months past its own grave and requires the
+world to still know it existed, while a name never issued stays a
+different answer — the half a permanent tombstone would get right by
+accident and a journal scan alone would get wrong.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

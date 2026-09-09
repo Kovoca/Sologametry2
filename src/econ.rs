@@ -5766,6 +5766,11 @@ impl Economy {
         // road.
         self.reservations.forget_before(day);
 
+        // **And a collected grave is not a forgotten consignment.** The
+        // journal is permanent and goes on naming this cargo for ever, so
+        // what the registry stops being able to answer, `what_became_of`
+        // still can — see there for why elapsed time is not a proof that
+        // nothing refers to an entity.
         const REMEMBER_DELIVERIES_FOR: u64 = 90;
         self.shipments
             .forget_graves_before(day.saturating_sub(REMEMBER_DELIVERIES_FOR));
@@ -6731,5 +6736,74 @@ impl crate::save::Store for Journal {
             });
         }
         Ok(Journal { entries })
+    }
+}
+
+// =====================================================================
+// what became of a consignment
+// =====================================================================
+
+/// **What happened to a cargo, from whichever record still holds it.**
+///
+/// The registry answers `Unknown` for two entirely different facts: a name
+/// this world has never issued, and one whose grave has been collected.
+/// The first is almost always a bug; the second is ordinary history, and
+/// the permanent journal is full of references to it.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Fate {
+    /// On the road, or standing at a full bay waiting to be tipped.
+    OnItsWay,
+    /// It ended. What arrived and what did not, out of the journal.
+    Ended { delivered: f64, lost: f64 },
+    /// **This world has never issued that name.** Not "I have forgotten" —
+    /// no such consignment was ever raised, which is a bug in whatever is
+    /// holding the reference.
+    NeverRaised,
+}
+
+impl Economy {
+    /// **Age alone cannot prove that nothing still refers to a
+    /// consignment.**
+    ///
+    /// `roll_the_road` collects a shipment's grave ninety days after it
+    /// ended, which keeps the registry growing with the world rather than
+    /// with history — the unbounded state this project has had to remove
+    /// four times. But the journal is *permanent* and goes on naming that
+    /// consignment for ever, so the lookup silently changed from "it
+    /// existed and ended" to "never heard of it", and an external review
+    /// was right that elapsed time is not a proof.
+    ///
+    /// The resolution is the one that keeps both properties. The registry
+    /// stays bounded; **the journal becomes the authority for history**,
+    /// which is what it is for — it already records every despatch, every
+    /// landing and every loss, so a delivered cargo's story is in there
+    /// whether or not its grave survives.
+    ///
+    /// The counter does the rest, and does it in one comparison: a
+    /// registry knows whether it ever issued a name, so a collected grave
+    /// and a name nobody has heard of stop being the same answer without
+    /// anything having to scan.
+    pub fn what_became_of(&self, id: crate::shipment::ShipmentId) -> Fate {
+        use crate::registry::Lookup;
+        match self.shipments.look(id) {
+            Lookup::Live(s) if s.in_transit() => return Fate::OnItsWay,
+            Lookup::Live(_) | Lookup::Gone(_) => {}
+            Lookup::Unknown => {
+                if !self.shipments.ever_issued(id) {
+                    return Fate::NeverRaised;
+                }
+            }
+        }
+        // It ended. The journal says how, and it says so for ever.
+        let mut delivered = 0.0;
+        let mut lost = 0.0;
+        for e in self.journal.entries() {
+            match &e.event {
+                Event::Landed { shipment, qty, .. } if *shipment == id => delivered += qty,
+                Event::LostInTransit { shipment, qty, .. } if *shipment == id => lost += qty,
+                _ => {}
+            }
+        }
+        Fate::Ended { delivered, lost }
     }
 }
