@@ -411,6 +411,30 @@ impl Store for crate::townplan::Address {
     }
 }
 
+impl Store for crate::world::Berth {
+    fn store(&self, w: &mut Writer) {
+        use crate::world::Berth as B;
+        w.u8(match self {
+            B::None => 1,
+            B::Fishing => 2,
+            B::Coaster => 3,
+            B::Ocean => 4,
+            B::Deep => 5,
+        });
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        use crate::world::Berth as B;
+        Ok(match r.u8()? {
+            1 => B::None,
+            2 => B::Fishing,
+            3 => B::Coaster,
+            4 => B::Ocean,
+            5 => B::Deep,
+            n => return Err(SaveError::UnknownCode("berth", n as u32)),
+        })
+    }
+}
+
 impl Store for Market {
     fn store(&self, w: &mut Writer) {
         match self.cell {
@@ -420,6 +444,8 @@ impl Store for Market {
                 w.len(c);
             }
         }
+        w.bool(self.port);
+        self.berth.store(w);
         w.str(&self.name);
         w.u16(self.nation);
         w.f64(self.population);
@@ -441,6 +467,8 @@ impl Store for Market {
             1 => Some(r.read_len()?),
             n => return Err(SaveError::UnknownCode("town cell tag", n as u32)),
         };
+        let port = r.bool()?;
+        let berth = crate::world::Berth::load(r)?;
         let name = r.str()?;
         let nation = r.u16()?;
         let population = r.finite_f64()?;
@@ -451,6 +479,8 @@ impl Store for Market {
         }
         Ok(Market {
             cell,
+            port,
+            berth,
             name,
             nation,
             population,

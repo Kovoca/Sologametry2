@@ -59,6 +59,7 @@ fn the_circuit_closes() {
         e.step();
     }
     let (hh1, firms1, state1) = held(&e);
+    let abroad1 = e.treasury.balance(Account::Abroad);
     for _ in 0..(DAYS_PER_YEAR * 2) {
         e.step();
     }
@@ -72,10 +73,24 @@ fn the_circuit_closes() {
         hh3 > issued * 0.01,
         "households hold {hh3:.0} of {issued:.0} after three years"
     );
-    // Steady, not merely non-zero.
+    // **Steady, or explained by the border.**
+    //
+    // This asserted that household money barely moves over two years,
+    // which is what a *closed* circuit does — and the economy stopped
+    // being closed the day a country could sell abroad. A net exporter
+    // accumulates money, and that is not a leak: it is what a trade
+    // surplus **is**. Real surplus countries pile up foreign claims for
+    // decades.
+    //
+    // So the claim is sharpened rather than loosened. Whatever households
+    // gained beyond a steady circuit has to be **accounted for by money
+    // that actually crossed the border** — anything more than that is a
+    // leak, and this gate is the one that would catch it.
+    let from_abroad = abroad1 - e.treasury.balance(Account::Abroad);
+    let unexplained = (hh3 - hh1) - from_abroad.max(0.0);
     assert!(
-        (hh3 - hh1).abs() < hh1 * 0.5,
-        "household balances went {hh1:.0} -> {hh3:.0}, which is not a circuit"
+        unexplained.abs() < hh1 * 0.5,
+        "household balances went {hh1:.0} -> {hh3:.0}, and only {from_abroad:.0} of that          crossed the border — {unexplained:.0} came from nowhere"
     );
     // **And nobody hoards.** A firm holds working capital, not a fortune,
     // and a state that collects more than it spends is a bug rather than a
@@ -172,9 +187,37 @@ fn wages_come_out_of_a_firms_own_balance() {
         .map(|t| t.amount)
         .sum();
     assert!(public > 0.0, "a state that employs nobody");
+
+    // **A state that collects more than it spends is a bug rather than a
+    // policy — and that is a claim about its balance, not about one day's
+    // flow.**
+    //
+    // Comparing a single day's levy against a single day's payout looked
+    // like the same thing and is not: **hospitals are paid before the tax
+    // is collected**, out of yesterday's affordability, so in a growing
+    // economy today's levy funds a bill that was partly settled this
+    // morning at yesterday's rate. A one-day snapshot of a lagged flow
+    // reads as a surplus that is really a timing difference.
+    //
+    // It only surfaced when the border made firms solvent enough to pay
+    // the full levy. Before that the state under-collected by about the
+    // hospital share, and the two numbers matched by coincidence — the
+    // gate was passing because the state was too poor, which is not what
+    // it claims to be testing.
+    //
+    // What is asserted instead is that the state does not **accumulate**:
+    // over a further year it must end up where it started, give or take a
+    // few days of its own wage bill.
+    let before = e.treasury.balance(Account::State);
+    for _ in 0..DAYS_PER_YEAR {
+        e.step();
+    }
+    let after = e.treasury.balance(Account::State);
+    let a_days_bill = tax.max(1.0);
     assert!(
-        (public - tax).abs() < tax * 0.02,
-        "the state collected {tax:.0} and spent {public:.0}"
+        (after - before).abs() < a_days_bill * 30.0,
+        "the state's balance went {before:.0} -> {after:.0} over a year, which is {:.0}          days of its own wage bill piling up",
+        (after - before).abs() / a_days_bill
     );
 }
 

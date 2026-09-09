@@ -275,6 +275,8 @@ fn a_road_a_market_and_a_works_come_back_whole() {
 
     there_and_back(Market {
         cell: Some(4_242),
+        port: true,
+        berth: scale_sim::world::Berth::Ocean,
         name: "Bexley".into(),
         nation: 2,
         population: 1_250_000.0,

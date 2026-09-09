@@ -588,6 +588,14 @@ impl Region {
             // is a place called Ashford and cannot find it.
             let mut market = Market::in_nation(name.clone(), pop, 0, southern);
             market.cell = Some(s.cell);
+            market.port = s.coastal;
+            // **What the water will take.** A quay was a flag, so a fishing
+            // village could ship a country's whole harvest.
+            market.berth = if s.coastal {
+                crate::world::Berth::for_depth(world.navigable_depth_m(s.cell))
+            } else {
+                crate::world::Berth::None
+            };
             markets.push(market);
             settlement_of_market.push(t);
 
@@ -658,6 +666,18 @@ impl Region {
         // rest, which is why landlocked fertile regions have always been
         // rich in food and poor in money.
         let can_export = has_coastline(world, polities, polity);
+        // **A quay is a fact about a town, not about a country.**
+        //
+        // The first version gave every town in a coastal nation a port,
+        // which put a quay on sixteen towns of sixteen including the ones
+        // a hundred miles inland. `Settlement` has known since it was
+        // written whether a place is on the water — it is part of why the
+        // place is there at all — and nothing had asked.
+        //
+        // The consequence is the one worth having: an inland town trades
+        // with the outside world **through the coast**, over the roads,
+        // which is what the roads are for and why a port town is worth
+        // being.
         let most_it_will_grow = if can_export { 3.0 } else { 1.25 };
         // 1/0.90 covers the average harvest curve and weather; the rest is
         // slack for the bad years. Sized to the average, a country that

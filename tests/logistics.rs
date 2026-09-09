@@ -56,15 +56,34 @@ fn carriers_even_out_a_country_that_pairwise_trade_cannot() {
         hi - lo
     };
 
-    // **Food was already even, and that is worth recording rather than
-    // asserting away.** `distribute` handles a commodity every town both
-    // makes and sells perfectly well, because a shop short of food is
-    // pulling on a mill in the same street. Carriers change nothing here
-    // and should not.
-    assert!(
-        spread(&without) < 1.0 && spread(&with) < 1.0,
-        "food cover should be even either way: {without:?} against {with:?}"
-    );
+    // **Food used to be even either way, and selling abroad ended that
+    // for a reason worth keeping.**
+    //
+    // `distribute` handles a commodity every town both makes and sells,
+    // because a shop short of food is pulling on a mill in the same
+    // street — so a country was flat in food and carriers changed nothing.
+    // Once a country can **export**, its surplus has somewhere to go and
+    // only some towns can reach it: a coastal town sells what it is long
+    // of and an inland one keeps it. The spread that appears is that
+    // difference, and flattening it again would mean pretending a port is
+    // worth no more than anywhere else.
+    //
+    // **What must still hold is that selling abroad never takes a town
+    // below the cover it keeps for itself.** That is the property with
+    // teeth, and it is the one an export mechanism can plausibly break:
+    // exports outran the price signal on the first attempt — a stored
+    // staple is priced off a deliberately slow average of cover, so the
+    // drain never told anybody to stop — and `trade` pulled the whole
+    // country's surplus to the coast to follow it out.
+    let keeps = Commodity::ProcessedFood.target_cover_days();
+    for (label, v) in [("without hauliers", &without), ("with hauliers", &with)] {
+        let lowest = v.iter().cloned().fold(f64::INFINITY, f64::min);
+        assert!(
+            lowest > keeps * 0.95,
+            "{label}: a town is down to {lowest:.2} days of food against the {keeps:.0} it              keeps for itself — something is selling the reserve, not the surplus.              {without:?} against {with:?}"
+        );
+    }
+    let _ = spread(&without);
 
     // **And they have to be fed, not merely equally placed.**
     //

@@ -1159,3 +1159,149 @@ impl World {
         self.river[i] || self.lake[i] || matches!(self.biomes[i], Biome::Ocean | Biome::Shallows)
     }
 }
+
+/// **How deep the water is, in metres.**
+///
+/// The elevation field has always run below sea level — that is what makes
+/// a cell ocean rather than land — and **nothing had ever read it as
+/// water**. So the sea was a flag: a harbour was somewhere the map said
+/// "coast", and a fishing village could not be told from a container port.
+///
+/// It matters the moment a ship has a draught. Real figures, and the
+/// spread is the whole point:
+///
+/// | | needs |
+/// |---|---|
+/// | inshore fishing boat | 2-3 m |
+/// | coastal freighter | 5-7 m |
+/// | Panamax | 12 m |
+/// | capesize bulk carrier | 17-18 m |
+/// | very large crude carrier | 20-22 m |
+///
+/// So a bay eight metres deep can load timber and cannot load ore, which
+/// is a real reason ore ports are few and a real reason dredging is worth
+/// doing.
+///
+/// **The scale is not the land's.** Land tops out at Everest's 8,848 m;
+/// the sea goes to the Challenger Deep at about 10,900, and the two are
+/// separate scales because sea level sits wherever the percentile cut put
+/// it rather than in the middle. What matters far more than the abyss is
+/// the **continental shelf**, which is about 130 m at its outer edge and
+/// covers the ground every port on earth stands on — so the curve is
+/// deliberately shallow near the coast and steep past the shelf break.
+pub const MAX_OCEAN_M: f64 = 10_900.0;
+
+/// **The outer edge of the continental shelf.** About 130 m, and it is
+/// where the seabed stops being a gentle apron and falls away.
+pub const SHELF_M: f64 = 130.0;
+
+impl World {
+    /// Metres of water over this cell, or `None` where it is dry land.
+    ///
+    /// The first tenth below sea level is the shelf, which is where
+    /// everything anybody builds on the sea actually is; below that it
+    /// drops to the abyss. Real shelves run 0-130 m over tens to hundreds
+    /// of kilometres and then the slope falls to 3,000 in a few tens.
+    pub fn depth_m(&self, cell: usize) -> Option<f64> {
+        let e = *self.elevation.data.get(cell)? as f64;
+        let sea = self.sea_level as f64;
+        if e >= sea {
+            return None;
+        }
+        // How far below the surface, as a share of everything below it.
+        let below = if sea > 0.0 { (sea - e) / sea } else { 0.0 };
+        const SHELF_SHARE: f64 = 0.10;
+        Some(if below <= SHELF_SHARE {
+            // The shelf: shallow, and most of the coast is here.
+            SHELF_M * (below / SHELF_SHARE)
+        } else {
+            // Past the break, away to the deep.
+            let past = (below - SHELF_SHARE) / (1.0 - SHELF_SHARE);
+            SHELF_M + (MAX_OCEAN_M - SHELF_M) * past.powf(1.5)
+        })
+    }
+
+    /// **The deepest water within reach of this cell**, which is what
+    /// decides what can tie up at it.
+    ///
+    /// A port is not the depth under the quay — that is a dock, and docks
+    /// are dredged. It is whether a ship of that draught can *get* there,
+    /// so what counts is the best water within a cell or two, which is the
+    /// same reach that makes a town coastal in the first place.
+    pub fn navigable_depth_m(&self, cell: usize) -> f64 {
+        let (w, h) = (self.width, self.height);
+        let (cx, cy) = (cell % w, cell / w);
+        let mut best = 0.0f64;
+        for dy in -2i64..=2 {
+            for dx in -2i64..=2 {
+                let x = (cx as i64 + dx).rem_euclid(w as i64) as usize;
+                let y = cy as i64 + dy;
+                if y < 0 || y >= h as i64 {
+                    continue;
+                }
+                if let Some(d) = self.depth_m(y as usize * w + x) {
+                    best = best.max(d);
+                }
+            }
+        }
+        best
+    }
+}
+
+/// **What a port can take**, which is a fact about the water rather than
+/// about the town.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+pub enum Berth {
+    /// No usable water. Not a port at all.
+    None,
+    /// Inshore boats and lighters. A fishing village.
+    Fishing,
+    /// Coastal freighters — the short-sea trade that moves most tonnage
+    /// between neighbouring countries.
+    Coaster,
+    /// Ocean-going general cargo, up to about Panamax.
+    Ocean,
+    /// Bulk carriers: ore, coal, grain in shiploads.
+    Deep,
+}
+
+impl Berth {
+    /// Real draughts, and the bands are the ships rather than round
+    /// numbers: a coaster wants 5-7 m, Panamax 12, capesize 17-18.
+    pub fn for_depth(m: f64) -> Berth {
+        if m < 3.0 {
+            Berth::None
+        } else if m < 7.0 {
+            Berth::Fishing
+        } else if m < 12.0 {
+            Berth::Coaster
+        } else if m < 18.0 {
+            Berth::Ocean
+        } else {
+            Berth::Deep
+        }
+    }
+
+    /// How much a berth of this class can put over the quay in a day,
+    /// against a coaster berth. A deep-water bulk terminal is not a bigger
+    /// fishing harbour — it is a different order of thing, which is why
+    /// there are so few of them.
+    /// **A share of a day's draw, not a multiple of it.**
+    ///
+    /// The first figures had a deep-water berth shipping twelve days of a
+    /// town's consumption every day, which is not a port but a firehose:
+    /// household money in a four-nation world went from 29.9 billion to
+    /// 69.5 over three hundred days, more than doubling the money stock
+    /// out of a trade surplus. A country does export a serious share of
+    /// what it grows — Argentina ships most of its soy — but it does not
+    /// ship a fortnight's national consumption a day, every day, for ever.
+    pub fn a_days_loading(self) -> f64 {
+        match self {
+            Berth::None => 0.0,
+            Berth::Fishing => 0.02,
+            Berth::Coaster => 0.10,
+            Berth::Ocean => 0.30,
+            Berth::Deep => 0.80,
+        }
+    }
+}

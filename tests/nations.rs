@@ -595,28 +595,39 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
     use scale_sim::econ::SiteKind;
     use scale_sim::money::Account;
 
-    let mut n = nations(7, 4);
-    let abroad_before = n.economy.treasury.balance(Account::Abroad);
+    // **A country with no quay can only buy**, which is what isolates the
+    // claim. The first version ran a four-nation world and asserted the
+    // outside world ends up richer — and once exports existed that stopped
+    // being true, because those countries are net *exporters* and the money
+    // flows the other way. That is not the claim. The claim is that goods
+    // from outside are paid for, not that the trade balance has a sign.
+    //
+    // The two-town fixture is on no map, so no town is coastal and nothing
+    // can be sold abroad. Every crossing is an import.
+    let mut e = scale_sim::slice::build(Doctrine::Prudent);
+    assert!(
+        e.markets.iter().all(|m| !m.port),
+        "the fixture has grown a quay, so this no longer isolates imports"
+    );
+    let abroad_before = e.treasury.balance(Account::Abroad);
 
-    let importers: Vec<usize> = (0..n.economy.ledger.sites.len())
-        .filter(|&s| n.economy.ledger.sites[s].kind == SiteKind::Depot)
+    let importers: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == SiteKind::Depot)
         .collect();
     assert!(
         !importers.is_empty(),
-        "this world imports nothing, so the gate is watching a closed border"
+        "this fixture imports nothing, so the gate is watching a closed border"
     );
 
     for _ in 0..120 {
-        n.economy.step();
+        e.step();
     }
-    let e = &n.economy;
 
     // **Money has left the country**, which is what an import is.
     let abroad_after = e.treasury.balance(Account::Abroad);
     assert!(
         abroad_after > abroad_before,
-        "a hundred and twenty days of importing and the outside world is no better off: \
-         {abroad_before:.0} to {abroad_after:.0}"
+        "a hundred and twenty days of importing and the outside world is no better off:          {abroad_before:.0} to {abroad_after:.0}"
     );
 
     // **Extraction is not an import**, and that distinction is the whole
@@ -624,13 +635,6 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
     // with no inputs — they are taking from the land the world generator
     // actually put there, not from outside the model, and nobody abroad is
     // owed for it.
-    let paid_by: std::collections::BTreeSet<usize> = e
-        .journal
-        .entries()
-        .iter()
-        .filter_map(|_| None::<usize>)
-        .collect();
-    let _ = paid_by;
     let mut extractors_charged = Vec::new();
     for s in 0..e.ledger.sites.len() {
         let kind = e.ledger.sites[s].kind;
@@ -656,4 +660,228 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
     // named accounts and none was made.
     e.treasury.assert_conserved();
     e.ledger.assert_conserved();
+}
+
+/// **The border is a place, and it trades on a price like anywhere else.**
+///
+/// There was no export mechanism at all: `region` sizes a coastal
+/// country's farms at three times its own need on the grounds that it can
+/// export, and there was nowhere for the surplus to go. And the obvious
+/// symmetric fix — an export terminal paid by `Abroad` — has a hole in it.
+/// With an importer buying at two-thirds of reference and an exporter
+/// selling at 85%, a round trip through the quay is **free money**.
+///
+/// So there is **one world price**, and whether a country imports or
+/// exports is decided by where its own price sits against it. Both sides
+/// trade inland at wholesale, which is what makes the round trip break
+/// even before costs and a loss after them.
+#[test]
+fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
+    use scale_sim::money::Account;
+
+    let mut n = nations(7, 4);
+    let ports = n.economy.markets.iter().filter(|m| m.port).count();
+    assert!(
+        ports > 0 && ports < n.economy.markets.len(),
+        "{ports} of {} towns have a quay — a port is a fact about a town, not about a \
+         country, and an inland town trades through the coast",
+        n.economy.markets.len()
+    );
+
+    let abroad_before = n.economy.treasury.balance(Account::Abroad);
+    for _ in 0..300 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+
+    // **Money crosses the border in both directions.** Before this, none
+    // ever crossed at all.
+    assert_ne!(
+        e.treasury.balance(Account::Abroad),
+        abroad_before,
+        "three hundred days and the outside world's balance never moved"
+    );
+
+    // **Nothing can be both worth importing and worth exporting**, which
+    // is the property the first design lacked: a town that could do both
+    // would ship a cargo out and straight back in for a profit, for ever.
+    let mut both = Vec::new();
+    for m in 0..e.markets.len() {
+        for &c in Commodity::ALL.iter() {
+            if e.worth_importing(m, c) && e.worth_exporting(m, c) {
+                both.push((e.markets[m].name.clone(), c.to_string()));
+            }
+        }
+    }
+    assert!(
+        both.is_empty(),
+        "these could buy abroad and sell abroad at once, which is a money printer: {both:?}"
+    );
+
+    // **An inland town cannot load a ship**, which is the half that needs
+    // a quay. It can still buy from abroad — its imports land at the coast
+    // and come up the road, which is what the road is for — and requiring
+    // a port on both sides was the first version of this: it shut every
+    // inland town out of the world market and left the two-town fixture
+    // 24% above its own cost.
+    //
+    // The asymmetry does not reopen the money printer, and that is why it
+    // is safe: a town that can buy abroad and cannot sell abroad has no
+    // round trip to make.
+    for m in 0..e.markets.len() {
+        if e.markets[m].port {
+            continue;
+        }
+        for &c in Commodity::ALL.iter() {
+            assert!(
+                !e.worth_exporting(m, c),
+                "{} is inland and is loading ships",
+                e.markets[m].name
+            );
+        }
+    }
+
+    // **The direction follows the price.** Somewhere in this world a town
+    // is dear enough in something to import it, or cheap enough to export
+    // — otherwise the gate is watching a country that never trades and
+    // proves nothing.
+    let mut importing = 0;
+    let mut exporting = 0;
+    for m in 0..e.markets.len() {
+        for &c in Commodity::ALL.iter() {
+            if e.worth_importing(m, c) {
+                importing += 1;
+                // **Dear, or short.** A country buys from abroad when the
+                // price makes it worth somebody's while — and also when it
+                // is simply below the cover it keeps, because a merchant
+                // takes a thin cargo to hold a customer and where the
+                // market will not, the state does. Asserting only the price
+                // half was this gate's first version, and it failed on a
+                // country importing ore it was short of at a low price,
+                // which is the override doing exactly what it is for.
+                let dear = e.markets[m].price[c as usize] > c.world_price();
+                let short = e.markets[m].expected_cover[c as usize] < e.target_cover(m, c);
+                assert!(
+                    dear || short,
+                    "{} imports {c} while it is neither dear here nor short of it",
+                    e.markets[m].name
+                );
+            }
+            if e.worth_exporting(m, c) {
+                exporting += 1;
+                assert!(
+                    e.markets[m].price[c as usize] < c.world_price() / 0.75,
+                    "{} exports {c} while it is dearer here than abroad",
+                    e.markets[m].name
+                );
+            }
+        }
+    }
+    assert!(
+        importing + exporting > 0,
+        "no town in four nations trades with the outside world at all"
+    );
+
+    e.treasury.assert_conserved();
+    e.ledger.assert_conserved();
+}
+
+/// **A fishing village is not a container port, and the water decides.**
+///
+/// A quay was a flag, so any coastal town could ship a country's whole
+/// harvest in a morning — and it did: exports outran the price signal,
+/// because a stored staple is priced off a deliberately slow average of
+/// cover, so the drain never told anybody to stop. `trade` then pulled the
+/// rest of the country's surplus to the coast to follow it out.
+///
+/// The ceiling is physical and it comes from the sea. The elevation field
+/// has always run below sea level — that is what makes a cell ocean — and
+/// **nothing had ever read it as water.** Real draughts: an inshore boat
+/// wants 2-3 m, a coaster 5-7, a Panamax 12, a capesize bulk carrier
+/// 17-18. So a bay eight metres deep can load timber and cannot load ore,
+/// which is a real reason ore ports are few.
+#[test]
+fn what_can_tie_up_is_decided_by_the_water() {
+    use scale_sim::world::{Berth, World, SHELF_M};
+
+    let world = World::generate(384, 216, 7);
+
+    // **Dry land has no depth**, and the sea does. Both halves matter: a
+    // depth on a hillside would make every town a port.
+    let mut wet = 0usize;
+    let mut dry = 0usize;
+    let mut deepest = 0.0f64;
+    for cell in 0..world.width * world.height {
+        match world.depth_m(cell) {
+            Some(d) => {
+                assert!(d >= 0.0, "water {d} m deep");
+                deepest = deepest.max(d);
+                wet += 1;
+            }
+            None => dry += 1,
+        }
+    }
+    assert!(wet > 0 && dry > 0, "{wet} wet cells and {dry} dry ones");
+    assert!(
+        deepest > SHELF_M,
+        "the deepest water on this planet is {deepest:.0} m, which is still on the shelf"
+    );
+
+    // **The shelf is where everything is.** Real continental shelf is
+    // about 130 m at its outer edge and it is the ground every port on
+    // earth stands on, so most of the sea near land must be shallow rather
+    // than most of it being abyss.
+    let mut on_the_shelf = 0usize;
+    let mut abyss = 0usize;
+    for cell in 0..world.width * world.height {
+        if let Some(d) = world.depth_m(cell) {
+            if d <= SHELF_M {
+                on_the_shelf += 1;
+            } else {
+                abyss += 1;
+            }
+        }
+    }
+    assert!(
+        on_the_shelf > 0 && abyss > 0,
+        "shelf {on_the_shelf}, deep {abyss} — a planet is not all one or the other"
+    );
+
+    // **And the berth follows the draught, in the order the ships do.**
+    assert_eq!(Berth::for_depth(1.0), Berth::None);
+    assert_eq!(Berth::for_depth(4.0), Berth::Fishing);
+    assert_eq!(Berth::for_depth(8.0), Berth::Coaster);
+    assert_eq!(Berth::for_depth(14.0), Berth::Ocean);
+    assert_eq!(Berth::for_depth(25.0), Berth::Deep);
+    let mut last = -1.0;
+    for m in [1.0, 4.0, 8.0, 14.0, 25.0] {
+        let takes = Berth::for_depth(m).a_days_loading();
+        assert!(
+            takes > last,
+            "deeper water at {m} m loads no faster than shallower"
+        );
+        last = takes;
+    }
+
+    // **A country's ports are the towns on the water, and what they can
+    // take varies.** If every quay in a world were the same class, the
+    // water would be decorative.
+    let mut n = nations(7, 4);
+    for _ in 0..40 {
+        n.economy.step();
+    }
+    let classes: std::collections::BTreeSet<Berth> = n
+        .economy
+        .markets
+        .iter()
+        .filter(|m| m.port)
+        .map(|m| m.berth)
+        .collect();
+    assert!(
+        !classes.is_empty(),
+        "no town in four nations is on the water"
+    );
+    for m in n.economy.markets.iter().filter(|m| !m.port) {
+        assert_eq!(m.berth, Berth::None, "{} is inland and has a berth", m.name);
+    }
 }

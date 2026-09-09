@@ -2945,6 +2945,93 @@ symmetric answer is an export terminal: a site that *consumes* a commodity
 and is paid by `Abroad`, reusing siting, distribution, capacity and labour
 exactly as the import side does.
 
+### The border is a place, and it trades on a price like anywhere else
+
+There was no export mechanism at all: `region` sizes a coastal country's
+farms at **three times its own need** on the grounds that it can export,
+and there was nowhere for the surplus to go. Measured over four hundred
+days it was not spoiling — 0.7% — it was piling up, and would have filled
+the barns and stopped the farms.
+
+**The obvious symmetric fix has a hole in it.** An export terminal paid by
+`Abroad`, mirroring the import one, means two prices: an importer buying
+at two-thirds of reference and an exporter selling at 85% of it. A cargo
+shipped out and straight back in is then **free money**. So there is **one
+world price**, and whether a country imports or exports is decided by
+where its own price sits against it. Both sides trade inland at wholesale,
+which is what makes the round trip break even before costs and a loss
+after them. The gate asserts nothing can be worth importing and worth
+exporting at once; sabotaged back to two prices it names forty-one
+town-and-commodity pairs that could work the printer.
+
+**The direction falls out of geology.** Nobody decides what a country
+trades: a town dear in something buys it, a town cheap in it sells. Costs
+come from soil, seams and distances, so what a nation trades is decided by
+the world it was generated on.
+
+**A quay is a fact about a town, not about a country.** The first version
+gave every town in a coastal nation a port, including the ones a hundred
+miles inland. `Settlement` has known since it was written whether a place
+is on the water — it is part of why the place is there — and nothing had
+asked.
+
+**But a quay is only needed to load a ship out.** Requiring one to receive
+goods shut every inland town out of the world market and left the two-town
+fixture 24% above its own cost. An inland town's imports land at the coast
+and come up the road, which is what the road is for. The asymmetry cannot
+reopen the printer: a town that can buy abroad and cannot sell abroad has
+no round trip to make. **The leg from the quay inland is not modelled** —
+goods still materialise at whichever town holds the terminal — and that is
+a named gap.
+
+**And imports became a decision rather than a faucet.** A depot used to
+land its rated tonnage every day whether the country needed anything or
+not, which is exactly why the import margin had to be chosen rather than
+derived: goods arrived regardless of the price, so the price could not
+decide anything.
+
+### What can tie up is decided by the water
+
+A quay was a flag, so a fishing village and a container port were the same
+thing — and either could ship a country's whole harvest in a morning. It
+did: **exports outran the price signal**, because a stored staple is
+priced off a deliberately slow average of cover, so the drain never told
+anybody to stop, and `trade` pulled the rest of the country's surplus to
+the coast to follow it out.
+
+The elevation field has always run below sea level — that is what makes a
+cell ocean rather than land — and **nothing had ever read it as water**.
+Real draughts, and the spread is the point: an inshore boat wants 2-3 m, a
+coaster 5-7, a Panamax 12, a capesize bulk carrier 17-18. A bay eight
+metres deep can load timber and cannot load ore, which is a real reason
+ore ports are few and dredging is worth doing.
+
+The curve is deliberately shallow to the **shelf break at about 130 m**
+and steep past it, because the shelf is the ground every port on earth
+stands on. Land tops out at Everest and the sea goes to about 10,900 m,
+and they are separate scales because sea level sits wherever the
+percentile cut put it.
+
+**And two of the mechanisms written alongside it were justified by a
+property they do not provide.** A reserve cushion and the quay's
+throughput were both explained as stopping a country exporting itself
+hungry. Deleting the cushion, giving the quay infinite capacity, removing
+the reserve guard at the shed, even taking raw stock — **the gate stayed
+green every time**. `Economy::surplus` only ever offers what a market
+holds above its working reserve, so the property is guaranteed by
+construction and asserting it was a tautology wearing a test's clothes. It
+is recorded as a comment now, naming all three redundant guards. The berth
+limit stays because it is justified independently — it halved the food
+spread — but not for the reason first given.
+
+**One gate legitimately expired.** `carriers_even_out_a_country_that_
+pairwise_trade_cannot` asserted food cover is even with hauliers and
+without, because `distribute` handles a commodity every town makes and
+sells. That was true when food had nowhere to go. Now a coastal town can
+sell its surplus and an inland one cannot, so the country is not flat —
+and flattening it again would mean pretending a port is worth no more than
+anywhere else. The famine half of that gate is untouched.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,
