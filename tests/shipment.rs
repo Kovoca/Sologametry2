@@ -1092,3 +1092,79 @@ fn a_cargo_delivered_long_ago_is_still_a_cargo_that_existed() {
         "a consignment still on the road does not read as being on the road"
     );
 }
+
+/// **Somebody sells the goods, and nobody was paid for them.**
+///
+/// A consignment recorded what the cargo was worth and the journal carried
+/// a `paid` figure on every despatch and landing, and no money moved. A
+/// works could ship fifty tonnes across the country and receive nothing —
+/// so a firm's only income was what it sold over its own counter, and **an
+/// export-led economy could not exist**.
+///
+/// The global conservation check passed throughout, because nothing was
+/// created or destroyed. The money simply never moved, which is the
+/// characteristic failure in this model: the total is right and a
+/// particular fact is wrong. So the gate watches the **two named
+/// balances**, not the sum.
+#[test]
+fn the_seller_is_paid_for_what_arrived() {
+    use scale_sim::money::Account;
+
+    let mut e = world();
+    let (from, to, c, qty) = a_load(&mut e);
+
+    // Both need money in hand, or the buyer simply cannot pay and the gate
+    // measures a bad debt rather than a sale.
+    let day = e.ledger.day;
+    e.treasury.pay(
+        day,
+        Account::Abroad,
+        Account::Firm(to),
+        1_000_000.0,
+        scale_sim::money::Why::Trade,
+    );
+
+    let seller_before = e.treasury.balance(Account::Firm(from));
+    let buyer_before = e.treasury.balance(Account::Firm(to));
+
+    let (id, _) = e
+        .consign(from, to, 0, c, qty, 173.0, false)
+        .expect("nothing was consigned");
+    let goods = e.shipments.get(id).map(|s| s.goods).unwrap_or(0.0);
+    assert!(goods > 0.0, "a cargo worth nothing proves nothing");
+
+    // **Nothing is owed while it is on the road.** The contract is struck
+    // at despatch and settled on delivery.
+    assert_eq!(
+        e.treasury.balance(Account::Firm(from)),
+        seller_before,
+        "the seller was paid before the goods arrived"
+    );
+
+    let off = e.tip(id);
+    assert!(off > 0.0, "nothing was tipped, so nothing was sold");
+
+    let seller_after = e.treasury.balance(Account::Firm(from));
+    let buyer_after = e.treasury.balance(Account::Firm(to));
+    assert!(
+        seller_after > seller_before,
+        "the seller shipped {off:.1} t worth {goods:.0} and is no better off"
+    );
+    assert!(
+        buyer_after < buyer_before,
+        "the buyer received {off:.1} t and paid nothing for it"
+    );
+
+    // **Prorated to what actually arrived.** The road's risk falls on the
+    // seller: a cargo that spoils is a cargo nobody pays for.
+    let received = seller_after - seller_before;
+    let share = off / qty;
+    assert!(
+        (received - goods * share).abs() < goods * 0.01 + 1e-6,
+        "the seller got {received:.1} for {:.0}% of a cargo worth {goods:.0}",
+        share * 100.0
+    );
+
+    e.treasury.assert_conserved();
+    e.ledger.assert_conserved();
+}

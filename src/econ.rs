@@ -5139,6 +5139,41 @@ impl Economy {
     /// and doing so drained the very pockets the shops sell out of — which
     /// showed up as hauliers *unbalancing* the food supply they were
     /// supposed to even out.
+    /// **Somebody sells the goods, and until now nobody was paid for
+    /// them.**
+    ///
+    /// A consignment recorded what the cargo was worth and the journal
+    /// carried a `paid` figure on every despatch and landing, and no money
+    /// moved. A works could ship fifty tonnes of steel across the country
+    /// and receive nothing — so a firm's only income was what it sold over
+    /// its own counter, and **an export-led economy could not exist**.
+    ///
+    /// The global conservation check passed throughout, because nothing was
+    /// created or destroyed. The money simply never moved. That is the
+    /// characteristic failure here: the total is right and a particular
+    /// fact is wrong.
+    ///
+    /// **Paid on delivery, and prorated to what actually arrived**, which
+    /// is the terms the code already implied by sharing the agreed value
+    /// over the tonnage that survived. It puts the road's risk on the
+    /// seller: a cargo that spoils is a cargo nobody pays for. That is one
+    /// of the two real answers — the other is ex-works, where the buyer
+    /// owns it from the moment it leaves and bears the loss — and it is the
+    /// one this model's own proration was already written for.
+    pub fn pay_the_seller(&mut self, consignor: usize, consignee: usize, goods: f64) {
+        if goods <= 1e-9 || consignor == consignee {
+            return;
+        }
+        let day = self.ledger.day;
+        self.treasury.pay(
+            day,
+            crate::money::Account::Firm(consignee),
+            crate::money::Account::Firm(consignor),
+            goods,
+            crate::money::Why::Purchase,
+        );
+    }
+
     pub fn pay_the_carrier(&mut self, consignee: usize, freight: f64) {
         if freight <= 1e-9 {
             return;
@@ -5623,6 +5658,11 @@ impl Economy {
         // Which is also why a haulier's money comes in later than the work
         // does, and is a real reason small ones run out of it.
         self.pay_the_carrier(consignee, freight);
+        // **And so is the seller.** See `pay_the_seller`.
+        let consignor = self.shipments.get(id).map(|s| s.consignor);
+        if let Some(consignor) = consignor {
+            self.pay_the_seller(consignor, consignee, paid);
+        }
         // **Experiment L.** What a carrier drops off did cost what was
         // paid for it plus this carriage, and folding that in is Phase 0
         // item 8. Off by default until the matrix says which of the four
@@ -5816,6 +5856,10 @@ impl Economy {
                     },
                 );
                 self.pay_the_carrier(site, freight);
+                let consignor = self.shipments.get(id).map(|s| s.consignor);
+                if let Some(consignor) = consignor {
+                    self.pay_the_seller(consignor, site, paid);
+                }
                 if let Some(s) = self.shipments.get_mut(id) {
                     s.aboard -= off;
                     s.delivered += off;
