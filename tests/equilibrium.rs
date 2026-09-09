@@ -970,3 +970,80 @@ fn a_booking_names_a_road_and_not_a_slot() {
         "the road between two towns has a different amount left after a reorder"
     );
 }
+
+/// **Two short hauls cost more than one long one**, because the short pair
+/// is loaded and unloaded twice.
+///
+/// Freight was `rate x kilometres x tonnes` and nothing else, so the model
+/// held that a hundred kilometres in two hops cost exactly what it costs
+/// in one. It does not, and the gap is not small: a dock turns a lorry
+/// round in three quarters of an hour, there is one at each end, and the
+/// average haul is 94 km — about an hour and a half of driving. **At an
+/// ordinary haul length the handling is comparable to the running.**
+///
+/// This is why consolidation exists at all: why a firm fills a lorry
+/// rather than sending two half-empty ones, why local delivery is dear per
+/// kilometre, and why real distribution is a multi-drop round rather than
+/// a set of point-to-point trips.
+#[test]
+fn handling_is_charged_once_per_consignment_and_it_is_not_small() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    e.step();
+
+    // The triangle is three identical roads, so a leg is a leg.
+    let one_leg = e.carriage_for(0, 1, 40.0);
+    assert!(one_leg > 0.0, "carriage between two towns costs nothing");
+
+    // **The same tonnage over the same ground, in two consignments.**
+    let in_two = e.carriage_for(0, 1, 20.0) + e.carriage_for(0, 1, 20.0);
+    assert!(
+        in_two > one_leg * 1.05,
+        "splitting a load into two consignments cost {in_two:.1} against {one_leg:.1} for one \
+         — handling is not being charged per consignment"
+    );
+
+    // **The share falls with distance, which is the whole claim.** A
+    // first version of this gate asserted a flat band and failed at 8% on
+    // this fixture — correctly, because its roads are 800 km and handling
+    // *should* be a rounding on a haul that long. What is true is the
+    // relationship, not a number.
+    let share_of = |e: &scale_sim::econ::Economy, km_road: f64| -> f64 {
+        let full = e.carriage_for(0, 1, 24.0);
+        let running = e.freight_between(0, 1) * 24.0;
+        let _ = km_road;
+        (full - running) / full
+    };
+    let long_haul = share_of(&e, 800.0);
+
+    // The two-town slice runs a 173 km road, which is the length of an
+    // ordinary haul rather than a national trunk route.
+    let mut short = slice::build(Doctrine::Prudent);
+    short.step();
+    let ordinary_haul = share_of(&short, 173.0);
+
+    assert!(
+        ordinary_haul > long_haul * 2.0,
+        "handling is {:.0}% of the bill on a 173 km haul and {:.0}% on an 800 km one —          it is not falling with distance, so it is not a fixed cost",
+        ordinary_haul * 100.0,
+        long_haul * 100.0
+    );
+    assert!(
+        ordinary_haul > 0.25,
+        "handling is only {:.0}% of an ordinary haul, where the real figure is comparable          to the running",
+        ordinary_haul * 100.0
+    );
+
+    // **A pallet pays a minimum**, because nobody moves one for pennies —
+    // so carriage per tonne falls as the load grows, which is the whole
+    // reason a full lorry is worth waiting for.
+    let per_tonne_small = e.carriage_for(0, 1, 1.0);
+    let per_tonne_full = e.carriage_for(0, 1, 24.0) / 24.0;
+    assert!(
+        per_tonne_small > per_tonne_full,
+        "a single tonne is carried as cheaply per tonne as a full lorry"
+    );
+
+    // And it still costs nothing to move something nowhere.
+    assert_eq!(e.carriage_for(0, 0, 40.0), 0.0);
+    assert_eq!(e.carriage_for(0, 1, 0.0), 0.0);
+}

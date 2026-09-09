@@ -2861,6 +2861,38 @@ Generated, never stored: rebuilding the same world puts the same firms at
 the same numbers, because a plan is a function of the seed and the cell
 rather than a thing anybody wrote down.
 
+### Carriage has a fixed half, and at an ordinary haul it is about half
+
+Freight was `rate x kilometres x tonnes` and nothing else, so the model
+held that a hundred kilometres in two hops costs exactly what it costs in
+one. **It does not**: the two-drop version is loaded and unloaded twice.
+
+The figures are this project's own, which is what makes it a calibration
+rather than a knob. A dock turns a lorry round in **45-60 minutes**, there
+is one at each end, and the average road haul is **94 km** — about an hour
+and a half of driving. So handling is comparable to running, and **cost per
+tonne-kilometre falls with distance** instead of being flat.
+
+It is expressed as the distance whose running cost it matches, so it stays
+in the model's own units and moves with the road rather than being a
+currency figure that drifts away from everything else. And it is charged
+**per consignment**, not per tonne, because loading one pallet and loading
+twenty is much the same trip to the dock — floored at a quarter-lorry,
+because nobody moves a pallet for pennies, and capped at one vehicle.
+
+**This is why consolidation exists at all**: why a firm fills a lorry
+rather than sending two half-empty, why local delivery is dear per
+kilometre, and why real distribution is a multi-drop round rather than a
+set of point-to-point trips. With premises now addressed, it is also the
+pressure that will make rounds a thing.
+
+**The gate had to test the relationship, not a number.** The first version
+asserted handling was 10-75% of the bill and failed at 8% — correctly,
+because the symmetric fixture's roads are 800 km and on a haul that long
+handling *should* be a rounding. What is true is that the share falls with
+distance: about 40% of an ordinary 173 km haul against 8% of an 800 km
+one. Asserting the band would have been fitting a gate to one fixture.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

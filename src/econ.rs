@@ -4232,7 +4232,7 @@ impl Economy {
                     }
                     let from_m = self.ledger.sites[src].market;
                     let paid = self.markets[from_m].landed[c as usize] * qty;
-                    let freight = self.freight_between(from_m, market) * qty;
+                    let freight = self.carriage_for(from_m, market, qty);
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -4922,7 +4922,7 @@ impl Economy {
                     let to_m = self.ledger.sites[dst].market;
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
-                    let freight = carriage * qty;
+                    let freight = self.carriage_for(from_m, to_m, qty);
                     sellable -= qty;
                     self.ledger.apply(
                         &mut self.journal,
@@ -5404,6 +5404,66 @@ impl Economy {
             .collect()
     }
 
+    /// **What it costs to handle a consignment, whatever the distance.**
+    ///
+    /// Freight was `rate x kilometres x tonnes` and nothing else, so the
+    /// model held that two fifty-kilometre hauls cost exactly what one
+    /// hundred-kilometre haul costs. They do not: the two-drop version
+    /// pays to load and unload twice, and **at the length of an ordinary
+    /// haul that is about half the bill.**
+    ///
+    /// The figures are this project's own. A dock turns a lorry round in
+    /// **forty-five to sixty minutes**, there is one at each end, and the
+    /// average road haul is **94 km** — an hour and a half of driving. So
+    /// handling is comparable to running, and cost per tonne-kilometre
+    /// therefore *falls* with distance rather than being flat.
+    ///
+    /// Expressed as the distance whose running cost it matches, so it stays
+    /// in the model's own units and moves with the road rather than being a
+    /// currency figure that drifts away from everything else.
+    ///
+    /// **This is why consolidation exists**: why a firm fills a lorry
+    /// rather than sending two half-empty, why local delivery is dear per
+    /// kilometre, and why real distribution is a multi-drop round instead
+    /// of a set of point-to-point trips.
+    pub const HANDLING_EQUIVALENT_KM: f64 = 120.0;
+
+    /// A lorry-load, the same 24 tonnes `logistics` sizes its fleet on.
+    pub const A_LORRY_T: f64 = 24.0;
+
+    /// **Nobody moves a pallet for pennies.** A minimum charge is real, and
+    /// it is what the fixed half of the cost looks like to a small
+    /// consignment: a quarter of a lorry's handling however little is on
+    /// it.
+    pub const MINIMUM_CHARGEABLE_T: f64 = Self::A_LORRY_T / 4.0;
+
+    /// **The whole charge for one consignment**: handling at both ends,
+    /// plus weight over distance.
+    ///
+    /// The handling part is charged on how much of a lorry the load fills,
+    /// floored at the minimum and capped at one vehicle — so a full load
+    /// pays about one extra haul's worth of running and a pallet pays the
+    /// minimum, which is what a rate card actually looks like.
+    pub fn carriage_for(&self, from: usize, to: usize, tonnes: f64) -> f64 {
+        if from == to || tonnes <= 0.0 {
+            return 0.0;
+        }
+        let chargeable = tonnes.clamp(Self::MINIMUM_CHARGEABLE_T, Self::A_LORRY_T);
+        let handling = self.rate_per_tonne_km(from, to) * Self::HANDLING_EQUIVALENT_KM * chargeable;
+        handling + self.freight_between(from, to) * tonnes
+    }
+
+    /// What the road is charging per tonne per kilometre, so a fixed charge
+    /// can be expressed in kilometres of it.
+    fn rate_per_tonne_km(&self, from: usize, to: usize) -> f64 {
+        let km = self.routing.km(from, to);
+        if km > 1e-9 {
+            self.freight_between(from, to) / km
+        } else {
+            0.0
+        }
+    }
+
     pub fn freight_between(&self, from: usize, to: usize) -> f64 {
         if from == to {
             return 0.0;
@@ -5471,7 +5531,10 @@ impl Economy {
         self.book_the_road(from_market, to_market, day, due, take);
 
         let goods = self.markets[from_market].landed[commodity as usize] * take;
-        let freight = self.freight_between(from_market, to_market) * take;
+        // **Handling as well as running.** See `carriage_for`: two short
+        // hauls cost more than one long one, because the short pair is
+        // loaded and unloaded twice.
+        let freight = self.carriage_for(from_market, to_market, take);
 
         let id = self.shipments.add(Shipment {
             commodity,
