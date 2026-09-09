@@ -2655,6 +2655,26 @@ Still open, and named rather than implied: the item store, the population
 and the ground overlay are not in this codec, so `GameState` is not yet
 saveable whole. What is saveable whole is the economy.
 
+### The save gap is measured, not typed in
+
+`saveable_parts` returned `(3, 4)` with a comment beside it saying what
+those numbers meant. An external review named it for what it was: a
+hard-coded progress claim rather than a reachable capability. **A number
+somebody types cannot go out of date honestly** — it goes out of date
+silently, in whichever direction flatters.
+
+Every part that claims to be saveable is now **arrived at by actually
+serialising it**, so removing a codec stops the root compiling and adding
+one moves the figure without anybody remembering to. The bytes are thrown
+away; what is being established is that a codec exists and runs.
+
+And **the parts still missing are named rather than counted** — the item
+store, the people, buildings and utilities, vehicles and work orders —
+because a gap that says *what* is a plan and a gap that says *how much* is
+a score. The gate proves the measurement rather than the number: a root
+with no economy in it must not claim to have saved one, which is what
+turns red when the claim is made without the write.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

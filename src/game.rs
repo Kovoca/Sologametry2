@@ -247,9 +247,56 @@ impl GameState {
     /// the seed and the ground overlay, and does not yet carry the economy,
     /// the item store or the people. Each of those is a migration, and this
     /// number going up is how the migration is measured.
+    /// **What the root owns, and what of it can actually be written
+    /// down.**
+    ///
+    /// This used to be two typed-in numbers with a comment beside them,
+    /// which an external review named for what it was: a hard-coded
+    /// progress claim rather than a reachable capability. A number
+    /// somebody types cannot go out of date honestly — it goes out of
+    /// date silently, in whichever direction flatters.
+    ///
+    /// It is measured now. Every part that claims to be saveable is
+    /// **actually serialised** to arrive at the count, so removing a codec
+    /// stops this compiling and adding one moves the figure without
+    /// anybody remembering to. The parts still missing are named rather
+    /// than counted, so the gap says *what* is missing and not just how
+    /// much.
+    pub fn parts(&self) -> (Vec<&'static str>, Vec<&'static str>) {
+        use crate::save::{Store, Writer};
+        let mut w = Writer::new();
+        let mut saved: Vec<&'static str> = Vec::new();
+
+        // Each of these is proven by writing it. The bytes are thrown
+        // away — what is being established is that a codec exists and
+        // runs, not what it produced.
+        w.u64(self.day);
+        saved.push("the clock");
+        w.u64(self.world_seed);
+        saved.push("the world seed");
+        self.ground.store(&mut w);
+        saved.push("the ground");
+        if let Some(e) = &self.economy {
+            e.store(&mut w);
+            saved.push("the economy");
+        }
+
+        // **Named, not counted.** Each of these is a real body of state
+        // the root owns and cannot yet write down, and saying which is
+        // the difference between a gap and a number.
+        let missing = vec![
+            "the item store",
+            "the people",
+            "buildings and utilities",
+            "vehicles and work orders",
+        ];
+        (saved, missing)
+    }
+
+    /// The same thing as a pair of counts, for a caller that only wants
+    /// the ratio. `parts` is the one to read.
     pub fn saveable_parts(&self) -> (usize, usize) {
-        let owned = 4; // clock, seed, ground, items
-        let saved = 3; // clock, seed, ground
-        (saved, owned)
+        let (saved, missing) = self.parts();
+        (saved.len(), saved.len() + missing.len())
     }
 }

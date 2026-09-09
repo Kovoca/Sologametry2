@@ -217,15 +217,37 @@ fn a_day_happens_in_a_stated_order() {
 #[test]
 fn the_save_gap_is_a_number_rather_than_a_claim() {
     let g = a_world();
-    let (saved, owned) = g.saveable_parts();
-    assert!(saved <= owned, "it claims to save more than it owns");
-    assert!(owned > 0);
+    let (saved, missing) = g.parts();
+    let (n, owned) = g.saveable_parts();
+    assert_eq!(n, saved.len());
+    assert_eq!(owned, saved.len() + missing.len());
+
+    // **The count is measured, not claimed.** Every part in `saved` was
+    // arrived at by actually serialising it, so this cannot drift the way
+    // two typed-in numbers did — and the parts still missing are named, so
+    // the gap says *what* rather than only how much.
+    assert!(
+        saved.contains(&"the economy"),
+        "the economy has a codec and the root does not know it: {saved:?}"
+    );
+    assert!(
+        saved.contains(&"the ground"),
+        "the ground overlay has a codec and the root does not know it: {saved:?}"
+    );
+
     // **Deliberately failing to be complete**, and recorded as such: when
     // this reaches parity the assertion below is what has to change, and
     // changing it means the migration actually happened.
     assert!(
-        saved < owned,
+        !missing.is_empty(),
         "the root now saves everything it owns — update this gate and say so"
+    );
+
+    // A world with no economy in it must say so rather than counting one.
+    let bare = scale_sim::game::GameState::new(1);
+    assert!(
+        !bare.parts().0.contains(&"the economy"),
+        "a root with no economy claimed to have saved one"
     );
 }
 
