@@ -3482,6 +3482,66 @@ impl Economy {
         }
     }
 
+    /// **Goods from outside the country are paid for, and until now they
+    /// were not.**
+    ///
+    /// A depot is where goods from beyond the modelled world arrive, and
+    /// its recipe has **no inputs at all** — so a tonne of imported steel
+    /// was made out of nothing and nobody was billed for it. `Account::
+    /// Abroad` exists in this model precisely so that a trade deficit has
+    /// somewhere to go, and the only line that touched it was the one that
+    /// opened it. **Nothing had ever moved money across a border.**
+    ///
+    /// The consequence was not small: a country could run an unlimited
+    /// trade deficit at no cost, which made every import-dependent nation
+    /// artificially rich, and it is why a depot's balance sat at ten
+    /// thousand against a shop's four hundred and sixty million — it
+    /// received goods free and handed them on free, so it was a conduit
+    /// rather than a business.
+    ///
+    /// **Extraction is not an import**, and the distinction is the whole
+    /// of the rule. A farm, a colliery and an oil field also have recipes
+    /// with no inputs, and they are taking from the land the world
+    /// generator actually put there. A depot is taking from outside the
+    /// model, and outside the model wants paying.
+    ///
+    /// **Bought at the world price, which is below the domestic one — and
+    /// that is the whole reason anybody imports anything.**
+    ///
+    /// The first attempt paid the commodity's full reference cost, and the
+    /// importer went bankrupt on the first tonne: it sells into
+    /// distribution at a **wholesale** price, which this model already puts
+    /// at 75% of the market price, so buying at 100 and selling at 75 is a
+    /// guaranteed loss on every load. That is not a calibration problem, it
+    /// is the arithmetic of importing at parity.
+    ///
+    /// A country imports because the goods are **cheaper there**. That is
+    /// comparative advantage, and it is one number here: the world price is
+    /// about two-thirds of the domestic reference cost, which leaves the
+    /// importer a gross margin in the **10-15% band this file already cites
+    /// for wholesale** after it has sold at 75.
+    ///
+    /// The figure is a designed one and labelled as such. What a real
+    /// derivation wants is a world price per commodity that a country's own
+    /// costs are compared against — which is also what would let a country
+    /// *stop* importing when it becomes the cheaper producer, and start
+    /// exporting instead.
+    const WORLD_PRICE: f64 = 0.65;
+
+    fn pay_for_imports(&mut self, site: usize, c: Commodity, qty: f64) {
+        if qty <= 1e-9 || self.ledger.sites[site].kind != SiteKind::Depot {
+            return;
+        }
+        let day = self.ledger.day;
+        self.treasury.pay(
+            day,
+            crate::money::Account::Firm(site),
+            crate::money::Account::Abroad,
+            c.base_cost() * Self::WORLD_PRICE * qty,
+            crate::money::Why::Trade,
+        );
+    }
+
     /// Share the day's electricity out. Priority order is critical →
     /// industrial → household (spec B.2); anyone who misses out loses
     /// power for the day.
@@ -3672,14 +3732,20 @@ impl Economy {
                 );
             }
             for &(c, out) in recipe.outputs {
+                let made = out * batches;
                 self.ledger.apply(
                     &mut self.journal,
                     Event::Produced {
                         site,
                         commodity: c,
-                        qty: out * batches,
+                        qty: made,
                     },
                 );
+                // **An import is bought from somebody.** See
+                // `pay_for_imports`: a depot is where goods from outside
+                // the modelled world arrive, and somebody out there wants
+                // paying for them.
+                self.pay_for_imports(site, c, made);
             }
         }
     }

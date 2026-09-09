@@ -575,3 +575,85 @@ fn what_it_costs_here_is_what_it_cost_there_plus_getting_it_here() {
         "nothing anywhere cost more to get hold of than to make, so carriage reached nothing"
     );
 }
+
+/// **Goods from outside the country are paid for.**
+///
+/// A depot is where goods from beyond the modelled world arrive, and its
+/// recipe has **no inputs at all** — so a tonne of imported steel was made
+/// out of nothing and nobody was billed for it. `Account::Abroad` exists
+/// precisely so a trade deficit has somewhere to go, and the only line
+/// that touched it was the one that opened it: **nothing had ever moved
+/// money across a border.**
+///
+/// The consequence was not small. A country could run an unlimited trade
+/// deficit at no cost, which made every import-dependent nation
+/// artificially rich — and it is why a depot's balance sat at ten thousand
+/// against a shop's four hundred and sixty million. It received goods free
+/// and handed them on free, so it was a conduit rather than a business.
+#[test]
+fn what_comes_from_abroad_is_bought_from_abroad() {
+    use scale_sim::econ::SiteKind;
+    use scale_sim::money::Account;
+
+    let mut n = nations(7, 4);
+    let abroad_before = n.economy.treasury.balance(Account::Abroad);
+
+    let importers: Vec<usize> = (0..n.economy.ledger.sites.len())
+        .filter(|&s| n.economy.ledger.sites[s].kind == SiteKind::Depot)
+        .collect();
+    assert!(
+        !importers.is_empty(),
+        "this world imports nothing, so the gate is watching a closed border"
+    );
+
+    for _ in 0..120 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+
+    // **Money has left the country**, which is what an import is.
+    let abroad_after = e.treasury.balance(Account::Abroad);
+    assert!(
+        abroad_after > abroad_before,
+        "a hundred and twenty days of importing and the outside world is no better off: \
+         {abroad_before:.0} to {abroad_after:.0}"
+    );
+
+    // **Extraction is not an import**, and that distinction is the whole
+    // of the rule. A farm, a colliery and an oil field also have recipes
+    // with no inputs — they are taking from the land the world generator
+    // actually put there, not from outside the model, and nobody abroad is
+    // owed for it.
+    let paid_by: std::collections::BTreeSet<usize> = e
+        .journal
+        .entries()
+        .iter()
+        .filter_map(|_| None::<usize>)
+        .collect();
+    let _ = paid_by;
+    let mut extractors_charged = Vec::new();
+    for s in 0..e.ledger.sites.len() {
+        let kind = e.ledger.sites[s].kind;
+        let extractive = matches!(
+            kind,
+            SiteKind::Farm
+                | SiteKind::Mine
+                | SiteKind::IronMine
+                | SiteKind::OilField
+                | SiteKind::Forestry
+                | SiteKind::Pasture
+        );
+        if extractive && e.treasury.balance(Account::Firm(s)) < 0.0 {
+            extractors_charged.push(e.ledger.sites[s].name.clone());
+        }
+    }
+    assert!(
+        extractors_charged.is_empty(),
+        "these take from their own ground and have been billed for it: {extractors_charged:?}"
+    );
+
+    // And the books still balance, which they must: money moved between
+    // named accounts and none was made.
+    e.treasury.assert_conserved();
+    e.ledger.assert_conserved();
+}

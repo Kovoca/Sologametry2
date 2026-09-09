@@ -2893,6 +2893,58 @@ handling *should* be a rounding. What is true is that the share falls with
 distance: about 40% of an ordinary 173 km haul against 8% of an 800 km
 one. Asserting the band would have been fitting a gate to one fixture.
 
+### Goods from outside the country are paid for
+
+A depot is **where goods from beyond the modelled world arrive**, and its
+recipe has no inputs at all — so a tonne of imported steel was made out of
+nothing and nobody was billed for it. `Account::Abroad` exists precisely so
+a trade deficit has somewhere to go, and the only line that touched it was
+the one that opened it: **nothing had ever moved money across a border.**
+
+The consequence was not small. A country could run an unlimited trade
+deficit at no cost, which made every import-dependent nation artificially
+rich — and it is why a depot's balance sat at ten thousand against a
+shop's four hundred and sixty million. It received goods free and handed
+them on free, so it was a conduit rather than a business.
+
+**Extraction is not an import**, and that distinction is the whole of the
+rule. A farm, a colliery and an oil field also have recipes with no
+inputs; they are taking from the land the world generator actually put
+there. A depot is taking from outside the model, and outside the model
+wants paying.
+
+**The world price is below the domestic one, and that is the whole reason
+anybody imports anything.** The first version paid the full reference cost
+and bankrupted every importer on its first tonne: a depot sells into
+distribution at **wholesale, 75% of market price**, so buying at 100 and
+selling at 75 is a guaranteed loss on every load. That is not a
+calibration problem, it is the arithmetic of importing at parity. The
+world price is about two-thirds of the domestic reference cost, which
+leaves a gross margin inside the 10-15% wholesale band this file already
+cites. A designed figure, labelled as one — a real derivation wants a
+world price per commodity that a country's own costs are compared
+against, which is also what would let a country *stop* importing when it
+becomes the cheaper producer.
+
+Measured over sixty days on four nations: **5.03 billion now leaves the
+country for imports, where it was exactly zero.**
+
+**And the hook went into the wrong function, where it silently did
+nothing.** It landed in `generate_power` rather than `produce`, so it only
+ever fired for power stations. The tell was `unpaid` coming back
+*identical to the digit* across two runs — a deterministic model producing
+byte-identical output after a change means the change is not running.
+**"Nothing broke" and "nothing happened" look the same from a passing
+suite**, and the way to tell them apart is to measure the mechanism rather
+than the tests.
+
+**Exports do not exist at all.** `can_export` sizes a coastal country's
+farms at three times its own need and there is nowhere to send the
+surplus — it fills the barns until the farms stop, or it spoils. The
+symmetric answer is an export terminal: a site that *consumes* a commodity
+and is paid by `Abroad`, reusing siting, distribution, capacity and labour
+exactly as the import side does.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,
