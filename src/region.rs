@@ -583,10 +583,16 @@ impl Region {
             // straddle the equator, and a market's farming year follows
             // where it actually is.
             let southern = s.cell / world.width > world.height / 2;
-            markets.push(Market::in_nation(name.clone(), pop, 0, southern));
+            // **Where the town actually is**, so a works in it can be given
+            // a street and a number. Without this the economy knows there
+            // is a place called Ashford and cannot find it.
+            let mut market = Market::in_nation(name.clone(), pop, 0, southern);
+            market.cell = Some(s.cell);
+            markets.push(market);
             settlement_of_market.push(t);
 
             sites.push(Site {
+                address: None,
                 name: format!("{name} market"),
                 kind: SiteKind::Shop,
                 market: m,
@@ -681,6 +687,7 @@ impl Region {
             }
             let name = &markets[m].name;
             sites.push(Site {
+                address: None,
                 name: format!("{name} farms"),
                 kind: SiteKind::Farm,
                 market: m,
@@ -727,6 +734,7 @@ impl Region {
             let graze = live_day * share;
             if graze > 0.05 {
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} pasture"),
                     kind: SiteKind::Pasture,
                     market: m,
@@ -751,6 +759,7 @@ impl Region {
             let short = (live_day * share - can_graze).max(0.0) / 2.6;
             if short > 0.02 && has_coastline(world, polities, polity) {
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} meat imports"),
                     kind: SiteKind::Depot,
                     market: m,
@@ -768,6 +777,7 @@ impl Region {
             let cuts = meat_day * share * 1.1;
             if cuts > 0.02 {
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} butcher"),
                     kind: SiteKind::Butcher,
                     market: m,
@@ -814,6 +824,7 @@ impl Region {
             }
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} mill"),
                 kind: SiteKind::Mill,
                 market: m,
@@ -833,6 +844,7 @@ impl Region {
                 cost_factor: 1.0,
             });
             sites.push(Site {
+                address: None,
                 name: format!("{name} cannery"),
                 kind: SiteKind::Factory,
                 market: m,
@@ -898,6 +910,7 @@ impl Region {
             imported += short;
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} grain terminal"),
                 kind: SiteKind::Mine,
                 market: m,
@@ -1112,6 +1125,7 @@ impl Region {
                 // Real coalfields feed mine-mouth power stations: moving
                 // electricity is far cheaper than moving the coal.
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} colliery"),
                     kind: SiteKind::Mine,
                     market: m,
@@ -1128,6 +1142,7 @@ impl Region {
                     cost_factor: Commodity::cost_of_working(endow.coal_grade as f64),
                 });
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
                     market: m,
@@ -1158,6 +1173,7 @@ impl Region {
                     .unwrap_or(0);
                 let name = markets[port].name.clone();
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} fuel terminal"),
                     kind: SiteKind::Mine,
                     market: port,
@@ -1171,6 +1187,7 @@ impl Region {
                     cost_factor: 1.0,
                 });
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} power station"),
                     kind: SiteKind::PowerPlant,
                     market: port,
@@ -1237,6 +1254,7 @@ impl Region {
                     w_cells(world),
                 );
                 sites.push(Site {
+                    address: None,
                     name: format!("{steel_name} iron mine"),
                     kind: SiteKind::IronMine,
                     market: steel_town,
@@ -1264,6 +1282,7 @@ impl Region {
                 // entirely imported ore, which is exactly why their mills
                 // sit on tidewater.
                 sites.push(Site {
+                    address: None,
                     name: format!("{steel_name} ore terminal"),
                     kind: SiteKind::IronMine,
                     market: steel_town,
@@ -1285,6 +1304,7 @@ impl Region {
         let steel_home = steel_day * DOMESTIC_STEEL_SHARE;
         if steel_home > 0.01 {
             sites.push(Site {
+                address: None,
                 name: format!("{steel_name} steelworks"),
                 kind: SiteKind::Steelworks,
                 market: steel_town,
@@ -1362,6 +1382,7 @@ impl Region {
             }
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} works"),
                 kind: SiteKind::Works,
                 market: m,
@@ -1427,6 +1448,7 @@ impl Region {
             };
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} forestry"),
                 kind: SiteKind::Forestry,
                 market: m,
@@ -1481,6 +1503,7 @@ impl Region {
             };
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} oil field"),
                 kind: SiteKind::OilField,
                 market: m,
@@ -1506,6 +1529,7 @@ impl Region {
             // **A cracker stands on the oil**, which is why refineries are
             // at the wellhead or the tanker terminal and never inland.
             sites.push(Site {
+                address: None,
                 name: format!("{name} cracker"),
                 kind: SiteKind::Cracker,
                 market: m,
@@ -1541,6 +1565,7 @@ impl Region {
                 }
                 let name = markets[m].name.clone();
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} machine works"),
                     kind: SiteKind::MachineWorks,
                     market: m,
@@ -1594,6 +1619,7 @@ impl Region {
             }
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} cement works"),
                 kind: SiteKind::CementWorks,
                 market: m,
@@ -1631,6 +1657,7 @@ impl Region {
             }
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} builders"),
                 kind: SiteKind::Builders,
                 market: m,
@@ -1666,6 +1693,7 @@ impl Region {
             let m = if oil_day > 0.01 { port } else { 0 };
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} chemical works"),
                 kind: SiteKind::ChemicalWorks,
                 market: m,
@@ -1692,6 +1720,7 @@ impl Region {
             };
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} pharmaceutical works"),
                 kind: SiteKind::Pharma,
                 market: m,
@@ -1717,6 +1746,7 @@ impl Region {
             let m = if oil_day > 0.01 { port } else { 0 };
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} remedy works"),
                 kind: SiteKind::Pharma,
                 market: m,
@@ -1741,6 +1771,7 @@ impl Region {
             }
             let name = markets[m].name.clone();
             sites.push(Site {
+                address: None,
                 name: format!("{name} hospital"),
                 kind: SiteKind::Hospital,
                 market: m,
@@ -1816,6 +1847,7 @@ impl Region {
                 }
                 let name = markets[m].name.clone();
                 sites.push(Site {
+                    address: None,
                     name: format!("{name} {label}"),
                     kind: SiteKind::Depot,
                     market: m,
@@ -1841,6 +1873,7 @@ impl Region {
         // nearly everywhere.
         let bought_in = goods_day * (1.0 - DOMESTIC_GOODS_SHARE);
         sites.push(Site {
+            address: None,
             name: format!("{capital_name} depot"),
             kind: SiteKind::Depot,
             market: 0,
@@ -2048,6 +2081,7 @@ impl Region {
             shipments: crate::registry::Registry::new(),
             power_clearing: None,
             experiments: Default::default(),
+            world_seed: world.seed,
             next_route_id: named_roads,
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
@@ -2086,6 +2120,12 @@ impl Region {
         // the top of every day, but a freshly built world is read before it
         // has had one.
         economy.resurvey();
+        // **And every works and shop gets a street and a number.** The
+        // join between the two halves of this project: until now the
+        // economy knew which town a cannery was in and the ground knew
+        // there was a cannery-shaped plot, and nothing said they were the
+        // same building.
+        economy.give_out_addresses();
 
         // **Licence areas, not one national utility.**
         //
@@ -2342,6 +2382,12 @@ impl Nations {
         // the top of every day, but a freshly built world is read before it
         // has had one.
         economy.resurvey();
+        // **And every works and shop gets a street and a number.** The
+        // join between the two halves of this project: until now the
+        // economy knew which town a cannery was in and the ground knew
+        // there was a cannery-shaped plot, and nothing said they were the
+        // same building.
+        economy.give_out_addresses();
 
         let north = economy.markets.iter().filter(|m| !m.southern).count();
         notes.push(format!(

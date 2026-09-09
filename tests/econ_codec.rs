@@ -274,6 +274,7 @@ fn a_road_a_market_and_a_works_come_back_whole() {
     });
 
     there_and_back(Market {
+        cell: Some(4_242),
         name: "Bexley".into(),
         nation: 2,
         population: 1_250_000.0,
@@ -294,6 +295,17 @@ fn a_road_a_market_and_a_works_come_back_whole() {
         stock[c as usize] = 100.0 + c as usize as f64;
     }
     there_and_back(Site {
+        // **Written part way through**, like every other value here: a
+        // works with no address would survive a codec that dropped the
+        // field.
+        address: Some(scale_sim::townplan::Address {
+            town: 1,
+            street: scale_sim::townplan::Street {
+                axis: scale_sim::townplan::Axis::EastWest,
+                line: 7,
+            },
+            number: 412,
+        }),
         name: "Bexley cannery".into(),
         kind: SiteKind::Factory,
         market: 1,
@@ -362,6 +374,7 @@ fn a_world_that_cannot_be_true_is_refused() {
     let stock: Basket = [5.0; N_COMMODITIES];
     capacity[Commodity::Grain as usize] = 1.0;
     let site = Site {
+        address: None,
         name: "an impossible silo".into(),
         kind: SiteKind::Farm,
         market: 0,

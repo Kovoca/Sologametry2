@@ -788,6 +788,16 @@ impl Opening {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Site {
+    /// **Where the premises are**, which is not what the firm is.
+    ///
+    /// A firm that moves has a new address and is the same firm, so this
+    /// says where to take the pallet and nothing else. `None` where the
+    /// town has no plan — the hand-built fixtures — and **also for farms,
+    /// mines, oil fields and forestry**, which is a named gap rather than a
+    /// wrong answer: those do not stand on a street, they stand on the
+    /// land, and a rural address is a different scheme (a road between
+    /// towns, not a street inside one).
+    pub address: Option<crate::townplan::Address>,
     pub name: String,
     pub kind: SiteKind,
     /// Which market's prices this site trades at.
@@ -1575,6 +1585,19 @@ pub mod recipe {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Market {
+    /// **Where the town is on the world map**, or nothing if it was built
+    /// by hand.
+    ///
+    /// A market had a name, a population and no position at all — so the
+    /// economy knew there was a town called Ashford and the ground had a
+    /// plan of a town, and nothing joined them. This is the join: the cell
+    /// is what `townplan::Plan::lay_out` needs, so from here a works can be
+    /// given a street and a number.
+    ///
+    /// `None` for the hand-built fixtures, which are towns that are not
+    /// anywhere — and that is the honest answer rather than a made-up
+    /// coordinate.
+    pub cell: Option<usize>,
     pub name: String,
     /// Which nation this market belongs to. Weather is drawn per nation,
     /// and a lane between two nations is a different thing from a road
@@ -1651,6 +1674,7 @@ impl Market {
             expected[i] = c.target_cover_days();
         }
         Market {
+            cell: None,
             name: name.into(),
             nation,
             population,
@@ -2761,6 +2785,14 @@ pub struct Economy {
     pub grid: Grid,
     pub response: Response,
     /// Seeds the weather, so a world replays identically.
+    /// **Which world this economy came out of.**
+    ///
+    /// Everything derived is derived from it, and the economy did not know
+    /// it — so anything wanting to rebuild a town plan had to be handed the
+    /// seed by a caller, which is the shape of defect the route quotation
+    /// already had. Zero for the hand-built fixtures, which came out of no
+    /// world at all.
+    pub world_seed: u64,
     pub weather_seed: u64,
     /// Per nation: the state of its roads, 0 (impassable ruin) to 1 (as
     /// built).
@@ -6805,5 +6837,112 @@ impl Economy {
             }
         }
         Fate::Ended { delivered, lost }
+    }
+}
+
+// =====================================================================
+// premises
+// =====================================================================
+
+impl Economy {
+    /// **Give every works and shop a street and a number.**
+    ///
+    /// The join that did not exist. `building.rs` had a shop with tills,
+    /// `ground.rs` drew a shop on a street, and nothing said they were the
+    /// same shop — the economy knew which town and the ground knew which
+    /// plot. A town plan is a pure function of the world seed and the
+    /// town's cell, so this reads one and hands out the plots on it.
+    ///
+    /// **A works goes on industrial land and a shop goes on the high
+    /// street**, which is not decoration: `townplan` already places those
+    /// separately, because works want cheap land and lorry access while a
+    /// shop that cannot be seen is not a shop. Handing a cannery a shopfront
+    /// would throw that away.
+    ///
+    /// **What is deliberately left unaddressed**, and it is a named gap
+    /// rather than a wrong answer: farms, pastures, mines, oil fields and
+    /// forestry. They do not stand on a street — they stand on the land,
+    /// and a rural address is a different scheme entirely: a road between
+    /// towns, a name, and no hundred-block. Giving a farm "412 Elm Lane"
+    /// would be inventing a fact.
+    pub fn give_out_addresses(&mut self) {
+        use crate::townplan::{Lot, Plan};
+
+        for m in 0..self.markets.len() {
+            let Some(cell) = self.markets[m].cell else {
+                continue;
+            };
+            let population = self.markets[m].population;
+            let plan = Plan::lay_out(self.world_seed, cell, population, 40);
+
+            // The plots of each kind, in a fixed order so a seed rebuilds
+            // the same town with the same firms at the same numbers.
+            let mut industrial: Vec<(usize, usize)> = Vec::new();
+            let mut retail: Vec<(usize, usize)> = Vec::new();
+            for y in 0..plan.height {
+                for x in 0..plan.width {
+                    match plan.at(x, y) {
+                        Lot::Works => industrial.push((x, y)),
+                        Lot::Shop => retail.push((x, y)),
+                        _ => {}
+                    }
+                }
+            }
+
+            let (mut next_industrial, mut next_retail) = (0usize, 0usize);
+            for s in 0..self.ledger.sites.len() {
+                if self.ledger.sites[s].market != m {
+                    continue;
+                }
+                let want_retail = matches!(
+                    self.ledger.sites[s].kind,
+                    SiteKind::Shop | SiteKind::Depot | SiteKind::Hospital
+                );
+                // On the land, not on a street. See above.
+                let on_the_land = matches!(
+                    self.ledger.sites[s].kind,
+                    SiteKind::Farm
+                        | SiteKind::Pasture
+                        | SiteKind::Forestry
+                        | SiteKind::Mine
+                        | SiteKind::IronMine
+                        | SiteKind::OilField
+                );
+                if on_the_land {
+                    continue;
+                }
+                let (list, next) = if want_retail {
+                    (&retail, &mut next_retail)
+                } else {
+                    (&industrial, &mut next_industrial)
+                };
+                // **A town can run out of the right kind of plot**, and
+                // then the firm shares the street with the ones already
+                // there rather than being given a plot that is not there.
+                // Wrapping is honest: several firms at one address is a
+                // trading estate, and a made-up plot is not.
+                if list.is_empty() {
+                    continue;
+                }
+                let (x, y) = list[*next % list.len()];
+                *next += 1;
+                self.ledger.sites[s].address = plan.address_at(m, x, y);
+            }
+        }
+    }
+
+    /// **How to write to a firm**, or nothing if it has no premises on a
+    /// street.
+    pub fn address_of(&self, site: usize) -> Option<String> {
+        let s = self.ledger.sites.get(site)?;
+        let a = s.address.as_ref()?;
+        let cell = self.markets.get(a.town)?.cell?;
+        let plan = crate::townplan::Plan::lay_out(
+            self.world_seed,
+            cell,
+            self.markets[a.town].population,
+            40,
+        );
+        Some(plan.write_address(a, &self.markets[a.town].name))
     }
 }

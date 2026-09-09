@@ -62,6 +62,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
 
     let sites = vec![
         Site {
+            address: None,
             name: "Ashford farm".into(),
             kind: SiteKind::Farm,
             market: ASHFORD,
@@ -75,6 +76,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Ashford mill".into(),
             kind: SiteKind::Mill,
             market: ASHFORD,
@@ -88,6 +90,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Ashford cannery".into(),
             kind: SiteKind::Factory,
             market: ASHFORD,
@@ -111,6 +114,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Kelling power station".into(),
             kind: SiteKind::PowerPlant,
             market: ASHFORD,
@@ -124,6 +128,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             // **Two towns do not smelt their own steel.** A slice this
             // size buys plate and bar from a stockholder, which is what
             // most of the world does — and it is the same dependency the
@@ -141,6 +146,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Ashford depot".into(),
             kind: SiteKind::Depot,
             market: ASHFORD,
@@ -154,6 +160,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Ashford market hall".into(),
             kind: SiteKind::Shop,
             market: ASHFORD,
@@ -167,6 +174,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
         Site {
+            address: None,
             name: "Bexley general store".into(),
             kind: SiteKind::Shop,
             market: BEXLEY,
@@ -231,6 +239,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
         shipments: crate::registry::Registry::new(),
         power_clearing: None,
         experiments: Default::default(),
+        world_seed: 0,
         next_route_id: named_roads,
         routing: crate::quote::Routing::default(),
         reservations: crate::quote::Reservations::new(),
@@ -298,6 +307,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     for m in 0..TOWNS {
         let town = ["Alpha", "Beta", "Gamma"][m];
         sites.push(Site {
+            address: None,
             name: format!("{town} farm"),
             kind: SiteKind::Farm,
             market: m,
@@ -311,6 +321,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} mill"),
             kind: SiteKind::Mill,
             market: m,
@@ -324,6 +335,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} cannery"),
             kind: SiteKind::Factory,
             market: m,
@@ -345,6 +357,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} power station"),
             kind: SiteKind::PowerPlant,
             market: m,
@@ -358,6 +371,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} steel stockholder"),
             kind: SiteKind::Depot,
             market: m,
@@ -371,6 +385,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} depot"),
             kind: SiteKind::Depot,
             market: m,
@@ -384,6 +399,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         });
         sites.push(Site {
+            address: None,
             name: format!("{town} market hall"),
             kind: SiteKind::Shop,
             market: m,
@@ -451,6 +467,7 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         shipments: crate::registry::Registry::new(),
         power_clearing: None,
         experiments: Default::default(),
+        world_seed: 0,
         next_route_id: named_roads,
         routing: crate::quote::Routing::default(),
         reservations: crate::quote::Reservations::new(),

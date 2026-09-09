@@ -964,6 +964,7 @@ fn a_works_that_is_not_running_does_not_set_the_price() {
     // price anything.
     let real = &r.economy.ledger.sites[mill];
     let ghost = scale_sim::econ::Site {
+        address: None,
         name: "a mill that never opened".into(),
         kind: real.kind,
         market: m,

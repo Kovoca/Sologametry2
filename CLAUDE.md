@@ -2832,6 +2832,35 @@ Three things the gates found:
 
 Result: `412 Elm Lane, Ashford`.
 
+### Premises, and the join between the two halves
+
+`building.rs` had a shop with tills. `ground.rs` drew a shop on a street.
+**Nothing said they were the same shop** — a `Site` carried a market and no
+position at all, so the economy knew there was a cannery in Ashford and
+could not have found it.
+
+A works has an address now, and two things had to exist first. A market
+gained its **cell**, which is where the town is on the world map and what
+`Plan::lay_out` needs; and the economy gained its **world seed**, because
+anything wanting to rebuild a town plan otherwise had to be handed the
+seed by a caller — the same shape of defect as the route quotation taking
+caller-supplied kilometres.
+
+**A works goes on industrial land and a shop on the high street.**
+`townplan` already places those apart, because works want cheap land and
+lorry access while a shop that cannot be seen is not a shop, and handing a
+cannery a shopfront would throw that away.
+
+**What is deliberately unaddressed, and it is a named gap rather than a
+wrong answer:** farms, pastures, mines, oil fields and forestry. They do
+not stand on a street — they stand on the land, and a rural address is a
+different scheme entirely: a road between towns, a name, and no
+hundred-block. Giving a farm "412 Elm Lane" would be inventing a fact.
+
+Generated, never stored: rebuilding the same world puts the same firms at
+the same numbers, because a plan is a function of the seed and the cell
+rather than a thing anybody wrote down.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

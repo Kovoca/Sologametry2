@@ -372,8 +372,54 @@ impl Store for Opening {
     }
 }
 
+impl Store for crate::townplan::Axis {
+    fn store(&self, w: &mut Writer) {
+        w.u8(match self {
+            crate::townplan::Axis::NorthSouth => 1,
+            crate::townplan::Axis::EastWest => 2,
+        });
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        Ok(match r.u8()? {
+            1 => crate::townplan::Axis::NorthSouth,
+            2 => crate::townplan::Axis::EastWest,
+            n => return Err(SaveError::UnknownCode("which way a street runs", n as u32)),
+        })
+    }
+}
+
+impl Store for crate::townplan::Address {
+    fn store(&self, w: &mut Writer) {
+        w.len(self.town);
+        self.street.axis.store(w);
+        w.len(self.street.line);
+        w.u32(self.number);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let town = r.read_len()?;
+        let axis = crate::townplan::Axis::load(r)?;
+        let line = r.read_len()?;
+        let number = r.u32()?;
+        if number == 0 {
+            return Err(SaveError::Impossible("an address with no number"));
+        }
+        Ok(crate::townplan::Address {
+            town,
+            street: crate::townplan::Street { axis, line },
+            number,
+        })
+    }
+}
+
 impl Store for Market {
     fn store(&self, w: &mut Writer) {
+        match self.cell {
+            None => w.u8(0),
+            Some(c) => {
+                w.u8(1);
+                w.len(c);
+            }
+        }
         w.str(&self.name);
         w.u16(self.nation);
         w.f64(self.population);
@@ -390,6 +436,11 @@ impl Store for Market {
         }
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let cell = match r.u8()? {
+            0 => None,
+            1 => Some(r.read_len()?),
+            n => return Err(SaveError::UnknownCode("town cell tag", n as u32)),
+        };
         let name = r.str()?;
         let nation = r.u16()?;
         let population = r.finite_f64()?;
@@ -399,6 +450,7 @@ impl Store for Market {
             return Err(SaveError::Impossible("a market with a negative population"));
         }
         Ok(Market {
+            cell,
             name,
             nation,
             population,
@@ -415,6 +467,13 @@ impl Store for Market {
 
 impl Store for Site {
     fn store(&self, w: &mut Writer) {
+        match &self.address {
+            None => w.u8(0),
+            Some(a) => {
+                w.u8(1);
+                a.store(w);
+            }
+        }
         w.str(&self.name);
         self.kind.store(w);
         w.len(self.market);
@@ -446,6 +505,11 @@ impl Store for Site {
         }
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let address = match r.u8()? {
+            0 => None,
+            1 => Some(crate::townplan::Address::load(r)?),
+            n => return Err(SaveError::UnknownCode("site address tag", n as u32)),
+        };
         let name = r.str()?;
         let kind = SiteKind::load(r)?;
         let market = r.read_len()?;
@@ -486,6 +550,7 @@ impl Store for Site {
             }
         }
         Ok(Site {
+            address,
             name,
             kind,
             market,
@@ -1039,6 +1104,7 @@ impl Store for crate::econ::Economy {
 
         self.grid.store(w);
         self.response.store(w);
+        w.u64(self.world_seed);
         w.u64(self.weather_seed);
 
         w.len(self.road_condition.len());
@@ -1162,6 +1228,7 @@ impl Store for crate::econ::Economy {
 
         let grid = crate::econ::Grid::load(r)?;
         let response = crate::econ::Response::load(r)?;
+        let world_seed = r.u64()?;
         let weather_seed = r.u64()?;
 
         let n = r.count()?;
@@ -1372,6 +1439,7 @@ impl Store for crate::econ::Economy {
             next_route_id,
             grid,
             response,
+            world_seed,
             weather_seed,
             road_condition,
             maintenance_funding,

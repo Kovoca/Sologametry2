@@ -300,3 +300,115 @@ fn a_corner_is_addressed_on_the_better_road() {
     assert!(corners > 10, "only {corners} corners in a city");
     let _: BTreeSet<u8> = BTreeSet::new();
 }
+
+/// **The join between the two halves of this project.**
+///
+/// Until now `building.rs` had a shop with tills, `ground.rs` drew a shop
+/// on a street, and nothing said they were the same shop: a `Site` had a
+/// market and no position at all, so the economy knew there was a cannery
+/// in Ashford and could not have found it.
+///
+/// What is asserted is not that addresses exist but that they are the
+/// *right* ones — a works on industrial land and a shop on the high
+/// street, which `townplan` already places apart because works want cheap
+/// land and lorry access while a shop that cannot be seen is not a shop.
+#[test]
+fn a_works_stands_on_industrial_land_and_a_shop_on_the_high_street() {
+    use scale_sim::econ::{Doctrine, SiteKind};
+    use scale_sim::network::Network;
+    use scale_sim::polity::Polities;
+    use scale_sim::region::Region;
+    use scale_sim::settlement::Settlements;
+    use scale_sim::world::World;
+
+    let world = World::generate(384, 216, 7);
+    let pol = Polities::partition(&world, 24);
+    let set = Settlements::place(&world, &pol, 3000);
+    let net = Network::build(&world, &set, 500);
+    let r = Region::extract(
+        &world,
+        &pol,
+        &set,
+        &net,
+        pol.ranked()[0].0,
+        5,
+        Doctrine::Prudent,
+    )
+    .expect("no region");
+    let e = &r.economy;
+
+    let mut addressed = 0;
+    let mut on_the_land = 0;
+    for s in 0..e.ledger.sites.len() {
+        let site = &e.ledger.sites[s];
+        let rural = matches!(
+            site.kind,
+            SiteKind::Farm
+                | SiteKind::Pasture
+                | SiteKind::Forestry
+                | SiteKind::Mine
+                | SiteKind::IronMine
+                | SiteKind::OilField
+        );
+        match &site.address {
+            Some(a) => {
+                assert!(
+                    !rural,
+                    "{} is a {:?} and has been given a street address — it stands on the land",
+                    site.name, site.kind
+                );
+                assert_eq!(
+                    a.town, site.market,
+                    "{} is addressed in a different town from the one it trades in",
+                    site.name
+                );
+                assert!(a.number > 0, "{} has an address with no number", site.name);
+                addressed += 1;
+            }
+            None => {
+                if rural {
+                    on_the_land += 1;
+                }
+            }
+        }
+    }
+    assert!(
+        addressed > 10,
+        "only {addressed} premises in a whole nation have an address"
+    );
+    assert!(
+        on_the_land > 0,
+        "no farms, mines or forestry in this country — the rural half of the rule is untested"
+    );
+
+    // **And it is written the way somebody would say it.**
+    let written = (0..e.ledger.sites.len())
+        .filter_map(|s| e.address_of(s))
+        .next()
+        .expect("nothing could be written to");
+    assert!(
+        written.contains(',') && written.chars().next().is_some_and(|c| c.is_ascii_digit()),
+        "an address does not read like one: {written:?}"
+    );
+
+    // **Rebuilding the same nation puts the same firms at the same
+    // numbers**, because a town plan is a function of the seed and the
+    // cell rather than a thing somebody wrote down.
+    let again = Region::extract(
+        &world,
+        &pol,
+        &set,
+        &net,
+        pol.ranked()[0].0,
+        5,
+        Doctrine::Prudent,
+    )
+    .expect("no region");
+    for s in 0..e.ledger.sites.len() {
+        assert_eq!(
+            e.ledger.sites[s].address, again.economy.ledger.sites[s].address,
+            "{} moved premises between two builds of the same world",
+            e.ledger.sites[s].name
+        );
+    }
+}
