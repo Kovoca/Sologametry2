@@ -6400,3 +6400,336 @@ impl Economy {
         (pb - pa).abs() - r.freight_cost
     }
 }
+
+// =====================================================================
+// the ledger, written down
+// =====================================================================
+
+/// **Beside the type, because the totals are private.**
+///
+/// The rest of the economy's codec lives in `econ_codec.rs`, where the wire
+/// codes are one reviewable namespace. This one cannot: the running totals
+/// are private precisely so that `apply` is the only thing that can move a
+/// stockpile, and a `restore` constructor taking them as arguments would be
+/// that same back door with a longer name.
+///
+/// **Which buys the strongest property in the whole save format.** The
+/// ledger already knows how to check itself, so a load can do the
+/// arithmetic before handing anything back: **a save whose mass does not
+/// balance is refused at the door** rather than becoming a leak somebody
+/// hunts for a fortnight later. That is what the conservation assertion has
+/// been for since it was written, arriving at persistence.
+impl crate::save::Store for Ledger {
+    fn store(&self, w: &mut crate::save::Writer) {
+        use crate::econ_codec::store_basket;
+        w.u64(self.day);
+        w.len(self.sites.len());
+        for s in self.sites.iter() {
+            s.store(w);
+        }
+        store_basket(w, &self.produced_total);
+        store_basket(w, &self.consumed_total);
+        store_basket(w, &self.spoiled_total);
+        store_basket(w, &self.opening_total);
+        store_basket(w, &self.afloat);
+    }
+
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::econ_codec::load_basket;
+        use crate::save::SaveError;
+        let day = r.u64()?;
+        let n = r.count()?;
+        let mut sites = Vec::with_capacity(n);
+        for _ in 0..n {
+            sites.push(Site::load(r)?);
+        }
+        let ledger = Ledger {
+            day,
+            sites,
+            produced_total: load_basket(r)?,
+            consumed_total: load_basket(r)?,
+            spoiled_total: load_basket(r)?,
+            opening_total: load_basket(r)?,
+            afloat: load_basket(r)?,
+        };
+
+        // **Every site has to live in a market that exists.** A dangling
+        // market index is a site whose goods are counted into a town that
+        // is not there, which the price pass would then read as a famine.
+        // The bound cannot be checked here — the markets are a sibling
+        // field of `Economy` — so it is checked there, and what is caught
+        // here is the arithmetic.
+        for &c in Commodity::ALL.iter() {
+            let i = c as usize;
+            if ledger.afloat[i] < 0.0 {
+                return Err(SaveError::Impossible("a negative tonnage on the road"));
+            }
+            if ledger.produced_total[i] < 0.0
+                || ledger.consumed_total[i] < 0.0
+                || ledger.spoiled_total[i] < 0.0
+                || ledger.opening_total[i] < 0.0
+            {
+                return Err(SaveError::Impossible("a negative running total"));
+            }
+            // The same arithmetic `assert_conserved` runs, and the same
+            // tolerance: measured against total flow rather than against
+            // what happens to be in store, because rounding accumulates
+            // with the number and size of transactions.
+            let held = ledger.total(c);
+            let expected = ledger.opening_total[i] + ledger.produced_total[i]
+                - ledger.consumed_total[i]
+                - ledger.spoiled_total[i];
+            let gross = ledger.opening_total[i]
+                + ledger.produced_total[i]
+                + ledger.consumed_total[i]
+                + ledger.spoiled_total[i];
+            if (held - expected).abs() / gross.abs().max(1.0) >= 1e-9 {
+                return Err(SaveError::Impossible(
+                    "a saved world whose mass does not conserve",
+                ));
+            }
+        }
+        Ok(ledger)
+    }
+}
+
+// =====================================================================
+// the journal, written down
+// =====================================================================
+
+impl crate::save::Store for Use {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.u8(match self {
+            Use::Household => 1,
+            Use::Input => 2,
+        });
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        Ok(match r.u8()? {
+            1 => Use::Household,
+            2 => Use::Input,
+            n => return Err(SaveError::UnknownCode("what it was used for", n as u32)),
+        })
+    }
+}
+
+/// **Why a stockpile moved, and it is the only account of it there is.**
+///
+/// `Ledger::apply` is the single write path, so the journal is not a log
+/// beside the truth — it *is* the explanation of every figure in the world,
+/// and a save that loses an event loses the reason a silo is the size it
+/// is. Which is also why every variant carries an explicit code: inserting
+/// one tomorrow must not turn every despatch in an old world into a
+/// spoilage.
+impl crate::save::Store for Event {
+    fn store(&self, w: &mut crate::save::Writer) {
+        match self {
+            Event::Produced {
+                site,
+                commodity,
+                qty,
+            } => {
+                w.u8(1);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+            }
+            Event::Consumed {
+                site,
+                commodity,
+                qty,
+                reason,
+            } => {
+                w.u8(2);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                reason.store(w);
+            }
+            Event::Shipped {
+                from,
+                to,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(3);
+                w.len(*from);
+                w.len(*to);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::Spoiled {
+                site,
+                commodity,
+                qty,
+            } => {
+                w.u8(4);
+                w.len(*site);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+            }
+            Event::Despatched {
+                shipment,
+                from,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(5);
+                shipment.store(w);
+                w.len(*from);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::Landed {
+                shipment,
+                to,
+                commodity,
+                qty,
+                paid,
+                freight,
+            } => {
+                w.u8(6);
+                shipment.store(w);
+                w.len(*to);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                w.f64(*paid);
+                w.f64(*freight);
+            }
+            Event::LostInTransit {
+                shipment,
+                commodity,
+                qty,
+                how,
+            } => {
+                w.u8(7);
+                shipment.store(w);
+                w.u16(commodity.wire_code());
+                w.f64(*qty);
+                how.store(w);
+            }
+        }
+    }
+
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        fn commodity(r: &mut crate::save::Reader) -> Result<Commodity, SaveError> {
+            let code = r.u16()?;
+            Commodity::from_wire_code(code).ok_or(SaveError::UnknownCode("commodity", code as u32))
+        }
+        let event = match r.u8()? {
+            1 => Event::Produced {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+            },
+            2 => Event::Consumed {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                reason: Use::load(r)?,
+            },
+            3 => Event::Shipped {
+                from: r.read_len()?,
+                to: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            4 => Event::Spoiled {
+                site: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+            },
+            5 => Event::Despatched {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                from: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            6 => Event::Landed {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                to: r.read_len()?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                paid: r.finite_f64()?,
+                freight: r.finite_f64()?,
+            },
+            7 => Event::LostInTransit {
+                shipment: crate::shipment::ShipmentId::load(r)?,
+                commodity: commodity(r)?,
+                qty: r.finite_f64()?,
+                how: crate::shipment::Loss::load(r)?,
+            },
+            n => return Err(SaveError::UnknownCode("journalled event", n as u32)),
+        };
+        // **A journalled quantity is positive by construction.** The
+        // existing gate over the whole journal asserts it — an
+        // unattributed or empty delta is a bug rather than data — so a
+        // file claiming otherwise is broken, not newer.
+        let qty = match &event {
+            Event::Produced { qty, .. }
+            | Event::Consumed { qty, .. }
+            | Event::Shipped { qty, .. }
+            | Event::Despatched { qty, .. }
+            | Event::Landed { qty, .. }
+            | Event::LostInTransit { qty, .. }
+            | Event::Spoiled { qty, .. } => *qty,
+        };
+        if qty <= 0.0 {
+            return Err(SaveError::Impossible(
+                "a journal entry for a quantity that never moved",
+            ));
+        }
+        Ok(event)
+    }
+}
+
+/// **Beside the type, because the entries are private.**
+///
+/// The same reason the ledger's codec is here: nothing outside `Journal`
+/// may append except through `apply`, and a `restore` taking the entries as
+/// an argument would be that door with another name.
+impl crate::save::Store for Journal {
+    fn store(&self, w: &mut crate::save::Writer) {
+        w.len(self.entries.len());
+        for e in self.entries.iter() {
+            w.u64(e.day);
+            e.event.store(w);
+        }
+    }
+    fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
+        use crate::save::SaveError;
+        let n = r.count()?;
+        let mut entries = Vec::with_capacity(n);
+        let mut last = 0u64;
+        for _ in 0..n {
+            let day = r.u64()?;
+            // **History runs forwards.** The journal is appended to as the
+            // days pass, so an entry dated before the one in front of it is
+            // a file that has been reordered or spliced — and anything
+            // replaying it would apply yesterday after tomorrow.
+            if day < last {
+                return Err(SaveError::Impossible("a journal that runs backwards"));
+            }
+            last = day;
+            entries.push(Entry {
+                day,
+                event: Event::load(r)?,
+            });
+        }
+        Ok(Journal { entries })
+    }
+}

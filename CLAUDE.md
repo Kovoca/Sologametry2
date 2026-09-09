@@ -2595,6 +2595,66 @@ better than access: both types already have an `assert_conserved`, so
 **a save whose mass or money does not balance can be refused at the door**
 rather than becoming a leak somebody hunts for later.
 
+### A world saved mid-journey, continued on both sides
+
+The economic root goes through real bytes now, and the gate is the one an
+external review specified: run a country until freight is on the road,
+serialise the whole economy, load a second branch from those bytes, **play
+both on for thirty days**, and compare.
+
+The test this replaces was named for saving a world and did not save one.
+It built a `Save` by hand holding the day and a cloned shipment registry,
+and left out the stocks, the afloat balance, the markets, the roads, the
+reservations, the carriers, the treasury and the journal — and it never
+advanced the reloaded branch to arrival, so nothing it asserted depended
+on the reload having worked.
+
+**The comparison is the bytes.** `save.rs` already establishes that
+identical state gives identical bytes — floats as bit patterns, a
+`BTreeMap` wherever order would otherwise be arbitrary — which is what
+makes a byte comparison a canonical-state comparison rather than a
+shortcut. A field-by-field compare tests whatever fields somebody
+remembered to list, which is the same weakness as a roster that can omit a
+variant.
+
+**And playing both on is the half that catches a real codec.** A field
+that is lost but only needed *tomorrow* is indistinguishable from a
+correct one until somebody plays tomorrow.
+
+Three things the loader itself now refuses, each of which decodes cleanly
+and none of which panics:
+
+- **A world whose mass does not conserve.** `Ledger`'s totals are private
+  so that `apply` is the only write path, which means its codec has to sit
+  beside it — and that turns out to buy the strongest property in the
+  format: the ledger already knows how to check itself, so a save that is
+  out of balance is refused at the door rather than firing the
+  conservation assertion somewhere else days later for no visible reason.
+  The treasury does the same for money.
+- **A dangling reference.** A works in a town that is not there has its
+  goods counted into a town nobody lives in; a booking on a road nobody
+  built is capacity promised out of nothing. The price pass reads both as
+  ordinary figures.
+- **Two roads with one name**, which is `RouteId`'s whole purpose arriving
+  through a file rather than through a vector.
+
+**That last check found a real bug within a minute of existing.** Every
+nation numbers its roads from one, and `absorb` folds one nation into
+another while renumbering the markets and the sites — and was pushing the
+guest's roads across **with their own names**, so a four-nation world had
+four roads called 1. A booking would have referred to all of them. It goes
+through `open_a_road` now, which is what that function is for.
+
+**And an infinity in a basket is a real reading.** Electricity declares an
+infinite days of cover on purpose — none of it is ever held, so the
+question has no finite answer — and reading baskets with `finite_f64`
+made every real world unloadable. A NaN is still refused: unlike an
+infinity it is not a measurement of anything.
+
+Still open, and named rather than implied: the item store, the population
+and the ground overlay are not in this codec, so `GameState` is not yet
+saveable whole. What is saveable whole is the economy.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

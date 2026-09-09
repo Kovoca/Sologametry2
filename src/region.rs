@@ -2421,7 +2421,14 @@ fn absorb(host: &mut Economy, guest: Economy, nation: u16) -> Vec<usize> {
     for mut r in guest.routes {
         r.a += market_base;
         r.b += market_base;
-        host.routes.push(r);
+        // **A guest's road names are its own, and they collide.** Every
+        // nation numbers its roads from one, so folding two together gives
+        // two different stretches of tarmac the same name — and a booking
+        // then refers to both, which is precisely the defect `RouteId`
+        // exists to prevent. `open_a_road` issues a name nothing in the
+        // host has ever used, which is what it is for. Found by the save
+        // codec refusing to load a four-nation world.
+        host.open_a_road(move |id| Route { id, ..r });
     }
     // Each nation keeps its own grid and repair service; they are separate
     // states, and a blackout in one is not a blackout in the other.
