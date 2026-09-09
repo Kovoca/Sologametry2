@@ -2779,6 +2779,59 @@ Wiring the key into the codec belongs with the item store joining the
 save, because what a file should do with a key that no longer resolves is
 a decision that wants a consumer to test it against.
 
+### Where something is, which is not what it is
+
+An address is **location**, and location is not identity. A firm that moves
+premises has a new address and is the same firm; a building outlives
+whoever occupies it. So if a consignment is addressed *to* "14 Mill
+Street" and that is its only name, the goods go to whoever moved in — the
+renumbering bug in a nicer coat.
+
+Real logistics settled this: a consignment note carries a **customer
+account** and a **delivery address**, separate fields. The account says who
+owes the money; the address says where to put the pallet. **P.O. boxes are
+the proof they must be two things** — a delivery address with no premises
+behind it, belonging to somebody who is physically elsewhere. So are a
+care-of address, a depot for collection and a freight forwarder, and none
+of them is expressible if the address is the identity.
+
+**The gap it fills is bigger than the shipment.** A `Site` had
+`market: usize` and *no physical position at all* — a cannery was "in
+Ashford" and nowhere in Ashford — while `townplan` generated streets and
+plots and named none of them. The economy knew which town, the ground knew
+which plot, and nothing joined them.
+
+**The naming falls out of whether anybody surveyed the place**, which is
+the same shape as a village having a pub and a university needing a city:
+
+- A **grid** town numbers one axis and names the other, which is the
+  American convention and the reason you can navigate Manhattan without a
+  map. Numbered north to south, named east to west.
+- A town that **grew** has no numbers anywhere, because numbering is
+  something an authority does. Mill Lane, Church Street, Forge Street.
+- The suffix follows the road class rather than being decoration: a
+  freeway is not called a lane.
+
+**The number is a hundred-block, and that is the whole point.** The 400
+block is between the fourth and fifth crossings, so a stranger with a
+number and no map can find it. Odd one side, even the other, so you know
+which way to cross before you set off.
+
+Three things the gates found:
+
+- **Odd and even were on the wrong sides.** Which side takes the odd
+  numbers is arbitrary; that it never changes is not.
+- **A building set back from the road still fronts it.** Looking only at
+  the four touching plots left a quarter of a city with no address at all,
+  which is not a town but a town with a delivery problem. The reach is the
+  one this project already records — a plot much over ninety metres from a
+  road cannot be got at, and a plot is thirty-two, so three.
+- **Two buildings one behind the other are two addresses.** A hundred-block
+  holds a hundred numbers and three or four buildings, so back land takes
+  numbers further along the range rather than duplicating the frontage.
+
+Result: `412 Elm Lane, Ashford`.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

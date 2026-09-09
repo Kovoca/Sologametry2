@@ -1112,3 +1112,274 @@ fn touching_street(lots: &[Lot], size: usize, x: usize, y: usize) -> bool {
     n.iter()
         .any(|&(nx, ny)| nx < size && ny < size && lots[ny * size + nx] == Lot::Street)
 }
+
+// =====================================================================
+// where something is
+// =====================================================================
+
+/// **Which way a street runs.** A column of the plan or a row of it.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum Axis {
+    /// A column: it runs north and south, and buildings sit east and west
+    /// of it.
+    NorthSouth,
+    /// A row: it runs east and west.
+    EastWest,
+}
+
+/// **One street**, which is a whole column or row of the plan.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Street {
+    pub axis: Axis,
+    /// Which column or row.
+    pub line: usize,
+}
+
+/// **Where something is, which is not what it is.**
+///
+/// The distinction this type exists to keep. A firm that moves premises
+/// has a new address and is the same firm; a building outlives whoever
+/// occupies it. So an address never identifies anybody — it says where to
+/// take the pallet, and a consignment carries both it and the name of the
+/// party who owes for the load.
+///
+/// **P.O. boxes are the proof that they must be separate**: a delivery
+/// address with no premises behind it, belonging to somebody who is
+/// physically elsewhere. So are a care-of address, a depot for collection
+/// and a freight forwarder. None of them is expressible if the address is
+/// the identity.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub struct Address {
+    /// The town. An index into the economy's markets for now, and one of
+    /// the raw `usize` identities this project is working through.
+    pub town: usize,
+    pub street: Street,
+    /// The number on that street. See `Plan::address_at` for why the
+    /// number alone tells you which block it is in.
+    pub number: u32,
+}
+
+/// **Numbered one way and named the other**, which is what a surveyed town
+/// looks like almost everywhere in America: Manhattan's numbered streets
+/// against its named avenues, Chicago's the same. A town nobody laid out
+/// has no numbers at all, because numbering presupposes a survey.
+const AVENUES: [&str; 24] = [
+    "Oak",
+    "Elm",
+    "Maple",
+    "Cedar",
+    "Pine",
+    "Walnut",
+    "Chestnut",
+    "Cherry",
+    "Spruce",
+    "Willow",
+    "Poplar",
+    "Sycamore",
+    "Washington",
+    "Lincoln",
+    "Jefferson",
+    "Madison",
+    "Jackson",
+    "Franklin",
+    "Adams",
+    "Monroe",
+    "Grant",
+    "Union",
+    "Liberty",
+    "Market",
+];
+
+/// What a town that grew calls its streets. No numbers: nobody surveyed
+/// it, so the names are the things that were there.
+const GROWN: [&str; 20] = [
+    "Mill", "Church", "Bridge", "Water", "Forge", "Kiln", "Quarry", "Tannery", "Malt", "Wharf",
+    "Chapel", "School", "Green", "Orchard", "Meadow", "Spring", "Ford", "Well", "Barn", "Smithy",
+];
+
+/// The kind of thoroughfare, which in American practice tracks the road
+/// class rather than being decoration: a freeway is not called a lane.
+fn thoroughfare(class: StreetClass) -> &'static str {
+    match class {
+        StreetClass::Motorway => "Freeway",
+        StreetClass::Dual => "Boulevard",
+        StreetClass::Road => "Street",
+        StreetClass::Lane => "Lane",
+    }
+}
+
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (1, 11) | (2, 12) | (3, 13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
+impl Plan {
+    /// The class of a street, whichever way it runs. Distinct from
+    /// `street_class(x, y)`, which asks what is under a *plot*.
+    pub fn class_of(&self, s: Street) -> Option<StreetClass> {
+        match s.axis {
+            Axis::NorthSouth => self.col_class.get(s.line).copied().flatten(),
+            Axis::EastWest => self.row_class.get(s.line).copied().flatten(),
+        }
+    }
+
+    /// **What a street is called.**
+    ///
+    /// Generated, never stored, like the ground itself — a pure function of
+    /// the plan, so walking away and coming back finds the same street with
+    /// the same name.
+    ///
+    /// A **surveyed** town numbers one axis and names the other, which is
+    /// the American convention and the reason you can navigate Manhattan
+    /// without a map. A town that **grew** has no numbers anywhere, because
+    /// numbering is something an authority does.
+    pub fn street_name(&self, s: Street) -> String {
+        let class = self.class_of(s).unwrap_or(StreetClass::Road);
+        let kind = thoroughfare(class);
+        // How many streets of this axis come before it, so the names run in
+        // order along the town rather than jumping about.
+        let nth = match s.axis {
+            Axis::NorthSouth => self.col_class[..s.line.min(self.col_class.len())]
+                .iter()
+                .filter(|c| c.is_some())
+                .count(),
+            Axis::EastWest => self.row_class[..s.line.min(self.row_class.len())]
+                .iter()
+                .filter(|c| c.is_some())
+                .count(),
+        };
+        match self.pattern {
+            Pattern::Grid if s.axis == Axis::NorthSouth => {
+                format!("{} {kind}", ordinal(nth + 1))
+            }
+            Pattern::Grid => format!("{} {kind}", AVENUES[nth % AVENUES.len()]),
+            _ => {
+                let pool = if s.axis == Axis::NorthSouth {
+                    &GROWN[..]
+                } else {
+                    &AVENUES[..]
+                };
+                format!("{} {kind}", pool[nth % pool.len()])
+            }
+        }
+    }
+
+    /// **Which street a plot fronts.**
+    ///
+    /// The nearest one it touches, and **a corner takes the bigger street**
+    /// — which is what a corner building really does, because the address
+    /// is worth more on the busier road.
+    pub fn street_of(&self, x: usize, y: usize) -> Option<Street> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        // **A building set back from the road is still on it.** The first
+        // version looked only at the four plots touching this one, and a
+        // quarter of a city had no address at all — which is not a town, it
+        // is a town with a delivery problem. It searches outward instead,
+        // nearest first, which is also the honest answer: what you are on
+        // is the nearest street, whether or not your wall touches it.
+        //
+        // **The reach is the one this project already has.** `townplan`
+        // records that a plot much over ninety metres from a road cannot be
+        // got at, and a plot is thirty-two, so three is the distance beyond
+        // which a building is not addressable because it is not reachable.
+        const REACH: usize = 3;
+        let mut best: Option<(usize, u8, Street)> = None;
+        let mut consider = |away: usize, s: Street, class: Option<StreetClass>| {
+            let Some(class) = class else { return };
+            // Nearer wins; at the same distance the bigger road wins,
+            // which is what a corner building really does — the address is
+            // worth more on the busier road.
+            let better = match &best {
+                None => true,
+                Some((d, size, _)) => away < *d || (away == *d && class.size() > *size),
+            };
+            if better {
+                best = Some((away, class.size(), s));
+            }
+        };
+        for away in 1..=REACH {
+            for line in [x.checked_sub(away), Some(x + away)].into_iter().flatten() {
+                let s = Street {
+                    axis: Axis::NorthSouth,
+                    line,
+                };
+                consider(away, s, self.col_class.get(line).copied().flatten());
+            }
+            for line in [y.checked_sub(away), Some(y + away)].into_iter().flatten() {
+                let s = Street {
+                    axis: Axis::EastWest,
+                    line,
+                };
+                consider(away, s, self.row_class.get(line).copied().flatten());
+            }
+        }
+        best.map(|(_, _, s)| s)
+    }
+
+    /// **The address of a plot**, or nothing if it is a street itself or
+    /// stands on ground no street reaches.
+    ///
+    /// The number is a **hundred-block**, which is the whole point of the
+    /// American convention: the 400 block of Oak Street is between 4th and
+    /// 5th, so a number alone tells you where to go without looking
+    /// anything up. Odd on one side and even on the other, so you know
+    /// which way to cross.
+    pub fn address_at(&self, town: usize, x: usize, y: usize) -> Option<Address> {
+        if x >= self.width || y >= self.height || self.at(x, y) == Lot::Street {
+            return None;
+        }
+        let street = self.street_of(x, y)?;
+        let (along, across, on_the_low_side) = match street.axis {
+            // A north-south street: you walk along it in y, and the
+            // building is east or west of it.
+            Axis::NorthSouth => (y, x, x < street.line),
+            Axis::EastWest => (x, y, y < street.line),
+        };
+        // **How far back from the road it stands.** Two plots at the same
+        // point along a street, one behind the other, are two buildings and
+        // want two addresses — which is what a hundred-block leaves room
+        // for. A block holds a hundred numbers and three or four buildings,
+        // so the back land takes numbers further along the range rather
+        // than duplicating the frontage.
+        let depth = across.abs_diff(street.line).max(1) - 1;
+        // Which block: how many cross streets you have passed.
+        let crossings = match street.axis {
+            Axis::NorthSouth => &self.row_class,
+            Axis::EastWest => &self.col_class,
+        };
+        let block = crossings[..along.min(crossings.len())]
+            .iter()
+            .filter(|c| c.is_some())
+            .count();
+        // How far along inside that block, and which side of the street.
+        let last_crossing = crossings[..along.min(crossings.len())]
+            .iter()
+            .rposition(|c| c.is_some())
+            .map_or(0, |i| i + 1);
+        let within = along.saturating_sub(last_crossing) as u32;
+        // **Odd to the west and to the north**, even opposite. Which side
+        // gets the odd numbers is arbitrary and it does not matter — what
+        // matters is that it never changes, because the whole use of the
+        // convention is knowing which way to cross before you set off.
+        let along_the_frontage = within * 2 + depth as u32;
+        let number = (block as u32 + 1) * 100 + along_the_frontage * 2 + u32::from(on_the_low_side);
+        Some(Address {
+            town,
+            street,
+            number,
+        })
+    }
+
+    /// **How an address is written**, which is how somebody would say it.
+    pub fn write_address(&self, a: &Address, town_name: &str) -> String {
+        format!("{} {}, {}", a.number, self.street_name(a.street), town_name)
+    }
+}
