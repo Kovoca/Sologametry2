@@ -2675,6 +2675,41 @@ a score. The gate proves the measurement rather than the number: a root
 with no economy in it must not claim to have saved one, which is what
 turns red when the claim is made without the write.
 
+### A gate that compared a clone with itself
+
+The sixth. `the_opening_position_does_not_move_during_the_day` cloned the
+opening snapshot, ran a day, and asserted the clone still equalled the
+snapshot it was cloned from. **That proves Rust values do not mutate each
+other.** It says nothing about whether any decision *reads* the snapshot,
+which is the entire claim.
+
+What discriminates is making the live world say the opposite of the
+photograph and watching what the haulier does. Two things had to be got
+right before it worked, and both are the gate teaching something:
+
+- **The commodity has to be one there is something to decide about.** Food
+  runs twelve days of cover against a target of four in this country, so
+  no town is below target, the dispatcher correctly sends nothing, and a
+  gate watching an empty road proves nothing. Timber has a far wider
+  spread — four days against a hundred and thirty-five — and is *never*
+  hauled at all, because a load whose freight exceeds half the value of
+  the goods is refused. Steel is the one: most-hauled in the country,
+  24.4 days in the worst town against 42.9 in the best on a target of 25.
+- **The stock has to go somewhere that is not the destination.** The
+  obvious construction is to swap the two extremes, and it fails: piling
+  the flush town's stock into the short one leaves nobody able to supply
+  it, so the dispatcher correctly sends nothing again. The flush town is
+  emptied into a *third* town instead, which leaves a source standing.
+
+The move relocates tonnage and creates none, so the ledger still conserves
+— **a gate that has to break conservation to make its point is testing a
+world that cannot exist.**
+
+And the assertion is deliberately **one assertion carrying both ways it
+can fail**, because a dispatcher reading live state does not merely send
+the lorries elsewhere; it may send none at all. Split in two, the sabotage
+reports the wrong reason.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,
