@@ -2401,6 +2401,31 @@ impl Nations {
         // that does not require it to win a separate price test at every
         // hop on the way.
         economy.logistics = Some(crate::logistics::Logistics::found(&economy));
+        // **And so do the services and the state**, for exactly the same
+        // reason — and missing them cost far more than missing the hauliers.
+        //
+        // Both are posts against population, sized when a region is built,
+        // so the merged world had a private service sector and a public one
+        // for the host nation's towns and **none at all for anybody
+        // else's**: 37% of employment in private services and another sixth
+        // in the public sector, unpaid in three nations of four. Worse than
+        // absent, because money still flowed *into* them: the freight every
+        // guest firm paid landed in service accounts that never paid a wage
+        // or a dividend out, and every guest town's taxes paid the host's
+        // teachers. Measured over 300 days on four nations: the guests'
+        // households drained to under one unit a head while their service
+        // accounts held 1-5 billion each, and that — not the wage scale it
+        // was blamed on — was most of the money owed and never paid.
+        let capacity = economy
+            .government
+            .as_ref()
+            .map(|g| g.capacity)
+            .unwrap_or(match doctrine {
+                Doctrine::Prudent => crate::state::Capacity::Developed,
+                Doctrine::Negligent => crate::state::Capacity::Middling,
+            });
+        economy.government = Some(crate::state::Government::govern(&economy, capacity));
+        economy.services = Some(crate::services::Services::provide(&economy));
         economy.issue_currency();
         // **Before anybody asks what a haul costs.** The table is rebuilt at
         // the top of every day, but a freshly built world is read before it

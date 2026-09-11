@@ -3237,6 +3237,52 @@ cannot physically store what they aim at.
   and the sabotage fails the claim: one ship-fed town in nine holds what
   it aims at against a crop year's target.
 
+### A merged world had one nation's services and one nation's state
+
+`cargo run --release --bin accounts` is the national accounts: who holds
+the money over time, every flow by who paid whom and why, what went
+unpaid, and each town's households, firms and service sector at the end.
+
+**It started from an identity, and the identity is what found it.** Total
+income is total value added is total spending, so the *level* of wages
+cannot by itself leave households unable to pay for what the country
+makes — whatever labour does not get, profit does. The previous commit
+blamed the unpaid money on the two wage scales; that could only be true
+if money were leaking somewhere, so the next thing was to find where.
+
+Not into firms, which was the guess — their holdings *fell*. Into the
+**service sector**, which went from nothing to 3.2e10 in 300 days while
+households drained from 4.5e10 to 1.9e10, and it did it in three nations
+and not the fourth. Both services and the public sector are posts against
+population, sized when a region is built, and `Nations::build` re-founds
+the hauliers over the merged world and never re-founded either of these.
+So every nation but the first had **no private service sector and no
+public one** — 37% and a sixth of employment, unpaid — while money still
+flowed in: the freight their firms paid landed in service accounts that
+never paid a wage or a dividend, and their taxes paid the first nation's
+teachers.
+
+| same world, 300 days | before | after |
+|---|---|---|
+| households' money at the end | 1.93e10 | **3.78e10** |
+| held in service accounts | 3.2e10, climbing | 0.5e10, flat |
+| household purchases unpaid | 8.5e10 | **4.2e10** |
+| all unpaid | 2.58e11 | 1.88e11 |
+| wages as a share of household income | 31% | 46% |
+
+**The whole suite was green throughout**, because nothing asked whether a
+guest nation's towns had any jobs outside a works. The gate asks both:
+every town has its posts, and every town's service sector pays out more
+than it holds — the second checked by removing the payout rather than the
+posts, because the first sabotage never reached it.
+
+**What is left is geography.** Five towns still drain while others bank
+money, and the largest city in the world is one of them: a firm pays its
+profit to the households of its own town, so a city that consumes more
+than it makes sends money out through its shops and nothing brings it
+back. This file already named it — profit paid in the firm's own town
+understates how widely ownership is spread.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

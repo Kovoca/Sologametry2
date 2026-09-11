@@ -959,6 +959,62 @@ fn what_crosses_an_ocean_is_what_is_worth_carrying() {
     }
 }
 
+/// **Every town in a merged world has its services and its state.**
+///
+/// Both are posts against population, sized when a region is built, and
+/// folding several regions into one economy left a service sector and a
+/// public one for the first nation's towns and none for anybody else's —
+/// 37% of employment in private services and another sixth in the public
+/// sector, unpaid in three nations of four. Money still flowed *in*: the
+/// freight every guest firm paid landed in service accounts that never
+/// paid it out, so the guests' households drained to under one unit a
+/// head while their service accounts held billions. The whole suite was
+/// green throughout, because nothing asked.
+#[test]
+fn every_town_in_a_merged_world_has_its_services_and_its_state() {
+    use scale_sim::money::{Account, Why};
+    let mut n = nations(7, 4);
+    {
+        let e = &n.economy;
+        let svc = e.services.as_ref().expect("a world with no service sector");
+        let gov = e.government.as_ref().expect("a world with no state");
+        for m in 0..e.markets.len() {
+            assert!(
+                svc.total_in(m) > 0.0 && gov.posts_in(m) > 0.0,
+                "{} (nation {}) has {:.0} service posts and {:.0} public ones",
+                e.markets[m].name,
+                e.markets[m].nation,
+                svc.total_in(m),
+                gov.posts_in(m)
+            );
+        }
+    }
+
+    // **And the money that goes into them comes out.** What each town's
+    // service sector paid its people over the run, against what it holds.
+    let mut paid_out = vec![0.0f64; n.economy.markets.len()];
+    for _ in 0..200 {
+        n.economy.step();
+        for t in n.economy.treasury.today.iter() {
+            if let Account::ServiceSector(m) = t.from {
+                if t.why == Why::Payroll || t.why == Why::Profit {
+                    paid_out[m] += t.amount;
+                }
+            }
+        }
+    }
+    let e = &n.economy;
+    for m in 0..e.markets.len() {
+        let held = e.treasury.balance(Account::ServiceSector(m));
+        assert!(
+            paid_out[m] > 0.0 && held < paid_out[m],
+            "{}'s service sector paid out {:.3e} in 200 days and is sitting on {held:.3e}",
+            e.markets[m].name,
+            paid_out[m]
+        );
+    }
+}
+
 /// **Somewhere is always harvesting**, so a town fed by ships does not have
 /// to carry a whole crop year in its sheds.
 ///
