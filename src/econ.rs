@@ -377,6 +377,22 @@ impl Commodity {
     /// Days of cover a market tries to hold. Retail food really does run
     /// on three to five days, which is why shortages become visible within
     /// a week. Spec A.3.
+    /// **The stock a town keeps when ships can bring it more at any time
+    /// of year**, for a commodity whose own supply comes in a season.
+    ///
+    /// Only grain: it is the one thing here that is harvested rather than
+    /// made, so it is the one thing whose home supply stops for months at a
+    /// time. Two months is the FAO's minimum safe stocks-to-use for the
+    /// world, 17-18% of a year, and it is what a town that can import at
+    /// any season aims at — real importers hold two to six months, the top
+    /// of that range being strategic reserves counted with cargoes afloat.
+    pub fn stock_days_if_resupplied(self) -> Option<f64> {
+        match self {
+            Commodity::Grain => Some(60.0),
+            _ => None,
+        }
+    }
+
     pub fn target_cover_days(self) -> f64 {
         match self {
             Commodity::Electricity => 0.0,
@@ -4146,7 +4162,7 @@ impl Economy {
                 // whole country's inventory, and left three outlying towns
                 // on four days each that ran to a fifth of a day at the
                 // pre-harvest trough.
-                daily * (c.target_cover_days() + lead[market]) * (days / 3.0)
+                daily * (self.stock_days(market, c) + lead[market]) * (days / 3.0)
             }
             _ => {
                 let Some(r) = site.recipe else { return 0.0 };
@@ -4231,7 +4247,54 @@ impl Economy {
     /// prudence as a glut.
     pub fn target_cover(&self, market: usize, c: Commodity) -> f64 {
         let reach = self.market_components();
-        c.target_cover_days() + self.lead_times(c, &reach)[market]
+        self.stock_days(market, c) + self.lead_times(c, &reach)[market]
+    }
+
+    /// **How many days of stock this town keeps of it**, before the lead
+    /// time is added — the one figure every stocking, pricing, selling and
+    /// hauling decision here is aimed at.
+    ///
+    /// For almost everything it is the commodity's own figure. **Grain is
+    /// the exception, because the world does not harvest once a year.**
+    /// The northern crop comes in from May to September and the southern
+    /// from October to February, so somewhere is always harvesting, and a
+    /// town that can land a cargo does not have to carry a whole crop year
+    /// in its sheds. Real stocks say so: the world holds about **30% of a
+    /// year's use** *(FAO, 2024/25)*, the FAO's minimum safe level is
+    /// **17-18%** — about two months — and Egypt, the largest wheat
+    /// importer there is, keeps four to six months including what is
+    /// contracted and afloat.
+    ///
+    /// A town living on its own harvest still carries the season, which is
+    /// what the commodity's 150 days is. One fed by ships aims at the
+    /// smaller figure, and a town in between is weighted by how much of its
+    /// need its terminal can land. Aiming every town at the season is what
+    /// priced grain as permanently scarce wherever it was imported: a
+    /// terminal sat full at 4.1 million tonnes while its town read half its
+    /// target, and the grain there cost three times the world price.
+    pub fn stock_days(&self, m: usize, c: Commodity) -> f64 {
+        let seasonal = c.target_cover_days();
+        let Some(continuous) = c.stock_days_if_resupplied() else {
+            return seasonal;
+        };
+        let draw = self.daily_draw(m, c);
+        if draw <= 1e-9 {
+            return seasonal;
+        }
+        let can_land: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| {
+                let site = &self.ledger.sites[s];
+                site.market == m
+                    && site.throughput > 0.0
+                    && site.recipe.is_some_and(|r| {
+                        RECIPES[r].from_abroad
+                            && RECIPES[r].outputs.iter().any(|&(oc, q)| oc == c && q > 0.0)
+                    })
+            })
+            .map(|s| self.ledger.sites[s].throughput)
+            .sum();
+        let by_sea = (can_land / draw).clamp(0.0, 1.0);
+        seasonal * (1.0 - by_sea) + continuous * by_sea
     }
 
     fn distribute_to_cover(&mut self, days: f64, auction: bool) {
@@ -4423,7 +4486,7 @@ impl Economy {
                     // actually feeling has not reached its price yet. A
                     // reservation price is a different number from a
                     // market price, and it is the one procurement runs on.
-                    let target = c.target_cover_days();
+                    let target = self.stock_days(m, c);
                     let held: f64 = (0..n)
                         .filter(|&s| self.ledger.sites[s].market == m)
                         .map(|s| self.ledger.stock(s, c))
@@ -5232,7 +5295,7 @@ impl Economy {
                 // q* = (m_B - m_A) / (1/(draw_A x target_A x |e|)
                 //                   + 1/(draw_B x target_B x |e|))
                 // ```
-                let keep = self.daily_draw(from_m, c) * c.target_cover_days();
+                let keep = self.daily_draw(from_m, c) * self.stock_days(from_m, c);
                 let mut sellable = if self.experiments.market_wide_trade {
                     let elast = c.elasticity().abs().max(0.05);
                     let prem = |mm: usize, e: &Economy| {
@@ -6499,7 +6562,7 @@ impl Economy {
                 // market notices a cargo arriving: at the full window a
                 // grain price took five months to respond to imports, so
                 // trade relieved the shortage and the price never knew.
-                let window = (c.target_cover_days() * 0.25).max(3.0);
+                let window = (self.stock_days(m, c) * 0.25).max(3.0);
                 let alpha = 1.0 / window;
                 let seen = self.markets[m].expected_cover[c as usize];
                 let cover = seen * (1.0 - alpha) + cover * alpha;
@@ -6566,7 +6629,7 @@ impl Economy {
                 // shopkeeper's prudence reads as a glut. Measured, that
                 // discrepancy priced food at 630 against a cost of 900 in
                 // a country doing nothing unusual whatever.
-                let target = (c.target_cover_days() + lead[m]).max(0.5);
+                let target = (self.stock_days(m, c) + lead[m]).max(0.5);
                 let gap = (target - cover) / target;
                 // The floor is well above zero: a glut is a bad price, not
                 // a free good. Producers stop selling long before that, and
@@ -6927,7 +6990,7 @@ impl Economy {
     /// trader buy a town's reserve at the posted price and carry it over
     /// the hill, which is a licence to print money rather than a trade.
     pub fn surplus(&self, m: usize, c: Commodity) -> f64 {
-        let keep = self.daily_draw(m, c) * c.target_cover_days();
+        let keep = self.daily_draw(m, c) * self.stock_days(m, c);
         let held: f64 = (0..self.ledger.sites.len())
             .filter(|&s| self.ledger.sites[s].market == m)
             .map(|s| self.ledger.stock(s, c))
@@ -7678,7 +7741,7 @@ impl Economy {
                 // sells down to the last week's stock when the price of
                 // being wrong is going hungry.
                 const KEEP_A_MARGIN: f64 = 0.5;
-                let cushion = self.daily_draw(m, c) * c.target_cover_days() * KEEP_A_MARGIN;
+                let cushion = self.daily_draw(m, c) * self.stock_days(m, c) * KEEP_A_MARGIN;
                 let spare = (self.surplus(m, c) - cushion).max(0.0);
                 if spare <= 1e-6 {
                     continue;
@@ -7762,7 +7825,7 @@ impl Economy {
     /// tinplate — and an importer's stock is somebody else's goods passing
     /// through, which going straight back out would make a round trip.
     fn take_from_market(&mut self, m: usize, c: Commodity, want: f64) -> Vec<(usize, f64)> {
-        let keep = self.daily_draw(m, c) * c.target_cover_days();
+        let keep = self.daily_draw(m, c) * self.stock_days(m, c);
         let mut taken = Vec::new();
         let mut left = want;
         let holders: Vec<usize> = (0..self.ledger.sites.len())

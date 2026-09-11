@@ -276,15 +276,17 @@ impl Logistics {
             }
 
             // Who is short, worst first.
-            let target = commodity.target_cover_days();
+            // What each town aims at, which for grain depends on whether
+            // ships can bring it more in the other hemisphere's harvest.
+            let target: Vec<f64> = (0..n).map(|m| econ.stock_days(m, commodity)).collect();
             let mut short: Vec<usize> = (0..n)
-                .filter(|&m| draw[m] > 1e-9 && cover[m] < target)
+                .filter(|&m| draw[m] > 1e-9 && cover[m] < target[m])
                 .collect();
             short.sort_by(|&a, &b| cover[a].total_cmp(&cover[b]).then(a.cmp(&b)));
 
             for dst in short {
                 // How much would put this market right.
-                let want = (target * draw[dst] - held[dst]).max(0.0);
+                let want = (target[dst] * draw[dst] - held[dst]).max(0.0);
                 if want <= 1e-6 {
                     continue;
                 }
@@ -495,7 +497,7 @@ fn ship(
             let mut have = econ.ledger.stock(src, c);
             if econ.ledger.sites[src].kind == crate::econ::SiteKind::Shop {
                 // What the counter must keep to trade tomorrow.
-                let keep = econ.markets[from].daily_household_demand(c) * c.target_cover_days();
+                let keep = econ.markets[from].daily_household_demand(c) * econ.stock_days(from, c);
                 have = (have - keep).max(0.0);
             }
             let room =

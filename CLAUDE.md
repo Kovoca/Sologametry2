@@ -3200,6 +3200,43 @@ but importers; and an exporter pays whoever grew it. All six go red.
   was caught while writing the sabotage, before running it — the seventh
   gate of mine that would have passed without testing its claim.
 
+### Somewhere is always harvesting (`Economy::stock_days`)
+
+**Every town aimed at 150 days of grain**, which is what a country living
+on one harvest a year has to carry. It is not what a town fed by ships has
+to carry, because the world does not harvest once a year: the northern
+crop comes in from May to September and the southern from October to
+February. Real stocks say so — the world holds about **30% of a year's
+cereal use** *(FAO, 2024/25)*, the FAO's minimum safe level is **17-18%**,
+two months, and Egypt, the largest wheat importer there is, keeps four to
+six months counting what is contracted and afloat.
+
+So grain's target is a blend: the season for a town on its own harvest,
+**60 days** for one whose terminal can land its whole draw, and weighted
+by that share in between. Every other commodity keeps its own figure.
+
+**What it was costing**: a grain terminal sat full at 4.1 million tonnes
+while its town read 0.52 of target, and grain in the ship-fed towns cost
+three to four times the world price with the mills perfectly well fed.
+Measured on the same world: grain went from **3.28x the world price to
+1.87x**, which is about the average import parity; the ship-fed towns
+dropped from 700-1,000 a tonne to 240-330, at or under their parity; and
+unpaid money fell from 2.80e11 to 2.58e11. Four towns are still short,
+and it is a different fault: their terminal and their farms together
+cannot physically store what they aim at.
+
+- **Eleven places read the stock target**, and each read the commodity's
+  figure directly. They ask the town now, through one function, and a
+  test that recomputed the working reserve from the commodity went red —
+  which is this file's older rule arriving again: *a test comparing
+  against the target must use the target the model aims at.*
+- **The gate went red for the wrong reason first.** It picked out the
+  ship-fed towns through `stock_days`, so the sabotage — every town back
+  on the season — emptied the list and the gate failed on "no such
+  towns" rather than on the claim. They are read off the terminals now,
+  and the sabotage fails the claim: one ship-fed town in nine holds what
+  it aims at against a crop year's target.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

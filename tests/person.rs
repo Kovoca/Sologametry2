@@ -231,7 +231,10 @@ fn nobody_can_buy_a_towns_last_reserve() {
                 .filter(|&s| r.economy.ledger.sites[s].market == m)
                 .map(|s| r.economy.ledger.stock(s, c))
                 .sum();
-            let keep = r.economy.daily_draw(m, c) * c.target_cover_days();
+            // The reserve the town itself keeps — which for grain depends on
+            // whether ships can bring it more, so it is asked of the town
+            // and not of the commodity.
+            let keep = r.economy.daily_draw(m, c) * r.economy.stock_days(m, c);
             let surplus = r.economy.surplus(m, c);
             assert!(
                 surplus <= (held - keep).max(0.0) + 1e-6,

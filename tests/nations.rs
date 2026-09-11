@@ -959,6 +959,85 @@ fn what_crosses_an_ocean_is_what_is_worth_carrying() {
     }
 }
 
+/// **Somewhere is always harvesting**, so a town fed by ships does not have
+/// to carry a whole crop year in its sheds.
+///
+/// The northern crop comes in from May to September and the southern from
+/// October to February. The world holds about 30% of a year's cereal use
+/// *(FAO, 2024/25)*, the FAO's minimum safe level is 17-18% — two months —
+/// and Egypt, the largest wheat importer, keeps four to six months counting
+/// cargoes afloat. Aiming a town that lands grain from abroad at the 150
+/// days a single-harvest country carries left every such town reading half
+/// its target with a full terminal, and pricing grain at three times the
+/// world.
+#[test]
+fn a_town_fed_by_ships_can_hold_what_it_aims_at() {
+    let mut n = nations(7, 4);
+    for _ in 0..300 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+    let grain = Commodity::Grain;
+    let mut fed_by_ships = Vec::new();
+    for m in 0..e.markets.len() {
+        let days = e.stock_days(m, grain);
+        // Never more than the season, never less than the resupplied
+        // figure — a blend and not an extrapolation.
+        assert!(
+            days <= grain.target_cover_days() + 1e-9
+                && days >= grain.stock_days_if_resupplied().unwrap() - 1e-9,
+            "{} aims at {days:.0} days of grain",
+            e.markets[m].name
+        );
+        // **Which towns live on ships is read off their terminals**, not off
+        // `stock_days` — the function whose getting it wrong is what this
+        // watches for. Asked through it, the sabotage empties the list and
+        // the gate fails for the wrong reason.
+        let can_land: f64 = (0..e.ledger.sites.len())
+            .filter(|&s| {
+                let site = &e.ledger.sites[s];
+                site.market == m
+                    && site.recipe.is_some_and(|r| {
+                        scale_sim::econ::RECIPES[r].from_abroad
+                            && scale_sim::econ::RECIPES[r]
+                                .outputs
+                                .iter()
+                                .any(|&(oc, _)| oc == grain)
+                    })
+            })
+            .map(|s| e.ledger.sites[s].throughput)
+            .sum();
+        let draw = e.daily_draw(m, grain);
+        if draw > 1e-9 && can_land >= 0.7 * draw {
+            fed_by_ships.push(m);
+        }
+    }
+    assert!(
+        !fed_by_ships.is_empty(),
+        "no town in this world lives on imported grain, so the gate proves nothing"
+    );
+
+    // **And it can reach it.** What a ship-fed town holds against what it
+    // aims at; against a crop year's target the same terminals read half.
+    let reaching = fed_by_ships
+        .iter()
+        .filter(|&&m| e.markets[m].expected_cover[grain as usize] >= 0.8 * e.target_cover(m, grain))
+        .count();
+    assert!(
+        reaching * 4 >= fed_by_ships.len() * 3,
+        "only {reaching} of {} ship-fed towns hold what they aim at: {:?}",
+        fed_by_ships.len(),
+        fed_by_ships
+            .iter()
+            .map(|&m| (
+                e.markets[m].name.clone(),
+                (e.markets[m].expected_cover[grain as usize] / e.target_cover(m, grain) * 100.0)
+                    .round()
+            ))
+            .collect::<Vec<_>>()
+    );
+}
+
 /// **A fishing village is not a container port, and the water decides.**
 ///
 /// A quay was a flag, so any coastal town could ship a country's whole
