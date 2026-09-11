@@ -2924,7 +2924,9 @@ leaves a gross margin inside the 10-15% wholesale band this file already
 cites. A designed figure, labelled as one — a real derivation wants a
 world price per commodity that a country's own costs are compared
 against, which is also what would let a country *stop* importing when it
-becomes the cheaper producer.
+becomes the cheaper producer. *(Superseded: that derivation is import
+parity, below, and the two-thirds figure is gone — it was a second price
+for the same tonne.)*
 
 Measured over sixty days on four nations: **5.03 billion now leaves the
 country for imports, where it was exactly zero.**
@@ -2962,7 +2964,9 @@ where its own price sits against it. Both sides trade inland at wholesale,
 which is what makes the round trip break even before costs and a loss
 after them. The gate asserts nothing can be worth importing and worth
 exporting at once; sabotaged back to two prices it names forty-one
-town-and-commodity pairs that could work the printer.
+town-and-commodity pairs that could work the printer. *(The band itself
+is now import and export parity, and closing it is arithmetic rather than
+something a gate has to catch — see below.)*
 
 **The direction falls out of geology.** Nobody decides what a country
 trades: a town dear in something buys it, a town cheap in it sells. Costs
@@ -2982,7 +2986,8 @@ and come up the road, which is what the road is for. The asymmetry cannot
 reopen the printer: a town that can buy abroad and cannot sell abroad has
 no round trip to make. **The leg from the quay inland is not modelled** —
 goods still materialise at whichever town holds the terminal — and that is
-a named gap.
+a named gap. *(Half closed since: the leg is now priced into import parity
+and paid to the hauliers; the cargo still does not ride the road.)*
 
 **And imports became a decision rather than a faucet.** A depot used to
 land its rated tonnage every day whether the country needed anything or
@@ -3031,6 +3036,169 @@ sells. That was true when food had nowhere to go. Now a coastal town can
 sell its surplus and an inland one cannot, so the country is not flat —
 and flattening it again would mean pretending a port is worth no more than
 anywhere else. The famine half of that gate is untouched.
+
+### Import parity and export parity (`src/econ.rs`, `bin/border`)
+
+`cargo run --release --bin border` prints where every town sits against
+its own band, what crossed the border, and what went unpaid.
+
+**The border decides the way the trade itself decides**, and the way
+famine early-warning systems compute it market by market *(FEWS NET's
+parity guidance; the World Bank's project-appraisal method is the same
+arithmetic)*:
+
+```text
+import parity = (world x (1 + voyage) x (1 + duty) + port handling + inland haul)
+                x (1 + trader's margin)
+export parity = (world x (1 - voyage) - port handling - inland haul)
+                / (1 + trader's margin)
+```
+
+Above import parity a town imports; below export parity it exports;
+between them it does neither, because moving the stuff would cost more
+than the difference. **The band cannot close**, since one side adds every
+cost and the other takes it away — so the money printer the first border
+had to be patched against is now arithmetic, not a gate.
+
+**What it replaced.** An import test that wanted the domestic price
+**44% over the world** before anybody landed a cargo — it took the trader's
+margin to be the quarter off a wholesaler gets inside the country, when an
+importer lives on a few per cent — and left out the one cost that varies
+most between towns: the road from the sea. Too high a bar at the coast
+and too low inland. It was high enough to starve an importing nation and
+had been patched with an override that imported whenever stocks ran low;
+the override is gone because nothing is left for it to do.
+
+- **The voyage is a share of value, by cargo**, because carriage is by
+  weight and what makes it bite is what a tonne is worth: grain 15%, cement
+  30%, crude 3%, containerised goods 3%, medicine 1%. Each is a real
+  per-tonne rate over a real per-tonne price. It is written as a share
+  because this model's currency compresses the dear end — retail goods are
+  500 a tonne here — and a real $100 container rate on a compressed price
+  would charge a fifth of the value to ship a box. `sea_freight` returning
+  `None` is what "will not go on a ship" now means.
+- **A town up-country pays the road both ways**: its imports come up from
+  the nearest quay and its exports go down to it, so its band is wider than
+  the port's by exactly the haul. That is why a landlocked town pays more
+  for imported grain than the port it comes through.
+- **Port handling is per tonne** — somebody's labour moving weight, $8-25 a
+  tonne — and it is paid to the dockers of the quay town.
+
+**An import costs its import parity, margin and all.** A depot's recipe
+has no inputs, so it was costed at the reference — the world price at a
+port on the other side of the world — and a town living on imports was
+priced as though the voyage, the dockers and the road were free. The
+margin belongs in the cost because every reference cost here is a real
+market price with the maker's margin already in it. Left out, the price
+cleared the bar only when stocks were a margin's worth short — a
+permanent small shortage standing in for a markup — and **three identical
+towns drifted 9% apart inside it**, which the symmetric fixture caught.
+
+**A town that makes none of a thing and lands none of it pays what it
+costs where it is made, plus the haul** — the spatial price rule, and no
+longer an experiment for those towns. It fell back on the bare reference,
+so the two-town fixture priced food in the town without a cannery *below*
+the town that cans it, and the gate saying a town settles at what it
+costs to obtain passed at **4.9% against a 5% bar on a coincidence**.
+Moving the cannery's cost by a fraction of a per cent turned it over.
+
+**Five of the twelve import terminals were never importers.** The border
+asked whether a site was a `Depot`, and the grain terminal stands on a
+`Mine`, the fuel terminal on a `Mine`, the ore terminal on an `IronMine`,
+the oil terminal on an `OilField`, and a country with no forest lands its
+timber at a `Forestry`. Those kinds are shared with the farms and mines
+that really are digging, so the five landed their full tonnage every day
+**whatever the price, with nobody abroad paid**. `Recipe::from_abroad`
+says it now; the recipe is what says whether anybody is digging. Bringing
+them under the rule raised what the world is paid over 300 days from
+1.20e10 to **1.85e10** — 6.4 billion of goods that had been arriving free.
+
+**And three more things at the border that did not work at all:**
+
+- **Every town's machinery dealer was built on the retail-goods depot
+  recipe**, so it held a store for machinery and a recipe for something it
+  had no room for, and never landed a tonne. Machinery cover went from
+  **0.06 of target to 1.4-2.2**. A machinery import recipe is appended at
+  the end of the table, because a works on disk names its recipe by
+  position.
+- **The exporter took the farmers' grain for nothing**, and was paid by
+  the world for goods it never owned. It buys from whoever *made* the
+  goods now — never from a works holding them as an input, and never from
+  an importer's shed, which would be a round trip — and pays the dockers.
+- **`daily_draw` read a power station's "whatever the grid can carry"
+  as a rate** — the fifth time — so a town with a station burnt 380 million
+  tonnes of coal a day and never had any to spare.
+
+**Two things were tried and are deliberately not shipped**, with the
+measurement:
+
+| same world, 300 days | steel | goods | grain | unpaid | trade balance |
+|---|---|---|---|---|---|
+| before | 1.63x | 1.04x | 2.35x | 1.28e11 | +2.7e9 |
+| **as shipped** | **2.01x** | **1.24x** | **3.28x** | **2.80e11** | **-1.26e10** |
+| + pay before release | 2.92x | 2.09x | 2.95x | 2.81e11 | -1.2e10 |
+| + import what the town lacks | 2.91x | 2.10x | 2.87x | 2.99e11 | -1.2e10 |
+
+- **Paying before the cargo is released** is what a real port does, and
+  the gate that watches who pays the outside world found twenty-five
+  depots landing goods with empty tills. It starved the importers,
+  because **their customers do not pay them**: on the day the first
+  terminal landed grain it could not pay for, 130 million of firm-to-firm
+  purchases and 34 million at the counters also went unpaid, down the
+  chain to households whose wages do not cover the basket. So an importer
+  pays on the terms every firm here does, the gate asserts every landing
+  is *billed* — paid or owed — and 31% of import bills going unpaid is a
+  number in `bin/border` rather than a thing hidden.
+- **Landing what the town lacks** instead of a fixed share is the right
+  idea and the wrong measure: it sized each importer on its own town's
+  shortfall, and the capital's goods depot supplies the nation.
+
+**Importers keep the price of their next cargoes.** The profit sweep
+leaves each firm 45 days of *today's* outgoings, and an importer buys in
+bursts, so it was stripped bare on every quiet day — import merchants paid
+out more as profit than they paid for everything they imported. Their
+reserve is sized on their rated landings now.
+
+**What this exposed, and it is bigger than the border:**
+
+- **The domestic money circuit does not close.** 1.28e11 went owed and
+  unpaid over 300 days *before* this change; 2.80e11 does now, of which
+  1.46e11 is firms taking inputs they cannot pay for and 0.87e11
+  households at the counter. `Treasury::unpaid_why` is what can say so — a
+  single total could not tell a missed payroll from a household short at
+  the till. It is the two wage scales arriving as money: households
+  consume a basket priced on one scale out of wages paid on the other. The
+  border is merely the first place that has to pay somebody outside the
+  model, so it is where it showed — and paying honestly there drains the
+  circuit further, which is most of the rise.
+- **The world now runs a trade deficit**, because five terminals pay and
+  exporters are paid for what they actually sell. Real economies close
+  that with a floating exchange rate, reserves or borrowing — **the macro
+  half, and none of it is modelled.**
+- **Grain is priced as scarce in every import-fed town** because the price
+  aims at 150 days of stock — right for a country living on one harvest,
+  unreachable through a terminal sized for 90. A terminal in this world
+  sits full at 4.1 million tonnes while its town reads 0.52 of target.
+  It was true before (2.35x world) and is higher now only because the
+  premium sits on an honest cost.
+
+**Gates, each checked by deleting its mechanism**: the band cannot close
+anywhere; a town up-country faces a wider band than its quay on both
+sides; the band is widest for cement and narrowest for medicine; every
+landing is billed whatever it stands on; the outside world bills nobody
+but importers; and an exporter pays whoever grew it. All six go red.
+
+- **The value-density gate is carried by two things, and flattening one
+  leaves it green.** Make every voyage 10% and the bands still order
+  cement > steel > machinery > medicine, because port handling is per
+  tonne and a tonne of cement is worth a sixtieth of a tonne of medicine.
+  It goes red only when every cost is made proportional to value — which
+  is the claim: carriage by weight is what makes cheap things local.
+- **The billing identity reads the recipe, not `buys_abroad`.** Asked
+  through the function whose getting it wrong is the defect, both sides of
+  the identity move together and reverting the fix leaves it green. That
+  was caught while writing the sabotage, before running it — the seventh
+  gate of mine that would have passed without testing its claim.
 
 ### A booking names a road, not a slot
 

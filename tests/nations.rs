@@ -592,7 +592,6 @@ fn what_it_costs_here_is_what_it_cost_there_plus_getting_it_here() {
 /// and handed them on free, so it was a conduit rather than a business.
 #[test]
 fn what_comes_from_abroad_is_bought_from_abroad() {
-    use scale_sim::econ::SiteKind;
     use scale_sim::money::Account;
 
     // **A country with no quay can only buy**, which is what isolates the
@@ -611,23 +610,12 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
     );
     let abroad_before = e.treasury.balance(Account::Abroad);
 
-    let importers: Vec<usize> = (0..e.ledger.sites.len())
-        .filter(|&s| e.ledger.sites[s].kind == SiteKind::Depot)
-        .collect();
+    let importers = (0..e.ledger.sites.len())
+        .filter(|&s| e.buys_abroad(s))
+        .count();
     assert!(
-        !importers.is_empty(),
+        importers > 0,
         "this fixture imports nothing, so the gate is watching a closed border"
-    );
-
-    for _ in 0..120 {
-        e.step();
-    }
-
-    // **Money has left the country**, which is what an import is.
-    let abroad_after = e.treasury.balance(Account::Abroad);
-    assert!(
-        abroad_after > abroad_before,
-        "a hundred and twenty days of importing and the outside world is no better off:          {abroad_before:.0} to {abroad_after:.0}"
     );
 
     // **Extraction is not an import**, and that distinction is the whole
@@ -635,25 +623,40 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
     // with no inputs — they are taking from the land the world generator
     // actually put there, not from outside the model, and nobody abroad is
     // owed for it.
-    let mut extractors_charged = Vec::new();
-    for s in 0..e.ledger.sites.len() {
-        let kind = e.ledger.sites[s].kind;
-        let extractive = matches!(
-            kind,
-            SiteKind::Farm
-                | SiteKind::Mine
-                | SiteKind::IronMine
-                | SiteKind::OilField
-                | SiteKind::Forestry
-                | SiteKind::Pasture
-        );
-        if extractive && e.treasury.balance(Account::Firm(s)) < 0.0 {
-            extractors_charged.push(e.ledger.sites[s].name.clone());
+    //
+    // **Watched by who pays, not by a balance.** This asserted that no
+    // extractive site ended with a negative balance, which the treasury can
+    // never produce — it caps every payment at what the payer holds — so
+    // it could not fail whatever the model did. What says a farm was billed
+    // for its own harvest is a transfer from it to the outside world, and
+    // the recipe, not the kind of site, says who imports: a grain terminal
+    // stands on a `Mine`.
+    let mut billed_for_their_own_ground = Vec::new();
+    for _ in 0..120 {
+        e.step();
+        for t in e.treasury.today.iter() {
+            if let (Account::Firm(s), Account::Abroad) = (t.from, t.to) {
+                if !e.buys_abroad(s) {
+                    billed_for_their_own_ground.push(e.ledger.sites[s].name.clone());
+                }
+            }
         }
     }
+
+    // **Money has left the country**, which is what an import is.
+    let abroad_after = e.treasury.balance(Account::Abroad);
     assert!(
-        extractors_charged.is_empty(),
-        "these take from their own ground and have been billed for it: {extractors_charged:?}"
+        abroad_after > abroad_before,
+        "a hundred and twenty days of importing and the outside world is no better off: \
+         {abroad_before:.0} to {abroad_after:.0}"
+    );
+
+    billed_for_their_own_ground.sort();
+    billed_for_their_own_ground.dedup();
+    assert!(
+        billed_for_their_own_ground.is_empty(),
+        "these take from their own ground and have been billed by the outside world: \
+         {billed_for_their_own_ground:?}"
     );
 
     // And the books still balance, which they must: money moved between
@@ -664,23 +667,25 @@ fn what_comes_from_abroad_is_bought_from_abroad() {
 
 /// **The border is a place, and it trades on a price like anywhere else.**
 ///
-/// There was no export mechanism at all: `region` sizes a coastal
-/// country's farms at three times its own need on the grounds that it can
-/// export, and there was nowhere for the surplus to go. And the obvious
-/// symmetric fix — an export terminal paid by `Abroad` — has a hole in it.
-/// With an importer buying at two-thirds of reference and an exporter
-/// selling at 85%, a round trip through the quay is **free money**.
+/// Whether a town buys from abroad or sells to it is decided the way the
+/// trade itself decides it, and the way famine early-warning systems
+/// compute it market by market: against **import parity** — the world
+/// price, plus the voyage, the duty, the dockers and the road up from the
+/// coast, plus a trader's margin — and **export parity**, the world price
+/// less all of that. Above the first a town imports, below the second it
+/// exports, and between them it does neither.
 ///
-/// So there is **one world price**, and whether a country imports or
-/// exports is decided by where its own price sits against it. Both sides
-/// trade inland at wholesale, which is what makes the round trip break
-/// even before costs and a loss after them.
+/// So a money printer at the quay is not something a gate has to catch any
+/// more; it is arithmetic. One side adds the costs and the other takes them
+/// away, and no price can sit above the first and below the second.
 #[test]
 fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
-    use scale_sim::money::Account;
+    use scale_sim::money::{Account, Why};
 
     let mut n = nations(7, 4);
-    let ports = n.economy.markets.iter().filter(|m| m.port).count();
+    let ports = (0..n.economy.markets.len())
+        .filter(|&m| n.economy.quay(m))
+        .count();
     assert!(
         ports > 0 && ports < n.economy.markets.len(),
         "{ports} of {} towns have a quay — a port is a fact about a town, not about a \
@@ -688,48 +693,125 @@ fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
         n.economy.markets.len()
     );
 
-    let abroad_before = n.economy.treasury.balance(Account::Abroad);
+    let mut to_abroad = 0.0f64;
+    let mut from_abroad = 0.0f64;
+    let mut growers_paid = 0.0f64;
+    let mut unpaid_landings = Vec::new();
     for _ in 0..300 {
         n.economy.step();
+        let e = &n.economy;
+        let today = &e.treasury.today;
+        // Who the world paid today for goods it took.
+        let exporters: std::collections::BTreeSet<usize> = today
+            .iter()
+            .filter(|t| t.from == Account::Abroad && t.why == Why::Trade)
+            .filter_map(|t| match t.to {
+                Account::Firm(s) => Some(s),
+                _ => None,
+            })
+            .collect();
+        for t in today.iter() {
+            if t.to == Account::Abroad && t.from != Account::Abroad {
+                to_abroad += t.amount;
+                // **Only an importer is billed by the outside world.** A
+                // farm, a colliery and an oil field also have recipes with
+                // no inputs; they are taking from the ground the world
+                // generator put there, and nobody abroad is owed for it.
+                match t.from {
+                    Account::Firm(s) => assert!(
+                        e.buys_abroad(s),
+                        "{} was billed by the outside world and imports nothing",
+                        e.ledger.sites[s].name
+                    ),
+                    other => panic!("{other:?} paid the outside world"),
+                }
+            }
+            if t.from == Account::Abroad && t.to != Account::Abroad {
+                from_abroad += t.amount;
+            }
+            // **The exporter pays whoever grew it.** It used to take the
+            // goods off the farms for nothing and be paid by the world for
+            // goods it never owned.
+            if t.why == Why::Supply {
+                if let (Account::Firm(q), Account::Firm(_)) = (t.from, t.to) {
+                    if exporters.contains(&q) {
+                        growers_paid += t.amount;
+                    }
+                }
+            }
+        }
+        // **Nothing lands without a bill**, whatever kind of site it stands
+        // on: what the ships brought today is exactly what the outside
+        // world was paid today plus what went down as owed to it.
+        //
+        // Five of the twelve import terminals stood on the same kinds of
+        // site as the farms and mines that really are digging, and landed
+        // their full tonnage every day with no bill raised at all — which
+        // no count of payments can see, because there was nothing to count.
+        // An identity over the tonnage can.
+        //
+        // **Billed, not necessarily paid**, and that is deliberate: an
+        // importer pays on the terms every firm here does, and on the first
+        // run of this gate twenty-five of them were landing cargoes with
+        // empty tills. Their customers were not paying them either; that is
+        // the wage-scale gap, and it is named there.
+        //
+        // Which sites landed goods from abroad is read off the recipe
+        // directly, not through `buys_abroad` — the function whose getting
+        // it wrong is the defect this watches for. Asked through the same
+        // function, both sides of the identity would move together.
+        let mut landed_value = 0.0f64;
+        for s in 0..e.ledger.sites.len() {
+            let Some(r) = e.ledger.sites[s].recipe else {
+                continue;
+            };
+            if !scale_sim::econ::RECIPES[r].from_abroad || e.ledger.sites[s].ran <= 1e-9 {
+                continue;
+            }
+            for &(c, out) in scale_sim::econ::RECIPES[r].outputs {
+                let voyage = c.sea_freight().expect("landed something that cannot sail");
+                landed_value += scale_sim::econ::Economy::WHOLESALE_MARGIN
+                    * out
+                    * e.ledger.sites[s].ran
+                    * c.world_price()
+                    * (1.0 + voyage);
+            }
+        }
+        let billed = today
+            .iter()
+            .filter(|t| t.to == Account::Abroad && t.why == Why::Trade)
+            .map(|t| t.amount)
+            .sum::<f64>()
+            + e.treasury.unpaid_why.get("trade").copied().unwrap_or(0.0);
+        if (landed_value - billed).abs() > 1e-6 * landed_value.max(1.0) {
+            unpaid_landings.push(format!(
+                "day {}: landed {landed_value:.0} and billed {billed:.0}",
+                e.ledger.day
+            ));
+        }
     }
     let e = &n.economy;
 
-    // **Money crosses the border in both directions.** Before this, none
-    // ever crossed at all.
-    assert_ne!(
-        e.treasury.balance(Account::Abroad),
-        abroad_before,
-        "three hundred days and the outside world's balance never moved"
-    );
-
-    // **Nothing can be both worth importing and worth exporting**, which
-    // is the property the first design lacked: a town that could do both
-    // would ship a cargo out and straight back in for a profit, for ever.
-    let mut both = Vec::new();
-    for m in 0..e.markets.len() {
-        for &c in Commodity::ALL.iter() {
-            if e.worth_importing(m, c) && e.worth_exporting(m, c) {
-                both.push((e.markets[m].name.clone(), c.to_string()));
-            }
-        }
-    }
     assert!(
-        both.is_empty(),
-        "these could buy abroad and sell abroad at once, which is a money printer: {both:?}"
+        to_abroad > 0.0 && from_abroad > 0.0,
+        "money crossed the border only one way: {to_abroad:.0} out, {from_abroad:.0} in"
+    );
+    assert!(
+        growers_paid > 0.0,
+        "the country exported and the people who made the goods were paid nothing"
+    );
+    unpaid_landings.sort();
+    unpaid_landings.dedup();
+    assert!(
+        unpaid_landings.is_empty(),
+        "goods landed from abroad without a bill: {:?}",
+        unpaid_landings.iter().take(3).collect::<Vec<_>>()
     );
 
-    // **An inland town cannot load a ship**, which is the half that needs
-    // a quay. It can still buy from abroad — its imports land at the coast
-    // and come up the road, which is what the road is for — and requiring
-    // a port on both sides was the first version of this: it shut every
-    // inland town out of the world market and left the two-town fixture
-    // 24% above its own cost.
-    //
-    // The asymmetry does not reopen the money printer, and that is why it
-    // is safe: a town that can buy abroad and cannot sell abroad has no
-    // round trip to make.
+    // **An inland town cannot load a ship.** It exports the way it
+    // imports, by road through the coast.
     for m in 0..e.markets.len() {
-        if e.markets[m].port {
+        if e.quay(m) {
             continue;
         }
         for &c in Commodity::ALL.iter() {
@@ -741,49 +823,140 @@ fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
         }
     }
 
-    // **The direction follows the price.** Somewhere in this world a town
-    // is dear enough in something to import it, or cheap enough to export
-    // — otherwise the gate is watching a country that never trades and
-    // proves nothing.
+    // **And the direction follows the price**, both ways, somewhere in
+    // this world — otherwise the gate is watching a country that never
+    // trades and proves nothing.
     let mut importing = 0;
     let mut exporting = 0;
     for m in 0..e.markets.len() {
         for &c in Commodity::ALL.iter() {
+            let p = e.markets[m].price[c as usize];
             if e.worth_importing(m, c) {
                 importing += 1;
-                // **Dear, or short.** A country buys from abroad when the
-                // price makes it worth somebody's while — and also when it
-                // is simply below the cover it keeps, because a merchant
-                // takes a thin cargo to hold a customer and where the
-                // market will not, the state does. Asserting only the price
-                // half was this gate's first version, and it failed on a
-                // country importing ore it was short of at a low price,
-                // which is the override doing exactly what it is for.
-                let dear = e.markets[m].price[c as usize] > c.world_price();
-                let short = e.markets[m].expected_cover[c as usize] < e.target_cover(m, c);
-                assert!(
-                    dear || short,
-                    "{} imports {c} while it is neither dear here nor short of it",
-                    e.markets[m].name
-                );
+                assert!(p > e.export_parity(m, c));
             }
             if e.worth_exporting(m, c) {
                 exporting += 1;
-                assert!(
-                    e.markets[m].price[c as usize] < c.world_price() / 0.75,
-                    "{} exports {c} while it is dearer here than abroad",
-                    e.markets[m].name
-                );
+                assert!(p < e.import_parity(m, c));
             }
         }
     }
     assert!(
-        importing + exporting > 0,
-        "no town in four nations trades with the outside world at all"
+        importing > 0 && exporting > 0,
+        "{importing} imports and {exporting} exports across four nations"
     );
 
     e.treasury.assert_conserved();
     e.ledger.assert_conserved();
+}
+
+/// **The band between the two parities cannot close**, at any town, for
+/// any cargo that goes by sea.
+///
+/// Import parity adds every cost of getting a tonne here; export parity
+/// takes every cost of getting one away. Whatever the world price, the
+/// duty or the distance, the first is above the second — which is the
+/// whole of why a town cannot buy abroad and sell abroad in the same breath
+/// and keep the difference.
+#[test]
+fn the_border_is_a_band_and_it_cannot_close() {
+    let mut n = nations(7, 4);
+    for _ in 0..5 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+    let mut checked = 0;
+    for m in 0..e.markets.len() {
+        for &c in Commodity::ALL.iter() {
+            if !c.will_go_on_a_ship() {
+                continue;
+            }
+            let (i, x) = (e.import_parity(m, c), e.export_parity(m, c));
+            assert!(
+                i > x,
+                "{c} at {}: import parity {i:.1} is not above export parity {x:.1}",
+                e.markets[m].name
+            );
+            checked += 1;
+        }
+    }
+    assert!(checked > 100, "only {checked} bands were checked");
+}
+
+/// **A town up-country pays the road both ways.**
+///
+/// Its imports come up from the quay and its exports go down to it, so its
+/// band is wider than the port's on both sides — by exactly the haul. That
+/// is why a landlocked town pays more for imported grain than the port it
+/// comes through, and gets less for its own than the port does.
+#[test]
+fn a_town_up_country_pays_the_road_both_ways() {
+    let mut n = nations(7, 4);
+    for _ in 0..5 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+    let mut inland = 0;
+    for m in 0..e.markets.len() {
+        let Some(q) = e.nearest_quay(m) else { continue };
+        if q == m {
+            continue;
+        }
+        inland += 1;
+        for &c in [Commodity::Grain, Commodity::Steel, Commodity::Medicine].iter() {
+            assert!(
+                e.import_parity(m, c) > e.import_parity(q, c),
+                "{c} is no dearer to import at {} than at its quay {}",
+                e.markets[m].name,
+                e.markets[q].name
+            );
+            assert!(
+                e.export_parity(m, c) < e.export_parity(q, c),
+                "{c} fetches as much for export at {} as at its quay {}",
+                e.markets[m].name,
+                e.markets[q].name
+            );
+        }
+    }
+    assert!(inland > 0, "no town in this world is inland of a quay");
+}
+
+/// **What crosses an ocean is what is worth carrying.**
+///
+/// Carriage is charged by weight, so what makes it bite is how much a tonne
+/// is worth: a sixth of the price of bulk grain, a third of cement, and
+/// under a hundredth of medicine. So the band a town neither imports nor
+/// exports in is wide for cheap bulk and narrow for dear goods — which is
+/// why about 3-4% of the world's cement crosses a border and a
+/// pharmaceutical plant supplies whole continents.
+#[test]
+fn what_crosses_an_ocean_is_what_is_worth_carrying() {
+    let mut n = nations(7, 4);
+    for _ in 0..5 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+    let q = (0..e.markets.len())
+        .find(|&m| e.quay(m))
+        .expect("no quay in this world");
+    let band = |c: Commodity| (e.import_parity(q, c) - e.export_parity(q, c)) / c.world_price();
+    let by_value = [
+        Commodity::Cement,
+        Commodity::Steel,
+        Commodity::Machinery,
+        Commodity::Medicine,
+    ];
+    for w in by_value.windows(2) {
+        assert!(
+            band(w[0]) > band(w[1]),
+            "{} ({:.2} of its price) has no wider a band than {} ({:.2}), though a tonne of \
+             it is worth far less",
+            w[0],
+            band(w[0]),
+            w[1],
+            band(w[1])
+        );
+    }
 }
 
 /// **A fishing village is not a container port, and the water decides.**

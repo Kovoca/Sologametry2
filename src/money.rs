@@ -143,6 +143,13 @@ pub struct Treasury {
     /// not pay a negative wage; it pays what it has, and the shortfall is
     /// recorded here because it is the thing worth knowing.
     pub unpaid: f64,
+    /// **The same shortfall, by what it was for** — the day's figure,
+    /// cleared with the books and not written to a save. A single total
+    /// says how much went unpaid; it cannot say whether that was a firm
+    /// missing payroll, a household at a counter or a works taking its
+    /// inputs on a promise, and those are different failures with
+    /// different cures.
+    pub unpaid_why: BTreeMap<&'static str, f64>,
     /// **Money brought into existence by lending**, and the amount taken
     /// back out of it by repayment. Conservation is measured against the
     /// opening stock *plus these*, because a banking system genuinely does
@@ -160,6 +167,7 @@ impl Treasury {
             today: Vec::new(),
             flows: BTreeMap::new(),
             unpaid: 0.0,
+            unpaid_why: BTreeMap::new(),
             created: 0.0,
             destroyed: 0.0,
         }
@@ -202,10 +210,12 @@ impl Treasury {
         };
         if capped <= 1e-9 {
             self.unpaid += amount;
+            *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount;
             return 0.0;
         }
         if capped < amount {
             self.unpaid += amount - capped;
+            *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount - capped;
         }
         *self.balances.entry(from).or_insert(0.0) -= capped;
         *self.balances.entry(to).or_insert(0.0) += capped;
@@ -275,6 +285,7 @@ impl Treasury {
     pub fn open_the_books(&mut self) {
         self.today.clear();
         self.unpaid = 0.0;
+        self.unpaid_why.clear();
     }
 
     /// **Nothing appears or vanishes except through a named door.**
@@ -488,6 +499,7 @@ impl crate::save::Store for Treasury {
             today,
             flows: std::collections::BTreeMap::new(),
             unpaid: r.finite_f64()?,
+            unpaid_why: BTreeMap::new(),
             created: r.finite_f64()?,
             destroyed: r.finite_f64()?,
         };

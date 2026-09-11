@@ -1833,7 +1833,11 @@ impl Region {
                 // while machine works are sited by where the steel is, so
                 // a remote town's hospital had nowhere at all to get a
                 // scanner. Every town needs a merchant for it.
-                (Commodity::Machinery, recipe::DEPOT, "machinery dealer"),
+                (
+                    Commodity::Machinery,
+                    recipe::MACHINERY_IMPORTS,
+                    "machinery dealer",
+                ),
             ] {
                 // What this town's works draw, **plus what its people
                 // buy over a counter**. Sizing on recipe inputs alone gave

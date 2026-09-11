@@ -492,7 +492,81 @@ impl Commodity {
     /// The general rule this is a case of: a commodity with no days of
     /// cover is not stock, and the border moves stock.
     pub fn will_go_on_a_ship(self) -> bool {
-        !matches!(self, Commodity::Electricity)
+        self.sea_freight().is_some()
+    }
+
+    /// **What the voyage costs, as a share of what the cargo is worth.**
+    ///
+    /// Ocean freight is charged by weight and distance like any other
+    /// carriage, and what makes it bite on one cargo and vanish on another
+    /// is how much a tonne of the stuff is worth. A bulk carrier moves a
+    /// tonne of grain from the US Gulf to Asia for about $35-55 against
+    /// grain at $220-280, so the voyage is **a sixth of the price**; a
+    /// container moves a tonne of manufactures for about $100 against
+    /// goods worth thousands, so it is **a few per cent**. That single
+    /// ratio is why cement is made in every region on earth and a
+    /// pharmaceutical plant in hardly any country at all — the rule
+    /// `logistics.rs` already applies on the road, arriving at the sea.
+    ///
+    /// **Written as a share rather than a dollar figure on purpose.** This
+    /// model's currency is pinned to the food chain and compresses the
+    /// dear end — retail goods are 500 a tonne here and several thousand
+    /// in life — so a real $100 container rate on a compressed price would
+    /// make a box of goods cost a fifth of its value to ship. Each share
+    /// below is a real per-tonne freight over a real per-tonne value, and
+    /// applied to this model's price it gives this model's per-tonne
+    /// charge. Insurance is a fraction of a per cent and rides inside it.
+    ///
+    /// `None` is a cargo that does not go by sea at all.
+    pub fn sea_freight(self) -> Option<f64> {
+        Some(match self {
+            // Panamax and supramax bulk: $35-55 a tonne on the long runs,
+            // $15-25 across the Black Sea to Egypt.
+            Commodity::Grain => 0.15,
+            // Bagged or boxed, dearer to handle and quicker to spoil —
+            // which is why wheat crosses oceans and flour mostly does not.
+            Commodity::Flour => 0.18,
+            // Canned food in containers: ~$100 a tonne on $1,500-2,500.
+            Commodity::ProcessedFood => 0.06,
+            // It goes over wires, and there is no interconnector here.
+            Commodity::Electricity => return None,
+            // Capesize and panamax coal: Newcastle to Japan $12-20 on
+            // $100-150.
+            Commodity::Coal => 0.14,
+            // Containerised manufactures: freight is 1-3% of value.
+            Commodity::RetailGoods => 0.03,
+            // Frozen, in reefer boxes: $150-200 a tonne on $4,000-5,000.
+            // The *Dunedin* made this trade in 1882 and the ratio is why
+            // it paid.
+            Commodity::Meat => 0.04,
+            // Live export: a sheep ship or a cattle carrier costs a fifth
+            // to a third of the animal's value, which is why so few
+            // countries do it.
+            Commodity::Livestock => 0.25,
+            // Capesize ore: Australia to China $8-12, Brazil to China
+            // $20-25, on $100-120.
+            Commodity::IronOre => 0.15,
+            // Coils and plate as break bulk, $40-60 a tonne on $600.
+            Commodity::Steel => 0.08,
+            // Logs and sawn timber as break bulk, $40-60 on $150-250 —
+            // why wood is mostly sawn near the forest it grew in.
+            Commodity::Timber => 0.25,
+            // A VLCC from the Gulf to China is $10-15 a tonne of crude
+            // worth about $500, which is why oil is the most traded thing
+            // there is.
+            Commodity::Petroleum => 0.03,
+            // Resin pellets in containers, $60-100 on $1,200-1,500.
+            Commodity::Plastics => 0.06,
+            Commodity::Machinery => 0.03,
+            // Bulk cement carriers, $20-40 a tonne on $100. **About 3-4%
+            // of the world's cement crosses a border**, and this is why.
+            Commodity::Cement => 0.30,
+            // Air or reefer boxes, and it hardly matters: under 1%.
+            Commodity::Medicine => 0.01,
+            // Parcel tankers and containers, $40-80 on $700-1,000.
+            Commodity::Chemicals => 0.07,
+            Commodity::Remedies => 0.02,
+        })
     }
 
     pub fn base_cost(self) -> f64 {
@@ -1140,9 +1214,23 @@ pub struct Recipe {
     /// Needs irrigation water — the farm tier's critical dependency, and a
     /// different failure mode from the factory's.
     pub needs_water: bool,
+    /// **The goods come from outside the modelled world**, and somebody
+    /// out there wants paying for them.
+    ///
+    /// A recipe with no inputs is one of two quite different things: it is
+    /// taking from the ground the world generator put there — a farm, a
+    /// colliery, a forest — or it is landing a cargo bought abroad. The
+    /// site's *kind* cannot tell them apart, because the same kinds are
+    /// worn by both: a grain terminal is a `Mine`, an ore terminal an
+    /// `IronMine`, an oil terminal an `OilField` and a timber yard with no
+    /// forest a `Forestry`. Keying the border on the kind is exactly how
+    /// five of the twelve import terminals came to land their full tonnage
+    /// every day, whatever the price, with nobody abroad ever paid. **The
+    /// recipe is what says whether anybody is digging.**
+    pub from_abroad: bool,
 }
 
-pub const RECIPES: [Recipe; 32] = [
+pub const RECIPES: [Recipe; 33] = [
     Recipe {
         name: "farm",
         inputs: &[],
@@ -1150,6 +1238,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.05,
         labour: 8.0,
         needs_water: true,
+        from_abroad: false,
     },
     Recipe {
         name: "mill",
@@ -1158,6 +1247,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.08,
         labour: 0.2,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "cannery",
@@ -1170,6 +1260,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.35,
         labour: 1.2,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "power plant",
@@ -1178,6 +1269,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.0,
         labour: 0.02,
         needs_water: false,
+        from_abroad: false,
     },
     // Goods arriving from outside the modelled region. Real economies
     // import; representing that as production at the boundary keeps
@@ -1189,6 +1281,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.1,
         needs_water: false,
+        from_abroad: true,
     },
     // Coal has to come out of the ground somewhere. The hand-built slice
     // simply gave its power station a heap of it, which is exactly the
@@ -1201,6 +1294,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.03,
         labour: 1.5,
         needs_water: false,
+        from_abroad: false,
     },
     // Fuel bought from outside the region, landed at a port or railhead.
     // A nation with no coal of its own does not simply go dark — it buys,
@@ -1214,6 +1308,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.01,
         labour: 0.2,
         needs_water: false,
+        from_abroad: true,
     },
     // Grain bought from outside the region and landed at a port.
     //
@@ -1229,6 +1324,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.05,
         needs_water: false,
+        from_abroad: true,
     },
     // **Stock on grass.** Very low power and very high labour per tonne
     // against arable — real extensive grazing runs one stockman to
@@ -1241,6 +1337,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 60.0,
         needs_water: true,
+        from_abroad: false,
     },
     // **Live weight to retail meat.** Real dressing: a 450 kg beast gives
     // about 56% as carcass and 70% of that boned out, so roughly 2.6
@@ -1256,6 +1353,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.25,
         labour: 3.0,
         needs_water: false,
+        from_abroad: false,
     },
     // **Meat landed from outside the region**, which is a thing that only
     // exists because of refrigerated shipping. The *Dunedin* carried
@@ -1272,6 +1370,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.10,
         labour: 0.05,
         needs_water: false,
+        from_abroad: true,
     },
     // -----------------------------------------------------------------
     // Ore, steel, and the things made of it.
@@ -1291,6 +1390,7 @@ pub const RECIPES: [Recipe; 32] = [
         // a place many people live.
         labour: 0.4,
         needs_water: false,
+        from_abroad: false,
     },
     // A nation with no orefield buys ore, exactly as one with no coalfield
     // buys fuel. Japan and Korea run world-class steel industries on
@@ -1303,6 +1403,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.15,
         needs_water: false,
+        from_abroad: true,
     },
     Recipe {
         name: "steelworks",
@@ -1318,6 +1419,7 @@ pub const RECIPES: [Recipe; 32] = [
         // employs people. A modern mill runs 0.5-2 person-hours a tonne.
         labour: 1.5,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "factory",
@@ -1346,6 +1448,7 @@ pub const RECIPES: [Recipe; 32] = [
         // now sits in the machine works upstream.
         labour: 30.0,
         needs_water: false,
+        from_abroad: false,
     },
     // **A steel stockholder.** Most economies do not smelt their own —
     // there are about fifty countries with a steel industry and two
@@ -1359,6 +1462,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.2,
         needs_water: false,
+        from_abroad: true,
     },
     // -----------------------------------------------------------------
     // The rest of the tree: every good traceable to a primary resource.
@@ -1377,6 +1481,7 @@ pub const RECIPES: [Recipe; 32] = [
         // the mill rather than the felling.
         labour: 2.0,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "oil field",
@@ -1389,6 +1494,7 @@ pub const RECIPES: [Recipe; 32] = [
         // has a labour market problem its revenue cannot solve.
         labour: 0.15,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "oil imports",
@@ -1397,6 +1503,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.1,
         needs_water: false,
+        from_abroad: true,
     },
     Recipe {
         name: "timber imports",
@@ -1405,6 +1512,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.1,
         needs_water: false,
+        from_abroad: true,
     },
     Recipe {
         name: "cracker",
@@ -1415,6 +1523,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 1.2,
         labour: 1.5,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "machine works",
@@ -1427,6 +1536,7 @@ pub const RECIPES: [Recipe; 32] = [
         // why it is the part that moves to wherever labour is cheap.
         labour: 60.0,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "cement works",
@@ -1441,6 +1551,7 @@ pub const RECIPES: [Recipe; 32] = [
         // 1.5 Mt a year is run by a couple of hundred people.
         labour: 0.5,
         needs_water: false,
+        from_abroad: false,
     },
     Recipe {
         name: "cement imports",
@@ -1449,6 +1560,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.1,
         needs_water: false,
+        from_abroad: true,
     },
     // **The building trade, which is where all of that ends up.**
     //
@@ -1476,6 +1588,7 @@ pub const RECIPES: [Recipe; 32] = [
         // mechanise: the site comes to the work, never the other way.
         labour: 14.0,
         needs_water: false,
+        from_abroad: false,
     },
     // **A hospital's supplies have to be made by somebody.**
     Recipe {
@@ -1496,6 +1609,7 @@ pub const RECIPES: [Recipe; 32] = [
         // hours per tonne say so.
         labour: 40.0,
         needs_water: true,
+        from_abroad: false,
     },
     Recipe {
         name: "medicine imports",
@@ -1504,6 +1618,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.05,
         labour: 0.4,
         needs_water: false,
+        from_abroad: true,
     },
     // **The chemical industry**, which sits between the refinery and
     // everybody who synthesises anything.
@@ -1516,6 +1631,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 1.6,
         labour: 3.0,
         needs_water: true,
+        from_abroad: false,
     },
     Recipe {
         name: "chemical imports",
@@ -1524,6 +1640,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.02,
         labour: 0.15,
         needs_water: false,
+        from_abroad: true,
     },
     // **Retail remedies, which are a different industry from medicine.**
     //
@@ -1541,6 +1658,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.8,
         labour: 12.0,
         needs_water: true,
+        from_abroad: false,
     },
     Recipe {
         name: "remedy imports",
@@ -1549,6 +1667,7 @@ pub const RECIPES: [Recipe; 32] = [
         power: 0.03,
         labour: 0.3,
         needs_water: false,
+        from_abroad: true,
     },
     // **A hospital is a place that holds supplies**, not a line in a
     // budget.
@@ -1581,6 +1700,22 @@ pub const RECIPES: [Recipe; 32] = [
         // this per person-day.
         labour: 0.11,
         needs_water: true,
+        from_abroad: false,
+    },
+    // **A machinery dealer lands machinery.** Every town was given one so
+    // a remote hospital could get hold of a scanner, and it was built on
+    // the *depot* recipe — which lands retail goods. So it held a store for
+    // machinery and a recipe for something it had no room for, and it has
+    // never landed a single tonne. Appended at the end, because a works on
+    // disk names its recipe by position.
+    Recipe {
+        name: "machinery imports",
+        inputs: &[],
+        outputs: &[(Commodity::Machinery, 1.0)],
+        power: 0.02,
+        labour: 0.2,
+        needs_water: false,
+        from_abroad: true,
     },
 ];
 
@@ -1618,6 +1753,7 @@ pub mod recipe {
     pub const REMEDY_WORKS: usize = 29;
     pub const REMEDY_IMPORTS: usize = 30;
     pub const HOSPITAL: usize = 31;
+    pub const MACHINERY_IMPORTS: usize = 32;
 }
 
 // ---------------------------------------------------------------------------
@@ -3565,40 +3701,74 @@ impl Economy {
     /// generator actually put there. A depot is taking from outside the
     /// model, and outside the model wants paying.
     ///
-    /// **Bought at the world price, which is below the domestic one — and
-    /// that is the whole reason anybody imports anything.**
+    /// **What an import is paid for, and to whom.**
     ///
-    /// The first attempt paid the commodity's full reference cost, and the
-    /// importer went bankrupt on the first tonne: it sells into
-    /// distribution at a **wholesale** price, which this model already puts
-    /// at 75% of the market price, so buying at 100 and selling at 75 is a
-    /// guaranteed loss on every load. That is not a calibration problem, it
-    /// is the arithmetic of importing at parity.
+    /// Everything the importer bought to get the tonne here, split to the
+    /// people who did it: the world is paid the price at its own port plus
+    /// the voyage, the state its duty, the dockers at the quay for
+    /// unloading, and the hauliers for the road up from the coast. Where the
+    /// goods physically travel from the quay is not yet simulated — they
+    /// still appear at the depot rather than riding the road — but they are
+    /// paid for as though they had, which is the half of that gap a price
+    /// can see.
     ///
-    /// A country imports because the goods are **cheaper there**. That is
-    /// comparative advantage, and it is one number here: the world price is
-    /// about two-thirds of the domestic reference cost, which leaves the
-    /// importer a gross margin in the **10-15% band this file already cites
-    /// for wholesale** after it has sold at 75.
-    ///
-    /// The figure is a designed one and labelled as such. What a real
-    /// derivation wants is a world price per commodity that a country's own
-    /// costs are compared against — which is also what would let a country
-    /// *stop* importing when it becomes the cheaper producer, and start
-    /// exporting instead.
-    const WORLD_PRICE: f64 = 0.65;
-
+    /// **At the level every firm-to-firm sale here is struck at.** A works
+    /// in this model buys its inputs at three quarters of the list price,
+    /// so a tonne changes hands between firms at `WHOLESALE_MARGIN` of what
+    /// the price pass says it is worth. The border trades at the same level
+    /// or its arithmetic stops meeting the domestic side's. That mismatch
+    /// was the first version's bankruptcy — an importer paying the full
+    /// world price and selling at three quarters of the market — and it
+    /// was patched with a world price set at two-thirds of reference, which
+    /// was a second price for the same tonne. There is one price, and one
+    /// level to trade it at.
     fn pay_for_imports(&mut self, site: usize, c: Commodity, qty: f64) {
-        if qty <= 1e-9 || self.ledger.sites[site].kind != SiteKind::Depot {
+        if qty <= 1e-9 || !self.buys_abroad(site) {
             return;
         }
+        let Some(voyage) = c.sea_freight() else {
+            return;
+        };
+        use crate::money::{Account, Why};
         let day = self.ledger.day;
+        let m = self.ledger.sites[site].market;
+        let at = Self::WHOLESALE_MARGIN * qty;
+        let at_their_port = c.world_price() * (1.0 + voyage);
+        let duty = self
+            .import_duty
+            .get(&self.markets[m].nation)
+            .copied()
+            .unwrap_or(0.0);
+        let quay = self.nearest_quay(m).unwrap_or(m);
+        let inland = self.inland_leg(m);
+        // Abroad first: the goods are not landed until the seller is paid.
         self.treasury.pay(
             day,
-            crate::money::Account::Firm(site),
-            crate::money::Account::Abroad,
-            c.base_cost() * Self::WORLD_PRICE * qty,
-            crate::money::Why::Trade,
+            Account::Firm(site),
+            Account::Abroad,
+            at * at_their_port,
+            Why::Trade,
+        );
+        self.treasury.pay(
+            day,
+            Account::Firm(site),
+            Account::State,
+            at * at_their_port * duty,
+            Why::Tax,
+        );
+        self.treasury.pay(
+            day,
+            Account::Firm(site),
+            Account::ServiceSector(quay),
+            at * Self::PORT_HANDLING_PER_T,
+            Why::Freight,
+        );
+        self.treasury.pay(
+            day,
+            Account::Firm(site),
+            Account::ServiceSector(m),
+            at * inland,
+            Why::Freight,
         );
     }
 
@@ -3741,7 +3911,7 @@ impl Economy {
             // anything. Now the same test that says a country is short
             // enough to import is what opens the quay.
             let s = &self.ledger.sites[site];
-            if s.kind == SiteKind::Depot {
+            if self.buys_abroad(site) {
                 let (m, r) = (s.market, s.recipe);
                 let wanted = r.is_some_and(|r| {
                     RECIPES[r]
@@ -3787,6 +3957,23 @@ impl Economy {
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
             }
+            // **An importer pays on the same terms as every other firm here**
+            // — what it can, with the shortfall recorded — and that is a
+            // decision, measured, rather than an oversight.
+            //
+            // A gate watching who pays the outside world found depots with
+            // empty tills landing cargoes: the payment capped at nothing,
+            // logged as unpaid, the goods landed anyway. Requiring payment
+            // before release is what a real port does, and it was tried. It
+            // starved the importers, because **their own customers do not
+            // pay them**: on the day the first terminal landed grain it could
+            // not pay for, 130 million of firm-to-firm purchases and 34
+            // million at the shop counters also went unpaid, all the way
+            // down the chain to households whose wages do not cover the
+            // basket. Making the quay the one strictly-cash firm in an
+            // economy where nobody else is made steel three times the world
+            // price and cured nothing. The shortfall lives in the wage
+            // scales, and it is named there.
             // Do not produce into a full shed.
             for &(c, out) in recipe.outputs {
                 let room = (self.ledger.sites[site].capacity[c as usize]
@@ -4852,7 +5039,31 @@ impl Economy {
         for site in 0..self.ledger.sites.len() {
             let m = self.ledger.sites[site].market;
             let wage = self.day_rate_here(m);
+            // **An importer keeps the price of its next cargoes.** It buys
+            // in bursts — only while the price is over import parity — so a
+            // reserve sized on today's outgoings stripped it bare on every
+            // quiet day, and when the next shortage came it could not pay
+            // for a ship. Measured: import merchants paid out more as profit
+            // than they paid for everything they imported. A real importer
+            // holds working capital against its trade cycle, so this is
+            // sized on what its rated landings would cost.
+            let cargoes = if self.buys_abroad(site) {
+                let s = &self.ledger.sites[site];
+                s.recipe.map_or(0.0, |r| {
+                    RECIPES[r]
+                        .outputs
+                        .iter()
+                        .map(|&(c, out)| {
+                            Self::WHOLESALE_MARGIN * out * self.landed_from_abroad(m, c)
+                        })
+                        .sum::<f64>()
+                        * s.throughput
+                })
+            } else {
+                0.0
+            };
             let reserve = (outgoings[site] * RESERVE_DAYS)
+                .max(cargoes * RESERVE_DAYS)
                 .max(self.staff_today[site] * wage * RESERVE_DAYS)
                 .max(wage * 30.0);
             let held = self.treasury.balance(Account::Firm(site));
@@ -5409,6 +5620,35 @@ impl Economy {
             return None;
         }
         let m = site.market;
+        // **An import costs its import parity**, not what it cost at a port
+        // on the other side of the world. The recipe for a depot has no
+        // inputs, so the build-up below gave it the reference cost — the
+        // world price — and a town living on imports was priced as though
+        // the voyage, the dockers and the road up from the coast were free.
+        // That is what kept an importing town's price below the bar that
+        // would have made anybody import into it.
+        //
+        // **With the trader's margin in it, the same as every other cost
+        // here.** A reference cost in this model is a real market price, so
+        // it already carries the normal margin of whoever makes the thing;
+        // an importer's is no different. Leaving the margin out made the
+        // price clear the bar only when stocks were a margin's worth short —
+        // a permanent small shortage standing in for a markup — and three
+        // identical towns drifted apart inside it. With it, a town living on
+        // imports is priced at its parity when it holds what it aims at, and
+        // buys the moment it holds less.
+        if self.buys_abroad(s) {
+            return Some(self.import_parity(m, c));
+        }
+        // What this recipe's inputs cost at the reference, and what they
+        // cost today.
+        //
+        // **This used to guard `recipe.power` against the sentinel, which
+        // is the wrong field entirely.** The sentinel lives on the *site's*
+        // throughput; a power-station recipe's own `power` is zero, so the
+        // guard never fired once and the comment above it was simply
+        // untrue. Dead code that reads like a safeguard is worse than none,
+        // because it stops anybody looking.
         let power = recipe.power;
         let labour = recipe.labour * WAGE_AN_HOUR;
         let reference: f64 = recipe
@@ -5418,6 +5658,20 @@ impl Economy {
             .sum::<f64>()
             + power * Commodity::Electricity.base_cost()
             + labour;
+        // **What the inputs cost to acquire here**, which is the landed
+        // cost — what was paid for them plus the freight to get them here —
+        // and not the technical cost of making them somewhere else.
+        //
+        // Reading the upstream *technical* cost was the previous version
+        // and it was wrong in a specific way: a shortage of grain does not
+        // make grain dearer to grow, but it certainly makes it dearer for a
+        // mill to buy, and suppressing that handoff stopped freight,
+        // contracts and distance from ever reaching a downstream firm. A
+        // cheap producer abroad gave a factory here nothing at all.
+        //
+        // It is still not the *price*, which carries this market's own
+        // scarcity on top and would count one shortage again at every
+        // stage down the chain.
         let actual: f64 = recipe
             .inputs
             .iter()
@@ -5425,12 +5679,21 @@ impl Economy {
             .sum::<f64>()
             + power * self.markets[m].landed[Commodity::Electricity as usize]
             + labour;
+        // **And what this particular ground costs to work**, which is the
+        // whole difference between a rich seam and a thin one and is 1.0
+        // for anything built to a design rather than found.
         let moved = if reference > 1e-9 {
             actual / reference
         } else {
             1.0
         };
         Some(c.base_cost() * moved * site.cost_factor)
+    }
+
+    /// **Does anybody in this town make it, or land it from abroad?**
+    pub fn supplied_here(&self, m: usize, c: Commodity) -> bool {
+        (0..self.ledger.sites.len())
+            .any(|s| self.ledger.sites[s].market == m && self.site_cost(s, c).is_some())
     }
 
     /// **What the next tonne would cost here, and where it would come
@@ -6346,12 +6609,26 @@ impl Economy {
                 // no carriage in it. Off by default, in which case the
                 // carriage is `NONE` and this is `cost x multiplier`
                 // exactly.
-                let (goods, carriage) = if self.experiments.marginal_source_pricing {
-                    let (g, f) = self.marginal_source(m, c);
-                    (g, crate::value::InboundCharges::freight(f))
-                } else {
-                    (cost, crate::value::InboundCharges::NONE)
-                };
+                //
+                // **A town that makes none of it and imports none of it pays
+                // what it costs where it is made, plus the haul** — and that
+                // part is not an experiment. It is the spatial price rule,
+                // and what it replaced was worse than approximate: such a
+                // town fell back on the bare reference cost, so the
+                // two-town fixture priced food in the town without a
+                // cannery *below* the town that cans it, and the gate that
+                // says a town settles at what it costs to obtain passed at
+                // 4.9% against a 5% bar on a coincidence. Moving the
+                // cannery's cost by a fraction of a per cent was enough to
+                // turn it over. Scarcity is still taken on the goods only,
+                // so no carriage is marked up.
+                let (goods, carriage) =
+                    if self.experiments.marginal_source_pricing || !self.supplied_here(m, c) {
+                        let (g, f) = self.marginal_source(m, c);
+                        (g, crate::value::InboundCharges::freight(f))
+                    } else {
+                        (cost, crate::value::InboundCharges::NONE)
+                    };
                 let goods = crate::value::ProductionCost::new(goods);
                 let quote = goods.delivered(carriage);
                 let premium = goods.scarcity_premium(crate::value::Scarcity::new(multiplier));
@@ -6382,69 +6659,34 @@ impl Economy {
     /// oil at half price gives plastics at proportionally less, through
     /// however many stages lie between.
     pub fn cost_of_production(&self, m: usize, c: Commodity) -> f64 {
+        // **One definition of what a works' tonne costs**, read here rather
+        // than written out a second time. This function carried its own copy
+        // of `site_cost`'s arithmetic, which is exactly the arrangement that
+        // lets two things that must agree stop agreeing: an import priced at
+        // what it cost to land for a buyer choosing a supplier, and at the
+        // world price for the market that buyer is in.
         let (mut weighted, mut supplied) = (0.0f64, 0.0f64);
+        let mut idle_importer: Option<f64> = None;
         for s in 0..self.ledger.sites.len() {
             let site = &self.ledger.sites[s];
-            if site.market != m || site.throughput <= 0.0 {
+            if site.market != m {
                 continue;
             }
-            let Some(r) = site.recipe else { continue };
-            let recipe = &RECIPES[r];
-            if !recipe.outputs.iter().any(|&(oc, q)| oc == c && q > 0.0) {
+            let Some(here) = self.site_cost(s, c) else {
                 continue;
-            }
-
-            // What this recipe's inputs cost at the reference, and what
-            // they cost today.
-            //
-            // **This used to guard `recipe.power` against the sentinel,
-            // which is the wrong field entirely.** The sentinel lives on
-            // the *site's* throughput; a power-station recipe's own `power`
-            // is zero, so the guard never fired once and the comment above
-            // it was simply untrue. Dead code that reads like a safeguard
-            // is worse than none, because it stops anybody looking.
-            let power = recipe.power;
-            let labour = recipe.labour * WAGE_AN_HOUR;
-            let reference: f64 = recipe
-                .inputs
-                .iter()
-                .map(|&(ic, q)| q * ic.base_cost())
-                .sum::<f64>()
-                + power * Commodity::Electricity.base_cost()
-                + labour;
-            // **What the inputs cost to acquire here**, which is the
-            // landed cost — what was paid for them plus the freight to get
-            // them here — and not the technical cost of making them
-            // somewhere else.
-            //
-            // Reading the upstream *technical* cost was the previous
-            // version and it was wrong in a specific way: a shortage of
-            // grain does not make grain dearer to grow, but it certainly
-            // makes it dearer for a mill to buy, and suppressing that
-            // handoff stopped freight, contracts and distance from ever
-            // reaching a downstream firm. A cheap producer abroad gave a
-            // factory here nothing at all.
-            //
-            // It is still not the *price*, which carries this market's own
-            // scarcity on top and would count one shortage again at every
-            // stage down the chain.
-            let actual: f64 = recipe
-                .inputs
-                .iter()
-                .map(|&(ic, q)| q * self.markets[m].landed[ic as usize])
-                .sum::<f64>()
-                + power * self.markets[m].landed[Commodity::Electricity as usize]
-                + labour;
-
-            // **And what this particular ground costs to work**, which is
-            // the whole difference between a rich seam and a thin one and
-            // is 1.0 for anything built to a design rather than found.
-            let moved = if reference > 1e-9 {
-                actual / reference
-            } else {
-                1.0
             };
-            let here = c.base_cost() * moved * site.cost_factor;
+            // **An importer that landed nothing today does not price the
+            // market.** A works standing idle for want of inputs is still a
+            // works, and rated throughput is its fallback so a country on
+            // its first morning is not costless. A quay that did not buy
+            // because buying did not pay is different: it is not a producer
+            // at all today, and letting its landed cost into the average
+            // would price a country's own steel as though a third of it had
+            // crossed an ocean.
+            if self.buys_abroad(s) && site.ran <= 1e-9 {
+                idle_importer = Some(idle_importer.map_or(here, |h: f64| h.min(here)));
+                continue;
+            }
             // **Weighted by what it actually supplies**, not simply the
             // cheapest nameplate in the market.
             //
@@ -6471,9 +6713,12 @@ impl Economy {
         if supplied > 1e-9 {
             return weighted / supplied;
         }
-        // Nobody here makes it, so what it costs is what it costs to bring
-        // in — which is the reference, that being what it is calibrated on.
-        c.base_cost()
+        // **Nobody here makes it, so what it costs is what it costs to bring
+        // in.** Where there is a quay merchant who could land it, that is
+        // its import parity — which is why a town living on imports sits at
+        // its parity rather than at the world price. Otherwise the
+        // reference, that being what it is calibrated on.
+        idle_importer.unwrap_or_else(|| c.base_cost())
     }
 
     /// **Food goes off, and a cold chain is what stops it.**
@@ -6661,7 +6906,13 @@ impl Economy {
                     .iter()
                     .find(|&&(ic, _)| ic == c)
                     .map(|&(_, q)| q)?;
-                Some(per * self.ledger.sites[s].throughput)
+                // **The fifth time the sentinel has been read as a rate.**
+                // A power station's throughput means "whatever the grid can
+                // carry", and multiplying it out said a town with a station
+                // in it burnt 380 million tonnes of coal a day — so it never
+                // had any coal to spare, and an importer sizing a cargo on
+                // the town's shortfall would have tried to land the lot.
+                Some(per * demand_rate_of(&self.ledger.sites[s]))
             })
             .sum();
         self.markets[m].daily_household_demand(c) + industrial
@@ -7214,106 +7465,180 @@ impl Economy {
     /// of the round trip breaking even is that both sides use one number.
     pub const WHOLESALE_MARGIN: f64 = 0.75;
 
-    /// **What it costs to get a tonne over the quay and across the water.**
-    ///
-    /// Sea freight is about a sixth of road per tonne-kilometre, which this
-    /// project already records, and the leg to the outside world is long.
-    /// What it buys is a **band**: between these two prices a country
-    /// neither imports nor exports, because moving the stuff would cost
-    /// more than the difference is worth.
-    ///
-    /// That band is what stops the border printing money. With one world
-    /// price and no band, a country would flip between importing and
-    /// exporting on the smallest move; with two different prices — which
-    /// the first attempt at this had — a round trip through the quay was
-    /// free money.
-    const OVER_THE_QUAY: f64 = 0.08;
+    /// **Unloading a ship, per tonne**, at this country's end: stevedores,
+    /// terminal handling and clearance. Real: $8-15 a tonne for bulk grain
+    /// over a quay, $150-250 a box for containers, which is $15-25 a
+    /// tonne. A per-tonne figure, because it is somebody's labour moving
+    /// weight — and the teamsters loading and unloading are the reason the
+    /// border is a place rather than a line.
+    pub const PORT_HANDLING_PER_T: f64 = 15.0;
 
-    /// **Is this town short enough to be worth importing into?**
-    ///
-    /// The importer buys abroad at the world price plus the sea leg, and
-    /// sells inland at **wholesale**, which this model puts at 75% of the
-    /// market price. So it is only a business when the domestic price is
-    /// well above world parity — which is exactly what import parity means
-    /// in the trade it is named after, and why a country does not import
-    /// something it is merely a little short of.
-    /// **A quay is needed to load a ship out; goods coming in reach an
-    /// inland merchant by road.**
-    ///
-    /// Requiring a port on this side too was the first version and it shut
-    /// every inland town out of the world market — the two-town fixture
-    /// starved of imported goods and settled 24% above its own cost. That
-    /// is not what happens to an inland town: its imports land at the coast
-    /// and come up the road, which is what the road is for.
-    ///
-    /// **The leg from the quay inland is not modelled yet**, and that is a
-    /// named gap rather than a claim. Goods still materialise at whichever
-    /// town holds the terminal instead of landing at the water and
-    /// travelling. What the asymmetry does *not* do is reopen the money
-    /// printer: an inland town can buy from abroad and cannot sell to it,
-    /// so there is no round trip to make.
-    pub fn worth_importing(&self, m: usize, c: Commodity) -> bool {
-        if !c.will_go_on_a_ship() {
-            return false;
-        }
-        let sells_for = self.markets[m].price[c as usize] * Self::WHOLESALE_MARGIN;
-        if sells_for > c.world_price() * (1.0 + Self::OVER_THE_QUAY) {
-            return true;
-        }
-        // **And a merchant buys when its customers are queuing, margin or
-        // no margin.**
-        //
-        // Import parity as a pure margin test wants the domestic price
-        // **44% above world** before anybody lands a cargo, because the
-        // importer sells on at a quarter off. For a staple that is far too
-        // high a bar, and it showed: a nation living on imported grain went
-        // four times over its famine bound the day imports became a
-        // decision, because the price had not risen enough to make feeding
-        // people profitable yet.
-        //
-        // Below its working cover a country buys anyway. That is what
-        // actually happens — a merchant takes a thin cargo to hold a
-        // customer, and where the market will not, the state does it
-        // instead. Either way the grain arrives, and a model in which
-        // nobody imports food until it is half as dear again as the world
-        // price is a model that starves people over a margin.
-        let cover = self.markets[m].expected_cover[c as usize];
-        cover < self.target_cover(m, c)
+    /// **What an importer or exporter keeps.** A designed figure, labelled
+    /// as one: grain and bulk trading are volume businesses with many
+    /// competitors, so the margin a trader lives on is thin — a few per
+    /// cent, not the quarter a retailer takes. The import parity analyses
+    /// famine early-warning systems run carry a trader's margin as its own
+    /// line for exactly this reason.
+    pub const TRADERS_MARGIN: f64 = 0.05;
+
+    /// **Can this town put a ship alongside?** A quay on water deep
+    /// enough for something bigger than a rowing boat.
+    pub fn quay(&self, m: usize) -> bool {
+        self.markets[m].port && self.markets[m].berth != crate::world::Berth::None
     }
 
-    /// **And is it cheap enough to be worth selling out of?**
-    ///
-    /// The mirror, and deliberately the same numbers: the exporter buys
-    /// inland at wholesale and sells abroad at the world price less the sea
-    /// leg. Both sides trading at wholesale is what makes the round trip
-    /// exactly break even before costs and a loss after them, so nothing
-    /// can be made by shipping a cargo out and straight back in.
-    pub fn worth_exporting(&self, m: usize, c: Commodity) -> bool {
-        if !self.markets[m].port || !c.will_go_on_a_ship() {
-            return false;
+    /// **Which quay this town's overseas trade goes through**: the one it
+    /// is cheapest to reach by road. `None` where no quay can be reached
+    /// at all — a world with no coast, or a town cut off from every one.
+    pub fn nearest_quay(&self, m: usize) -> Option<usize> {
+        if self.quay(m) {
+            return Some(m);
         }
-        // **An exporter pays the market price, not a wholesaler's
-        // discount.**
-        //
-        // The first version gave it the same quarter off that an inland
-        // buyer gets — and an inland buyer gets it because it *resells at
-        // home*. An exporter does not; it is bidding against those buyers
-        // for the same tonnage and then shipping it out.
-        //
-        // The consequence of the discount was backwards. Exports carried on
-        // until the domestic price reached **1.23 times world**, so trade
-        // pushed food *above* the world price at home — when the whole
-        // reason a country exports is that it is the cheap producer. It
-        // showed up where this project's warnings say it will: food dearer,
-        // less left for rent, and a cohort down to **21% housed after
-        // twenty-five years** against better than half before.
-        //
-        // At the market price the equilibrium is the right way round: a
-        // country sells out until its own price has risen to the world
-        // price *less* the sea leg, which is what price convergence
-        // actually looks like from the cheap side.
-        let costs_to_buy = self.markets[m].price[c as usize];
-        costs_to_buy < c.world_price() * (1.0 - Self::OVER_THE_QUAY)
+        (0..self.markets.len())
+            .filter(|&q| self.quay(q) && self.routing.freight(q, m).is_finite())
+            .min_by(|&a, &b| {
+                self.routing
+                    .freight(a, m)
+                    .total_cmp(&self.routing.freight(b, m))
+                    .then(a.cmp(&b))
+            })
+    }
+
+    /// **The haul between the water and this town**, per tonne, on a full
+    /// lorry — which is how bulk comes up from a port.
+    ///
+    /// Zero at the quay itself. **Zero also where no quay can be reached**,
+    /// and that is a statement rather than a default: a town with no coast
+    /// in reach trades with the outside world over a land frontier, and in
+    /// a world that models no frontier the depot *is* the crossing. It is
+    /// what lets a one-nation fixture with no sea import anything at all.
+    pub fn inland_leg(&self, m: usize) -> f64 {
+        match self.nearest_quay(m) {
+            Some(q) if q != m => self.carriage_for(q, m, Self::A_LORRY_T) / Self::A_LORRY_T,
+            _ => 0.0,
+        }
+    }
+
+    /// **What a tonne bought abroad costs to get to this town**, before
+    /// anybody takes a margin on it.
+    ///
+    /// The textbook build-up, one line each: the world price, the voyage,
+    /// duty on what landed, the dockers, and the lorry inland.
+    ///
+    /// ```text
+    /// landed = world x (1 + voyage) x (1 + duty) + port handling + inland haul
+    /// ```
+    pub fn landed_from_abroad(&self, m: usize, c: Commodity) -> f64 {
+        let Some(voyage) = c.sea_freight() else {
+            return f64::INFINITY;
+        };
+        let duty = self
+            .import_duty
+            .get(&self.markets[m].nation)
+            .copied()
+            .unwrap_or(0.0);
+        c.world_price() * (1.0 + voyage) * (1.0 + duty)
+            + Self::PORT_HANDLING_PER_T
+            + self.inland_leg(m)
+    }
+
+    /// **Import parity**: the price above which bringing a tonne in from
+    /// abroad pays.
+    ///
+    /// This is what the trade itself uses, and famine early-warning
+    /// systems compute it market by market: FOB abroad, plus freight and
+    /// insurance, plus port charges, plus duty, plus the inland haul,
+    /// plus the trader's margin. **A deficit market's price sits at its
+    /// import parity**, which is why a landlocked town pays more for
+    /// imported grain than the port it comes through, by exactly the road
+    /// between them.
+    pub fn import_parity(&self, m: usize, c: Commodity) -> f64 {
+        self.landed_from_abroad(m, c) * (1.0 + Self::TRADERS_MARGIN)
+    }
+
+    /// **Export parity**: the price below which selling a tonne abroad
+    /// pays — what the world will give, less everything it costs to get
+    /// it there.
+    ///
+    /// The mirror of import parity, and **the band between the two is
+    /// where a country neither buys nor sells**: moving the stuff would
+    /// cost more than the difference is worth. The band cannot close,
+    /// because one side adds the costs and the other takes them away, so
+    /// no price can make a town worth importing into and worth exporting
+    /// from at once. That is the property the first design of this border
+    /// lacked and had to be patched for; here it is arithmetic.
+    ///
+    /// It can go below zero, and for cheap bulk far inland it does: no
+    /// price would make it worth sending cement from the middle of a
+    /// continent to the sea, which is why nobody does.
+    pub fn export_parity(&self, m: usize, c: Commodity) -> f64 {
+        let Some(voyage) = c.sea_freight() else {
+            return f64::NEG_INFINITY;
+        };
+        let netback =
+            c.world_price() * (1.0 - voyage) - Self::PORT_HANDLING_PER_T - self.inland_leg(m);
+        netback / (1.0 + Self::TRADERS_MARGIN)
+    }
+
+    /// **Does a tonne of this come from abroad at this site?** The recipe
+    /// says, and nothing else does.
+    ///
+    /// This asked whether the site was a `Depot`, and five of the twelve
+    /// import terminals are not: the grain terminal stands on a `Mine`, the
+    /// fuel terminal on a `Mine`, the ore terminal on an `IronMine`, the oil
+    /// terminal on an `OilField`, and a country with no forest lands its
+    /// timber at a `Forestry`. Those kinds were chosen for how the site is
+    /// staffed and sited and shed, and they are shared with the farms and
+    /// mines that really are digging. So those five landed their full
+    /// tonnage every day **whatever the price, with nobody abroad paid a
+    /// penny** — grain, fuel, ore, oil and timber arriving free, while the
+    /// steel beside them was a decision and a bill.
+    pub fn buys_abroad(&self, site: usize) -> bool {
+        self.ledger.sites[site]
+            .recipe
+            .is_some_and(|r| RECIPES[r].from_abroad)
+    }
+
+    /// **Is it worth bringing a tonne of this in from abroad?** When the
+    /// price here is above what a tonne would cost to land and sell —
+    /// import parity — and not otherwise.
+    ///
+    /// **This replaced a margin test that asked for the domestic price to
+    /// be 44% over the world price before anybody landed a cargo.** It
+    /// took the trader's margin to be the quarter off that a wholesaler
+    /// gets inside the country, when what an importer lives on is a few
+    /// per cent, and it left out the one cost that varies most between two
+    /// towns of the same country: the road from the sea. The bar was
+    /// therefore too high at the coast and too low inland — the same test
+    /// for a port and for a town a thousand kilometres up-country.
+    ///
+    /// That bar was high enough to starve an importing nation, and it was
+    /// patched with an override that imported anyway whenever stocks ran
+    /// below target. **The override is gone, because it has nothing left to
+    /// do.** An import now *costs* what it cost to land — see `site_cost` —
+    /// so a town that lives on imports is priced at its import parity, and
+    /// a shortage lifts it over the bar at once rather than after the price
+    /// has run half again above the world.
+    ///
+    /// A quay is needed to load a ship out and not to receive one: an
+    /// inland town's imports land at the coast and come up the road, and
+    /// what that road costs is in the parity.
+    pub fn worth_importing(&self, m: usize, c: Commodity) -> bool {
+        c.will_go_on_a_ship() && self.markets[m].price[c as usize] > self.import_parity(m, c)
+    }
+
+    /// **Is it worth sending a tonne of this out?** When the price here is
+    /// below what the world would pay for it, net of getting it there —
+    /// export parity — and only from a town with a quay to load at.
+    ///
+    /// An inland town exports the way it imports, by road through the
+    /// coast: its surplus is pulled to the port by the ordinary price gap
+    /// between the two, and goes out from there. Letting it load a ship
+    /// directly would teleport the cargo past the road it has to travel.
+    pub fn worth_exporting(&self, m: usize, c: Commodity) -> bool {
+        self.quay(m)
+            && c.will_go_on_a_ship()
+            && self.markets[m].price[c as usize] < self.export_parity(m, c)
     }
 
     /// **Sell what the country is long of, through the quay.**
@@ -7374,23 +7699,49 @@ impl Economy {
                 if shipped <= 1e-6 {
                     continue;
                 }
-                let sold = self.take_from_market(m, c, shipped);
+                // **The exporter is a firm, and it buys what it ships.**
+                //
+                // It used to take the goods off the farms without paying
+                // for them and be paid by the world for goods it never
+                // owned — the grower's grain left the country and the
+                // grower saw none of the money. Now the quay buys from
+                // whoever made the stuff at the price any buyer here pays,
+                // is paid by the world what the world pays at this quay,
+                // and pays the dockers who load it.
+                let Some(quay) = self.a_port_site(m) else {
+                    continue;
+                };
+                let taken = self.take_from_market(m, c, shipped);
+                let sold: f64 = taken.iter().map(|&(_, q)| q).sum();
                 if sold <= 1e-6 {
                     continue;
                 }
-                let earned = c.world_price() * (1.0 - Self::OVER_THE_QUAY) * sold;
-                // The quay is a firm: it buys inland and sells abroad, and
-                // what it keeps is the difference. Paid to the port site so
-                // the money lands somewhere that has wages to meet.
-                if let Some(quay) = self.a_port_site(m) {
+                let at = Self::WHOLESALE_MARGIN * sold;
+                let voyage = c.sea_freight().unwrap_or(0.0);
+                self.treasury.pay(
+                    day,
+                    crate::money::Account::Abroad,
+                    crate::money::Account::Firm(quay),
+                    at * c.world_price() * (1.0 - voyage),
+                    crate::money::Why::Trade,
+                );
+                let price = self.markets[m].price[c as usize];
+                for (s, q) in taken {
                     self.treasury.pay(
                         day,
-                        crate::money::Account::Abroad,
                         crate::money::Account::Firm(quay),
-                        earned,
-                        crate::money::Why::Trade,
+                        crate::money::Account::Firm(s),
+                        Self::WHOLESALE_MARGIN * q * price,
+                        crate::money::Why::Supply,
                     );
                 }
+                self.treasury.pay(
+                    day,
+                    crate::money::Account::Firm(quay),
+                    crate::money::Account::ServiceSector(m),
+                    at * Self::PORT_HANDLING_PER_T,
+                    crate::money::Why::Freight,
+                );
             }
         }
     }
@@ -7402,14 +7753,28 @@ impl Economy {
         })
     }
 
-    /// Take goods off whoever in this market can spare them, and journal it
-    /// as having left the country.
-    fn take_from_market(&mut self, m: usize, c: Commodity, want: f64) -> f64 {
+    /// **Take goods off whoever made them**, and journal them as having
+    /// left the country. Returns who gave up how much, so each can be paid.
+    ///
+    /// Only a site that *makes* the thing sells it abroad. A works holding
+    /// it as an input is a customer, not a seller — the rule `logistics`
+    /// learned when a lorry backed up to a cannery and carried off its
+    /// tinplate — and an importer's stock is somebody else's goods passing
+    /// through, which going straight back out would make a round trip.
+    fn take_from_market(&mut self, m: usize, c: Commodity, want: f64) -> Vec<(usize, f64)> {
         let keep = self.daily_draw(m, c) * c.target_cover_days();
-        let mut taken = 0.0;
+        let mut taken = Vec::new();
         let mut left = want;
         let holders: Vec<usize> = (0..self.ledger.sites.len())
-            .filter(|&s| self.ledger.sites[s].market == m && self.ledger.stock(s, c) > 0.0)
+            .filter(|&s| {
+                let site = &self.ledger.sites[s];
+                site.market == m
+                    && self.ledger.stock(s, c) > 0.0
+                    && site.recipe.is_some_and(|r| {
+                        !RECIPES[r].from_abroad
+                            && RECIPES[r].outputs.iter().any(|&(oc, q)| oc == c && q > 0.0)
+                    })
+            })
             .collect();
         for s in holders {
             if left <= 1e-9 {
@@ -7429,7 +7794,7 @@ impl Economy {
                     reason: Use::Input,
                 },
             );
-            taken += qty;
+            taken.push((s, qty));
             left -= qty;
         }
         taken
