@@ -5086,6 +5086,15 @@ impl Economy {
         if self.staff_today.len() != self.ledger.sites.len() {
             return;
         }
+        // **Who owns a company is not who lives next to it.** See below:
+        // each nation's towns and what share of its people live in each.
+        let mut nations: std::collections::BTreeMap<u16, Vec<(usize, f64)>> = Default::default();
+        for m in 0..self.markets.len() {
+            nations
+                .entry(self.markets[m].nation)
+                .or_default()
+                .push((m, self.markets[m].population.max(0.0)));
+        }
         // What each firm actually paid out today, whatever the reason.
         // A reserve sized on payroll alone starves a works that buys far
         // more in materials than it pays in wages — a steelworks' ore bill
@@ -5134,13 +5143,60 @@ impl Economy {
             if surplus <= 0.0 {
                 continue;
             }
-            self.treasury.pay(
-                day,
-                Account::Firm(site),
-                Account::Households(m),
-                surplus,
-                Why::Profit,
-            );
+            // **A company's profit goes to its shareholders, and they do not
+            // all live in the town the works stands in.**
+            //
+            // It was paid to the households of the firm's own town, which
+            // this file had already named as understating how widely
+            // ownership is spread — and the national accounts showed what
+            // it cost. A town that consumes more than it makes sends money
+            // out through its shops, the profit stays wherever the goods
+            // were made, and nothing brings it back: five towns drained to
+            // under three units a head while others banked it, and the
+            // largest city in the world was one of the five.
+            //
+            // The model already knows which firms are which, because the
+            // form follows the size: under about six hands the owner works
+            // the till, and past fifty almost everything is a company whose
+            // owners "generally do not work there at all". So a proprietor's
+            // profit stays in town, and a company's is paid across its
+            // nation in proportion to where people live — pension funds,
+            // savings and share registers are what spread it in life.
+            //
+            // **Spread more evenly than it really is**, and said so: the
+            // richest tenth of households hold most of the shares, and a real
+            // share of any country's companies is owned abroad. Both are
+            // concentration this does not model; what it no longer does is
+            // pretend a steelworks is owned by the street it stands on.
+            let owner_works_there =
+                crate::building::Ownership::for_size(self.staff_today[site]).owner_works_there();
+            let nation = self.markets[m].nation;
+            match nations.get(&nation) {
+                Some(towns) if !owner_works_there => {
+                    let everybody: f64 = towns.iter().map(|&(_, p)| p).sum();
+                    if everybody <= 0.0 {
+                        continue;
+                    }
+                    for &(k, people) in towns.iter() {
+                        self.treasury.pay(
+                            day,
+                            Account::Firm(site),
+                            Account::Households(k),
+                            surplus * people / everybody,
+                            Why::Profit,
+                        );
+                    }
+                }
+                _ => {
+                    self.treasury.pay(
+                        day,
+                        Account::Firm(site),
+                        Account::Households(m),
+                        surplus,
+                        Why::Profit,
+                    );
+                }
+            }
         }
     }
 

@@ -3283,6 +3283,31 @@ than it makes sends money out through its shops and nothing brings it
 back. This file already named it — profit paid in the firm's own town
 understates how widely ownership is spread.
 
+### A company is owned by people who do not live next to it
+
+So a company's profit is paid across its nation in proportion to where
+people live, and a proprietor's stays in his own town. The model already
+knew which is which, because the form follows the size: under about six
+hands the owner works the till, and past fifty the owners "generally do
+not work there at all". Pension funds, savings and share registers are
+what spread them in life.
+
+Same world, 300 days: unpaid household purchases **4.2e10 to 3.0e10**,
+and every town in one nation went from draining to solvent. **Spread more
+evenly than it really is**, and said so — the richest tenth hold most
+shares, and some of any country's companies are owned abroad; neither
+is modelled.
+
+**Three towns still run dry, and they are poorer places rather than a
+leak**: per head a year they take in about 1,030-1,180 against 1,210-1,360
+spent, the gap being less payroll from local works and less freight
+passing through for their service firms. What is missing there is the
+oldest rule of a household budget — **it buys what it can pay for**.
+`consume_households` takes the basket whatever the balance and records
+the shortfall as unpaid, so a poor town eats like a rich one on credit
+nobody extended. Turning that into going without is its own change,
+because it moves hunger.
+
 ### A booking names a road, not a slot
 
 The closed-road fix carried the route's *position* through the filter,

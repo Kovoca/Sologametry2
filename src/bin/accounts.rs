@@ -71,6 +71,10 @@ fn main() {
     };
     let start = holdings(&n.economy);
 
+    // Each town's households: what came in and what went out, by why.
+    let towns = n.economy.markets.len();
+    let mut town_in: Vec<BTreeMap<String, f64>> = vec![BTreeMap::new(); towns];
+    let mut town_out: Vec<BTreeMap<String, f64>> = vec![BTreeMap::new(); towns];
     // flows[from class -> to class, why]
     let mut flows: BTreeMap<(String, String, String), f64> = BTreeMap::new();
     let mut unpaid_why: BTreeMap<&'static str, f64> = BTreeMap::new();
@@ -85,6 +89,16 @@ fn main() {
                     format!("{:?}", t.why),
                 ))
                 .or_default() += t.amount;
+            if let Account::Households(m) = t.to {
+                *town_in[m]
+                    .entry(format!("{:?} from {}", t.why, class(t.from)))
+                    .or_default() += t.amount;
+            }
+            if let Account::Households(m) = t.from {
+                *town_out[m]
+                    .entry(format!("{:?} to {}", t.why, class(t.to)))
+                    .or_default() += t.amount;
+            }
         }
         for (k, v) in n.economy.treasury.unpaid_why.iter() {
             *unpaid_why.entry(k).or_default() += v;
@@ -157,6 +171,26 @@ fn main() {
         "wages as a share of household income: {:.0}%",
         labour_share * 100.0
     );
+
+    // Each town's households, a head a year: in and out.
+    println!("\na head a year, by town: what households took in and paid out");
+    for m in 0..e.markets.len() {
+        let pop = e.markets[m].population.max(1.0);
+        let fmt = |b: &BTreeMap<String, f64>| {
+            b.iter()
+                .map(|(k, v)| format!("{k} {:.0}", v * year / pop))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let tin: f64 = town_in[m].values().sum::<f64>() * year / pop;
+        let tout: f64 = town_out[m].values().sum::<f64>() * year / pop;
+        println!(
+            "  {:<12} in {tin:>6.0} [{}]",
+            e.markets[m].name,
+            fmt(&town_in[m])
+        );
+        println!("  {:<12} out {tout:>5.0} [{}]", "", fmt(&town_out[m]));
+    }
 
     // Towns whose households have run dry.
     println!("\nhouseholds by town at the end");

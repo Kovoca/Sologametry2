@@ -1015,6 +1015,72 @@ fn every_town_in_a_merged_world_has_its_services_and_its_state() {
     }
 }
 
+/// **A company's profit goes to its shareholders, and they do not all live
+/// next to the works.**
+///
+/// It was paid to the households of the firm's own town, so a town that
+/// consumes more than it makes sent money out through its shops and nothing
+/// brought it back — five towns drained to under three units a head, the
+/// largest city in the world among them. The form follows the size: under
+/// about six hands the owner works the till and the profit is his, in his
+/// town; past fifty the owners "generally do not work there at all", and
+/// pension funds and share registers spread them across the country.
+#[test]
+fn a_companys_profit_reaches_the_nation_and_a_proprietors_stays_home() {
+    use scale_sim::building::Ownership;
+    use scale_sim::money::{Account, Why};
+    let mut n = nations(7, 4);
+    // Who each firm's profit reached, and how big the firm was that day.
+    let mut reached: std::collections::BTreeMap<usize, std::collections::BTreeSet<usize>> =
+        Default::default();
+    let mut companies = std::collections::BTreeSet::new();
+    let mut proprietors = std::collections::BTreeSet::new();
+    for _ in 0..120 {
+        n.economy.step();
+        let e = &n.economy;
+        for t in e.treasury.today.iter() {
+            if let (Account::Firm(s), Account::Households(m), Why::Profit) = (t.from, t.to, t.why) {
+                reached.entry(s).or_default().insert(m);
+                let staff = e.staff_today.get(s).copied().unwrap_or(0.0);
+                if Ownership::for_size(staff).owner_works_there() {
+                    proprietors.insert(s);
+                } else {
+                    companies.insert(s);
+                }
+            }
+        }
+    }
+    let e = &n.economy;
+    assert!(
+        !companies.is_empty(),
+        "no company paid a dividend in 120 days, so the gate proves nothing"
+    );
+    for &s in companies.iter() {
+        let home = e.markets[e.ledger.sites[s].market].nation;
+        let nation: std::collections::BTreeSet<usize> = (0..e.markets.len())
+            .filter(|&m| e.markets[m].nation == home)
+            .collect();
+        assert!(
+            reached[&s] == nation,
+            "{} is a company and its profit reached {} of its nation's {} towns",
+            e.ledger.sites[s].name,
+            reached[&s].len(),
+            nation.len()
+        );
+    }
+    for &s in proprietors.iter() {
+        if companies.contains(&s) {
+            continue; // grew or shrank across the line during the run
+        }
+        let own = e.ledger.sites[s].market;
+        assert!(
+            reached[&s].iter().all(|&m| m == own),
+            "{} is run by its owner and paid profit outside its own town",
+            e.ledger.sites[s].name
+        );
+    }
+}
+
 /// **Somewhere is always harvesting**, so a town fed by ships does not have
 /// to carry a whole crop year in its sheds.
 ///
