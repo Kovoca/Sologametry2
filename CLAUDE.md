@@ -3990,6 +3990,8 @@ the recipe labour term goes to almost nothing and labour drops out of every
 production cost in the model. **The scales have to be reconciled first**,
 which is a piece of work rather than a line, and until then wages can be
 calibrated or housing pressure can be realistic and not both.
+*(Reconciled below. The recentring is still not made, and is now a change
+to be measured rather than one that cannot be shipped.)*
 
 ### A gate that reverses on a thirteen per cent move
 
@@ -4005,6 +4007,127 @@ scale claims is that carrying a household alone costs a quarter more, and
 the robust reading of that is what people have left in their pockets. The
 threshold is kept as the sharper consequence and asserted only in the
 direction that cannot be an artefact: living alone is never *easier*.
+
+### What is paid is what is costed (`src/econ.rs`, `tests/wages.rs`)
+
+The block above, lifted. **The 22 an hour was never a wage** — at 22 a
+labourer would earn 176 a day and buy four months of food with it, against
+the ten days or so real low-paid work buys. What it had been standing for
+all along is **everything an hour of work adds**: the wage, and the plant,
+the overhead and the margin that make the hour worth having. That is why
+substituting a person's pay for it dropped labour out of every cost in the
+model — the two figures answer different questions, and neither is wrong.
+
+So it keeps its figure and gets its name, `VALUE_ADDED_AN_HOUR`, and the
+**wage is the share of it that is actually paid**: pay to employees was
+51.8% of US GDP in 2023 *(BEA)*, and labour's share of a corporate
+sector's value added runs 55-60% across the OECD — stable enough over a
+cycle that Kalecki built a theory of pricing on it. One figure for every
+trade is a simplification and is recorded as one; mining and power are far
+more capital-heavy and services far less.
+
+**That share follows the pay actually being paid, and the rest does not.**
+Which is the link real prices have and this model did not: firms price as a
+markup over cost — 54% of euro-area firms say so outright *(Fabiani et
+al.)*, and most of Blinder's American price-setters rate costs as the main
+driver — and wages are the largest cost there is.
+
+- **It is the nation's pay level, not the town's.** Pay is settled
+  nationally and by industry — collective agreements, pay scales, statutory
+  minima — with a smaller local part on top: the cost of living where
+  somebody lives, and the wage curve's tenth off for a doubling of local
+  unemployment. Real collective bargaining coverage is 98% in Austria,
+  around 80% in France and the Nordics, 54% in Germany; where it is thin, a
+  large employer still runs national pay bands and a floor still binds. It
+  also removes a loop with no business existing — a town's own wage wobble
+  feeding its own costs, its own prices, and the cost of living that set
+  the wage.
+- **The loop it closes has to settle, and settling is the gate.** Dearer
+  food raises pay a third of a year later, pay raises the cost of growing,
+  milling and canning the food, and that raises the price of food again —
+  by about half as much, because labour is a share of a share. A loop
+  giving back half of each push settles at about twice the first push.
+  Measured over two years the national pay level moves between 0.80 and
+  0.94 of the reference and the second year sits within 10% of the first.
+  **Sabotaged to give back more than it takes** — labour's share set to
+  3.0 — pay reaches minus 2.6e28 inside two years, which is what a
+  wage-price spiral with nothing to stop it looks like.
+- **And a tenth on pay moves a price by labour's share of it**: 4.1% on a
+  tonne of goods, where a factory puts fifty-five hours into it, against
+  0.7% on steel, where a works puts in one and a half hours against a
+  furnace, an ore yard and a coal yard. Delete the link and the
+  same pay rise moves the cost of goods by 0.00%, which is the whole defect
+  this replaces.
+
+Measured on one world, four nations, 700 days:
+
+| | committed | + the band | + the wage link | **as shipped** |
+|---|---|---|---|---|
+| households short at the till | 1.601e11 | 1.586e11 | 1.465e11 | **1.389e11** |
+| missed payroll | 2.484e10 | 2.327e10 | 2.424e10 | **2.279e10** |
+| tax owed and not paid | 1.227e10 | 1.220e10 | 9.94e9 | **9.61e9** |
+| households' money at the end | 2.150e10 | 2.163e10 | 2.444e10 | **2.436e10** |
+| food against its reference cost | — | — | 1.057 | **0.971** |
+
+Firm-to-firm supply barely moves — 2.602e11 to 2.636e11 — and is now much
+the largest thing going unpaid, which is the next thing to look at.
+
+**The national level is not load-bearing for any gate** and is in because
+it is right: with the band below corrected, costs following each town's own
+pay leaves every test green. Said plainly because it is easy to write a
+find up as though a test had demanded it.
+
+### A millionth is not a tie, it is the arithmetic's own noise
+
+What the wage link exposed, and it is bigger than the wage link. The
+allocation auction hands a shortage to the top bidder and nothing to the
+next one down, so **how close counts as a tie decides who eats**. The
+tolerance was a millionth of the posted price, and it was adequate for
+exactly as long as nothing in a cost could move: every cost was pinned to a
+constant, so three identical towns agreed to the last bit — grain's landed
+basis sat at **exactly 220.00000000** in all three, for ever — and the band
+never had to decide anything.
+
+The day a pay rise could reach a price, that fixed point was gone. A landed
+basis is a weighted average that lags a moving cost at a speed set by
+turnover, so three interchangeable towns holding marginally different stock
+began to differ **eight decimal places down**. Which is float noise and
+nothing else. Six parts in a million of netback then handed one town the
+whole of a harvest, and it came out of the fixture's annual flour famine on
+fifty days of food against another's thirty-seven.
+
+```text
+day 157   costs differ by 1e-8          float noise, nothing more
+day 186   steel cover differs by 1.3%   the band splits
+day 379   flour cover differs           the band splits, 5.6e-6 of netback
+day 383   food cover differs by 30 days
+```
+
+- **The tolerance was also measured against the wrong quantity.** What is
+  compared is a reservation price — the posted price times an urgency of up
+  to four — so one figure meant a millionth at one end of a famine and a
+  quarter of that at the other. *(Correcting that alone is not
+  load-bearing: with the width right, the posted price serves.)*
+- **A hundredth of a per cent, on the netback.** Nothing real distinguishes
+  a buyer at 100.00 from one at 100.01 — a quotation is not given to that
+  precision and no procurement department would act on it — and it sits two
+  orders of magnitude above the noise this model generates.
+- **And there is a ceiling, which is why this is a window and not a knob.**
+  At a tenth of a per cent the two-town slice stops opening a price gap
+  when its cannery fails: the towns ration in lockstep, no haul is ever
+  worth making, and `a_haul_contract_appears_because_the_arithmetic_changed`
+  goes red. That is this file's oldest allocation lesson arriving from the
+  other side — **a shortage falling on everybody identically is not a
+  shortage anybody trades on.**
+- **Three guesses were wrong before the measurement found it**, and all
+  three are recorded because each looked like the answer. Rationing the
+  haulier's dispatcher among equally short towns cut grain's spread from
+  4.20 days to 0.67 and moved flour's not at all. Making the mop-up share
+  what is left before anybody may take it all changed the output *not one
+  digit*. Drawing on equally distant suppliers in proportion to what each
+  holds moved the spread from one town to another and left it the same size.
+  Every one of them is a defensible rule and not one of them was the fault:
+  **the fault was the amplifier, not any of the things being amplified.**
 
 ## The last plant dispatched sets the price (`src/econ.rs`)
 

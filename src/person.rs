@@ -1306,13 +1306,16 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
     // Centring them at 8.0 was tried and puts the figure squarely in band
     // at 6.8-7.5 — and it cannot be shipped, because **a pay rise here
     // reaches no price anywhere.** Production costs are built on
-    // `econ::WAGE_AN_HOUR`, a constant on a different scale by a factor of
-    // about thirty-five, so incomes rose a third, rents did not follow,
+    // `econ::VALUE_ADDED_AN_HOUR` — then called the wage an hour, and a
+    // constant on a different scale by a factor of about thirty-five — so
+    // incomes rose a third, rents did not follow,
     // and homelessness among the worst-paid went to zero. That is not what
     // happens when everybody gets a rise.
     //
-    // Blocked on reconciling the two wage scales. See
-    // `econ::Economy::wage_an_hour`.
+    // **Unblocked since**: a pay rise now reaches the cost of whatever
+    // those people make, through `econ::Economy::wage_level`, so a
+    // recentring is a change to be measured rather than a thing that
+    // cannot be shipped. It has not been made here yet.
     //
     // A labourer sat at 6.0, which is the bottom of the 6-10 days of food
     // this file records for real low-wage work — so any slack in the
@@ -1323,7 +1326,15 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
     // Every figure below is the old one times 4/3, so the relativities
     // between trades — which were separately argued and are the part that
     // carries meaning — are untouched.
-    let multiple = match trade {
+    food * days_of_food_a_day(trade)
+}
+
+/// **How many days of a person's food a day's work in this trade buys**,
+/// at the settled cost of living and a labour market neither tight nor
+/// slack. The relativities between trades are the part that carries
+/// meaning; see `day_rate_for_food` for the band they sit in.
+pub fn days_of_food_a_day(trade: Trade) -> f64 {
+    match trade {
         // Driving is entry-level freight work; a shift at a works pays a
         // little less for less risk and no lorry.
         Trade::Haulier => 7.0,
@@ -1368,8 +1379,16 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         Trade::Electrician => 9.0,
         Trade::Pipefitter => 8.8,
         Trade::CareAssistant => 5.5,
-    };
-    food * multiple
+    }
+}
+
+/// **What a day in this trade paid when the reference costs were set** —
+/// food at its reference cost and the wage curve at one. It is the wage
+/// every cost of production in `econ` was calibrated against, so the wage
+/// actually paid somewhere, divided by this, is how far that place's
+/// labour costs have moved.
+pub fn reference_day_rate(trade: Trade) -> f64 {
+    Commodity::ProcessedFood.base_cost() * FOOD_PER_DAY * days_of_food_a_day(trade)
 }
 
 /// Every piece of work on offer in `market` today.

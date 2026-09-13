@@ -79,6 +79,7 @@ fn main() {
     let mut flows: BTreeMap<(String, String, String), f64> = BTreeMap::new();
     let mut unpaid_why: BTreeMap<&'static str, f64> = BTreeMap::new();
     let mut snapshots = Vec::new();
+    let mut levels: Vec<(u64, f64, f64)> = Vec::new();
     for d in 0..days {
         n.economy.step();
         for t in n.economy.treasury.today.iter() {
@@ -105,6 +106,21 @@ fn main() {
         }
         if d % 50 == 49 {
             snapshots.push((d + 1, holdings(&n.economy)));
+            let e = &n.economy;
+            let pop: f64 = e.markets.iter().map(|m| m.population).sum();
+            let wage: f64 = (0..e.markets.len())
+                .map(|m| e.wage_level(m) * e.markets[m].population)
+                .sum::<f64>()
+                / pop;
+            let food: f64 = (0..e.markets.len())
+                .map(|m| {
+                    e.markets[m].price[Commodity::ProcessedFood as usize]
+                        / Commodity::ProcessedFood.base_cost()
+                        * e.markets[m].population
+                })
+                .sum::<f64>()
+                / pop;
+            levels.push((d + 1, wage, food));
         }
     }
     let e = &n.economy;
@@ -125,6 +141,11 @@ fn main() {
             print!("  {k} {v:.3e}");
         }
         println!();
+    }
+
+    println!("\npay against the reference, and food against its reference cost");
+    for (d, w, f) in levels.iter() {
+        println!("  day {d:<6} wage level {w:.3}   food price {f:.3}");
     }
 
     println!("\nflows over the run, by who paid whom and why");

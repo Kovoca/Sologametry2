@@ -827,12 +827,30 @@ pub enum SiteKind {
     Depot,
 }
 
-/// What an hour of work costs a firm, in the model's own currency, pinned
-/// like everything else to the food chain.
-const WAGE_AN_HOUR: f64 = 22.0;
+/// **What an hour of work adds**, at the reference — not what it is paid.
+///
+/// This was called the wage an hour, and it could not be one: at 22 a
+/// labourer would earn 176 a day and buy four months of food with it,
+/// against the ten days or so real low-paid work buys. What it had been
+/// doing all along is standing for **all the value an hour of work
+/// adds** — the wage, and the plant, the overhead and the margin that
+/// make the hour worth having — which is what gives a steel price rise the
+/// modest effect it really has on a machine, and why putting the person
+/// wage in its place dropped labour out of every cost in the model.
+///
+/// So it keeps its figure and gets its name, and the wage is the share of
+/// it that `WAGE_SHARE_OF_VALUE_ADDED` says, following what is actually
+/// paid. See `Economy::site_cost`.
+const VALUE_ADDED_AN_HOUR: f64 = 22.0;
 
-/// Hours in a working day, for turning a day rate into an hourly one.
-const HOURS_A_DAY: f64 = 8.0;
+/// **Wages are a little over half of what work adds.** Pay to employees
+/// was 51.8% of US GDP in 2023 *(BEA)*, and the share of a corporate
+/// sector's value added that goes to labour runs 55-60% across the OECD —
+/// stable enough over a cycle that Kalecki built a theory of pricing on
+/// it. The rest is the return on the plant and the margin. One figure for
+/// every trade is a simplification and is recorded as one: mining and
+/// power are far more capital-heavy than that, and services far less.
+pub const WAGE_SHARE_OF_VALUE_ADDED: f64 = 0.55;
 
 /// **The sentinel, named once.**
 ///
@@ -4505,12 +4523,48 @@ impl Economy {
             // an exact tie is resolved by sharing rather than by the index.
             bidders.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
 
-            // **A band is buyers offering the same thing.** Without a
-            // tolerance, float noise a millionth of a penny wide would
-            // split three identical towns into three bands and hand the
-            // whole shortage to whichever of them rounded up.
-            let scale = self.markets[0].price[c as usize].abs().max(1.0);
-            let tol = scale * 1e-6;
+            // **A band is buyers offering the same thing**, and how close
+            // is close enough is the whole of it, because what the band
+            // does is hand a shortage to the top bidder and nothing to the
+            // next one down.
+            //
+            // Two things were wrong with a millionth of the market price.
+            // **It was measured against the wrong quantity**: what is
+            // compared is a reservation price, the posted price times an
+            // urgency of up to four, so the same figure was a millionth at
+            // one end of a famine and a quarter of that at the other. And
+            // **a millionth is not a tie, it is the arithmetic's own
+            // noise.** It was adequate for exactly as long as nothing in a
+            // cost could move: with every cost pinned to a constant, three
+            // identical towns agreed to the last bit and the band never had
+            // to decide anything. The day a pay rise could reach a price,
+            // the landed basis of grain in three interchangeable towns
+            // began to differ eight decimal places down — which is float
+            // noise and nothing else — and a difference of six parts in a
+            // million handed one town the whole of a harvest. It came out
+            // of the famine on fifty days of food against another's
+            // thirty-seven.
+            //
+            // A hundredth of a per cent, on the netback itself. Nothing
+            // real distinguishes a buyer at 100.00 from one at 100.01 — a
+            // quotation is not given to that precision and no procurement
+            // department would act on it — and the figure sits two orders
+            // of magnitude above the noise this model generates and nearly
+            // an order below the smallest difference any gate here turns
+            // on. **Wider does real damage**, and it is worth writing down
+            // where the ceiling is: at a tenth of a per cent the two-town
+            // slice stops opening a price gap when its cannery fails, the
+            // towns ration in lockstep, and no haul is ever worth making —
+            // which is this file's oldest allocation lesson, that a
+            // shortage falling on everybody identically is not a shortage
+            // anybody trades on.
+            let scale = bidders
+                .first()
+                .map(|b| b.1.abs())
+                .unwrap_or(0.0)
+                .max(self.markets[0].price[c as usize].abs())
+                .max(1.0);
+            let tol = scale * 1e-4;
             let mut left = have;
             let mut i = 0;
             while i < bidders.len() && left > 1e-9 {
@@ -5698,29 +5752,70 @@ impl Economy {
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
 
-    /// **What an hour of somebody's time costs a firm here** — and it is
-    /// deliberately not used, because it does not agree with the constant
-    /// that is.
+    /// **How far pay here has moved from the pay the costs were set at** —
+    /// one for a town whose cost of living and labour market are exactly
+    /// at the reference.
     ///
-    /// **The model has two wage scales and they differ by about
-    /// thirty-five times.** `WAGE_AN_HOUR` is 22 on the commodity scale,
-    /// making a day about 176; `person::day_rate` gives a labourer
-    /// something like 5. Nobody had noticed because the two never met:
-    /// what a person earns and what labour costs the firm employing them
-    /// were separate numbers in separate systems.
+    /// This replaces `wage_an_hour`, which existed only to name a gap: the
+    /// model had two wage scales about thirty-five times apart — a constant
+    /// of 22 an hour in every cost of production and a labourer's pay of
+    /// about 6 a day — and nothing ever called it, because nothing could.
+    /// They meet here, and the 22 has its honest name,
+    /// `VALUE_ADDED_AN_HOUR`.
     ///
-    /// Connecting them is right and was tried. It does not work as a
-    /// substitution, because on the person scale the recipe labour term
-    /// goes to almost nothing and labour drops out of every production
-    /// cost in the model. **What it needs first is for the two scales to
-    /// be reconciled**, which is a piece of work rather than a line, and
-    /// until then this exists to name the gap rather than to be called.
+    /// It is the ratio of two day rates, so everything that already moves
+    /// pay moves it: the cost of living, followed at a walk because pay is
+    /// renegotiated about once a year *(the median in the ECB's Wage
+    /// Dynamics Network survey is annual)*, and the wage curve, which takes
+    /// about a tenth off for a doubling of local unemployment.
+    pub fn wage_level(&self, m: usize) -> f64 {
+        let reference = crate::person::reference_day_rate(crate::person::Trade::Labourer);
+        if reference <= 1e-12 {
+            return 1.0;
+        }
+        crate::person::day_rate(self, m, crate::person::Trade::Labourer) / reference
+    }
+
+    /// **What a nation pays, which is what its costs are built on.**
     ///
-    /// The consequence while it stands: a pay rise reaches nobody's costs,
-    /// so wages can be calibrated or housing pressure can be realistic,
-    /// and not both. See `person::day_rate`.
-    pub fn wage_an_hour(&self, m: usize) -> f64 {
-        crate::person::day_rate(self, m, crate::person::Trade::Labourer) / HOURS_A_DAY
+    /// Pay is not set town by town. It is set nationally and by industry —
+    /// collective agreements, pay scales, statutory minima — with a smaller
+    /// local part on top: the cost of living where somebody lives, and the
+    /// wage curve's tenth off for a doubling of local unemployment. Real
+    /// collective bargaining coverage is 98% in Austria, around 80% in
+    /// France and the Nordics, 54% in Germany; where it is thin, as in the
+    /// United States, a large employer still runs national pay bands and a
+    /// statutory floor still binds. So the *level* a firm reckons its
+    /// labour cost at is a national figure, and each town goes on paying
+    /// its own people its own rate.
+    ///
+    /// Which also removes a loop that has no business existing: a town's
+    /// own wage wobble feeding into its own costs, into its own prices,
+    /// into the cost of living that set the wage. Three towns identical in
+    /// every respect drifted apart through it — a fraction of a per cent of
+    /// difference in one carrier's wage index arrived in the cost of flour,
+    /// and the allocation auction settles ties to a millionth, so whichever
+    /// town came out a hair cheaper took the lot. **A spread in the
+    /// symmetric fixture is a bug**, and this was one.
+    ///
+    /// Weighted by population, because a national agreement is bargained
+    /// over the people it covers and not over the map.
+    pub fn national_wage_level(&self, nation: u16) -> f64 {
+        let mut people = 0.0;
+        let mut paid = 0.0;
+        for m in 0..self.markets.len() {
+            if self.markets[m].nation != nation {
+                continue;
+            }
+            let pop = self.markets[m].population.max(0.0);
+            people += pop;
+            paid += pop * self.wage_level(m);
+        }
+        if people <= 1e-12 {
+            1.0
+        } else {
+            paid / people
+        }
     }
 
     /// **What a tonne of `c` costs at this particular works.**
@@ -5769,7 +5864,31 @@ impl Economy {
         // untrue. Dead code that reads like a safeguard is worse than none,
         // because it stops anybody looking.
         let power = recipe.power;
-        let labour = recipe.labour * WAGE_AN_HOUR;
+        let labour = recipe.labour * VALUE_ADDED_AN_HOUR;
+        // **The wage part of that follows the wage paid here**, and the rest
+        // does not. This is the link real prices have and this model did
+        // not: firms price as a markup over their costs, wages are the
+        // largest of them, and pay is re-set about once a year against the
+        // cost of living. Without it **a pay rise reached no price
+        // anywhere** — the costs were built on a constant and the pay was
+        // paid on a different scale, thirty-five times apart, so raising
+        // wages made everybody richer and nothing dearer.
+        //
+        // It closes a loop, and the loop has to settle rather than run away:
+        // dearer food raises pay a third of a year later, pay raises the cost
+        // of growing, milling and canning the food, and that raises the price
+        // of food again — by about half as much, because labour is a share of
+        // a share. A loop that gives back half of each push settles, at about
+        // twice the first push.
+        //
+        // **And it is the nation's pay level, not this town's** — see
+        // `national_wage_level`. Pay is settled nationally and by industry;
+        // what varies town to town is small, and feeding a town's own
+        // wobble back into its own costs made three identical towns drift
+        // apart.
+        let labour_now = labour
+            * (WAGE_SHARE_OF_VALUE_ADDED * self.national_wage_level(self.markets[m].nation)
+                + (1.0 - WAGE_SHARE_OF_VALUE_ADDED));
         let reference: f64 = recipe
             .inputs
             .iter()
@@ -5797,7 +5916,7 @@ impl Economy {
             .map(|&(ic, q)| q * self.markets[m].landed[ic as usize])
             .sum::<f64>()
             + power * self.markets[m].landed[Commodity::Electricity as usize]
-            + labour;
+            + labour_now;
         // **And what this particular ground costs to work**, which is the
         // whole difference between a rich seam and a thin one and is 1.0
         // for anything built to a design rather than found.
