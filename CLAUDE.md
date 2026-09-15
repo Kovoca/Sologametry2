@@ -3174,7 +3174,8 @@ reserve is sized on their rated landings now.
 - **The world now runs a trade deficit**, because five terminals pay and
   exporters are paid for what they actually sell. Real economies close
   that with a floating exchange rate, reserves or borrowing — **the macro
-  half, and none of it is modelled.**
+  half, and none of it is modelled.** *(Built since: a floating rate and a
+  capital account, below. Reserves are still not modelled.)*
 - **Grain is priced as scarce in every import-fed town** because the price
   aims at 150 days of stock — right for a country living on one harvest,
   unreachable through a terminal sized for 90. A terminal in this world
@@ -4128,6 +4129,232 @@ day 383   food cover differs by 30 days
   holds moved the spread from one town to another and left it the same size.
   Every one of them is a defensible rule and not one of them was the fault:
   **the fault was the amplifier, not any of the things being amplified.**
+
+## A deficit is not a disequilibrium (`src/exchange.rs`)
+
+`cargo run --release --bin border` and `--bin accounts` both print the rate,
+the balance, what share of it the world will fund and what it is owed.
+
+The border could buy and sell, and did both at a fixed price: every import
+and every export settled against `Commodity::world_price` whatever the
+balance between them came to. So a world that bought three times what it
+sold went on doing it for ever and the money left. Measured over 700 days
+on one planet: **5.06e10 paid out for imports against 1.80e10 taken in for
+exports**, `Account::Abroad` up 3.26e10, and households drained from
+4.53e10 to 2.44e10. **Nearly the whole of the domestic money loss was the
+trade deficit**, and nothing in the model could answer it.
+
+### The first version chased the balance to zero, and that is wrong
+
+Peter's correction, and it is the more important half: **real economies run
+trade deficits for decades.** The United States has run a current-account
+deficit every year since **1976** — $918bn on goods and services in 2024,
+against exports of $3,192bn and imports of $4,110bn — and the United
+Kingdom every year since 1984. China has run the mirror image for a
+generation: $3,577bn out, $2,585bn in, a surplus of $992bn. None of them is
+in disequilibrium and none of them is adjusting.
+
+What makes it possible is an identity a model with only a current account
+cannot satisfy:
+
+```text
+current account + capital account = 0
+```
+
+A country buying more than it sells is **by construction selling claims on
+itself** for the difference — bonds, shares, property, direct investment, or
+simply the supplier agreeing to be paid later. Foreign holdings of US
+Treasury securities alone are about **$8.5 trillion**, and the accumulated
+counterpart of fifty years is a net international investment position near
+**−$26 trillion**.
+
+So a current account with no capital account beside it is not a
+simplification. **It is an impossibility** — it says money leaves and
+nothing brings it back, and the only end state is a country with no money,
+which is exactly what this model was producing.
+
+- **What the rate answers is the part nobody will fund.** An imbalance
+  inside a band moves it not at all. The band sits where the two most
+  persistent imbalances on earth actually are: on the measure the rate
+  reads — net flow over gross — the United States is at **+0.126** and
+  China at **−0.161**, and both have held for decades.
+- **And that is a trade-relative figure while the familiar warning lines
+  are not.** "A current-account deficit over 5% of GDP is a danger sign" is
+  a different denominator: trade is about a quarter of US GDP, so +0.126 of
+  trade is roughly 3.5% of GDP. Two shares on different bases do not
+  compare, which is the mistake `census.rs` exists to stop.
+- **The funded part comes back**, to the firms that sent it, which in trade
+  is the plainest form the capital account takes: the supplier waits, or a
+  bank abroad pays for him. **80-90% of world trade relies on some kind of
+  trade finance** *(WTO/ICC)* and the standing gap in it is put at about
+  **$2.5 trillion**, so it is neither small nor exotic. Portfolio and direct
+  investment are the larger channels in life and are a **named gap** — they
+  need assets somebody can buy, and this model has no securities.
+- **No interest is charged on the stock, and that is closer to the truth
+  than the textbook.** The United States has held a deeply negative net
+  position for decades and until very recently still earned net *positive*
+  investment income on it — the "exorbitant privilege" nobody has fully
+  explained. Inventing a rate would be inventing a fact.
+- **A sudden stop is the funded share going to nothing** — Thailand 1997,
+  Argentina 2001, Greece 2010 — and what follows is the rate, or, where the
+  country cannot devalue, an internal devaluation instead.
+
+### One rate, because this is one money
+
+`region::Nations` folds every nation into **one ledger and one treasury**,
+which is what makes conservation mean anything across a border — and one
+money is one currency. So what floats is the modelled world's currency
+against everything outside it, not one rate per nation.
+
+That is a real arrangement rather than a shortcut, and it has the
+consequence a real one has: **a currency union cannot devalue for one
+member.** The rate settles where the union's balance sits, so a member that
+imports more than it sells goes on losing money to the members that sell,
+which is the euro area's own difficulty and why Greece could not devalue its
+way out of one. A per-nation currency is a **named gap**: a second money, a
+conversion on every cross-border payment, and a conservation rule spanning
+both.
+
+**And the measurement makes the same point from the other side.** With the
+rate frozen the imbalance comes in anyway — from +0.5 to +0.203 over 2,000
+days — because the importers run out of money to import with. That is what
+an internal devaluation is, and it is the only adjustment a country without
+a currency of its own has.
+
+### What is modelled is the real rate, not the market
+
+Worth stating plainly, because the speed depends on it. Daily foreign
+exchange turnover is about **$7.5 trillion** *(BIS Triennial Survey, 2022)*
+against world merchandise trade of roughly $24 trillion a *year* — about
+$66 billion a day — so **trade is on the order of one per cent of what
+moves a nominal rate** and the rest is capital. This model has no
+portfolios, so it cannot pretend to a nominal FX market. What it can do
+honestly is the **real** rate answering a balance nobody will fund, and
+three real figures bracket the speed:
+
+- the **J-curve**, which the model shows rather than assumes: a
+  depreciation makes the deficit *worse* first, because each imported tonne
+  costs more before any volume responds. Over the first 700 days the money
+  paid abroad **rose** from 5.06e10 to 6.29e10; the drain slowed only
+  afterwards;
+- **PPP reversion**: deviations from purchasing power parity have a
+  half-life of **three to five years** *(Rogoff, remarkably consistent
+  across studies)*;
+- the **Marshall-Lerner condition**: a depreciation improves the balance
+  only if import and export demand together respond more than one for one.
+  Here they do, and by construction rather than by an elasticity typed in —
+  both decisions are a price against a parity that moves with the rate, so
+  a town crosses out of importing and into exporting as it goes.
+
+### Measured, and the two mechanisms do different work
+
+One world, four nations, 2,000 days. `abroad+` is what left over the whole
+run and `last 500` is what was still leaving at the end, which is the figure
+that matters: the first is dominated by a transition and the second is the
+state it reached.
+
+| | abroad+ | last 500 | households | rate | balance | owed abroad |
+|---|---|---|---|---|---|---|
+| neither, as committed | 6.07e10 | **7.50e9** | 4.54e9 | 1.000 | +0.203 | 0 |
+| the rate alone | 5.10e10 | 1.90e9 | 6.89e9 | 2.188 | **+0.015** | 0 |
+| the capital account alone | 5.43e10 | 7.90e9 | 8.53e9 | 1.000 | +0.339 | 2.78e10 |
+| **both, as shipped** | 5.37e10 | **4.10e9** | 4.58e9 | 2.018 | +0.217 | **4.28e10** |
+
+- **The ongoing drain halves**, 7.50e9 to 4.10e9 per 500 days, and the world
+  ends with a persistent deficit of +0.217 of which about seven tenths is
+  funded and a claim of 4.28e10 standing against it. That is what a real
+  deficit country looks like.
+- **The rate alone is better on the drain and worse as a model.** It forces
+  the balance to +0.015 — trade in balance, no foreign claims — which is
+  precisely the thing the correction above says does not happen.
+- **The capital account alone barely touches the drain** (7.90e9 against
+  7.50e9), because with the rate frozen the balance stays at +0.339 and only
+  44% of it is funded. It needs the rate to bring the imbalance into the
+  range the world will carry.
+- **Households are no better off after 2,000 days**, 4.58e9 against 4.54e9,
+  and that is worth saying rather than hiding. The transition is where the
+  cost is: every imported tonne costs twice as much by the end, and what
+  improves is the flow at the end rather than the stock along the way. Run
+  it to ten years and the drain falls by an order of magnitude — 2.0e10 in
+  the first 500 days against 1.9e9 in days 3,000-3,500 — as the balance
+  settles into the funded band.
+- **The honest remaining gap is the fixture, not the rate.** This world
+  imports 2.2 times what it exports at the start, against the United
+  States' 1.29, because `region.rs` gives every town a steel stockholder, a
+  machinery dealer and a timber yard for a third of its draw. A border that
+  drains anything at all is that import dependence showing, and no exchange
+  rate makes a country that buys twice what it sells solvent.
+
+### A price test is a switch, and a switch on a moving target is a limit cycle
+
+What the exchange rate exposed, and it had been waiting. `worth_importing`
+answers yes or no, and that decided whether a terminal landed its **whole
+rated tonnage or nothing at all** — a bang-bang controller. It was quiet
+while the world price never moved. Once parity climbed every day the price
+had to chase it, and in three interchangeable towns the three quays ended up
+on different phases of one cycle: **steel came out 0.93 days of cover apart
+in a fixture where any spread at all is a bug**, and on goods it showed as a
+rotating period-three cycle — the same three readings every day, moving one
+town along each morning.
+
+**A supply curve is the honest shape and it is also what is really there.**
+Behind one terminal stand many merchants with different costs, different
+ships and different customers, and they do not all decide on the same
+morning: the tonnage offered rises with how far the price sits above what it
+costs to land. So `eager_to_land` is nought to one rather than false or
+true, and steel's spread goes **0.93 to 0.00**.
+
+- **The slope is steep, and that is the realistic part.** A small country
+  faces a nearly horizontal import supply curve — the world will sell it as
+  much grain as it likes at FOB plus freight, because it is too small to
+  move the price — so what limits a landing is the terminal and not the
+  world's willingness. Full tilt at **two per cent** over parity.
+- **Five per cent was tried and the famine bound caught it**: a nation
+  living on imported grain went 0.228% short over two years with the sea
+  lanes open, against a bar of a tenth of a per cent. Not a famine — a shop
+  empty for a day or two — but it was the merchant being made reluctant by
+  arithmetic rather than by anything real. One, two and three per cent all
+  clear it.
+- **And it corrected a level nobody had noticed.** A quay that was worth
+  opening opened all the way, so the fixture carried **49.8 days of goods
+  against a target of 15**. Either mechanism fixes that on its own — a
+  rising parity keeps the price at parity, so a switch is off more of the
+  time — and the gate goes red only when both are gone.
+- **The slope is not load-bearing for the evenness gate.** Putting the
+  switch back leaves it green, because that gate now reads a monthly mean
+  and an unsynchronised cycle averages out. The measurement above is the
+  argument for the slope; no test currently fails without it, and that is
+  said plainly because it is easy to write a find up as though one did.
+
+### A rotation is not a gradient, and a gate has to tell them apart
+
+`carriers_have_nothing_to_do_in_a_country_that_is_already_even` read one
+morning's spread, and once the fixture sat **at** its target rather than
+three times over it, the quantum of a single delivery became 7% of the level
+and the gate went red on a world behaving correctly. What the dispatcher
+does among three interchangeable towns is serve the worst-off, which
+tomorrow is a different town: the country goes round in a three-day rotation
+whose *set* of readings is identical every day and whose assignment to towns
+is not.
+
+So it reads the **mean over a month**, which is a stronger claim and not a
+weaker one. No average hides the original bug — a monotone gradient of 57.5,
+33.2 and 8.5 days of food — nor the ten-against-seven the wage link
+produced. What it no longer does is fail because one town was served on the
+last day of the run. And the half a mean cannot make is asserted separately:
+**the wobble must not be growing.** A rotation is bounded by the size of one
+delivery; a drift is not.
+
+**Gates, each checked by deleting its mechanism.** Six of seven go red on
+the claim: freeze the rate and a world buying three times what it sells
+still holds foreign money at par; fund nothing and five years of a real
+deficit moves the rate to 1.51; let the border ignore the rate and doubling
+the price of foreign money changes nothing; scale only the import side and
+the band closes on food at a rate of 0.2, which is the money printer; record
+half of what was lent and the stock and the flow disagree; stop the funded
+part coming back and nothing is lent at all. The seventh — putting the
+import switch back — stays green, and is recorded above as a correction
+rather than a fix a test demanded.
 
 ## The last plant dispatched sets the price (`src/econ.rs`)
 

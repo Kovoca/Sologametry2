@@ -2110,6 +2110,7 @@ impl Region {
             routing: crate::quote::Routing::default(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
+            exchange: crate::exchange::Exchange::at_par(),
             arrivals: Vec::new(),
             staff_today: Vec::new(),
             payroll_met: Vec::new(),

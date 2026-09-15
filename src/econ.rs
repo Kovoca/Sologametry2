@@ -3115,6 +3115,16 @@ pub struct Economy {
     /// cent and a great deal of trade moves duty-free inside customs
     /// unions.
     pub import_duty: std::collections::BTreeMap<u16, f64>,
+    /// **What this world's money is worth outside it.**
+    ///
+    /// One rate, because `Nations` folds every country into one treasury
+    /// and one money is one currency. Every price the border settles
+    /// against the world is multiplied by it, so a world that buys more
+    /// than it sells finds its imports getting dearer and its exports
+    /// better paid until the two meet — which is the only answer to a
+    /// trade deficit this model has the institutions for. See
+    /// `crate::exchange`.
+    pub exchange: crate::exchange::Exchange,
     /// **Every consignment on the road**, by name.
     ///
     /// The first real consumer of `registry.rs`. A cargo has to keep one
@@ -3305,6 +3315,12 @@ impl Economy {
         // The fabric wears whether or not anybody keeps it up.
         self.maintain_buildings();
         self.discard_unused_power();
+        // **And the rate settles on the day's balance, at the close**, so
+        // tomorrow's border decisions read a figure that is not still
+        // moving — the same discipline as the opening photograph. A world
+        // that paid out more than it took in finds foreign money dearer in
+        // the morning.
+        self.settle_the_exchange();
         // The same guarantee the commodity ledger gives for tonnage.
         #[cfg(debug_assertions)]
         self.treasury.assert_conserved();
@@ -3317,6 +3333,85 @@ impl Economy {
         // than two counters that happen to increment together.
         #[cfg(debug_assertions)]
         self.ledger.assert_conserved();
+    }
+
+    /// **What crossed the border today, and what it does to the rate.**
+    ///
+    /// Read off the treasury's own day book rather than counted alongside
+    /// it, because two tallies of the same payment drift and the day book
+    /// is the one the conservation assertion already checks.
+    fn settle_the_exchange(&mut self) {
+        use crate::money::{Account, Why};
+        let day = self.ledger.day;
+        // **Only the current account sets the rate.** The capital flow this
+        // function is about to make is also a payment to or from `Abroad`,
+        // so counting every such payment would feed yesterday's answer back
+        // in as today's question.
+        let mut out = 0.0;
+        let mut into = 0.0;
+        let mut paid: Vec<(usize, f64)> = Vec::new();
+        let mut took: Vec<(usize, f64)> = Vec::new();
+        for t in self.treasury.today.iter() {
+            if t.why != Why::Trade {
+                continue;
+            }
+            match (t.from, t.to) {
+                (Account::Firm(s), Account::Abroad) => {
+                    out += t.amount;
+                    paid.push((s, t.amount));
+                }
+                (Account::Abroad, Account::Firm(s)) => {
+                    into += t.amount;
+                    took.push((s, t.amount));
+                }
+                (_, Account::Abroad) => out += t.amount,
+                (Account::Abroad, _) => into += t.amount,
+                _ => {}
+            }
+        }
+        let net = self.exchange.settle(out, into);
+
+        // **And the funded part comes back.** A deficit is somebody selling
+        // claims on itself for the difference, so the money returns to the
+        // firms that sent it — which in trade is the plainest form it
+        // takes: the supplier waits to be paid, or a bank abroad pays for
+        // him. **80-90% of world trade relies on some kind of trade
+        // finance** *(WTO/ICC)*, and the standing gap in it is put at
+        // around $2.5 trillion, so it is neither small nor exotic.
+        //
+        // Portfolio and direct investment are the larger channels in life
+        // and are a **named gap**: they need assets somebody can buy, and
+        // this model has no securities. What is here is the flow and the
+        // stock it accumulates.
+        //
+        // **No interest is charged on it**, and that is closer to the truth
+        // than the textbook would be: the United States has held a deeply
+        // negative net position for decades and until very recently still
+        // earned net *positive* investment income on it — the
+        // "exorbitant privilege" nobody has fully explained. A rate on the
+        // stock is a further thing, and inventing one would be inventing a
+        // fact.
+        let (share, from_world) = if net >= 0.0 {
+            (&paid, true)
+        } else {
+            (&took, false)
+        };
+        let total: f64 = share.iter().map(|&(_, v)| v).sum();
+        if total <= 1e-9 || net.abs() <= 1e-9 {
+            return;
+        }
+        let moves: Vec<(usize, f64)> = share
+            .iter()
+            .map(|&(s, v)| (s, net.abs() * v / total))
+            .collect();
+        for (s, amount) in moves {
+            let (from, to) = if from_world {
+                (Account::Abroad, Account::Firm(s))
+            } else {
+                (Account::Firm(s), Account::Abroad)
+            };
+            self.treasury.pay(day, from, to, amount, Why::Capital);
+        }
     }
 
     /// Draw the coming year's weather, once, on the day the growing year
@@ -3767,7 +3862,7 @@ impl Economy {
         let day = self.ledger.day;
         let m = self.ledger.sites[site].market;
         let at = Self::WHOLESALE_MARGIN * qty;
-        let at_their_port = c.world_price() * (1.0 + voyage);
+        let at_their_port = self.world_price(c) * (1.0 + voyage);
         let duty = self
             .import_duty
             .get(&self.markets[m].nation)
@@ -3943,17 +4038,12 @@ impl Economy {
             // margin had to be chosen rather than derived: goods arrived
             // regardless of the price, so the price could not decide
             // anything. Now the same test that says a country is short
-            // enough to import is what opens the quay.
-            let s = &self.ledger.sites[site];
+            // enough to import is what opens the quay — and how far, which
+            // is `eager_to_land`.
+            let mut eagerness = 1.0;
             if self.buys_abroad(site) {
-                let (m, r) = (s.market, s.recipe);
-                let wanted = r.is_some_and(|r| {
-                    RECIPES[r]
-                        .outputs
-                        .iter()
-                        .any(|&(c, _)| self.worth_importing(m, c))
-                });
-                if !wanted {
+                eagerness = self.eager_to_land(site);
+                if eagerness <= 0.0 {
                     self.ledger.sites[site].ran = 0.0;
                     continue;
                 }
@@ -3988,6 +4078,9 @@ impl Economy {
             if s.kind == SiteKind::Farm {
                 batches *= self.harvest_at(s.market);
             }
+            // **A merchant lands more the better the trade is.** One at
+            // every price above parity; see `eager_to_land`.
+            batches *= eagerness;
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
             }
@@ -7775,9 +7868,21 @@ impl Economy {
             .get(&self.markets[m].nation)
             .copied()
             .unwrap_or(0.0);
-        c.world_price() * (1.0 + voyage) * (1.0 + duty)
+        self.world_price(c) * (1.0 + voyage) * (1.0 + duty)
             + Self::PORT_HANDLING_PER_T
             + self.inland_leg(m)
+    }
+
+    /// **What the world charges for a tonne, in this world's money.**
+    ///
+    /// `Commodity::world_price` is the price in the outside world's own
+    /// money and never moves; this is what it costs here, which does. One
+    /// accessor, because four things settle against the world — import
+    /// parity, export parity, what an importer pays and what an exporter is
+    /// paid — and two of them disagreeing is a money printer. See
+    /// `crate::exchange`.
+    pub fn world_price(&self, c: Commodity) -> f64 {
+        c.world_price() * self.exchange.foreign_money()
     }
 
     /// **Import parity**: the price above which bringing a tonne in from
@@ -7814,8 +7919,65 @@ impl Economy {
             return f64::NEG_INFINITY;
         };
         let netback =
-            c.world_price() * (1.0 - voyage) - Self::PORT_HANDLING_PER_T - self.inland_leg(m);
+            self.world_price(c) * (1.0 - voyage) - Self::PORT_HANDLING_PER_T - self.inland_leg(m);
         netback / (1.0 + Self::TRADERS_MARGIN)
+    }
+
+    /// **How hard a quay merchant works today**, nought to one.
+    ///
+    /// `worth_importing` answers yes or no, and that was what decided
+    /// whether a terminal landed its whole rated tonnage or nothing at all.
+    /// **A threshold with a large discrete consequence is a bang-bang
+    /// controller, and a bang-bang controller on a moving target is a limit
+    /// cycle.** It sat unseen while the world price never moved: the price
+    /// settled just at parity, the quay flicked on and off, and the wobble
+    /// was small. Once an exchange rate made parity climb every day the
+    /// price had to chase it, and in three interchangeable towns the three
+    /// quays ended up on different phases of the same cycle — **a day of
+    /// steel cover apart, in a fixture where any spread at all is a bug.**
+    ///
+    /// A supply curve is the honest shape and it is also what is really
+    /// there. Behind one terminal in this model stand many merchants with
+    /// different costs, different ships and different customers, and they
+    /// do not all decide on the same morning: the tonnage offered rises
+    /// with how far the price sits above what it costs to land. So the
+    /// quantity responds to the margin rather than the sign of it, and the
+    /// cycle becomes a level.
+    ///
+    /// **The slope is steep, and that is the realistic part.** What a small
+    /// country faces is a nearly horizontal import supply curve: the world
+    /// market will sell it as much grain as it likes at FOB plus freight,
+    /// because it is too small to move the price. What limits a landing is
+    /// the terminal, not the world's willingness. So a merchant goes to
+    /// full tilt on a *small* margin over parity — two per cent — and the
+    /// slope exists to remove the discontinuity rather than to ration.
+    ///
+    /// Five per cent was tried and is what the famine bound caught: a
+    /// nation living on imported grain went 0.228% short over two years
+    /// with the sea lanes open, against a bar of a tenth of a per cent.
+    /// That is a shop empty for a day or two rather than a famine, and it
+    /// is still the merchant being made reluctant by arithmetic rather than
+    /// by anything real. One, two and three per cent all clear it.
+    pub fn eager_to_land(&self, site: usize) -> f64 {
+        /// How far over parity a merchant has to be to load everything.
+        const FULLY_WORTH_IT: f64 = 0.02;
+
+        let s = &self.ledger.sites[site];
+        let Some(r) = s.recipe else { return 0.0 };
+        let m = s.market;
+        let mut most = 0.0f64;
+        for &(c, q) in RECIPES[r].outputs {
+            if q <= 0.0 || !c.will_go_on_a_ship() {
+                continue;
+            }
+            let parity = self.import_parity(m, c);
+            if parity <= 0.0 {
+                continue;
+            }
+            let over = self.markets[m].price[c as usize] / parity - 1.0;
+            most = most.max(over / FULLY_WORTH_IT);
+        }
+        most.clamp(0.0, 1.0)
     }
 
     /// **Does a tonne of this come from abroad at this site?** The recipe
@@ -7960,7 +8122,7 @@ impl Economy {
                     day,
                     crate::money::Account::Abroad,
                     crate::money::Account::Firm(quay),
-                    at * c.world_price() * (1.0 - voyage),
+                    at * self.world_price(c) * (1.0 - voyage),
                     crate::money::Why::Trade,
                 );
                 let price = self.markets[m].price[c as usize];

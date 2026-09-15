@@ -175,29 +175,72 @@ fn a_shortage_is_shared_out_rather_than_taken_by_whoever_asks_first() {
 /// is inventing work — which shows up as an oscillation rather than as
 /// commerce.
 ///
-/// **The tolerance is relative and the reason is worth recording rather
-/// than hiding**: carriers rank markets by cover and break exact ties by
-/// index, so in a world where three markets are *precisely* equal the
-/// tiebreak has to pick one of them. The resulting wobble is a fraction of
-/// a per cent and self-correcting, because tomorrow the town that was
-/// served is no longer the neediest. What would not be acceptable is a
-/// drift that grows, so the bar is a small share of the level rather than
-/// an absolute figure that a bigger stockpile would sail through.
+/// **It reads the average over a month rather than one morning's figures,
+/// and that is a stronger claim rather than a weaker one.** What the
+/// dispatcher does in a world of three interchangeable towns is serve the
+/// worst-off, which tomorrow is a different town: the country goes round
+/// in a three-day rotation whose *set* of readings is the same every day
+/// and whose assignment to towns is not. A single day's spread reads that
+/// as a defect, and it is the opposite of one — the rotation is the
+/// symmetry being respected, one delivery at a time, and the quantum is
+/// exactly the one delivery.
+///
+/// A mean still catches everything the instantaneous reading caught. The
+/// original bug was a **monotone gradient by market index** — 57.5, 33.2
+/// and 8.5 days of food — and no average over any window hides that; nor
+/// does it hide the ten-against-seven the wage link produced when a
+/// millionth of a netback was allowed to decide a harvest. What it does
+/// not do is fail because one town was served on the last day of the run.
+///
+/// The second half is the one the mean cannot make: **the wobble must not
+/// be growing.** A rotation is bounded by the size of a delivery; a drift
+/// is not, and the spread late in the run is checked against the spread
+/// earlier in it.
 #[test]
 fn carriers_have_nothing_to_do_in_a_country_that_is_already_even() {
-    let e = run(400, true, false);
-    for &c in Commodity::ALL.iter() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    e.logistics = Some(Logistics::found(&e));
+    for _ in 0..400 {
+        e.step();
+    }
+    // A month of readings, which is ten times the rotation.
+    let mut watched: Vec<Vec<Vec<f64>>> = Vec::new();
+    for _ in 0..30 {
+        e.step();
+        watched.push(
+            Commodity::ALL
+                .iter()
+                .map(|&c| covers(&e, c))
+                .collect::<Vec<_>>(),
+        );
+    }
+    let spread = |v: &[f64]| {
+        let lo = v.iter().cloned().fold(f64::INFINITY, f64::min);
+        let hi = v.iter().cloned().fold(0.0f64, f64::max);
+        hi - lo
+    };
+    for (i, &c) in Commodity::ALL.iter().enumerate() {
         if !c.storable() {
             continue;
         }
-        let v = covers(&e, c);
-        let lo = v.iter().cloned().fold(f64::INFINITY, f64::min);
-        let hi = v.iter().cloned().fold(0.0f64, f64::max);
-        let level = v.iter().sum::<f64>() / v.len() as f64;
+        let towns = watched[0][i].len();
+        let mean: Vec<f64> = (0..towns)
+            .map(|m| watched.iter().map(|d| d[i][m]).sum::<f64>() / watched.len() as f64)
+            .collect();
+        let level = mean.iter().sum::<f64>() / towns as f64;
         assert!(
-            hi - lo < (0.03 * level).max(0.01),
-            "{c}: carriers moved a level country to {v:?} (spread {:.3})",
-            hi - lo
+            spread(&mean) < (0.03 * level).max(0.01),
+            "{c}: over a month, carriers left a level country at {mean:?} \
+             (spread {:.3})",
+            spread(&mean)
+        );
+        // And the wobble is not growing.
+        let early: f64 = watched[..10].iter().map(|d| spread(&d[i])).sum::<f64>() / 10.0;
+        let late: f64 = watched[20..].iter().map(|d| spread(&d[i])).sum::<f64>() / 10.0;
+        assert!(
+            late <= early * 2.0 + (0.01 * level).max(1e-6),
+            "{c}: the wobble grew from {early:.3} to {late:.3} inside one month, \
+             which is a drift and not a rotation"
         );
     }
     e.ledger.assert_conserved();

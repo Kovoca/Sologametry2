@@ -698,6 +698,11 @@ fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
     let mut growers_paid = 0.0f64;
     let mut unpaid_landings = Vec::new();
     for _ in 0..300 {
+        // **The rate the day's landings were priced at**, which is the one
+        // standing when the day began: the exchange settles at the close,
+        // so reading it afterwards is a day out and the identity misses by
+        // exactly the overnight move.
+        let rate = n.economy.exchange.foreign_money();
         n.economy.step();
         let e = &n.economy;
         let today = &e.treasury.today;
@@ -760,6 +765,13 @@ fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
         // directly, not through `buys_abroad` — the function whose getting
         // it wrong is the defect this watches for. Asked through the same
         // function, both sides of the identity would move together.
+        //
+        // **The rate is read as a number from before the day**, not through
+        // `Economy::world_price`,
+        // for the same reason: what is being checked is that every landing
+        // is billed, and rebuilding the bill out of the very function that
+        // computes it would check nothing. Whether the rate itself is right
+        // is a different claim with its own gates.
         let mut landed_value = 0.0f64;
         for s in 0..e.ledger.sites.len() {
             let Some(r) = e.ledger.sites[s].recipe else {
@@ -774,6 +786,7 @@ fn a_country_buys_what_it_is_short_of_and_sells_what_it_is_long_of() {
                     * out
                     * e.ledger.sites[s].ran
                     * c.world_price()
+                    * rate
                     * (1.0 + voyage);
             }
         }

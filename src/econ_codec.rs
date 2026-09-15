@@ -1238,6 +1238,15 @@ impl Store for crate::econ::Economy {
             }
         }
         w.f64(self.state_afford);
+        // **The rate is state, not a cache.** It is the accumulated answer
+        // to every day's trade and cannot be re-derived from anything the
+        // save holds, so a reload that forgot it would put the whole
+        // border back at par and start the deficit again.
+        let (out, into) = self.exchange.flows();
+        w.f64(self.exchange.foreign_money());
+        w.f64(out);
+        w.f64(into);
+        w.f64(self.exchange.owed_abroad());
     }
 
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
@@ -1365,6 +1374,20 @@ impl Store for crate::econ::Economy {
         let building_stock = read_row(r)?;
         let building_condition = read_row(r)?;
         let state_afford = r.finite_f64()?;
+        let exchange = {
+            let rate = r.finite_f64()?;
+            let out = r.finite_f64()?;
+            let into = r.finite_f64()?;
+            let owed = r.finite_f64()?;
+            // A rate of zero or less is not a price, and a negative flow is
+            // not a payment. Each decodes perfectly well as a float.
+            if rate <= 0.0 || out < 0.0 || into < 0.0 {
+                return Err(SaveError::Impossible(
+                    "an exchange rate that cannot be a price",
+                ));
+            }
+            crate::exchange::Exchange::restore(rate, out, into, owed)
+        };
 
         // -------------------------------------------------------------
         // every reference has to point at something that is there
@@ -1487,6 +1510,7 @@ impl Store for crate::econ::Economy {
             routing: crate::quote::Routing::default(),
             reservations,
             import_duty,
+            exchange,
             shipments,
             arrivals,
             staff_today,

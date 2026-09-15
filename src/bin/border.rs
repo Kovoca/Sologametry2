@@ -118,6 +118,13 @@ fn main() {
     println!("{bought_in} town-and-commodity pairs are wanted where nobody makes or lands them\n");
     println!("over the border: paid abroad {paid_abroad:.3e}, earned abroad {earned_abroad:.3e}");
     println!(
+        "foreign money costs {:.3}, balance {:+.3}, funded {:.0}%, owed abroad {:.3e}",
+        e.exchange.foreign_money(),
+        e.exchange.imbalance(),
+        100.0 * e.exchange.funded_share(),
+        e.exchange.owed_abroad(),
+    );
+    println!(
         "food: worst cover {:.2} of target, hungry on {hungry} of {days} days",
         worst_food
     );
@@ -149,7 +156,11 @@ fn main() {
         if !c.will_go_on_a_ship() {
             continue;
         }
-        let w = c.world_price();
+        // **What the world charges here**, which now moves: the rate is one
+        // number for the whole modelled world and every parity is built on
+        // it, so a ratio against the unconverted reference would read as a
+        // shortage after a depreciation when nothing is short.
+        let w = e.world_price(c);
         let (mut above, mut band, mut below, mut none) = (0, 0, 0, 0);
         let (mut p, mut ipp, mut epp, mut k) = (0.0, 0.0, 0.0, 0.0);
         let (mut imp, mut exp) = (0, 0);
@@ -231,7 +242,7 @@ fn main() {
 
     // A few commodities town by town.
     for c in [Commodity::Grain, Commodity::Steel, Commodity::Cement] {
-        println!("\n{c}: world {:.0}", c.world_price());
+        println!("\n{c}: world {:.0}", e.world_price(c));
         println!(
             "  {:<22} {:>5} {:>8} {:>8} {:>8} {:>8} {:>7}",
             "town", "quay", "inland", "price", "import", "export", "cover"

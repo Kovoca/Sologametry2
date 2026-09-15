@@ -103,6 +103,18 @@ pub enum Why {
     Profit,
     /// Bought from or sold to the rest of the world.
     Trade,
+    /// **The other side of a trade balance**: the outside world acquiring a
+    /// claim on this economy, or this one acquiring a claim abroad.
+    ///
+    /// A current account with no capital account beside it is not a
+    /// simplification but an impossibility — `current + capital = 0` is an
+    /// identity, and a model that only has the first says money leaves and
+    /// nothing brings it back, whose only end state is a country with no
+    /// money. Which is what this one was doing. Kept apart from `Trade`
+    /// because the exchange rate is set on the current account, and a
+    /// measure that included its own answer would measure nothing. See
+    /// `crate::exchange`.
+    Capital,
     /// **Money created by a bank making a loan.** Not a transfer: there is
     /// no payer, because the deposit did not come from anywhere. See
     /// `bank.rs` — this is the door that doc comment on `open` said would
@@ -345,6 +357,7 @@ fn reason_name(why: Why) -> &'static str {
         Why::Lending => "lending",
         Why::Repayment => "repayment",
         Why::Interest => "interest",
+        Why::Capital => "capital",
     }
 }
 
@@ -404,6 +417,7 @@ impl crate::save::Store for Why {
             Why::Lending => 10,
             Why::Repayment => 11,
             Why::Interest => 12,
+            Why::Capital => 13,
         });
     }
     fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
@@ -421,6 +435,7 @@ impl crate::save::Store for Why {
             10 => Why::Lending,
             11 => Why::Repayment,
             12 => Why::Interest,
+            13 => Why::Capital,
             n => return Err(SaveError::UnknownCode("why money moved", n as u32)),
         })
     }
