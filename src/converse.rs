@@ -267,6 +267,45 @@ pub struct Answer {
 /// `about_the_asker` is the relationship *they* hold — not the one the
 /// asker holds, because the two need not agree and it is theirs that
 /// governs what they are willing to say.
+/// **Ask a person something**, and let them answer out of their own head.
+///
+/// The same conversation as [`ask`] with three arguments removed, and
+/// removing them is the whole point: `ask` takes a `&Mind`, a `&Memory`
+/// and an `Option<&Relationship>` beside the `Id<Person>` handles, so
+/// **that those belonged to the person being addressed was a caller's
+/// promise rather than a type**. Nothing stopped a caller handing over
+/// one man's memory and another man's opinion of the asker, and the
+/// answer would have come back perfectly well formed.
+///
+/// A `Person` now carries all three, so this takes the person. What they
+/// know is their traces, what they make of you is their record of you,
+/// and neither can be supplied from outside — which is what
+/// `converse.rs` claims in its own first paragraph and could not enforce.
+///
+/// `ask` stays, because constructing a situation deliberately is exactly
+/// what a test needs and there is no reason to make that harder.
+pub fn ask_of(
+    them: &crate::person::Person,
+    they_are: Id<crate::person::Person>,
+    asker: Id<crate::person::Person>,
+    state: FunctionalState,
+    lonely: f64,
+    how_you_came_to_be_there: &Approach,
+    asked: Asked,
+) -> Answer {
+    ask(
+        &them.mind,
+        &them.memory,
+        them.relations.get(&asker),
+        state,
+        lonely,
+        how_you_came_to_be_there,
+        asked,
+        asker,
+        they_are,
+    )
+}
+
 pub fn ask(
     who: &Mind,
     what_they_know: &Memory,

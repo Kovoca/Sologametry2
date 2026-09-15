@@ -943,6 +943,29 @@ pub struct Person {
     /// that has a real culture redraws. That is the same honesty as
     /// `aptitude` being middling until somebody has a distribution.
     pub mind: crate::mind::Mind,
+    /// **What they have seen and been told**, and how they came by it.
+    ///
+    /// The other half of being somebody you can talk to. A person with
+    /// convictions and no memory cannot answer "how was your day" — and
+    /// `converse.rs` is built entirely around searching *their* traces,
+    /// so that a man who was not there cannot be made to know. Until this
+    /// sat on the person, the caller supplied the memory and the promise
+    /// that it was his.
+    pub memory: crate::memory::Memory,
+    /// **What they make of other people**, one record per person they
+    /// have met, held in their own head and nobody else's.
+    ///
+    /// Directed on purpose: Alice's record of Bob and Bob's of Alice are
+    /// two things that need not agree, which is what `relations.rs`
+    /// exists to say. Empty at birth, because a relationship is something
+    /// that happens rather than something you are issued with — and
+    /// keyed by `Id<Person>`, which outlives the person, since you go on
+    /// owing, fearing and loving the dead.
+    ///
+    /// A `BTreeMap` rather than a hash: this project's save format
+    /// requires that identical state gives identical bytes, and a
+    /// `HashMap` anywhere in it would break that.
+    pub relations: std::collections::BTreeMap<crate::id::Id<Person>, crate::relations::Relationship>,
 }
 
 impl Person {
@@ -993,6 +1016,10 @@ impl Person {
                 &mut crate::rng::Rng::new(hash_seed(name_for_traits, 0xB12D_5EED_0001)),
                 &[],
             ),
+            // **Nobody is born remembering anything**, and nobody is born
+            // knowing anybody. Both fill up by living.
+            memory: crate::memory::Memory::new(),
+            relations: Default::default(),
             practice: [0.0; 11],
             standing: 0.5,
             visibility: 0.0,

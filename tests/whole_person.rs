@@ -16,8 +16,14 @@
 //! values, no memory and no relationships; the one that could be lied to
 //! was employed by nobody, housed by nobody and paid by nobody.
 
-use scale_sim::mind::Value;
+use scale_sim::converse::{ask_of, Approach, Asked};
+use scale_sim::coping::FunctionalState;
+use scale_sim::id::{Arena, Id};
+use scale_sim::memory::{EventKind, Place, Source, WorldEvent};
+use scale_sim::mind::{Happening, Value};
 use scale_sim::person::{Person, Trade};
+use scale_sim::relations::Relationship;
+use scale_sim::rng::Rng;
 
 /// **The person who has a job is the person who has values.**
 ///
@@ -146,5 +152,131 @@ fn a_town_holds_a_spread_of_opinion() {
         seen.len(),
         before,
         "two people in this town are identical in every conviction"
+    );
+}
+
+// =====================================================================
+// and the person answers out of their own head
+// =====================================================================
+
+/// Something that happened, which one man saw and another did not.
+fn a_fight(day: u64, a: Id<Person>, b: Id<Person>) -> WorldEvent {
+    WorldEvent {
+        kind: EventKind::Assault,
+        who: vec![a, b],
+        actor: Some(b),
+        place: Place(1),
+        day,
+        severity: -0.8,
+        facts: Happening {
+            severity: -0.8,
+            deliberate: true,
+            unexpected: 0.9,
+            ..Default::default()
+        },
+    }
+}
+
+/// Put an event into one person's own memory, through the ordinary path.
+fn saw_it(p: &mut Person, ev: &WorldEvent, of: Id<WorldEvent>, seed: u64) {
+    let mut rng = Rng::new(seed);
+    let perceived = p
+        .memory
+        .perceive(ev, Some(of), Source::Witnessed, 0.95, &mut rng)
+        .expect("nothing perceived");
+    let felt = p.mind.appraise(&p.mind.read(&perceived.facts));
+    p.memory
+        .encode(perceived, &p.mind, ev.day, &felt)
+        .expect("nothing encoded");
+}
+
+/// **What a person knows is what is in their own head**, and no caller
+/// can hand it to them.
+///
+/// `converse::ask` takes a `&Mind`, a `&Memory` and an
+/// `Option<&Relationship>` alongside the `Id<Person>` handles, so that
+/// those belonged to the person being addressed was a caller's promise.
+/// Nothing stopped one man's memory being passed with another man's name.
+/// `ask_of` takes the person, so there is nothing to get wrong.
+#[test]
+fn a_person_answers_from_their_own_memory() {
+    let mut folk: Arena<Person> = Arena::new();
+    let watched = folk.add(Person::new("Alder", Trade::Labourer, 0, 100.0));
+    let elsewhere = folk.add(Person::new("Bramwell", Trade::Labourer, 0, 100.0));
+    let asker = folk.add(Person::new("Cade", Trade::Labourer, 0, 100.0));
+
+    let mut happened: Arena<WorldEvent> = Arena::new();
+    let ev = a_fight(10, watched, elsewhere);
+    let of = happened.add(ev.clone());
+    saw_it(folk.get_mut(watched).expect("there"), &ev, of, 3);
+
+    let put_it_to = |who: Id<Person>, folk: &Arena<Person>| {
+        ask_of(
+            folk.get(who).expect("there"),
+            who,
+            asker,
+            FunctionalState::Regulated,
+            0.0,
+            &Approach::a_friend(),
+            Asked::About(of),
+        )
+    };
+
+    let there = put_it_to(watched, &folk);
+    let absent = put_it_to(elsewhere, &folk);
+
+    assert!(
+        there.because.knows,
+        "the man who saw it does not know about it: {}",
+        there.said
+    );
+    assert!(
+        !absent.because.knows,
+        "the man who was somewhere else knows about it anyway — his answer          is coming from outside his own head: {}",
+        absent.said
+    );
+    assert_ne!(
+        there.said, absent.said,
+        "a witness and a man who was elsewhere gave the same answer"
+    );
+}
+
+/// **What they make of you is their record of you**, and it is theirs.
+///
+/// Directed on purpose: Alice's opinion of Bob and Bob's of Alice are two
+/// things that need not agree. Before the join, whose opinion reached the
+/// conversation was whatever the caller passed.
+#[test]
+fn what_they_think_of_you_is_held_in_their_own_head() {
+    let mut folk: Arena<Person> = Arena::new();
+    let them = folk.add(Person::new("Alder", Trade::Labourer, 0, 100.0));
+    let asker = folk.add(Person::new("Cade", Trade::Labourer, 0, 100.0));
+    let stranger = folk.add(Person::new("Dunn", Trade::Labourer, 0, 100.0));
+
+    // A relationship is something that happens, not something issued.
+    assert!(
+        folk.get(them).expect("there").relations.is_empty(),
+        "somebody was born already knowing people"
+    );
+
+    folk.get_mut(them)
+        .expect("there")
+        .relations
+        .insert(asker, Relationship::strangers(them, asker));
+
+    let p = folk.get(them).expect("there");
+    assert!(
+        p.relations.contains_key(&asker),
+        "the record of the asker did not stay with the person"
+    );
+    assert!(
+        !p.relations.contains_key(&stranger),
+        "a record appeared for somebody never met"
+    );
+
+    // And it is *their* record: the asker holds nothing about them.
+    assert!(
+        folk.get(asker).expect("there").relations.is_empty(),
+        "recording one side of a relationship wrote the other side too —          Alice's view of Bob and Bob's of Alice are two things"
     );
 }

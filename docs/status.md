@@ -32,10 +32,10 @@ writing this file.
 
 | | | measured |
 |---|---|---|
-| Commit | `eed0220` + the person join | 2026-09-15 |
+| Commit | `61463d5` + memory and relations | 2026-09-15 |
 | Source | 66 modules, 17 diagnostic binaries | 2026-09-15 |
 | Lines | ~109,000 including tests | 2026-09-15 |
-| Tests | 86 binaries, **884 passed, 0 failed, 0 ignored** | 2026-09-15 |
+| Tests | 86 binaries, **886 passed, 0 failed, 0 ignored** | 2026-09-15 |
 | Build | clean | 2026-09-15 |
 
 **The full release suite takes over ten minutes**, which is worth knowing
@@ -244,15 +244,18 @@ of the world can be live at once under any clock.
 
 Real defects, each visible in a test or measurable in a binary.
 
-1. **A person is half joined.** `Person` now carries a `Mind` — so the man
-   with a trade is the man with convictions, drawn from his name so a world
-   rebuilds the same people. **Memory and relationships are still
-   separate**, so he has values and cannot remember you, and
-   `converse::ask` still takes `&Memory` and `&Relationship` as arguments a
-   caller promises are his. Nothing in production reads `Person::mind` yet
-   either — it is the prerequisite the value-gated social skills sit on,
-   and until they exist it is a field the gates check and the simulation
-   does not.
+1. **A person is joined, and nothing in the running world talks to one.**
+   `Person` carries a `Mind`, a `Memory` and a directed map of
+   `Relationship` — so the man with a trade is the man with convictions,
+   the man who remembers, and the man who has an opinion of you.
+   `converse::ask_of` takes the person rather than three arguments a caller
+   promised were his, which is the defect closed.
+
+   **What remains is a caller.** `converse` is exercised only by tests,
+   because there is still no player and no turn loop, and nothing in
+   production reads `Person::mind` — it is the prerequisite the
+   value-gated social skills sit on. The type now enforces the join; the
+   running world does not yet use it.
 
    **And nothing derives a town's values.** `Mind::draw` takes a culture
    and every person is drawn against a blank one. `custom.rs` derives
