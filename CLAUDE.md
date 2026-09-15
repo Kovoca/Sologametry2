@@ -4199,27 +4199,53 @@ which is exactly what this model was producing.
   Argentina 2001, Greece 2010 — and what follows is the rate, or, where the
   country cannot devalue, an internal devaluation instead.
 
-### One rate, because this is one money
+### One rate, and the reason is the code rather than the world
 
-`region::Nations` folds every nation into **one ledger and one treasury**,
-which is what makes conservation mean anything across a border — and one
-money is one currency. So what floats is the modelled world's currency
-against everything outside it, not one rate per nation.
+**I wrote this up as a currency union and it is not one.** `region::Nations`
+folds every nation into one ledger and one treasury, one money is one
+currency, so there is one rate — and I then reached for the euro area,
+because a currency union is the real thing that shares that one feature.
 
-That is a real arrangement rather than a shortcut, and it has the
-consequence a real one has: **a currency union cannot devalue for one
-member.** The rate settles where the union's balance sits, so a member that
-imports more than it sells goes on losing money to the members that sell,
-which is the euro area's own difficulty and why Greece could not devalue its
-way out of one. A per-nation currency is a **named gap**: a second money, a
-conversion on every cross-border payment, and a conservation rule spanning
-both.
+The euro area's defining feature is **monetary union without fiscal
+union**: one currency, twenty governments, twenty tax systems, and no way
+to transfer from the surplus members to the deficit ones. That is the whole
+reason Greece could not be devalued out of its trouble. This model has the
+opposite: **one treasury, one `Account::State`, one `Government`, one tax
+rate and one public payroll for the whole planet** — `Economy::government`
+and `Economy::services` are each a single `Option`, not one per nation.
 
-**And the measurement makes the same point from the other side.** With the
-rate frozen the imbalance comes in anyway — from +0.5 to +0.203 over 2,000
-days — because the importers run out of money to import with. That is what
-an internal devaluation is, and it is the only adjustment a country without
-a currency of its own has.
+So it is not a union of countries. **What it behaves like is one country
+with several regions**, and that is a coherent thing to be: one currency,
+one exchequer, internal free trade, and provinces that differ in what the
+ground under them will grow and dig. What is actually per-nation here is
+short — the roads and their upkeep, the season, whether the territory
+reaches the sea, and a duty field that is empty in every world generated so
+far. Everything institutional is shared.
+
+Which makes the exchange rate honest as it stands: **it is that one
+country's rate against the rest of the world.** It is only the word
+"nations" that was carrying more than the code does.
+
+**That is the third time**, and this file already records the other two —
+`coping.rs` named a general strain ladder after Maslach's three burnout
+dimensions, and `growth.rs` calibrated personality change against
+life-satisfaction results. The habit is the same each time: a real
+phenomenon *resembles* the shape already built, and naming the shape after
+it imports claims nobody established. **Name the model after what it is.**
+
+A per-nation currency is a **named gap** and a large one — it is not an FX
+rate per nation, it is a second money, a conversion on every cross-border
+payment, a conservation rule spanning both, and a state and a tax system
+per nation before any of it means anything.
+
+**The measurement survives the renaming, and says what it always said.**
+With the rate frozen the imbalance comes in anyway — from +0.5 to +0.203
+over 2,000 days — because the importers run out of money to import with.
+That is an **internal devaluation**, and it is what adjustment looks like
+for anybody who cannot move a rate: a euro-area member, a dollarised
+country, a gold-standard economy in the 1930s, or a province of anywhere.
+The mechanism is real and general; what was wrong was claiming the fixture
+is a union.
 
 ### What is modelled is the real rate, not the market
 

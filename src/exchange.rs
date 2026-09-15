@@ -40,22 +40,35 @@
 //! nothing brings it back, and the only end state is a country with no
 //! money, which is exactly what this model was producing.
 //!
-//! ## One rate, because this is one money
+//! ## One rate, and the reason is the code rather than the world
 //!
 //! `region::Nations` folds every nation into **one ledger and one
 //! treasury**, which is what makes conservation mean anything across a
-//! border — and one money is one currency. So what floats here is the
-//! modelled world's currency against everything outside it, not one rate
-//! per nation.
+//! border — and one money is one currency. So what floats here is one rate
+//! against everything outside, not one per nation.
 //!
-//! That is a real arrangement rather than a shortcut, and it has the
-//! consequence a real one has: **a currency union cannot devalue for one
-//! member.** The rate settles where the union's balance sits, so a member
-//! that imports more than it sells goes on losing money to the members
-//! that sell — which is the euro area's own difficulty and why Greece
-//! could not devalue its way out of one. A per-nation currency is a
-//! **named gap**: it needs a second money, a conversion on every
-//! cross-border payment, and a conservation rule spanning both.
+//! **This was written up as a currency union and it is not one.** A union
+//! is monetary union *without* fiscal union — one currency, twenty
+//! governments, twenty tax systems, and no way to transfer from the
+//! surplus members to the deficit ones, which is the whole reason Greece
+//! could not be devalued out of its trouble. This model has the opposite:
+//! one treasury, one `Account::State`, one `Government`, one tax rate and
+//! one public payroll for the whole planet, because `Economy::government`
+//! and `Economy::services` are each a single `Option`.
+//!
+//! **What it behaves like is one country with several regions**, which is
+//! a coherent thing to be: one currency, one exchequer, internal free
+//! trade, and provinces differing in what the ground under them will grow
+//! and dig. What is genuinely per-nation is short — the roads and their
+//! upkeep, the season, whether the territory reaches the sea, and a duty
+//! field that is empty in every world generated so far. So the rate is
+//! that one country's rate against the rest of the world, and it is only
+//! the word "nations" that was carrying more than the code does.
+//!
+//! A per-nation currency is a **named gap** and a large one: not an FX
+//! rate per nation but a second money, a conversion on every cross-border
+//! payment, a conservation rule spanning both, and a state and a tax
+//! system per nation before any of it means anything.
 //!
 //! ## What is modelled is the real rate, not the market
 //!
