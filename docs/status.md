@@ -32,10 +32,10 @@ writing this file.
 
 | | | measured |
 |---|---|---|
-| Commit | `7f82ef7` + skill | 2026-09-15 |
+| Commit | `eed0220` + the person join | 2026-09-15 |
 | Source | 66 modules, 17 diagnostic binaries | 2026-09-15 |
 | Lines | ~109,000 including tests | 2026-09-15 |
-| Tests | 85 binaries, **880 passed, 0 failed, 0 ignored** | 2026-09-15 |
+| Tests | 86 binaries, **884 passed, 0 failed, 0 ignored** | 2026-09-15 |
 | Build | clean | 2026-09-15 |
 
 **The full release suite takes over ten minutes**, which is worth knowing
@@ -244,27 +244,78 @@ of the world can be live at once under any clock.
 
 Real defects, each visible in a test or measurable in a binary.
 
-1. **Firm-to-firm supply goes unpaid**, about 2.6e11 over 700 days — now the
+1. **A person is half joined.** `Person` now carries a `Mind` — so the man
+   with a trade is the man with convictions, drawn from his name so a world
+   rebuilds the same people. **Memory and relationships are still
+   separate**, so he has values and cannot remember you, and
+   `converse::ask` still takes `&Memory` and `&Relationship` as arguments a
+   caller promises are his. Nothing in production reads `Person::mind` yet
+   either — it is the prerequisite the value-gated social skills sit on,
+   and until they exist it is a field the gates check and the simulation
+   does not.
+
+   **And nothing derives a town's values.** `Mind::draw` takes a culture
+   and every person is drawn against a blank one. `custom.rs` derives
+   *norms* from the ground — size, remoteness, climate, trade — and says
+   outright it is deliberately mundane, grand moral questions being
+   `mind::Value`. There is no equivalent for those, so a place whose people
+   hold nothing in common is not yet a culture.
+
+   What it was, recorded because the shape is worth keeping:
+
+   *There was no whole person. Two halves sharing only an `Id<Person>` by
+   convention, and nothing constructing both for the same individual:*
+
+   | | holds | lives in |
+   |---|---|---|
+   | `person::Person` | trade, skill, practice, money, housing, employment, household | `populace.rs`'s arena, sampled per market |
+   | `mind::Mind` | personality, **values**, memory, relations, needs, coping, growth | nothing — `Mind::draw` is called by tests and `bin/minds` |
+
+   `converse::ask` takes `Id<Person>` handles for speaker and listener *and*
+   a `&Mind`, `&Memory` and `&Relationship` as separate arguments — so the
+   two halves being the same individual is **a caller's promise rather than
+   a type**. `GameState` owns `folk: Option<Populace>` and its own header
+   says minds "still live where they were". `populace.rs`, `labour.rs` and
+   `game.rs` mention `Mind` nowhere at all.
+
+   **The consequence is the one that matters for the design.** The NPC you
+   would walk up to and lie to does not exist: the one with a job, a wage
+   and a house has no values, no memory and no relationships, and the one
+   that can be lied to is employed by nobody, houses nobody and is paid by
+   nobody. It also blocks value-gated social skills outright — DF gates
+   Liar on a low regard for truth, and a `Person` has no values to gate on.
+
+   `Mind::draw(rng, culture)` makes the join feasible, and `custom.rs`
+   already derives a culture from the place. What it cannot be is *redrawn
+   on demand*: a mind accumulates memory, concerns and growth entries that
+   are not derivable from a seed, which `scaling.rs` already records —
+   *"a seed is not sufficient save state"*.
+
+   *The consequence: the person you could walk up to and lie to did not
+   exist — the one with a job and a house had no values, and the one that
+   could be lied to was employed by nobody.*
+
+2. **Firm-to-firm supply goes unpaid**, about 2.6e11 over 700 days — the
    largest unpaid category, ahead of households at the till.
-2. **A household buys the basket whatever its balance.** `consume_households`
+3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.
-3. **A sampled person's pocket is not the household pool.** Promoting
+4. **A sampled person's pocket is not the household pool.** Promoting
    somebody to detail creates their savings. The reification problem, not an
    accounting one.
-4. **Profit is still about half of household income** against a real ~40%,
+5. **Profit is still about half of household income** against a real ~40%,
    because firms pay no rent, interest or depreciation — all three fall into
    the residual.
-5. **Retail headcount about 4.9 points short**, because shop fixtures are
+6. **Retail headcount about 4.9 points short**, because shop fixtures are
    sized on commodity tonnage and real retail follows customers and floor.
-6. **The water table is too deep in the typical cell** — median 85 m against
+7. **The water table is too deep in the typical cell** — median 85 m against
    a far shallower reality. It cuts about 60% of candidate settlement sites.
-7. **`biota.game` has no consumer.** Generated, and nothing hunts it.
-8. **No history sim.** Polities are partitioned geographically and never
+8. **`biota.game` has no consumer.** Generated, and nothing hunts it.
+9. **No history sim.** Polities are partitioned geographically and never
    consolidate into great powers.
-9. **The trade multiples are the floor of the observed band**, not its
+10. **The trade multiples are the floor of the observed band**, not its
    middle; recentring at 8 days of food is a change to be measured.
-10. **`GameState` saves four of eight parts**, measured by serialising rather
+11. **`GameState` saves four of eight parts**, measured by serialising rather
     than typed in.
 
 ---

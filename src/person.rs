@@ -916,6 +916,33 @@ pub struct Person {
     /// what he started with, which is the nearest thing to a money ledger
     /// a person has yet.
     pub spent: f64,
+    /// **Who they are**, as against what they do for a living.
+    ///
+    /// Until this existed there was **no whole person in this
+    /// simulation**. There were two halves that shared an `Id<Person>` by
+    /// convention and nothing else: this type, which has a trade, a wage,
+    /// a house and a skill, and `mind::Mind`, which has a personality,
+    /// values, concerns and needs and which *nothing owned* —
+    /// `Mind::draw` was called by tests and one diagnostic binary, and
+    /// `populace.rs`, `labour.rs` and `game.rs` mentioned it nowhere.
+    ///
+    /// `converse::ask` takes `Id<Person>` handles for speaker and listener
+    /// **and** a `&Mind` as a separate argument, so the two being the same
+    /// individual was a caller's promise rather than a type. Which meant
+    /// the person you could walk up to and talk to did not exist: the one
+    /// with a job and a house had no values, no memory and no
+    /// relationships, and the one that could be lied to was employed by
+    /// nobody and paid by nobody.
+    ///
+    /// **Drawn from the name**, like `diligence`, so the same world
+    /// rebuilds the same people — and against a *neutral* culture,
+    /// because nothing in this model yet derives a town's values.
+    /// `custom.rs` derives its **norms** from the ground and says outright
+    /// that it is deliberately mundane and that grand moral questions
+    /// belong to `mind::Value`; no equivalent exists for those. A caller
+    /// that has a real culture redraws. That is the same honesty as
+    /// `aptitude` being middling until somebody has a distribution.
+    pub mind: crate::mind::Mind,
 }
 
 impl Person {
@@ -958,6 +985,14 @@ impl Person {
             diligence,
             // Middling until a caller draws from a real distribution.
             aptitude: 0.5,
+            // **The same name gives the same person**, which is the rule
+            // `diligence` above already keeps and what makes a world
+            // rebuildable. A neutral culture, because no town yet has
+            // values of its own for somebody to depart from.
+            mind: crate::mind::Mind::draw(
+                &mut crate::rng::Rng::new(hash_seed(name_for_traits, 0xB12D_5EED_0001)),
+                &[],
+            ),
             practice: [0.0; 11],
             standing: 0.5,
             visibility: 0.0,
@@ -2045,6 +2080,16 @@ fn deliver(
 /// decide anything, because hunger is what decides it.
 /// A deterministic 0..1 from a name and a number. Reputation must rebuild
 /// identically from a seed like everything else.
+fn hash_seed(name: &str, salt: u64) -> u64 {
+    let mut h = salt ^ 0xA076_1D64_78BD_642F;
+    for b in name.as_bytes() {
+        h = (h ^ *b as u64).wrapping_mul(0x1000_0000_01B3);
+    }
+    h ^= h >> 33;
+    h = h.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+    h ^ (h >> 33)
+}
+
 fn hash_unit(name: &str, salt: u64) -> f64 {
     let mut h = salt ^ 0xA076_1D64_78BD_642F;
     for b in name.as_bytes() {
