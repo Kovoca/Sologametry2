@@ -30,7 +30,7 @@ fn somebody_has_to_fix_things_and_somewhere_has_to_be_open() {
         .services
         .as_ref()
         .expect("a nation with no services in it");
-    let g = e.government.as_ref().expect("a nation with no state in it");
+    let g = e.government(0).expect("a nation with no state in it");
 
     let private = s.share_of_workforce(&e);
     assert!(

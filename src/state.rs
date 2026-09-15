@@ -181,13 +181,24 @@ impl Government {
     /// falls short of what the lines want, every line is cut in
     /// proportion — which is not what real states do, but it is honest
     /// until C.3's priorities are built.
-    pub fn govern(econ: &Economy, capacity: Capacity) -> Government {
+    /// **One nation's state**, sized on that nation's economy.
+    ///
+    /// It used to sum every market in the economy, which is right for a
+    /// world holding one country and wrong for a world holding four: a
+    /// merged world came out with a single exchequer collecting everywhere
+    /// and staffing everywhere, so a nation that could not raise a penny
+    /// still had schools, paid for by its neighbours. `nation` is what it
+    /// governs, and `posts` stays the full length of the market vector
+    /// with nothing in the towns that are not its own — so `posts_in`
+    /// answers for any market and answers nought where it should.
+    pub fn govern(econ: &Economy, capacity: Capacity, nation: u16) -> Government {
         // Taxable activity: what the economy is worth in a day. Household
         // spending stands in for it, which understates an economy with a
         // lot of intermediate trade and is the right order of magnitude.
         let daily_economy: f64 = econ
             .markets
             .iter()
+            .filter(|m| m.nation == nation)
             .map(|m| {
                 crate::econ::Commodity::ALL
                     .iter()
@@ -214,10 +225,23 @@ impl Government {
 
         // Posts follow the population and the funding together: a service
         // funded at four fifths employs four fifths of the staff.
+        //
+        // **And only in its own country.** This walked every market in the
+        // economy, so in a merged world each nation's government staffed
+        // every town on the planet and every nation came out with an
+        // identical establishment of 1.93e7 — the whole world's, four
+        // times over. The money stayed straight because `tax_and_spend`
+        // filtered again on its way out, which is exactly the kind of
+        // second guard that hides the first one being wrong: anything
+        // reading `posts` directly, including `bin/jobs`, got a world
+        // figure and called it a country's.
         let posts = econ
             .markets
             .iter()
             .map(|m| {
+                if m.nation != nation {
+                    return 0.0;
+                }
                 Service::ALL
                     .iter()
                     .enumerate()

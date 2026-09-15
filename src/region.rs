@@ -2097,7 +2097,7 @@ impl Region {
             unserved_power: 0.0,
             unmet_demand: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
-            government: None,
+            governments: Default::default(),
             logistics: None,
             treasury: crate::money::Treasury::new(),
             told_the_day: None,
@@ -2114,7 +2114,7 @@ impl Region {
             arrivals: Vec::new(),
             staff_today: Vec::new(),
             payroll_met: Vec::new(),
-            state_afford: 1.0,
+            state_afford: Default::default(),
             building_stock: Vec::new(),
             building_condition: Vec::new(),
             services: None,
@@ -2192,13 +2192,15 @@ impl Region {
         // Doctrine decides capacity here, on the same logic it decides
         // maintenance and spares: a state that keeps its network up is a
         // state that can collect what it is owed.
-        economy.government = Some(crate::state::Government::govern(
-            &economy,
-            match doctrine {
-                Doctrine::Prudent => crate::state::Capacity::Developed,
-                Doctrine::Negligent => crate::state::Capacity::Middling,
-            },
-        ));
+        let capacity = match doctrine {
+            Doctrine::Prudent => crate::state::Capacity::Developed,
+            Doctrine::Negligent => crate::state::Capacity::Middling,
+        };
+        for n in economy.nations() {
+            economy
+                .governments
+                .insert(n, crate::state::Government::govern(&economy, capacity, n));
+        }
 
         // **And the private services**: construction, hospitality,
         // recreation and offices, which together are about 43% of all
@@ -2417,15 +2419,31 @@ impl Nations {
         // households drained to under one unit a head while their service
         // accounts held 1-5 billion each, and that — not the wage scale it
         // was blamed on — was most of the money owed and never paid.
+        // **A state for each nation, over the merged world.**
+        //
+        // Re-founding was needed because `absorb` carries a guest nation's
+        // works across and not its institutions, so every nation but the
+        // first had no public sector at all. The first fix founded *one*
+        // government over the whole world, which cured the absence and
+        // created a different wrong thing: one exchequer for several
+        // countries, quietly paying a poor nation's teachers out of a rich
+        // one's tax, and no way to have a weak state stand next to a strong
+        // one. There is one per nation now.
         let capacity = economy
-            .government
-            .as_ref()
+            .governments
+            .values()
+            .next()
             .map(|g| g.capacity)
             .unwrap_or(match doctrine {
                 Doctrine::Prudent => crate::state::Capacity::Developed,
                 Doctrine::Negligent => crate::state::Capacity::Middling,
             });
-        economy.government = Some(crate::state::Government::govern(&economy, capacity));
+        economy.governments.clear();
+        for n in economy.nations() {
+            economy
+                .governments
+                .insert(n, crate::state::Government::govern(&economy, capacity, n));
+        }
         economy.services = Some(crate::services::Services::provide(&economy));
         economy.issue_currency();
         // **Before anybody asks what a haul costs.** The table is rebuilt at

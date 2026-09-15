@@ -59,8 +59,17 @@ pub enum Account {
     /// its retained earnings — and it is also where everybody else's money
     /// actually sits, which is a different fact and lives in `bank.rs`.
     Bank(usize),
-    /// The state: one treasury, taxing and spending.
-    State,
+    /// **One nation's state**, taxing and spending inside its own borders.
+    ///
+    /// It was `State` with nothing on it — one exchequer for the whole
+    /// modelled world, however many countries were in it. That is not a
+    /// currency union, which has one money and many governments; it is one
+    /// country, and it made a poor nation's schools quietly paid for by a
+    /// rich neighbour's tax. Worse, it made `Capacity` — *a weak state
+    /// cannot tax what it cannot reach*, the feedback loop that keeps weak
+    /// states weak — impossible to express in a world with more than one
+    /// nation in it, because there was only ever one capacity.
+    State(u16),
     /// **The rest of the world.** A country is not a closed system: it
     /// pays for what it imports and is paid for what it exports, and the
     /// difference has to go somewhere. Without this account, a nation that
@@ -75,7 +84,7 @@ impl Account {
             Account::Bank(i) => format!("bank {i}"),
             Account::Households(m) => format!("households {m}"),
             Account::ServiceSector(m) => format!("services {m}"),
-            Account::State => "the state".into(),
+            Account::State(n) => format!("the state of nation {n}"),
             Account::Abroad => "abroad".into(),
         }
     }
@@ -217,7 +226,7 @@ impl Treasury {
             return 0.0;
         }
         let capped = match from {
-            Account::Abroad | Account::State => amount,
+            Account::Abroad | Account::State(_) => amount,
             _ => amount.min(self.balance(from).max(0.0)),
         };
         if capped <= 1e-9 {
@@ -384,7 +393,10 @@ impl crate::save::Store for Account {
                 w.u8(4);
                 w.len(*i);
             }
-            Account::State => w.u8(5),
+            Account::State(n) => {
+                w.u8(5);
+                w.u16(*n);
+            }
             Account::Abroad => w.u8(6),
         }
     }
@@ -395,7 +407,7 @@ impl crate::save::Store for Account {
             2 => Account::Households(r.read_len()?),
             3 => Account::ServiceSector(r.read_len()?),
             4 => Account::Bank(r.read_len()?),
-            5 => Account::State,
+            5 => Account::State(r.u16()?),
             6 => Account::Abroad,
             n => return Err(SaveError::UnknownCode("account", n as u32)),
         })

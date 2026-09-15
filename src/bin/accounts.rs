@@ -25,7 +25,7 @@ fn class(a: Account) -> &'static str {
         Account::Firm(_) => "firms",
         Account::Households(_) => "households",
         Account::ServiceSector(_) => "services",
-        Account::State => "state",
+        Account::State(_) => "state",
         Account::Abroad => "abroad",
         _ => "other",
     }

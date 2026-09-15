@@ -3049,7 +3049,7 @@ pub struct Economy {
     /// economy and spends it on services, and those services are the
     /// largest single block of jobs in a developed country — 14-21% of
     /// the workforce, and none of it existed here.
-    pub government: Option<crate::state::Government>,
+    pub governments: std::collections::BTreeMap<u16, crate::state::Government>,
     /// **The private services** — construction, hospitality, recreation,
     /// offices. About 43% of all employment, and none of it existed.
     pub services: Option<crate::services::Services>,
@@ -3167,7 +3167,7 @@ pub struct Economy {
     /// under-staffs its hospitals, which is exactly how `Capacity` already
     /// says under-funding shows up: as fewer people, not a worse
     /// multiplier.
-    pub state_afford: f64,
+    pub state_afford: std::collections::BTreeMap<u16, f64>,
     /// **The fabric of each town**, in tonnes of building.
     ///
     /// Real building stock comes to something like 50-60 tonnes a head
@@ -3881,7 +3881,7 @@ impl Economy {
         self.treasury.pay(
             day,
             Account::Firm(site),
-            Account::State,
+            Account::State(self.markets[m].nation),
             at * at_their_port * duty,
             Why::Tax,
         );
@@ -4872,21 +4872,27 @@ impl Economy {
     /// which was the earlier design, and it could not work, because a
     /// commodity nobody wants is a commodity nothing ever delivers.
     fn supply_the_state(&mut self) {
-        if self.government.is_none() {
+        if self.governments.is_empty() {
             return;
         }
-        let mut rated = 0.0;
-        let mut served = 0.0;
+        // **Each nation's own hospitals**, because a health service that
+        // cannot get medicine is that country's problem and not its
+        // neighbour's.
+        let mut rated: std::collections::BTreeMap<u16, f64> = Default::default();
+        let mut served: std::collections::BTreeMap<u16, f64> = Default::default();
         for s in self.ledger.sites.iter() {
             if s.kind != SiteKind::Hospital {
                 continue;
             }
-            rated += s.throughput;
-            served += s.ran;
+            let n = self.markets[s.market].nation;
+            *rated.entry(n).or_default() += s.throughput;
+            *served.entry(n).or_default() += s.ran;
         }
-        if let Some(gov) = self.government.as_mut() {
-            gov.supplied = if rated > 1e-9 {
-                (served / rated).clamp(0.0, 1.0)
+        for (n, gov) in self.governments.iter_mut() {
+            let r = rated.get(n).copied().unwrap_or(0.0);
+            let v = served.get(n).copied().unwrap_or(0.0);
+            gov.supplied = if r > 1e-9 {
+                (v / r).clamp(0.0, 1.0)
             } else {
                 1.0
             };
@@ -4929,7 +4935,15 @@ impl Economy {
                 self.treasury.open(Account::Firm(i), each);
             }
         }
-        self.treasury.open(Account::State, national * 0.10);
+        // **A tenth to each state**, one per nation. One exchequer for
+        // several countries is one country.
+        let nations = self.nations();
+        if !nations.is_empty() {
+            let each = national * 0.10 / nations.len() as f64;
+            for n in nations {
+                self.treasury.open(Account::State(n), each);
+            }
+        }
         // The rest of the world starts with a great deal, because from
         // here it is effectively unlimited — what matters is that trade
         // moves money across the boundary rather than conjuring it.
@@ -5005,31 +5019,18 @@ impl Economy {
     /// actually reach. **A weak state cannot tax what it cannot reach**,
     /// and the shortfall shows up the way it does everywhere else: as
     /// fewer people paid, not a worse multiplier.
+    ///
+    /// **One nation at a time**, because an exchequer is a country's and
+    /// not a continent's. Taxing and spending over every market in the
+    /// economy meant a merged world had one treasury: a nation that could
+    /// not raise a penny still had schools, paid for by its neighbours,
+    /// and the whole of `Capacity` — the reason a weak state stays weak —
+    /// could not be expressed at all, because there was only one of it.
     fn tax_and_spend(&mut self) {
         use crate::money::{Account, Why};
-        let Some(gov) = self.government.as_ref() else {
-            return;
-        };
         let day = self.ledger.day;
-        let ceiling = gov.capacity.tax_take() * gov.capacity.collection();
-        let posts: Vec<f64> = (0..self.markets.len()).map(|m| gov.posts_in(m)).collect();
-
-        let mut bill: f64 = (0..self.markets.len())
-            .map(|m| posts[m] * self.day_rate_here(m))
-            .sum();
-        // Hospitals are the state's payroll too, and it has to raise the
-        // money for them like everything else it does.
-        for site in 0..self.ledger.sites.len() {
-            if self.ledger.sites[site].kind == SiteKind::Hospital {
-                let m = self.ledger.sites[site].market;
-                bill += self.staff_today.get(site).copied().unwrap_or(0.0) * self.day_rate_here(m);
-            }
-        }
-        if bill <= 0.0 {
-            return;
-        }
-
-        // Who took money over the counter today, and how much.
+        // Who took money over the counter today, and how much. Read once
+        // and split by whose country the till stands in.
         let takings: Vec<(usize, f64)> = self
             .treasury
             .today
@@ -5040,45 +5041,83 @@ impl Economy {
                 _ => None,
             })
             .collect();
-        let turnover: f64 = takings.iter().map(|&(_, a)| a).sum();
-        if turnover <= 0.0 {
-            return;
-        }
 
-        // What it needs, or what it can reach, whichever is less.
-        let wanted = bill.min(turnover * ceiling);
-        let rate = wanted / turnover;
-        let mut collected = 0.0;
-        for (firm, amount) in takings {
-            collected += self.treasury.pay(
-                day,
-                Account::Firm(firm),
-                Account::State,
-                amount * rate,
-                Why::Tax,
-            );
-        }
+        for nation in self.nations() {
+            let Some(gov) = self.governments.get(&nation) else {
+                continue;
+            };
+            let ceiling = gov.capacity.tax_take() * gov.capacity.collection();
+            let mine: Vec<usize> = (0..self.markets.len())
+                .filter(|&m| self.markets[m].nation == nation)
+                .collect();
+            // **`posts_in` already answers nought outside its own country**,
+            // so nothing here re-checks it. Zeroing again looked like a
+            // safeguard and was a second copy of the rule — which is how
+            // `govern` came to be staffing every town on the planet without
+            // anything noticing: the money filtered twice and the
+            // establishment not at all.
+            let posts: Vec<f64> = (0..self.markets.len()).map(|m| gov.posts_in(m)).collect();
 
-        // And pay its own people out of it. A teacher is a job somebody
-        // holds, and a state that could not collect enough employs fewer
-        // of them rather than paying them less.
-        let afford = if bill > 0.0 {
-            (collected / bill).min(1.0)
-        } else {
-            0.0
-        };
-        // Remembered for tomorrow, when the hospitals are paid before any
-        // of this has happened.
-        self.state_afford = afford;
-        for m in 0..self.markets.len() {
-            let pay = posts[m] * self.day_rate_here(m) * afford;
-            self.treasury.pay(
-                day,
-                Account::State,
-                Account::Households(m),
-                pay,
-                Why::PublicSpending,
-            );
+            let mut bill: f64 = mine.iter().map(|&m| posts[m] * self.day_rate_here(m)).sum();
+            // Hospitals are the state's payroll too, and it has to raise
+            // the money for them like everything else it does.
+            for site in 0..self.ledger.sites.len() {
+                if self.ledger.sites[site].kind == SiteKind::Hospital {
+                    let m = self.ledger.sites[site].market;
+                    if self.markets[m].nation != nation {
+                        continue;
+                    }
+                    bill +=
+                        self.staff_today.get(site).copied().unwrap_or(0.0) * self.day_rate_here(m);
+                }
+            }
+            if bill <= 0.0 {
+                continue;
+            }
+
+            // **Only the tills inside its own borders.** A state taxes what
+            // it can reach, and it cannot reach a shop in another country.
+            let ours: Vec<(usize, f64)> = takings
+                .iter()
+                .copied()
+                .filter(|&(i, _)| self.markets[self.ledger.sites[i].market].nation == nation)
+                .collect();
+            let turnover: f64 = ours.iter().map(|&(_, a)| a).sum();
+            if turnover <= 0.0 {
+                continue;
+            }
+
+            // What it needs, or what it can reach, whichever is less.
+            let wanted = bill.min(turnover * ceiling);
+            let rate = wanted / turnover;
+            let mut collected = 0.0;
+            for (firm, amount) in ours {
+                collected += self.treasury.pay(
+                    day,
+                    Account::Firm(firm),
+                    Account::State(nation),
+                    amount * rate,
+                    Why::Tax,
+                );
+            }
+
+            // And pay its own people out of it. A teacher is a job somebody
+            // holds, and a state that could not collect enough employs
+            // fewer of them rather than paying them less.
+            let afford = (collected / bill).min(1.0);
+            // Remembered for tomorrow, when the hospitals are paid before
+            // any of this has happened.
+            self.state_afford.insert(nation, afford);
+            for &m in mine.iter() {
+                let pay = posts[m] * self.day_rate_here(m) * afford;
+                self.treasury.pay(
+                    day,
+                    Account::State(nation),
+                    Account::Households(m),
+                    pay,
+                    Why::PublicSpending,
+                );
+            }
         }
     }
 
@@ -5169,11 +5208,12 @@ impl Economy {
                 continue;
             }
             let m = self.ledger.sites[site].market;
+            let nation = self.markets[m].nation;
             let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
-            let due = hands * self.day_rate_here(m) * self.state_afford;
+            let due = hands * self.day_rate_here(m) * self.state_affords(nation);
             self.treasury.pay(
                 day,
-                Account::State,
+                Account::State(nation),
                 Account::Firm(site),
                 due,
                 Why::PublicSpending,
@@ -5909,6 +5949,32 @@ impl Economy {
         } else {
             paid / people
         }
+    }
+
+    /// **Every nation in this economy**, in order and once each.
+    ///
+    /// The ledger is one world because tonnage is physics: a cargo leaving
+    /// one country is the same tonnes arriving in another, and two ledgers
+    /// would make it a subtraction here and an invention there. **Money and
+    /// the state are not physics.** They are institutions, one set per
+    /// country, and this is what anything institutional has to loop over.
+    pub fn nations(&self) -> Vec<u16> {
+        let mut seen: Vec<u16> = self.markets.iter().map(|m| m.nation).collect();
+        seen.sort_unstable();
+        seen.dedup();
+        seen
+    }
+
+    /// **The state a town lives under**, if it has one.
+    pub fn government(&self, market: usize) -> Option<&crate::state::Government> {
+        self.markets
+            .get(market)
+            .and_then(|m| self.governments.get(&m.nation))
+    }
+
+    /// What that state could meet of its wage bill, carried from yesterday.
+    pub fn state_affords(&self, nation: u16) -> f64 {
+        self.state_afford.get(&nation).copied().unwrap_or(0.0)
     }
 
     /// **What a tonne of `c` costs at this particular works.**

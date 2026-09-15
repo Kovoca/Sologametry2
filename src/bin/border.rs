@@ -83,7 +83,7 @@ fn main() {
                         Account::Abroad => "abroad".to_string(),
                         Account::Households(_) => "households".to_string(),
                         Account::ServiceSector(_) => "services".to_string(),
-                        Account::State => "state".to_string(),
+                        Account::State(n) => format!("state {n}"),
                         Account::Firm(_) => "firms".to_string(),
                         _ => "other".to_string(),
                     };

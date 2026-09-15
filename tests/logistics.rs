@@ -43,7 +43,7 @@ fn carriers_even_out_a_country_that_pairwise_trade_cannot() {
                 held / e.daily_draw(m, Commodity::ProcessedFood).max(1e-9)
             })
             .collect();
-        let supplied = e.government.as_ref().map(|g| g.supplied).unwrap_or(0.0);
+        let supplied = e.government(0).map(|g| g.supplied).unwrap_or(0.0);
         (c, supplied)
     };
 

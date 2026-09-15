@@ -23,7 +23,7 @@ fn the_state_is_the_largest_employer_there_is() {
     // tenth of what people actually do, and there was nowhere at all for
     // the other nine tenths to go.
     let e = a_nation(Doctrine::Prudent).economy;
-    let g = e.government.as_ref().expect("a nation with no state in it");
+    let g = e.government(0).expect("a nation with no state in it");
 
     let share = g.share_of_workforce(&e);
     assert!(
@@ -55,8 +55,8 @@ fn a_state_that_cannot_collect_cannot_provide() {
     // middle-income, 10-18% where control is thin.
     let e = a_nation(Doctrine::Prudent).economy;
 
-    let strong = Government::govern(&e, Capacity::Developed);
-    let weak = Government::govern(&e, Capacity::Weak);
+    let strong = Government::govern(&e, Capacity::Developed, 0);
+    let weak = Government::govern(&e, Capacity::Weak, 0);
 
     assert!(
         weak.revenue < strong.revenue * 0.5,
@@ -142,8 +142,8 @@ fn a_below_replacement_birth_rate_is_only_destiny_if_nobody_pays() {
     // what a parent pays at about 3% of income and gets both back.
     let e = a_nation(Doctrine::Prudent).economy;
 
-    let strong = Government::govern(&e, Capacity::Developed);
-    let weak = Government::govern(&e, Capacity::Weak);
+    let strong = Government::govern(&e, Capacity::Developed, 0);
+    let weak = Government::govern(&e, Capacity::Weak, 0);
 
     let borne_strong = strong.childcare_borne_by_parents();
     let borne_weak = weak.childcare_borne_by_parents();

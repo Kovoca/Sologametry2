@@ -470,7 +470,7 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
     // Two identical people, one with a toddler — **in a country with no
     // family policy**, which is the case the 65% figure describes.
     let mut r = a_nation(20260828);
-    r.economy.government = None;
+    r.economy.governments.clear();
     let mut free = Person::new("Ann", Trade::Shopworker, 0, 200.0);
     let mut parent = Person::new("Ann", Trade::Shopworker, 0, 200.0);
     parent.children.push(1.0);
@@ -511,10 +511,14 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
     // country with a funded family policy and the constraint largely goes
     // away — which is the entire argument for having one.
     let mut supported = a_nation(20260828);
-    supported.economy.government = Some(scale_sim::state::Government::govern(
-        &supported.economy,
-        scale_sim::state::Capacity::Developed,
-    ));
+    for n in supported.economy.nations() {
+        let gov = scale_sim::state::Government::govern(
+            &supported.economy,
+            scale_sim::state::Capacity::Developed,
+            n,
+        );
+        supported.economy.governments.insert(n, gov);
+    }
     let mut helped = Person::new("Ann", Trade::Shopworker, 0, 200.0);
     helped.children.push(1.0);
     helped.children.push(3.0);

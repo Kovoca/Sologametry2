@@ -394,7 +394,7 @@ fn medicine_is_made_from_oil_and_a_hospital_needs_it() {
         );
     }
 
-    let gov = e.government.as_ref().expect("a nation with a state");
+    let gov = e.government(0).expect("a nation with a state");
     // **This was 72% until the country had hauliers.** Medical grade is
     // made in one town and wanted in all of them, and no pairwise
     // mechanism could move it: no shop sells it and no recipe consumes

@@ -990,8 +990,14 @@ fn every_town_in_a_merged_world_has_its_services_and_its_state() {
     {
         let e = &n.economy;
         let svc = e.services.as_ref().expect("a world with no service sector");
-        let gov = e.government.as_ref().expect("a world with no state");
         for m in 0..e.markets.len() {
+            // **And it is that town's own state**, one per nation: a world
+            // with a single exchequer paid a poor nation's teachers out of
+            // a rich one's tax and could not hold a weak state beside a
+            // strong one at all.
+            let gov = e
+                .government(m)
+                .unwrap_or_else(|| panic!("{} has no state over it", e.markets[m].name));
             assert!(
                 svc.total_in(m) > 0.0 && gov.posts_in(m) > 0.0,
                 "{} (nation {}) has {:.0} service posts and {:.0} public ones",
@@ -1271,4 +1277,177 @@ fn what_can_tie_up_is_decided_by_the_water() {
     for m in n.economy.markets.iter().filter(|m| !m.port) {
         assert_eq!(m.berth, Berth::None, "{} is inland and has a berth", m.name);
     }
+}
+
+/// **A country's taxes pay its own teachers.**
+///
+/// `Account::State` carried nothing on it, so a merged world had **one
+/// exchequer for however many countries were in it**: it collected at every
+/// till on the planet and staffed every town, which quietly paid a poor
+/// nation's schools out of a rich neighbour's tax. That is not a currency
+/// union — a union has one money and many governments — it is one country,
+/// and this world is supposed to hold several.
+///
+/// The gate is the identity rather than a level: every penny of tax reaches
+/// the state of the nation the till stands in, and every penny of public
+/// spending leaves the state of the nation the wage is paid in. A single
+/// crossing is a defect and there is no tolerance to set.
+#[test]
+fn a_countrys_taxes_pay_its_own_teachers() {
+    use scale_sim::money::Account;
+    let mut n = nations(7, 4);
+    let mut taxed = 0.0f64;
+    let mut spent = 0.0f64;
+    let mut crossings = Vec::new();
+    for _ in 0..200 {
+        n.economy.step();
+        let e = &n.economy;
+        let nation_of_site = |s: usize| e.markets[e.ledger.sites[s].market].nation;
+        for t in e.treasury.today.iter() {
+            match (t.from, t.to) {
+                (Account::Firm(s), Account::State(g)) => {
+                    taxed += t.amount;
+                    if nation_of_site(s) != g {
+                        crossings.push(format!(
+                            "day {}: nation {} paid {:.0} of tax to the state of {g}",
+                            e.ledger.day,
+                            nation_of_site(s),
+                            t.amount
+                        ));
+                    }
+                }
+                (Account::State(g), Account::Households(m)) => {
+                    spent += t.amount;
+                    if e.markets[m].nation != g {
+                        crossings.push(format!(
+                            "day {}: the state of {g} paid {:.0} to households in nation {}",
+                            e.ledger.day, t.amount, e.markets[m].nation
+                        ));
+                    }
+                }
+                (Account::State(g), Account::Firm(s)) => {
+                    spent += t.amount;
+                    if nation_of_site(s) != g {
+                        crossings.push(format!(
+                            "day {}: the state of {g} paid {:.0} to a firm in nation {}",
+                            e.ledger.day,
+                            t.amount,
+                            nation_of_site(s)
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(
+        taxed > 0.0 && spent > 0.0,
+        "nothing was taxed or spent at all, so the gate proves nothing: \
+         {taxed:.0} in, {spent:.0} out"
+    );
+    crossings.truncate(4);
+    assert!(
+        crossings.is_empty(),
+        "public money crossed a border: {crossings:?}"
+    );
+    // And every nation actually has one, rather than one of them having all
+    // the tills.
+    let e = &n.economy;
+    for nation in e.nations() {
+        assert!(
+            e.governments.contains_key(&nation),
+            "nation {nation} has no state"
+        );
+        assert!(
+            e.treasury.balance(Account::State(nation)) != 0.0,
+            "the state of nation {nation} never held a penny"
+        );
+        // **And it employs its own people, not the planet's.** `govern`
+        // walked every market in the economy, so each nation's government
+        // staffed every town on it and all four came out with an identical
+        // establishment — the whole world's, four times over. The money
+        // stayed straight because the spending filtered again on the way
+        // out, which is how the first filter being missing stayed hidden.
+        //
+        // Real staffing sums to about 8.7% of the population across
+        // health, education, administration, safety and defence, and a
+        // fully funded state reaches it.
+        let people: f64 = e
+            .markets
+            .iter()
+            .filter(|m| m.nation == nation)
+            .map(|m| m.population)
+            .sum();
+        let posts: f64 = e.governments[&nation].posts.iter().sum();
+        let share = posts / people.max(1.0);
+        assert!(
+            (0.02..0.12).contains(&share),
+            "the state of nation {nation} employs {:.1}% of its people, against a real \
+             8.7% for a fully funded one",
+            100.0 * share
+        );
+    }
+}
+
+/// **A weak state can stand next to a strong one.**
+///
+/// The thing a single exchequer made impossible. `Capacity` is this
+/// project's account of why weak states stay weak — effective tax takes run
+/// 35-50% for a high-capacity developed state and 10-18% where control is
+/// thin, and under-funding shows up as **fewer people**, not a worse
+/// multiplier — and with one government for the whole world there was only
+/// ever one capacity, so the comparison could not be made inside a world at
+/// all.
+#[test]
+fn a_weak_state_can_stand_next_to_a_strong_one() {
+    use scale_sim::money::Account;
+    use scale_sim::state::{Capacity, Government};
+    let mut n = nations(7, 4);
+    let all = n.economy.nations();
+    assert!(all.len() >= 2, "this fixture has only one nation in it");
+    let (rich, poor) = (all[0], all[1]);
+    for (nation, capacity) in [(rich, Capacity::Developed), (poor, Capacity::Weak)] {
+        let gov = Government::govern(&n.economy, capacity, nation);
+        n.economy.governments.insert(nation, gov);
+    }
+    for _ in 0..200 {
+        n.economy.step();
+    }
+    let e = &n.economy;
+    let people = |g: u16| -> f64 {
+        e.markets
+            .iter()
+            .filter(|m| m.nation == g)
+            .map(|m| m.population)
+            .sum::<f64>()
+            .max(1.0)
+    };
+    // **Under-funding shows up as fewer people**, not as a worse
+    // multiplier, which is this project's own account of what a weak state
+    // is. Both states meet nearly all of their own payroll — 0.983 against
+    // 0.989 — because a state that cannot collect hires fewer teachers and
+    // then pays the ones it has, so what share of the bill was met
+    // discriminates nothing. The establishment does.
+    let posts = |g: u16| {
+        e.governments
+            .get(&g)
+            .map(|gov| gov.posts.iter().sum::<f64>())
+            .unwrap_or(0.0)
+            / people(g)
+    };
+    assert!(
+        posts(rich) > posts(poor) * 1.2,
+        "a developed state employs {:.4} of its people against a weak one's {:.4}",
+        posts(rich),
+        posts(poor)
+    );
+    // And it is poorer in the plainest sense: less in its treasury for
+    // everybody it has to serve.
+    let per_head = |g: u16| e.treasury.balance(Account::State(g)) / people(g);
+    assert!(
+        per_head(rich) > per_head(poor),
+        "the developed state holds {:.4} a head against the weak one's {:.4}",
+        per_head(rich),
+        per_head(poor)
+    );
 }

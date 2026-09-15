@@ -3284,6 +3284,10 @@ than it makes sends money out through its shops and nothing brings it
 back. This file already named it — profit paid in the firm's own town
 understates how widely ownership is spread.
 
+*(And the fix here was half right. Founding **one** government over the
+merged world cured the absence and made the world one country, which is
+corrected below.)*
+
 ### A company is owned by people who do not live next to it
 
 So a company's profit is paid across its nation in proportion to where
@@ -4129,6 +4133,117 @@ day 383   food cover differs by 30 days
   holds moved the spread from one town to another and left it the same size.
   Every one of them is a defensible rule and not one of them was the fault:
   **the fault was the amplifier, not any of the things being amplified.**
+
+## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
+
+The design is four levels of economy — **local, regional, national,
+international** — and the code had about one and a half. A town is a real
+economic place: prices, stock, shops, a labour market. The world outside is
+real: parities, a border, an exchange rate. In between, `nation` was a
+`u16` on a market deciding the roads, the season, whether the territory
+reaches the sea, and a duty field that is empty in every world generated so
+far. **Everything institutional was singular**: one treasury, one
+`Account::State`, one `Government`, one tax rate, one public payroll for
+the whole planet.
+
+**And the previous commit did it.** `absorb` carries a guest nation's works
+across and not its institutions, so every nation but the first had no
+public sector at all — 37% and a sixth of employment, unpaid. Re-founding
+fixed the absence by founding *one* government over the merged world, which
+is a different wrong thing and a subtler one: a nation that could not raise
+a penny still had schools, paid for by its neighbours.
+
+So there is a state per nation. `Account::State(u16)` says whose; a
+`Government` per nation sized on that nation's own economy; tax collected
+only from the tills inside its borders and spent only on its own towns; a
+hospital paid by the state of the country it stands in; and the things a
+state decides for the people under it — infant mortality through
+`health_delivered`, what a parent pays for childcare, what a maintenance
+grant carries — read the state where somebody *lives* rather than one
+figure for the planet.
+
+### The second guard that hid the first one being missing
+
+`Government::govern` built its establishment by walking **every market in
+the economy**, so each nation's government staffed every town on the
+planet and all four came out with an identical figure — 1.93e7 posts, the
+whole world's, four times over.
+
+It stayed invisible because the money filtered twice. `tax_and_spend` also
+zeroed the posts outside its own nation on the way out, so every payment
+went to the right households and the books balanced perfectly. **What was
+wrong was everything computed from the establishment rather than from the
+payments** — `bin/jobs` summing a government's posts got a world figure and
+called it a country's, and a nation read as employing 19-43% of its people.
+
+Corrected, every nation comes out at **0.0768 posts a head**, which is the
+8.7% of population this file already derives from real staffing ratios —
+health, education and administration at one in forty-five each, safety at
+one in 350, defence at one in 450. And the duplicate zeroing is gone,
+because a rule written twice is how the first copy comes to be missing
+without anybody noticing.
+
+### What it makes possible that was impossible
+
+**A weak state standing next to a strong one.** `Capacity` is this
+project's account of why weak states stay weak — effective takes of 35-50%
+for a high-capacity developed state against 10-18% where control is thin,
+and under-funding showing up as *fewer people* rather than a worse
+multiplier — and with one government for the whole world there was only
+ever one capacity. The comparison could not be made inside a world at all.
+
+**And the gate had to measure the right thing.** What share of its wage
+bill each state met does not discriminate: a developed state came out at
+0.983 and a weak one at **0.989**, because a state that cannot collect
+hires fewer teachers and then pays the ones it has. The establishment is
+what differs, which is exactly what this file already says under-funding
+does.
+
+**Gates, each checked by deleting its mechanism.** Every penny of tax
+reaches the state of the nation the till stands in and every penny of
+public spending leaves the state of the nation the wage is paid in — an
+identity, so a single crossing is a defect and there is no threshold to
+set. Tax every till on the planet and it names the crossings; found one
+exchequer again and a nation has no state; staff every town and a state
+employs 38.4% of its people.
+
+Three sabotages stay green and are recorded rather than dressed up:
+spending over every market is harmless *because* `posts_in` now answers
+nought outside its own country, which is the point; sizing a government's
+budget on every market changes nothing observable, because revenue and
+what the services want are both proportional to the same figure and only
+their ratio is read; and paying a hospital without its own state's
+affordability is not caught, because nothing yet asserts a state cannot
+spend what it did not raise — `Treasury::pay` lets the state overdraw by
+design, the same as `Abroad`.
+
+### Where the four levels actually stand
+
+| | what it owns here |
+|---|---|
+| **local** (a town) | prices, stock, shops, its own labour market, its service sector's account — **built** |
+| **regional** | **nothing. There is no rung between a town and a nation** |
+| **national** | roads and their upkeep, the season, sea access, duty — and now a state, a tax, a public payroll and a health service — **money is still shared** |
+| **international** | parities, the border, one exchange rate, a capital account — **built** |
+
+Two gaps, named rather than implied, and in the order they have to be
+built:
+
+- **A currency per nation.** A state is what issues one, so it could not
+  come first. It is not an FX rate each: it is a second money, a conversion
+  on every cross-border payment, a conservation rule spanning both, and an
+  exchange rate that becomes a matrix rather than a number. **What must not
+  change is the ledger** — tonnage is physics, not an institution, and one
+  ledger for the planet is what makes a cargo leaving one country the same
+  tonnes arriving in another rather than a subtraction here and an
+  invention there.
+- **A province between the town and the nation.** Real intermediate
+  government is substantial — US states raise about half their own revenue
+  and run the roads and the schools — and this model has the road
+  maintenance and the education line already sitting at national level
+  where much of it belongs one rung down. It wants a mechanism before it
+  wants a type: something a province owns, and something that differs
+  between provinces of one country.
 
 ## A deficit is not a disequilibrium (`src/exchange.rs`)
 

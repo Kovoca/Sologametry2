@@ -1153,12 +1153,13 @@ impl Store for crate::econ::Economy {
             f.store(w);
         }
 
-        match &self.government {
-            None => w.u8(0),
-            Some(g) => {
-                w.u8(1);
-                g.store(w);
-            }
+        // **One per nation**, keyed by it. A `BTreeMap`, so the bytes
+        // come out in the same order every time — which is what makes a
+        // save comparable at all.
+        w.len(self.governments.len());
+        for (nation, g) in self.governments.iter() {
+            w.u16(*nation);
+            g.store(w);
         }
         match &self.services {
             None => w.u8(0),
@@ -1237,7 +1238,11 @@ impl Store for crate::econ::Economy {
                 w.f64(*x);
             }
         }
-        w.f64(self.state_afford);
+        w.len(self.state_afford.len());
+        for (nation, afford) in self.state_afford.iter() {
+            w.u16(*nation);
+            w.f64(*afford);
+        }
         // **The rate is state, not a cache.** It is the accumulated answer
         // to every day's trade and cannot be re-derived from anything the
         // save holds, so a reload that forgot it would put the whole
@@ -1289,11 +1294,16 @@ impl Store for crate::econ::Economy {
             workforce.push(crate::labour::Workforce::load(r)?);
         }
 
-        let government = match r.u8()? {
-            0 => None,
-            1 => Some(crate::state::Government::load(r)?),
-            n => return Err(SaveError::UnknownCode("government tag", n as u32)),
-        };
+        let mut governments = std::collections::BTreeMap::new();
+        let n = r.count()?;
+        for _ in 0..n {
+            let nation = r.u16()?;
+            let g = crate::state::Government::load(r)?;
+            // A file naming one state twice is broken, not newer.
+            if governments.insert(nation, g).is_some() {
+                return Err(SaveError::Impossible("two states for one nation"));
+            }
+        }
         let services = match r.u8()? {
             0 => None,
             1 => Some(crate::services::Services::load(r)?),
@@ -1373,7 +1383,17 @@ impl Store for crate::econ::Economy {
         let payroll_met = read_row(r)?;
         let building_stock = read_row(r)?;
         let building_condition = read_row(r)?;
-        let state_afford = r.finite_f64()?;
+        let mut state_afford = std::collections::BTreeMap::new();
+        let n = r.count()?;
+        for _ in 0..n {
+            let nation = r.u16()?;
+            let afford = r.finite_f64()?;
+            if state_afford.insert(nation, afford).is_some() {
+                return Err(SaveError::Impossible(
+                    "two affordability figures for one nation",
+                ));
+            }
+        }
         let exchange = {
             let rate = r.finite_f64()?;
             let out = r.finite_f64()?;
@@ -1499,7 +1519,7 @@ impl Store for crate::econ::Economy {
             unserved_power,
             unmet_demand,
             workforce,
-            government,
+            governments,
             services,
             logistics: None,
             treasury,

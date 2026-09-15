@@ -327,13 +327,19 @@ impl Populace {
         // feedstock has hospitals full of staff who cannot treat anybody —
         // and this is the one place in the model where that decides
         // whether somebody lives.
-        let health = econ
-            .government
-            .as_ref()
-            .map(|g| g.health_delivered())
-            .unwrap_or(0.0);
-        let infant_deaths = INFANT_DEATHS_WITHOUT
-            + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health;
+        // **And it is the health service of the country somebody lives
+        // in.** This read one figure for the whole economy, which is right
+        // for a world holding one country and says the wrong thing in a
+        // world holding four: a child born in a nation whose state cannot
+        // fund a hospital had the survival odds of the richest country on
+        // the map.
+        let infant_deaths_in = |m: usize| {
+            let health = econ
+                .government(m)
+                .map(|g| g.health_delivered())
+                .unwrap_or(0.0);
+            INFANT_DEATHS_WITHOUT + (INFANT_DEATHS_WITH_A_HOSPITAL - INFANT_DEATHS_WITHOUT) * health
+        };
 
         let mut grown: Vec<(Id<Person>, f64)> = Vec::new();
         // **Handles up front.** Births during the loop add to the arena,
@@ -384,9 +390,9 @@ impl Populace {
                 // parent can *work*; the birth rate responds, but weakly —
                 // France's 4% of GDP buys 1.79 against Britain's 1.44, so
                 // call it a fifth either way.
+                let home = self.people[i].market;
                 let support = econ
-                    .government
-                    .as_ref()
+                    .government(home)
                     .map(|g| 1.0 - g.childcare_borne_by_parents())
                     .unwrap_or(0.0);
                 let chance = FERTILITY * (1.0 + 0.22 * support) / CHILDBEARING_YEARS / 2.0;
@@ -394,7 +400,7 @@ impl Populace {
                     // **Born, and it may not live.** This is where a
                     // hospital shows up in a population rather than in a
                     // budget.
-                    if (self.rng.next_f32() as f64) >= infant_deaths {
+                    if (self.rng.next_f32() as f64) >= infant_deaths_in(home) {
                         self.people[i].children.push(0.0);
                         // A child in the house changes what the household
                         // costs, on the same equivalence scale.
@@ -429,8 +435,7 @@ impl Populace {
             // A state that funds education carries some of it instead, and
             // that is most of what a maintenance grant is for.
             let helped = econ
-                .government
-                .as_ref()
+                .government(household.market)
                 .map(|g| {
                     let i = crate::state::Service::ALL
                         .iter()

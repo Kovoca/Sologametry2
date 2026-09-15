@@ -52,7 +52,7 @@ fn the_circuit_closes() {
         let firms: f64 = (0..e.ledger.sites.len())
             .map(|i| e.treasury.balance(Account::Firm(i)))
             .sum();
-        (hh, firms, e.treasury.balance(Account::State))
+        (hh, firms, e.treasury.balance(Account::State(0)))
     };
 
     for _ in 0..DAYS_PER_YEAR {
@@ -208,11 +208,11 @@ fn wages_come_out_of_a_firms_own_balance() {
     // What is asserted instead is that the state does not **accumulate**:
     // over a further year it must end up where it started, give or take a
     // few days of its own wage bill.
-    let before = e.treasury.balance(Account::State);
+    let before = e.treasury.balance(Account::State(0));
     for _ in 0..DAYS_PER_YEAR {
         e.step();
     }
-    let after = e.treasury.balance(Account::State);
+    let after = e.treasury.balance(Account::State(0));
     let a_days_bill = tax.max(1.0);
     assert!(
         (after - before).abs() < a_days_bill * 30.0,

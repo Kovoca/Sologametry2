@@ -64,11 +64,12 @@ fn main() {
             works += staff;
         }
     }
-    let state = e
-        .government
-        .as_ref()
+    // Every nation's public posts, because there is a state per country.
+    let state: f64 = e
+        .governments
+        .values()
         .map(|g| g.posts.iter().sum::<f64>())
-        .unwrap_or(0.0);
+        .sum();
     let services = e
         .services
         .as_ref()

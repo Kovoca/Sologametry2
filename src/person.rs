@@ -1752,7 +1752,7 @@ pub fn work_available(
     // in a blackout**: a hospital and a police station keep working when
     // the mill has shut, which is exactly why they are the services a
     // state insists on funding.
-    if let Some(gov) = econ.government.as_ref() {
+    if let Some(gov) = econ.government(market) {
         let posts = gov.posts_in(market);
         if posts >= 1.0 {
             let rate = day_rate(econ, market, Trade::Public);
@@ -2538,8 +2538,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             // and Sweden caps what a parent pays at roughly 3% of income
             // against England's 65% of a wage.
             let borne = econ
-                .government
-                .as_ref()
+                .government(person.market)
                 .map(|g| g.childcare_borne_by_parents())
                 .unwrap_or(1.0);
             let childcare: f64 = person
