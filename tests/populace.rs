@@ -238,7 +238,7 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     let mut folk = Populace::seed(&e, 200, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
-            p.trade = Trade::Public;
+            p.settle_into(Trade::Public);
             // Qualified for it: a trade you cannot enter is not a trade
             // you are in, and the gate is the point of the qualification.
             p.qualification = scale_sim::person::qualification_for(Trade::Public);
@@ -350,7 +350,7 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
     for p in folk.people.values_mut() {
-        p.trade = Trade::Labourer;
+        p.settle_into(Trade::Labourer);
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
         p.qualification = scale_sim::person::qualification_for(Trade::Labourer);
@@ -426,11 +426,11 @@ fn the_week_decides_who_works_when() {
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
-        p.trade = match i % 3 {
+        p.settle_into(match i % 3 {
             0 => Trade::Office,
             1 => Trade::Shopworker,
             _ => Trade::Labourer,
-        };
+        });
     }
 
     let mut tally: HashMap<(&str, bool, bool), u64> = HashMap::new();
@@ -529,7 +529,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // Put everybody in the worst-paid, least secure work there is, so the
     // margin is where it can actually be seen.
     for p in folk.people.values_mut() {
-        p.trade = Trade::Hospitality;
+        p.settle_into(Trade::Hospitality);
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
         p.qualification = scale_sim::person::qualification_for(Trade::Hospitality);

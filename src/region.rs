@@ -2108,6 +2108,7 @@ impl Region {
             world_seed: world.seed,
             next_route_id: named_roads,
             routing: crate::quote::Routing::default(),
+            hands: Default::default(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
             exchange: crate::exchange::Exchange::at_par(),

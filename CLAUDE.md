@@ -4072,6 +4072,86 @@ the fifth is about a town nothing reaches and correctly does not move. A
 second, narrower sabotage — the worst surface on a path applied to its whole
 length — is caught by exactly the one gate written for it and by no other.
 
+### Skill was a closed loop inside a person (`src/econ.rs`, `src/populace.rs`)
+
+`person.rs` has had a full skill model since it was written, and it is the
+DF/CDDA one: eleven occupational skills; levels 0-10 on a quadratic
+anchored at **ten thousand hours to mastery**, so level 8 is about 1,400
+days of practice and level 10 is a career; DF's grade names from untrained
+through competent and expert to legendary; practice that accrues faster for
+the diligent; **rust**, so a trade gone unworked is rusty rather than
+forgotten; and a **ceiling set by aptitude** — *legendary is rare because
+the ability to get there is rare, not because the hours are unavailable*.
+
+**Its only consumer was that person's own wage.** `econ.rs` had zero skill
+terms — one doc comment about pharma being a graduate industry and nothing
+else — so a town of masters made exactly what a town of novices made.
+Which makes false a claim `person.rs` itself states: *labour share of
+output is 50-60%, so a day's pay tracks a day's production value.* Only the
+pay side varied.
+
+There were four representations of how good somebody is and none of them
+met: `person::Skill` levels, `craft::Maker`'s six axes (skill, proficiency,
+knows_recipe, tool_familiarity, focus, fatigue), `populace::Qualification`
+gating which trade you may enter, and the economy's flat rated throughput.
+
+`SiteKind::worked_by` is the join, exhaustive so **a new kind of works
+cannot compile until somebody has said who works there**. `Economy::hands`
+carries the level per town and trade, and is **a cache with the same
+standing as `routing`** — deliberately not in the save, because the state is
+the practice inside the people and this is only a summary of them; writing
+it down would store a figure that has to agree with them and can silently
+stop agreeing. `populace.rs` recomputes it each morning, weighted by what
+each sampled person represents.
+
+**The pivot was wrong first time, and only measuring the mechanism found
+it.** Production was a ratio against `Trade::wants_level`, on the reasoning
+that `person::skill_premium` uses the same pivot for pay. That is right for
+pay — somebody below what the work needs is not yet doing the job properly
+and it shows in the packet — and it is **the bar to be let in, not the
+level of the people already there**. Measured on a real nation after three
+years: labourers average **5.5 against a wanted level of 2**, shop workers
+4.83 against 1, hospitality 6.2 against 1. Pivoting output on the entry bar
+had every works in the country running **47% over its rating**, and *the
+whole suite stayed green*, because most economic tests carry no populace at
+all. "Nothing broke" and "nothing happened" look identical from a passing
+suite.
+
+`ORDINARY_HAND = 5.0` — *skilled*, somebody who has done the job a few
+years — because the recipes are the check: their labour-hours are real
+published figures, eight hours to bring in a tonne of grain against US
+agriculture's nine, and those are **measured on real workforces, which are
+experienced**. A rated throughput is what a plant makes properly staffed.
+Against that pivot the same nation runs 4.0 to 6.2 across its trades: care
+assistants a few per cent under, labourers 4.8% over, hospitality 11% over.
+
+**Two pivots for two questions**, which is the honest answer rather than an
+awkwardness: what you are *paid* turns on whether you can do the job, and
+what a plant *makes* turns on how good the people in it are.
+
+It is a **ratio** rather than `pace` itself for the reason every calibration
+here has to be protected: `craft::Maker::pace` at a competent hand is 0.74,
+so using it directly would have cut every works in the world by a quarter
+and called it a skill model.
+
+`Trade` gained an `ALL` roster and an exhaustive `index()`, with a gate
+holding the two together — because *an exhaustive match is a test a roster
+cannot fake*, and the roster is what the aggregation walks.
+
+Five gates. Deleting the factor from `produce` turns red exactly the one
+that names the claim; the other four are about the roster, the default and
+the calibration and correctly do not move. Breaking the default to
+"untrained" turns red **two** — the default gate and the calibration gate —
+which is right, because a wrong default is precisely how a calibration
+moves without anybody noticing.
+
+**Deliberately not done yet: `care`.** `craft.rs` has first-pass yield
+calibrated — 95.5% at a bench, 98.3% jigged, **75.4% for a novice**,
+compounding to 76%, 90% and 18% clean through a six-operation chair — and
+skill is not wired to scrap. Rate and scrap are two changes, and scrapping
+output means inputs consumed for nothing, which reaches the conservation
+check. One change at a time.
+
 ## The model has two wage scales and they differ by thirty-five times
 
 Phase 0's recalibration, and what it found is bigger than what it fixed.

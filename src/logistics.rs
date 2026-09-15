@@ -350,7 +350,7 @@ impl Logistics {
                             continue;
                         }
 
-                        let moved = ship(econ, src, dst, commodity, take, ci, km);
+                        let moved = ship(econ, src, dst, commodity, take, ci);
                         if moved <= 1e-9 {
                             continue;
                         }
@@ -405,7 +405,6 @@ fn ship(
     c: Commodity,
     qty: f64,
     carrier: usize,
-    km: f64,
 ) -> f64 {
     let mut left = qty;
     let mut moved = 0.0;

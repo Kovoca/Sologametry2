@@ -118,6 +118,51 @@ pub enum Trade {
 }
 
 impl Trade {
+    /// **Every trade, in discriminant order.**
+    ///
+    /// A roster, and this project's own rule is that *an exhaustive match
+    /// is a test a roster cannot fake* — so `Trade::at` below is the
+    /// exhaustive one and a gate holds the two together. Adding a variant
+    /// without adding it here is then a failing test rather than a trade
+    /// that silently employs nobody.
+    pub const ALL: [Trade; 13] = [
+        Trade::Haulier,
+        Trade::Labourer,
+        Trade::Shopworker,
+        Trade::Supervisor,
+        Trade::Electrician,
+        Trade::Pipefitter,
+        Trade::Doctor,
+        Trade::Nurse,
+        Trade::CareAssistant,
+        Trade::Public,
+        Trade::Builder,
+        Trade::Hospitality,
+        Trade::Office,
+    ];
+
+    /// **Where a trade sits in `ALL`**, by exhaustive match.
+    ///
+    /// The compiler will not let this compile with a variant missing,
+    /// which is what makes the roster above checkable rather than trusted.
+    pub fn index(self) -> usize {
+        match self {
+            Trade::Haulier => 0,
+            Trade::Labourer => 1,
+            Trade::Shopworker => 2,
+            Trade::Supervisor => 3,
+            Trade::Electrician => 4,
+            Trade::Pipefitter => 5,
+            Trade::Doctor => 6,
+            Trade::Nurse => 7,
+            Trade::CareAssistant => 8,
+            Trade::Public => 9,
+            Trade::Builder => 10,
+            Trade::Hospitality => 11,
+            Trade::Office => 12,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Trade::Haulier => "haulier",
@@ -436,6 +481,29 @@ impl Person {
         // trade, which flatters everybody: the point of a ceiling is that
         // it is usually low enough to matter.
         (2.0 + self.aptitude * 6.0).round().clamp(1.0, 10.0) as u8
+    }
+
+    /// **Put somebody into a trade, with the experience that implies.**
+    ///
+    /// One definition, because the rule was written out twice in
+    /// `populace.rs` and a third copy had appeared in a test — which is
+    /// how the first copy comes to be missing. Its own comment records
+    /// what happens when the order goes wrong: *assigning the years first
+    /// put them against the skill of a trade the person then did not end
+    /// up in, and 44% of a country came out untrained at everything.*
+    ///
+    /// **Experience is what somebody has actually done**, so it follows
+    /// the trade rather than preceding it: years available since leaving
+    /// education, at about 220 working days each, capped by what their
+    /// aptitude lets them reach. Somebody genuinely changing trade in
+    /// middle life is a different thing and should keep their old
+    /// practice and start the new one near nothing — this is for settling
+    /// a person into the trade they have been in.
+    pub fn settle_into(&mut self, trade: Trade) {
+        self.trade = trade;
+        let years_in = (self.age_years - 18.0 - self.qualification.years_to_earn()).max(0.0);
+        let cap = Skill::days_to_reach(self.ceiling());
+        self.practice[trade.skill() as usize] = (years_in * 220.0).min(cap);
     }
 
     /// **A day of doing the work.**

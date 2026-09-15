@@ -827,6 +827,135 @@ pub enum SiteKind {
     Depot,
 }
 
+impl SiteKind {
+    /// **What trade the hands at this kind of works are in.**
+    ///
+    /// The join the model had never made. `person.rs` has had a proper
+    /// skill system since it was written — eleven occupational skills,
+    /// levels 0-10 on a quadratic anchored at ten thousand hours to
+    /// mastery, a ceiling set by aptitude so *legendary is rare because
+    /// the ability to get there is rare*, and rust at a rate that costs a
+    /// decade away a couple of levels rather than all of them — and its
+    /// **only consumer was that person's own wage**. A skilled man earned
+    /// more and produced exactly what an unskilled one did, because
+    /// production had never heard of him.
+    ///
+    /// `person.rs` already states the claim this closes: *labour share of
+    /// output is 50-60%, so a day's pay tracks a day's production value.*
+    /// With only the pay side varying, that was false in the code.
+    ///
+    /// Exhaustive on purpose, which is this file's own rule: **a new kind
+    /// of works cannot compile until somebody has said who works there**,
+    /// and a roster could have quietly missed one.
+    pub fn worked_by(self) -> crate::person::Trade {
+        use crate::person::Trade;
+        match self {
+            // The floor of a works, a field, a seam or a forest. All of
+            // them are shift work at a rated plant, which is what
+            // `Trade::Labourer` is, and its skill is machining — "running
+            // a machine: a mill, a furnace, a press".
+            SiteKind::Farm
+            | SiteKind::Pasture
+            | SiteKind::Butcher
+            | SiteKind::Mine
+            | SiteKind::Mill
+            | SiteKind::Factory
+            | SiteKind::IronMine
+            | SiteKind::Steelworks
+            | SiteKind::Works
+            | SiteKind::Forestry
+            | SiteKind::OilField
+            | SiteKind::Cracker
+            | SiteKind::MachineWorks
+            | SiteKind::CementWorks
+            | SiteKind::Pharma
+            | SiteKind::ChemicalWorks
+            | SiteKind::PowerPlant => Trade::Labourer,
+            // Construction is its own trade and a deeper one — an
+            // apprenticeship rather than a week of being shown.
+            SiteKind::Builders => Trade::Builder,
+            // A hospital runs on hands-on care. The doctors are a smaller
+            // number on top and the ward is nurses.
+            SiteKind::Hospital => Trade::Nurse,
+            SiteKind::Shop => Trade::Shopworker,
+            // A depot is a yard, a dock and lorries going in and out.
+            SiteKind::Depot => Trade::Haulier,
+        }
+    }
+}
+
+/// **The workforce a rated throughput assumes.**
+///
+/// Level 5, which `person::Skill::grade` calls *skilled*: somebody who has
+/// done the job for a few years and does it without thinking about it.
+///
+/// **Not the entry requirement**, and getting that wrong is the error this
+/// constant exists to have fixed. The first version pivoted production on
+/// `Trade::wants_level`, which is what `person::skill_premium` uses for
+/// *pay* — and correctly, because somebody below what the work needs is
+/// not yet doing the job properly and it shows in the packet. But that is
+/// the bar to be let in, not the level of the people already there:
+/// measured, this model's own labourers average **5.5 against a wanted
+/// level of 2**, shop workers 4.96 against 1, and pivoting output on the
+/// entry bar therefore had every works in the country running **47% over
+/// its rating**.
+///
+/// The recipes are the check. Their labour-hours are real published
+/// figures — eight hours to bring in a tonne of grain, against US
+/// agriculture's nine — and those are measured on real workforces, which
+/// are experienced. **A rated throughput is what a plant makes properly
+/// staffed**, so the hand it assumes is an ordinary practised one rather
+/// than a first-day novice or a master.
+///
+/// Two pivots for two questions, which is the honest answer rather than an
+/// awkwardness: what you are *paid* turns on whether you can do the job,
+/// and what a plant *makes* turns on how good the people in it are.
+const ORDINARY_HAND: f64 = 5.0;
+
+/// **What a workforce at `hands` produces, against an ordinary practised
+/// one.**
+///
+/// **Every recipe in this model is calibrated against rated throughput**,
+/// so a workforce at `ORDINARY_HAND` has to reproduce the economy exactly
+/// or the calibration is silently moved — which is why this is a ratio and
+/// not `pace` itself. `pace` at a competent hand is 0.74, so using it
+/// directly would have cut every works in the world by a quarter and
+/// called it a skill model.
+fn hands_work_at(hands: f64, wanted: f64) -> f64 {
+    let maker = |level: f64| crate::craft::Maker {
+        // `Maker` takes 0..1 and a skill level runs 0..10.
+        skill: (level / 10.0).clamp(0.0, 1.0),
+        ..Default::default()
+    };
+    let reference = maker(wanted).pace();
+    if reference <= 1e-9 {
+        return 1.0;
+    }
+    maker(hands).pace() / reference
+}
+
+impl Economy {
+    /// **How good the hands are in this town at this trade**, 0-10.
+    ///
+    /// Absent means `ORDINARY_HAND`, and that default is the whole reason
+    /// this can be added to a calibrated economy without moving it: a
+    /// works staffed as usual makes its rating, which is what every recipe
+    /// here was measured against.
+    pub fn hands_at(&self, market: usize, trade: crate::person::Trade) -> f64 {
+        self.hands
+            .get(&(market, trade as u8))
+            .copied()
+            .unwrap_or(ORDINARY_HAND)
+    }
+
+    /// **Tell the economy how good its workforce is**, from whoever holds
+    /// the people. `populace.rs` is that owner.
+    pub fn set_hands(&mut self, market: usize, trade: crate::person::Trade, level: f64) {
+        self.hands
+            .insert((market, trade as u8), level.clamp(0.0, 10.0));
+    }
+}
+
 /// **What an hour of work adds**, at the reference — not what it is paid.
 ///
 /// This was called the wage an hour, and it could not be one: at 22 a
@@ -3155,6 +3284,21 @@ pub struct Economy {
     /// saved booking still refers to it.
     pub next_route_id: u64,
     pub routing: crate::quote::Routing,
+    /// **How good the hands are, per town and trade.** Level 0-10.
+    ///
+    /// **A cache, not state** — the same standing as `routing`, and
+    /// deliberately not in the save for the same reason. The state is the
+    /// accumulated practice in the people themselves, which `person.rs`
+    /// owns and `populace.rs` carries; this is a summary of them,
+    /// recomputed by whoever holds the populace. Writing it down would
+    /// store a figure that has to agree with the people and can silently
+    /// stop agreeing.
+    ///
+    /// Empty means **the level the trade wants**, so an economy with no
+    /// individuated people behind it — the hand-built fixtures, a bare
+    /// region — produces exactly what it produced before any of this
+    /// existed. See `Economy::hands_at`.
+    pub hands: std::collections::BTreeMap<(usize, u8), f64>,
     /// **What the roads have already been promised to carry.**
     ///
     /// A quote says what a road *can* take; this says what is left. A
@@ -4137,6 +4281,16 @@ impl Economy {
             // **A merchant lands more the better the trade is.** One at
             // every price above parity; see `eager_to_land`.
             batches *= eagerness;
+            // **And a works runs at the pace of the hands it has.**
+            //
+            // Ratio against the level the trade wants, so a works staffed
+            // to standard makes exactly its rating and the calibration of
+            // every recipe in the model is undisturbed. A novice floor
+            // makes less; a practised one makes more, up to what `pace`
+            // allows. See `hands_work_at`.
+            let trade = s.kind.worked_by();
+            let mkt = s.market;
+            batches *= hands_work_at(self.hands_at(mkt, trade), ORDINARY_HAND);
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
             }
@@ -6431,7 +6585,7 @@ impl Economy {
         nights: u64,
         refrigerated: bool,
     ) -> Option<(crate::shipment::ShipmentId, f64)> {
-        use crate::shipment::{days_on_the_road, Leg, Shipment};
+        use crate::shipment::{Leg, Shipment};
         if tonnes <= 1e-9 {
             return None;
         }

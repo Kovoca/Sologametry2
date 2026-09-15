@@ -1528,6 +1528,7 @@ impl Store for crate::econ::Economy {
             power_clearing,
             experiments,
             routing: crate::quote::Routing::default(),
+            hands: Default::default(),
             reservations,
             import_duty,
             exchange,

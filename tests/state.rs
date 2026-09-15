@@ -91,7 +91,7 @@ fn public_work_is_steady_and_shop_work_is_not() {
     let mut folk = scale_sim::populace::Populace::seed(&e, 50, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
-            p.trade = Trade::Public;
+            p.settle_into(Trade::Public);
             // Qualified for it: a trade you cannot enter is not a trade
             // you are in, and the gate is the point of the qualification.
             p.qualification = scale_sim::person::qualification_for(Trade::Public);

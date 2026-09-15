@@ -32,10 +32,10 @@ writing this file.
 
 | | | measured |
 |---|---|---|
-| Commit | `ecceefe` | 2026-09-15 |
+| Commit | `7f82ef7` + skill | 2026-09-15 |
 | Source | 66 modules, 17 diagnostic binaries | 2026-09-15 |
 | Lines | ~109,000 including tests | 2026-09-15 |
-| Tests | 84 binaries, **875 passed, 0 failed, 0 ignored** | 2026-09-15 |
+| Tests | 85 binaries, **880 passed, 0 failed, 0 ignored** | 2026-09-15 |
 | Build | clean | 2026-09-15 |
 
 **The full release suite takes over ten minutes**, which is worth knowing
@@ -118,7 +118,7 @@ mechanism exists but not the scope wanted. **Absent** means not started.
 | **Stock markets** | **absent** | firm *form* is known — sole trader, partnership, company | shares, valuation, issuance, an exchange, ownership registers |
 | The state | **built** | one per nation, real tax capacity, public payroll, services | provinces — no rung between town and nation |
 | The border | **built** | import and export parity, duty hook, exchange rate, capital account | a currency per nation; reserves |
-| Labour and services | **built** | recipe-derived headcount, contracts, rotas, promotion, sectors | retail headcount about 4.9 points short of real |
+| Labour and services | **built** | recipe-derived headcount, contracts, rotas, promotion, sectors, **skill reaching what a works makes** | retail headcount about 4.9 points short of real; skill does not yet reach scrap |
 | Households | **built** | basket by need, repair/reuse/second-hand, utility arrears, scrap | no "eating cheaply"; buys on credit nobody extended |
 
 ### Things
@@ -304,7 +304,7 @@ the half where somebody decides whether to do it properly is absent:
 
 | | the model has | the model lacks |
 |---|---|---|
-| production and efficiency | durations, throughput | skill — `econ.rs` has *zero* skill terms |
+| production and efficiency | durations, throughput, **skill reaching output** | skill reaching *scrap* — `craft.rs` has the yields, nothing consumes them |
 | travel, and rules that keep it safer | transit days, four real regulations | the choice to break them, and anyone watching |
 | officials doing their job | `Capacity` — what a state can reach | an office, discretion, and its abuse |
 

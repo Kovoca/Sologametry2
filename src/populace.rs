@@ -235,9 +235,7 @@ impl Populace {
                 // the years first put them against the skill of a trade
                 // the person then did not end up in, and 44% of a country
                 // came out untrained at everything.
-                let years_in = (p.age_years - 18.0 - p.qualification.years_to_earn()).max(0.0);
-                let cap = crate::person::Skill::days_to_reach(p.ceiling());
-                p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
+                p.settle_into(p.trade);
                 households.push(h);
                 people.add(p);
                 represents.push(pop / n as f64);
@@ -576,6 +574,51 @@ impl Populace {
         // town has one supervisory post per twenty hands, so does the
         // sample.
         let n_markets = econ.markets.len();
+
+        // **Tell the economy how good its workforce actually is.**
+        //
+        // `person.rs` has had a full skill model since it was written —
+        // levels on a quadratic anchored at ten thousand hours, a ceiling
+        // from aptitude, and rust for what goes unused — and its only
+        // consumer was the person's own wage. Production had never heard
+        // of it, so a town of masters made exactly what a town of novices
+        // made. This is the join, and it runs before the day's work so a
+        // works produces at the skill of the people who turned up.
+        //
+        // **A sample, weighted by what each stands for**, which is the
+        // same discipline the rest of this file keeps: an individuated
+        // person represents some thousands of real ones, and averaging
+        // them unweighted would let a town's rare trades outvote its
+        // common ones. Trades nobody in the sample works are left absent,
+        // and `Economy::hands_at` reads that as the level the trade wants
+        // — the honest answer when the sample cannot say.
+        {
+            let mut sum = vec![0.0f64; n_markets * Trade::ALL.len()];
+            let mut weight = vec![0.0f64; n_markets * Trade::ALL.len()];
+            for (id, p) in self.people.iter() {
+                if p.market >= n_markets {
+                    continue;
+                }
+                let stands_for = self
+                    .represents
+                    .get(id.slot())
+                    .copied()
+                    .unwrap_or(1.0)
+                    .max(0.0);
+                let i = p.market * Trade::ALL.len() + p.trade.index();
+                sum[i] += p.competence() as f64 * stands_for;
+                weight[i] += stands_for;
+            }
+            for m in 0..n_markets {
+                for (t, &trade) in Trade::ALL.iter().enumerate() {
+                    let i = m * Trade::ALL.len() + t;
+                    if weight[i] > 1e-9 {
+                        econ.set_hands(m, trade, sum[i] / weight[i]);
+                    }
+                }
+            }
+        }
+
         let mut vacancy = vec![0.0f64; n_markets];
         for m in 0..n_markets {
             let mine: Vec<&Person> = self.people.values().filter(|p| p.market == m).collect();
@@ -763,9 +806,7 @@ impl Populace {
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             // A replacement is a cross-section of the living, not a
             // school leaver, so they bring their years with them.
-            let years_in = (p.age_years - 18.0 - p.qualification.years_to_earn()).max(0.0);
-            let cap = crate::person::Skill::days_to_reach(p.ceiling());
-            p.practice[p.trade.skill() as usize] = (years_in * 220.0).min(cap);
+            p.settle_into(p.trade);
             p.diligence =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             // **A replacement is somebody else from the population, not a
