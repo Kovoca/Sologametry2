@@ -4245,6 +4245,66 @@ built:
   wants a type: something a province owns, and something that differs
   between provinces of one country.
 
+### How big a region is, and why the rung is empty
+
+**A region is several towns and its size comes from distance**, which is
+how real ones were actually drawn. The French *départements* of 1790 were
+laid out so that no commune was more than a day's ride from the
+*chef-lieu* — about ten lieues, and hence an average near 6,000 km². The
+English shires follow the same logic, and eastern US counties were sized so
+a farmer could reach the county seat and get home again. Which is exactly
+why western US counties are enormous: they were surveyed after the railway,
+on a different day's travel. **So the size falls out of how far people
+could go and how empty the country is**, and nobody picks the number.
+
+Two measurements decide whether this model can carry that rung, and they
+point opposite ways.
+
+**A market here is already a city-region, not a town.** `settlement.rs`
+assigns every land cell to its cheapest-to-reach settlement and sizes it on
+that hinterland, so the economy's markets hold 10 to 37 million people
+each. On one world the four towns of a nation sit 89 to 2,757 km apart by
+road. Group *those* by a day's travel and every region is a singleton —
+the rung would be a field nothing reads.
+
+**And the towns that would make a region exist on the map and not in the
+economy.** The generator places 3,000 settlements; `Nations::build` takes
+the biggest four a nation, so **sixteen of three thousand** have any
+economic existence at all. Raise it to twenty a nation and the distances
+change character completely — 33, 40, 63, 66, 79, 98 km neighbours appear
+alongside the thousand-kilometre hauls, which is a real cluster and a real
+region.
+
+### What is actually blocking it is the cost of a day
+
+Measured on one world, a hundred days, same machine:
+
+| towns a nation | markets | 100 days | pairs within a day's haul |
+|---|---|---|---|
+| 4 | 16 | **1.4 s** | 11 |
+| 10 | 40 | 14.1 s | 77 |
+| 20 | 80 | 116.7 s | 288 |
+| 40 | 160 | **1,489.5 s** | 1,265 |
+
+Ten times the towns costs **a thousand times the time** — a day is
+something like cubic in how many towns there are. That, and not any
+modelling question, is what stands between this project and a regional
+level: the economy cannot hold enough towns for a region to be more than a
+label.
+
+**And the obvious culprit was not the culprit.** `share_out` computes what
+it costs to reach each buyer by scanning every supplier, once per buyer —
+visibly O(sites squared) per commodity per day. It depends only on the
+*town* the buyer stands in and on which towns hold a supplier, so it
+memoises exactly; memoised, eighty markets went from 116.7 s to **206 s**.
+Worse, twice over: the table costs more than the scans it replaced, because
+only buyers that are actually short ever ask. Reverted, and recorded —
+**a hot loop that looks hot is not evidence**, which is the same rule this
+file already keeps about mechanisms that never bind. The remaining suspect
+is the fill pass, which sorts every supplier afresh for every destination.
+
+
+
 ## A deficit is not a disequilibrium (`src/exchange.rs`)
 
 `cargo run --release --bin border` and `--bin accounts` both print the rate,
