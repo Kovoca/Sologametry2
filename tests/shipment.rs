@@ -103,7 +103,7 @@ fn a_cargo_on_the_road_has_not_stopped_existing() {
     let at_seller = e.ledger.stock(from, c);
 
     let id = e
-        .consign(from, to, 0, c, qty, 2_000.0, false)
+        .consign(from, to, 0, c, qty, 3, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     e.ledger.assert_conserved();
@@ -140,7 +140,7 @@ fn the_price_moves_and_the_contract_does_not() {
     let from_market = e.ledger.sites[from].market;
 
     let id = e
-        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .consign(from, to, 0, c, qty, 2, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let agreed = e.shipments.get(id).unwrap().goods;
@@ -200,7 +200,7 @@ fn a_lorry_on_the_road_is_the_same_lorry_after_a_reload() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let id = e
-        .consign(from, to, 3, c, qty, 2_000.0, true)
+        .consign(from, to, 3, c, qty, 3, true)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let before = e.shipments.get(id).cloned().expect("it did not exist");
@@ -239,7 +239,7 @@ fn a_lorry_cannot_tip_into_a_shed_that_filled_while_it_was_driving() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let id = e
-        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .consign(from, to, 0, c, qty, 2, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
 
@@ -279,7 +279,7 @@ fn a_load_that_cannot_be_tipped_does_not_wait_for_ever() {
         }
     }
     let id = e
-        .consign(from, to, 0, c, qty, 700.0, false)
+        .consign(from, to, 0, c, qty, 1, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
 
@@ -316,11 +316,11 @@ fn meat_rots_on_the_road_unless_the_lorry_is_cold() {
         stock_up(e, ASHFORD_STORE, c, 100.0);
     }
     let a = warm
-        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 2_000.0, false)
+        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 3, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let b = cold
-        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 2_000.0, true)
+        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 3, true)
         .map(|(id, _)| id)
         .expect("nothing set off");
 
@@ -377,7 +377,7 @@ fn nobody_is_paid_for_a_load_that_is_still_moving() {
         .balance(scale_sim::money::Account::ServiceSector(market));
 
     let id = e
-        .consign(from, to, 0, c, qty, 1_300.0, false)
+        .consign(from, to, 0, c, qty, 2, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     assert!(
@@ -412,7 +412,7 @@ fn a_consignment_keeps_one_name_and_leaves_a_grave() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let id = e
-        .consign(from, to, 0, c, qty, 100.0, false)
+        .consign(from, to, 0, c, qty, 0, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let day = e.ledger.day;
@@ -455,10 +455,10 @@ fn what_is_on_the_lorry_is_not_still_on_the_shelf() {
     // since the first booking takes the day's capacity with it, and a
     // consignment that cannot be carried is not a consignment.
     let first = e
-        .consign(from, to, 0, c, have * 0.75, 1_300.0, false)
+        .consign(from, to, 0, c, have * 0.75, 2, false)
         .map(|(id, _)| id);
     let second = e
-        .consign(from, to, 0, c, have * 0.75, 1_300.0, false)
+        .consign(from, to, 0, c, have * 0.75, 2, false)
         .map(|(id, _)| id);
     assert!(first.is_some(), "nothing set off at all");
 
@@ -487,7 +487,7 @@ fn a_year_of_deliveries_does_not_fill_the_registry() {
     let mut names = Vec::new();
     for _ in 0..200 {
         let (from, to, c, qty) = a_load(&mut e);
-        if let Some((id, _)) = e.consign(from, to, 0, c, qty, 50.0, false) {
+        if let Some((id, _)) = e.consign(from, to, 0, c, qty, 0, false) {
             e.tip(id);
             names.push(id);
         }
@@ -501,7 +501,7 @@ fn a_year_of_deliveries_does_not_fill_the_registry() {
     // The oldest are forgotten, which is the point — and a forgotten name
     // is still not handed to anybody else.
     let (from, to, c, qty) = a_load(&mut e);
-    let fresh = e.consign(from, to, 0, c, qty, 50.0, false).unwrap().0;
+    let fresh = e.consign(from, to, 0, c, qty, 0, false).unwrap().0;
     assert!(
         !names.contains(&fresh),
         "a pruned grave let a name be reissued"
@@ -690,7 +690,7 @@ fn a_world_saved_mid_journey_resumes_the_same_journey() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let id = e
-        .consign(from, to, 2, c, qty, 2_000.0, true)
+        .consign(from, to, 2, c, qty, 3, true)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let before = e.shipments.get(id).cloned().expect("it did not exist");
@@ -1007,7 +1007,7 @@ fn a_cargo_delivered_long_ago_is_still_a_cargo_that_existed() {
     let mut e = world();
     let (from, to, c, qty) = a_load(&mut e);
     let (id, _) = e
-        .consign(from, to, 0, c, qty, 173.0, false)
+        .consign(from, to, 0, c, qty, 0, false)
         .expect("nothing was consigned");
     e.tip(id);
 
@@ -1128,7 +1128,7 @@ fn the_seller_is_paid_for_what_arrived() {
     let buyer_before = e.treasury.balance(Account::Firm(to));
 
     let (id, _) = e
-        .consign(from, to, 0, c, qty, 173.0, false)
+        .consign(from, to, 0, c, qty, 0, false)
         .expect("nothing was consigned");
     let goods = e.shipments.get(id).map(|s| s.goods).unwrap_or(0.0);
     assert!(goods > 0.0, "a cargo worth nothing proves nothing");

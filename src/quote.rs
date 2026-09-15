@@ -108,6 +108,20 @@ pub struct Routing {
     /// answer. A haulier goes the cheap way and it takes as long as it
     /// takes.
     km: Vec<f64>,
+    /// **Days on the road along that same path, accumulated leg by leg.**
+    ///
+    /// Not `km / KM_PER_DAY`, which was the whole defect: a haul's cost
+    /// read the road class under every step and its *time* read one
+    /// constant, so six hundred kilometres of track arrived the same day
+    /// as six hundred of motorway. Time is `sum of (km_i / (KM_PER_DAY x
+    /// pace_i))` over the legs actually taken, because a journey is
+    /// usually mostly made road with a bad stretch in it and the bad
+    /// stretch is what costs the afternoon.
+    ///
+    /// Fractional on purpose. A quote floors it into nights, but a lead
+    /// time wants the real figure, and summing floored legs would lose a
+    /// day at every hop.
+    travel: Vec<f64>,
     /// The tightest link along it, in tonnes a day. **A property of the
     /// road**, and not the same question as how much of it is still going
     /// spare — see `Economy::spare_capacity`.
@@ -129,6 +143,7 @@ impl Routing {
             n,
             freight: vec![f64::INFINITY; n * n],
             km: vec![f64::INFINITY; n * n],
+            travel: vec![f64::INFINITY; n * n],
             capacity: vec![0.0; n * n],
             prev_edge: vec![None; n * n],
             prev_node: vec![usize::MAX; n * n],
@@ -151,25 +166,27 @@ impl Routing {
     ///
     /// Filtering may change an adjacency list. It must never manufacture
     /// identity.
-    pub fn build(n: usize, edges: &[(RouteId, usize, usize, f64, f64, f64)]) -> Routing {
+    pub fn build(n: usize, edges: &[(RouteId, usize, usize, f64, f64, f64, f64)]) -> Routing {
         let mut r = Routing::empty(n);
         // Adjacency, both ways: a road is a road in both directions.
-        let mut adj: Vec<Vec<(usize, f64, f64, f64, RouteId)>> = vec![Vec::new(); n];
-        for &(road, a, b, f, km, cap) in edges.iter() {
+        let mut adj: Vec<Vec<(usize, f64, f64, f64, f64, RouteId)>> = vec![Vec::new(); n];
+        for &(road, a, b, f, km, cap, pace) in edges.iter() {
             if a < n && b < n {
-                adj[a].push((b, f, km, cap, road));
-                adj[b].push((a, f, km, cap, road));
+                adj[a].push((b, f, km, cap, pace, road));
+                adj[b].push((a, f, km, cap, pace, road));
             }
         }
         for src in 0..n {
             let mut best = vec![f64::INFINITY; n];
             let mut dist = vec![f64::INFINITY; n];
+            let mut hours = vec![f64::INFINITY; n];
             let mut tight = vec![0.0f64; n];
             let mut pedge: Vec<Option<RouteId>> = vec![None; n];
             let mut pnode = vec![usize::MAX; n];
             let mut done = vec![false; n];
             best[src] = 0.0;
             dist[src] = 0.0;
+            hours[src] = 0.0;
             tight[src] = f64::INFINITY;
             loop {
                 let mut here = None;
@@ -182,11 +199,17 @@ impl Routing {
                 }
                 let Some(here) = here else { break };
                 done[here] = true;
-                for &(next, f, km, cap, edge) in &adj[here] {
+                for &(next, f, km, cap, pace, edge) in &adj[here] {
                     let through = best[here] + f;
                     if through < best[next] {
                         best[next] = through;
                         dist[next] = dist[here] + km;
+                        // **Time is accumulated per leg, at that leg's own
+                        // pace.** A journey that is four hundred kilometres
+                        // of motorway and forty of track is not 440 km at
+                        // one speed, and the forty is what costs the day.
+                        let a_day = crate::shipment::KM_PER_DAY * pace.max(1e-6);
+                        hours[next] = hours[here] + km / a_day;
                         tight[next] = tight[here].min(cap);
                         pedge[next] = Some(edge);
                         pnode[next] = here;
@@ -196,6 +219,7 @@ impl Routing {
             for m in 0..n {
                 r.freight[src * n + m] = best[m];
                 r.km[src * n + m] = dist[m];
+                r.travel[src * n + m] = hours[m];
                 r.capacity[src * n + m] = tight[m];
                 r.prev_edge[src * n + m] = pedge[m];
                 r.prev_node[src * n + m] = pnode[m];
@@ -219,6 +243,22 @@ impl Routing {
             return 0.0;
         }
         self.km
+            .get(from * self.n + to)
+            .copied()
+            .unwrap_or(f64::INFINITY)
+    }
+
+    /// **How long the haul actually takes**, in days, fractional.
+    ///
+    /// Accumulated leg by leg at each leg's own pace, so a path with one
+    /// bad stretch in it is slow for that stretch and no other. Use this
+    /// rather than `days_on_the_road(km(from, to))`, which answers the
+    /// question the road class was supposed to decide and does not ask it.
+    pub fn travel_days(&self, from: usize, to: usize) -> f64 {
+        if from == to {
+            return 0.0;
+        }
+        self.travel
             .get(from * self.n + to)
             .copied()
             .unwrap_or(f64::INFINITY)
@@ -282,7 +322,11 @@ impl Routing {
             return None;
         }
         let km = self.km(from, to);
-        let days = crate::shipment::days_on_the_road(km);
+        // **Nights out, from the time the path actually takes** — not from
+        // its length against one constant. Floored, because what the
+        // distance decides is whether the load sleeps somewhere, and most
+        // freight still does not.
+        let days = self.travel_days(from, to).floor().max(0.0) as u64;
         // **What rots on the way is a property of the goods and the
         // journey**, and nothing here invents a rate: it is the same
         // spoilage the model already applies to a store, over the days the

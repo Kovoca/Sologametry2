@@ -7,6 +7,11 @@ individual-to-intergalactic; the build starts at planetary terrain
 generation and expands outward.
 
 **Design docs (`docs/`):**
+- `status.md` — **where the project actually is, and what order the rest
+  goes in.** The tracker: what is built, what is partial, what is absent,
+  the tracked defects, and the plan. Read it first; update it when
+  something moves. Its figures each name the command that produces them,
+  because a number somebody types goes out of date silently.
 - `scale-sim-design-doc.md` — the vision. A direction, not a spec (Tarn
   Adams, Principle 1: get something running, then iterate).
 - `design-review-triage.md` — an external review of the vision and how its
@@ -22,8 +27,13 @@ generation and expands outward.
   real-world value so output can be checked rather than eyeballed. Ends
   with the vertical slice's acceptance test.
 
-Only world-gen (elevation → climate → biomes) is implemented so far; the
-spec's A1–A4 architecture and everything else is design, not code yet.
+**This paragraph used to say only world-gen was implemented, and stayed
+there while the rest of this file grew to describe an economy, a mind, an
+item kernel and a save format.** A header that contradicts its own document
+is worse than no header. What is built is in `docs/status.md`, measured
+rather than asserted; the short version is that the world, the economy, the
+item and mind layers and persistence are substantially real, and **there is
+no player, no turn loop and no save loop** — so this is not yet a game.
 
 The owner drives by testing, not by coding. Keep every commit building and
 `cargo test` green. Prefer small, visible increments that can be run and
@@ -31,8 +41,10 @@ judged.
 
 **Terminology note:** the current generator's `width × height` grid is the
 spec's *coarse pass at region resolution* — one cell of the grid ≈ one
-16.4 km region (spec A1.1). The tile/chunk/cell/region coordinate hierarchy
-and lazy cell refinement (A1.1, A1.3d) are not built yet.
+16.4 km region (spec A1.1). *(Also stale as written: the coordinate
+hierarchy is built — region cell, locality, plot, tile, with the
+multiplication asserted — and `locality.rs` is the lazy refinement A1.3d
+asks for. What is not built is a type-safe coordinate reference.)*
 
 ## Build / run / test
 
@@ -3955,6 +3967,110 @@ suite green — and both were turned up while chasing something else.
   it, and none of those quantities are the same number: the maximum
   cumulative seasonal deficit, the shipment lot size, the resupply lead
   time, a policy reserve, and the physical berth.
+
+### A haul's cost read the road and its time did not (`src/quote.rs`)
+
+`Route::surface` is documented as "the worst stretch of road anywhere along
+it... **the number that decides both what can travel and how fast**". Only
+the first half was true. Carriage came from a Dijkstra priced by the road
+class under every step of the path; duration was
+
+```text
+days_on_the_road(km) = floor(km / 620)
+```
+
+and nothing else — so **six hundred kilometres of track arrived the same day
+as six hundred of motorway**, while `travel.rs` had given a track 0.30 of the
+speed since the day it was written and applied it only to a person making the
+journey on his own account. The comment was the bug written out, which is the
+third time this file records that shape.
+
+`Surface::pace` is one table, shared by freight and by a person:
+
+| | of a lorry's day | ~km/day |
+|---|---|---|
+| highway | 1.10 | 680 |
+| road | 1.00 | 620 |
+| **track** | **0.30** | **186** |
+| open country | 0.05 | 31 |
+| water | 1.00 | 620 |
+
+- **Time accumulates leg by leg**, at each leg's own pace. Taking the worst
+  surface anywhere on the path and applying it to the whole distance sounds
+  defensible and is badly wrong: four hundred kilometres of motorway and
+  forty of track is not four hundred and forty of track. Measured, the forty
+  is 9% of the length and 27% of the journey — **a bad stretch costs about
+  three times its share**, which is what makes one unmade mile matter.
+- **Fractional, and floored only at the quote.** A lead time wants the real
+  figure; summing floored legs loses a day at every hop.
+- **Nearest in time, not in distance.** Safety stock rises with lead time, so
+  a supplier a hundred kilometres up a track is further off than one two
+  hundred down a motorway, and the shop that waits longer is the one that has
+  to hold more. `lead_times` measured kilometres and said otherwise.
+
+**The water figure was wrong by five times on the first attempt**, and the
+correction is the interesting part. Lifting `travel.rs`'s 180 km a day put a
+1,147 km sea lane at six days when it is one — because that figure is *a
+person taking passage on a coastal steamer* at 8-10 knots, which is right for
+a passenger and wrong for a cargo. A ship is far slower per hour than a truck
+and **runs around the clock**: a bulk carrier at 14 knots makes 622 km in a
+day against a truck's 620 in a legal seven hours. The same number from
+opposite directions.
+
+Measured on one world, four nations: **49 of 120 linked pairs** now take
+longer than distance alone said, every one of them over open country, and one
+pair takes *less*, because a motorway beats the flat constant.
+
+### Two figures for one haul, immediately reinvented
+
+The fix read the route table inside `consign` — and left a `km` parameter
+that was now **silently ignored**. That is exactly the defect `quote.rs`
+exists to have removed once already, three hours old again.
+
+`consign` takes `nights: u64` now and derives nothing: `due = day + nights`.
+**`Routing::travel_days` is the one place a haul's duration is worked out**,
+`Quote::days` carries it, and the recorder records. Twenty call sites moved,
+and the shipment tests say `3` nights where they used to say `2_000.0`
+kilometres — which is what they always meant, on a fixture whose road is 173
+km. A fabricated distance only ever worked because the callee divided it by a
+constant and trusted it.
+
+### And a gate that had come to hang on hundredths of a day
+
+`a_decision_is_taken_on_the_morning_position` went red. Its own comment
+recorded the fixture as "24.4 days in the worst town against 42.9 in the best
+on a target of twenty-five"; the country now read 24.36, 24.83, 24.96, 24.98
+and 30.18 against a target of 26. **Which of five towns was "worst" had come
+to be settled by hundredths**, so perturbing forty days of history at all
+reshuffled them — a motorway being ten per cent quicker was enough. That is
+this file's older rule arriving again: *a gate that reverses on a small move
+is measuring which side of a cliff the country is on, not the mechanism it
+names.*
+
+**And the obvious replacement was wrong in a more interesting way.** "Build
+the country twice, contradict live state in one, require the same decision"
+is not the claim, because two different reads are both correct and only one
+of them is the photograph:
+
+| | read from |
+|---|---|
+| who needs it | **the morning position** — all anybody knows when the lorries leave |
+| who can supply it | **live state** — you cannot load steel out of a town that has none |
+
+Moving a town's whole holding elsewhere changes the *supply* geography and
+the dispatcher rightly answered differently. What the gate does now is
+disturb demand alone: run the country, see where the lorries go, run it again
+and pile stock into exactly those towns' **consuming yards**, taken from the
+consuming yards of towns nobody served. Not one tonne moves into or out of a
+site anybody could collect from. Sabotaged — the dispatcher reading live
+state — it goes red naming the towns.
+
+Five new gates in `tests/travel_time.rs`, and `cargo run --release --bin
+roads` prints what a world is paved with and every route's transit time both
+ways. **Four of the five go red when every surface is given the same pace**;
+the fifth is about a town nothing reaches and correctly does not move. A
+second, narrower sabotage — the worst surface on a path applied to its whole
+length — is caught by exactly the one gate written for it and by no other.
 
 ## The model has two wage scales and they differ by thirty-five times
 

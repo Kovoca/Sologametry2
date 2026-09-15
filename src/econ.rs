@@ -2435,6 +2435,62 @@ impl Surface {
             Surface::Open => "open country",
         }
     }
+
+    /// **What share of a made road's pace this surface allows.**
+    ///
+    /// `Route::surface`'s own doc comment has always said the surface is
+    /// "the number that decides both what can travel **and how fast**" —
+    /// and until this existed, only the first half was true. A haul's
+    /// *cost* read the road class under every step of the path while its
+    /// *time* was `kilometres / 620` and nothing else, so six hundred
+    /// kilometres of track arrived the same day as six hundred of
+    /// motorway. The comment was the bug written out, which is the third
+    /// time this file records that shape.
+    ///
+    /// Anchored on `travel.rs`, which had the powered-vehicle figures from
+    /// the day it was written and applied them only to a person making the
+    /// journey on his own account:
+    ///
+    /// | | of a lorry's day | ~km/day |
+    /// |---|---|---|
+    /// | highway | 1.10 | 680 |
+    /// | road | 1.00 | 620 |
+    /// | **track** | **0.30** | **186** |
+    /// | open country | 0.05 | 31 |
+    /// | water | 1.00 | 620 |
+    ///
+    /// **An engine gains enormously from a made road and loses enormously
+    /// without one**, which is why the state builds them and why the
+    /// thirty per cent on a track is the figure that matters here.
+    ///
+    /// Open country is deliberately a real figure rather than `None`.
+    /// Nothing on wheels crosses it — `travel.rs` says so and is right —
+    /// but the economy does move goods over such links and prices them at
+    /// open-country rates, so what crosses is animal-drawn and does about
+    /// a wagon's 32 km a day. Returning `None` here would change what is
+    /// *reachable*, which is a different change from how long it takes.
+    ///
+    /// **Water comes out level with a made road, for an entirely different
+    /// reason**, and the first version of this got it wrong by five times.
+    /// `travel.rs`'s 180 km a day is a *person taking passage on a coastal
+    /// steamer* at 8-10 knots — the right figure for a passenger and the
+    /// wrong one for a cargo, and lifting it here put a 1,147 km sea lane
+    /// at six days when it is one.
+    ///
+    /// A ship is far slower per hour than a truck and **runs around the
+    /// clock**, which is the whole of it: a bulk carrier at 14 knots makes
+    /// 622 km in a day against a truck's 620 in a legal seven hours. They
+    /// arrive at the same number from opposite directions. Container ships
+    /// at 20+ knots do better again and are not separated here.
+    pub fn pace(self) -> f64 {
+        match self {
+            Surface::Highway => 1.10,
+            Surface::Road => 1.00,
+            Surface::Track => 0.30,
+            Surface::Open => 0.05,
+            Surface::Water => 1.00,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -4326,25 +4382,27 @@ impl Economy {
             .collect();
         // One pass out from each place that makes the stuff, rather than
         // one per pair.
+        //
+        // **Nearest in time, not in distance.** Safety stock rises with
+        // lead time, and a lead time is days — so a supplier a hundred
+        // kilometres away up a track is further off than one two hundred
+        // down a motorway, and the shop that waits longer is the one that
+        // has to hold more. Measuring it in kilometres said otherwise.
         let mut nearest = vec![f64::INFINITY; self.markets.len()];
         for &mk in makers.iter() {
-            let km = self.road_km_from(mk);
             for m in 0..self.markets.len() {
-                if reach[m].contains(&mk) && km[m] < nearest[m] {
-                    nearest[m] = km[m];
+                if !reach[m].contains(&mk) {
+                    continue;
+                }
+                let days = self.routing.travel_days(mk, m);
+                if days < nearest[m] {
+                    nearest[m] = days;
                 }
             }
         }
         nearest
             .into_iter()
-            .map(|km| {
-                let travel = if km.is_finite() {
-                    crate::shipment::days_on_the_road(km) as f64
-                } else {
-                    0.0
-                };
-                1.0 + travel
-            })
+            .map(|days| 1.0 + if days.is_finite() { days } else { 0.0 })
             .collect()
     }
 
@@ -5876,11 +5934,23 @@ impl Economy {
         // *after* filtering renumbers every road past the first shut one,
         // and the reservation code indexes `self.routes` with what comes
         // back out.
-        let edges: Vec<(crate::quote::RouteId, usize, usize, f64, f64, f64)> = self
+        let edges: Vec<(crate::quote::RouteId, usize, usize, f64, f64, f64, f64)> = self
             .routes
             .iter()
             .filter(|r| r.usable())
-            .map(|r| (r.id, r.a, r.b, r.freight_cost, r.km, r.capacity))
+            .map(|r| {
+                (
+                    r.id,
+                    r.a,
+                    r.b,
+                    r.freight_cost,
+                    r.km,
+                    r.capacity,
+                    // **The surface decides how fast, which is what its own
+                    // doc comment always claimed and nothing had read.**
+                    r.surface.pace(),
+                )
+            })
             .collect();
         self.routing = crate::quote::Routing::build(self.markets.len(), &edges);
     }
@@ -6330,6 +6400,20 @@ impl Economy {
 
     /// **Collect a consignment and put it on the road.**
     ///
+    /// **`nights` arrives settled, and is never re-derived here.**
+    ///
+    /// This parameter was `km`, and `consign` divided it by one constant
+    /// to get a duration — which is why a cargo over a track arrived as
+    /// fast as one over a motorway: a distance cannot say what the road
+    /// under it is like. Reading the route table here instead fixed the
+    /// answer and left a `km` argument that was silently ignored, which is
+    /// **two figures for one haul** wearing new clothes — the defect
+    /// `quote.rs` exists to have removed once already.
+    ///
+    /// So `Routing::travel_days` is the one place a haul's duration is
+    /// worked out, `Quote::days` is what carries it, and this records what
+    /// it was told.
+    ///
     /// The tonnes leave the consignor now; they reach the consignee when
     /// they get there. What is fixed at this moment and never revisited is
     /// the **contract**: what the goods were worth where they were picked
@@ -6344,7 +6428,7 @@ impl Economy {
         carrier: usize,
         commodity: Commodity,
         tonnes: f64,
-        km: f64,
+        nights: u64,
         refrigerated: bool,
     ) -> Option<(crate::shipment::ShipmentId, f64)> {
         use crate::shipment::{days_on_the_road, Leg, Shipment};
@@ -6359,7 +6443,7 @@ impl Economy {
         let from_market = self.ledger.sites[consignor].market;
         let to_market = self.ledger.sites[consignee].market;
         let day = self.ledger.day;
-        let due = day + days_on_the_road(km);
+        let due = day + nights;
 
         // **The road has to have room, and taking it takes it.**
         //

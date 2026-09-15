@@ -394,168 +394,164 @@ fn nothing_leaks_when_a_cargo_moves() {
 /// **Gate: a decision is taken on the morning position, and proving that
 /// means changing the world underneath it.**
 ///
-/// The first version of this gate cloned the opening snapshot, ran a day,
-/// and asserted the clone still equalled the snapshot it was cloned from.
-/// That proves Rust values do not mutate each other. It says nothing
-/// whatever about whether any decision *reads* the snapshot, which is the
-/// entire claim — and an external review was right to call it out. Sixth
-/// time a gate of mine has passed without testing what it names.
+/// The first version cloned the opening snapshot, ran a day, and asserted
+/// the clone still equalled the snapshot it was cloned from. That proves
+/// Rust values do not mutate each other. It says nothing whatever about
+/// whether any decision *reads* the snapshot, which is the entire claim —
+/// and an external review was right to call it out. Sixth time a gate of
+/// mine had passed without testing what it names.
 ///
-/// What discriminates is making the live world say **the opposite** of the
-/// photograph and then watching what the haulier does. So the stock of the
-/// best-covered town and the worst-covered town is swapped after the day
-/// has opened: the snapshot still says the first is desperate, live state
-/// now says the second is. A dispatcher reading the morning position sends
-/// the lorries to the first. One reading live state sends them to the
-/// second.
+/// ### The second version hung on hundredths of a day
 ///
-/// The swap moves tonnage between towns and creates none, so the ledger
-/// still conserves — which matters, because a gate that has to break
-/// conservation to make its point is testing a world that cannot exist.
+/// It picked the worst- and best-covered town for **steel**, emptied the
+/// flush one into a third, and required a consignment to the short one.
+/// Its own comment recorded the fixture as "24.4 days in the worst town
+/// against 42.9 in the best on a target of twenty-five"; by the time
+/// anything touched it the country read 24.36, 24.83, 24.96, 24.98 and
+/// 30.18 on a target of 26.
+///
+/// **Which of five towns was "worst" had come to be decided by hundredths
+/// of a day.** Any change that perturbed forty days of history reshuffled
+/// them, the morning-worst town stopped being one the dispatcher would
+/// serve, and the gate went red on a world behaving perfectly — reading
+/// the road surface under a haul, which makes a motorway ten per cent
+/// quicker, was enough. That is this file's older rule arriving again: **a
+/// gate that reverses on a small move is measuring which side of a cliff
+/// the country is on, not the mechanism it names.**
+///
+/// ### And the obvious replacement was wrong in a more interesting way
+///
+/// "Build the country twice, contradict live state in one, require the
+/// same decision" is not the claim, because **two different reads are both
+/// correct and only one of them is the photograph**:
+///
+/// | | read from |
+/// |---|---|
+/// | who needs it | **the morning position** — all anybody knows when the lorries leave |
+/// | who can supply it | **live state** — you cannot load steel out of a town that has none |
+///
+/// Moving a town's whole holding somewhere else changes the *supply*
+/// geography, and the dispatcher rightly answered differently. The
+/// disturbance has to touch demand and leave every supplier alone.
+///
+/// ### What it asserts now
+///
+/// Run the country once and see where the lorries actually go. Then run it
+/// again — deterministic, so it is the same country — and after the day
+/// has opened, pile stock into the **consuming yards** of exactly those
+/// destinations, taken out of the consuming yards of towns the lorries did
+/// not serve. Supply is untouched: not one tonne moves into or out of a
+/// site anybody could collect from.
+///
+/// Live state now says the towns the dispatcher was about to serve are the
+/// best-stocked in the country. A dispatcher reading the photograph sends
+/// the lorries anyway. One reading live figures cannot.
+///
+/// No marginal town, no threshold, and the tonnage moves rather than
+/// appearing — a gate that has to break conservation to make its point is
+/// testing a world that cannot exist.
 #[test]
 fn a_decision_is_taken_on_the_morning_position() {
-    use scale_sim::econ::Commodity;
+    use scale_sim::econ::{Commodity, RECIPES};
 
-    let mut e = a_nation().economy;
-    let mut freight = scale_sim::logistics::Logistics::found(&e);
-    for _ in 0..40 {
-        e.step();
-    }
-
-    // Find a commodity and two towns the morning position disagrees about.
-    let opened = e.opening().cloned().expect("no opening was taken");
-    // **Steel, because the choice has to be a real one.**
-    //
-    // Two things have to be true of the commodity or the gate watches an
-    // empty road. It has to be genuinely short somewhere — food in this
-    // country runs twelve days against a target of four, so no town is
-    // below target and the dispatcher correctly sends nothing. And it has
-    // to be worth carrying: timber has a far wider spread, four days
-    // against a hundred and thirty-five, and is never hauled at all
-    // because `logistics` refuses a load whose freight exceeds half what
-    // the goods are worth, which is exactly why there is a cement works in
-    // every region on earth.
-    //
-    // Steel is the most-hauled commodity this country has, and it runs
-    // 24.4 days in the worst town against 42.9 in the best on a target of
-    // twenty-five. There is something to decide, and somebody willing to
-    // carry it.
     let c = Commodity::Steel;
-    let cover_at = |m: usize| {
-        let draw = e.daily_draw(m, c);
-        if draw > 1e-9 {
-            opened.stock(m, c) / draw
-        } else {
-            f64::INFINITY
-        }
-    };
-    let towns: Vec<usize> = (0..e.markets.len())
-        .filter(|&m| e.daily_draw(m, c) > 1e-9)
-        .collect();
-    assert!(
-        towns.len() >= 2,
-        "this country has fewer than two towns that eat, so there is nothing to choose between"
-    );
-    let worst = *towns
-        .iter()
-        .min_by(|&&a, &&b| cover_at(a).total_cmp(&cover_at(b)))
-        .unwrap();
-    let best = *towns
-        .iter()
-        .max_by(|&&a, &&b| cover_at(a).total_cmp(&cover_at(b)))
-        .unwrap();
-    assert_ne!(worst, best, "every town is covered identically");
-    assert!(
-        cover_at(worst) < cover_at(best),
-        "the morning position does not distinguish the two towns"
-    );
 
-    // **Empty the flush town into a third one.**
-    //
-    // The obvious construction — swap the two extremes — does not work,
-    // and the reason is worth recording: piling the flush town's stock
-    // into the short one leaves nobody able to supply it, so the
-    // dispatcher correctly sends nothing and the gate watches an empty
-    // road. The stock has to go somewhere that is *not* the destination.
-    //
-    // Tonnage moves between towns and none is created, so the ledger still
-    // balances. A gate that has to break conservation to make its point is
-    // testing a world that cannot exist.
-    let sink = *towns
-        .iter()
-        .find(|&&m| m != worst && m != best)
-        .expect("this country has only two towns, so there is nowhere to put the stock");
-    let held = |e: &scale_sim::econ::Economy, m: usize| -> f64 {
+    // Sites that *consume* the commodity. Piling stock into these changes
+    // what the country looks like and changes nothing about what it can
+    // send, because `logistics` will not collect from a works' own hopper.
+    let consumers = |e: &scale_sim::econ::Economy, m: usize| -> Vec<usize> {
         (0..e.ledger.sites.len())
             .filter(|&s| e.ledger.sites[s].market == m)
-            .map(|s| e.ledger.stock(s, c))
-            .sum()
+            .filter(|&s| {
+                e.ledger.sites[s]
+                    .recipe
+                    .map(|r| RECIPES[r].inputs.iter().any(|&(ic, _)| ic == c))
+                    .unwrap_or(false)
+            })
+            .collect()
     };
-    let emptied = held(&e, best);
-    assert!(emptied > 0.0, "the best-covered town is holding nothing");
-    for s in 0..e.ledger.sites.len() {
-        if e.ledger.sites[s].market == best {
-            e.ledger.sites[s].stock[c as usize] = 0.0;
-        }
-    }
-    let into = (0..e.ledger.sites.len())
-        .find(|&s| e.ledger.sites[s].market == sink)
-        .expect("a town with no sites in it");
-    e.ledger.sites[into].stock[c as usize] += emptied;
-    e.ledger.assert_conserved();
 
-    // **Live state now says the opposite of the photograph.** The morning
-    // position has `best` comfortably above target and `worst` below it;
-    // live state has `best` holding nothing at all.
+    let run = |flatter: &[usize]| -> Vec<usize> {
+        let mut e = a_nation().economy;
+        let mut freight = scale_sim::logistics::Logistics::found(&e);
+        for _ in 0..40 {
+            e.step();
+        }
+
+        if !flatter.is_empty() {
+            // Take from the consuming yards of towns nobody is serving...
+            let mut pot = 0.0;
+            for m in 0..e.markets.len() {
+                if flatter.contains(&m) {
+                    continue;
+                }
+                for s in consumers(&e, m) {
+                    pot += e.ledger.sites[s].stock[c as usize];
+                    e.ledger.sites[s].stock[c as usize] = 0.0;
+                }
+            }
+            // ...and give it to the towns the lorries were about to visit.
+            let mut targets: Vec<usize> = Vec::new();
+            for &m in flatter {
+                targets.extend(consumers(&e, m));
+            }
+            assert!(
+                !targets.is_empty(),
+                "the towns the dispatcher served have no works that consume {c}, \
+                 so there is nowhere to put the stock without touching a supplier"
+            );
+            let each = pot / targets.len() as f64;
+            for s in targets {
+                e.ledger.sites[s].stock[c as usize] += each;
+            }
+            e.ledger.assert_conserved();
+        }
+
+        let before: std::collections::BTreeSet<_> = e.shipments.iter().map(|(id, _)| id).collect();
+        let day = e.ledger.day;
+        freight.haul(&mut e, day);
+        let mut went: Vec<usize> = e
+            .shipments
+            .iter()
+            .filter(|(id, _)| !before.contains(id))
+            .filter(|(_, s)| s.commodity == c)
+            .map(|(_, s)| s.to_market)
+            .collect();
+        went.sort_unstable();
+        went.dedup();
+        went
+    };
+
+    // Where the lorries go when nothing has been interfered with.
+    let ordinarily = run(&[]);
     assert!(
-        held(&e, best) < held(&e, worst),
-        "the move did not reverse who is short"
+        !ordinarily.is_empty(),
+        "the dispatcher carried no {c} at all, so this gate is watching an \
+         empty road — pick a commodity the country actually hauls"
     );
 
-    // ---------------------------------------------------------------
-    // and now the dispatcher decides
-    // ---------------------------------------------------------------
-    let before: std::collections::BTreeSet<_> = e.shipments.iter().map(|(id, _)| id).collect();
-    let day = e.ledger.day;
-    freight.haul(&mut e, day);
-    let raised: Vec<usize> = e
-        .shipments
-        .iter()
-        .filter(|(id, _)| !before.contains(id))
-        .filter(|(_, s)| s.commodity == c)
-        .map(|(_, s)| s.to_market)
-        .collect();
+    // And where they go when live state says those very towns are the
+    // best-stocked in the country.
+    let contradicted = run(&ordinarily);
 
-    // **One assertion, carrying both ways it can fail.** A dispatcher
-    // reading live state does not merely send the lorries somewhere else —
-    // it may send none at all, because live state says the town the
-    // morning position is worried about is comfortably stocked. Splitting
-    // that into two assertions makes the sabotage report the wrong reason.
-    let went = |v: &Vec<usize>, e: &scale_sim::econ::Economy| -> String {
+    let names = |v: &[usize]| -> String {
         if v.is_empty() {
             "nowhere at all".to_string()
         } else {
-            format!(
-                "to {}",
-                v.iter()
-                    .map(|&m| e.markets[m].name.clone())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
+            v.iter()
+                .map(|m| m.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
         }
     };
-    assert!(
-        raised.contains(&worst),
-        "the morning position said {} was the town short of {c}, and the lorries went {}.          Live state disagrees on purpose — the stock of {} was moved to {} after the day          opened — so a dispatcher reading the live figures sends them elsewhere, or sends          none.",
-        e.markets[worst].name,
-        went(&raised, &e),
-        e.markets[best].name,
-        e.markets[sink].name
-    );
-    assert!(
-        !raised.contains(&best),
-        "the lorries went to {}, which only live state says needs them",
-        e.markets[best].name
+    assert_eq!(
+        ordinarily,
+        contradicted,
+        "the morning position sent the lorries to [{}] and, with live state \
+         saying those towns are now the best-stocked in the country, they \
+         went to [{}] instead. The dispatcher is reading the live figures.",
+        names(&ordinarily),
+        names(&contradicted),
     );
 }
 

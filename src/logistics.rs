@@ -517,7 +517,20 @@ fn ship(
             // clamps the load by the seller's stock and by what is left of
             // the road; crediting the request instead moves tonnes on
             // paper that no lorry ever carried.
-            let Some((id, take)) = econ.consign(src, dst, carrier, c, take, km, c.needs_cold())
+            // **The road under the haul decides how long it takes**, and the
+            // route table is the one place that is worked out.
+            let nights = {
+                let a = econ.ledger.sites[src].market;
+                let b = econ.ledger.sites[dst].market;
+                let d = econ.routing.travel_days(a, b);
+                if d.is_finite() {
+                    d.floor().max(0.0) as u64
+                } else {
+                    0
+                }
+            };
+            let Some((id, take)) =
+                econ.consign(src, dst, carrier, c, take, nights, c.needs_cold())
             else {
                 continue;
             };

@@ -854,9 +854,9 @@ fn a_closed_road_is_never_the_road_that_gets_booked() {
                 && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
         })
         .expect("nobody in town 1 has a grain store");
-    let km = e.routing.km(0, 1);
+    let nights = e.routing.travel_days(0, 1).floor().max(0.0) as u64;
     let before = e.reservations.booked(direct, e.ledger.day);
-    let _ = e.consign(seller, buyer, seller, Commodity::Grain, 50.0, km, false);
+    let _ = e.consign(seller, buyer, seller, Commodity::Grain, 50.0, nights, false);
     assert!(
         (e.reservations.booked(direct, e.ledger.day) - before).abs() < 1e-9,
         "a shut road was booked {:.1} t of capacity",
@@ -890,7 +890,7 @@ fn a_consignment_reports_what_it_actually_took() {
                 && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
         })
         .expect("nobody in town 1 has a grain store");
-    let km = e.routing.km(0, 1);
+    let nights = e.routing.travel_days(0, 1).floor().max(0.0) as u64;
 
     // Ask for far more than the road can carry in a day.
     let road = e.spare_capacity(0, 1, e.ledger.day, e.ledger.day + 10);
@@ -902,7 +902,7 @@ fn a_consignment_reports_what_it_actually_took() {
     );
 
     let (id, accepted) = e
-        .consign(seller, buyer, seller, Commodity::Grain, ask, km, false)
+        .consign(seller, buyer, seller, Commodity::Grain, ask, nights, false)
         .expect("nothing was consigned at all");
 
     assert!(
@@ -973,8 +973,8 @@ fn a_booking_names_a_road_and_not_a_slot() {
                 && e.ledger.sites[s].capacity[Commodity::Grain as usize] > 0.0
         })
         .expect("nobody in town 1 has a grain store");
-    let km = e.routing.km(0, 1);
-    e.consign(seller, buyer, seller, Commodity::Grain, 40.0, km, false)
+    let nights = e.routing.travel_days(0, 1).floor().max(0.0) as u64;
+    e.consign(seller, buyer, seller, Commodity::Grain, 40.0, nights, false)
         .expect("nothing was consigned, so there is nothing booked to check");
 
     // What each booking means *physically* — which two towns, how far, on

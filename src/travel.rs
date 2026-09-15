@@ -116,12 +116,18 @@ impl Conveyance {
         };
         // **An engine gains enormously from a made road and loses
         // enormously without one.** This is why the state builds them.
+        //
+        // The figures live on `Surface::pace` now, because freight needs
+        // exactly the same ratio and had its own answer — one constant,
+        // the same for every road — which is how a cargo over a track came
+        // to arrive as fast as one over a motorway. One table, both
+        // callers. Open country is the one place the two questions really
+        // do differ: goods cross it behind an animal, and **nothing on
+        // wheels crosses it at all**, which is what the `None` says.
         let factor = match surface {
-            Highway => 1.10,
-            Road => 1.00,
-            Track => 0.30,
             Open => return None,
             Water => 1.0,
+            s => s.pace(),
         };
         // **Nine hours is the legal maximum; seven is a working day.**
         // The rest goes on loading, queueing, town speeds and the breaks
