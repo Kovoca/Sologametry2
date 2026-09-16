@@ -355,6 +355,62 @@ Two facts decide the order, both measured on 2026-09-16:
   already exists — `bom::validate`, and item keys derived from names rather
   than position — so moving 156 now is cheap and moving a thousand is not.
 
+### What the soak found, 2026-09-16, and what it changed
+
+`cargo run --release --bin soak` ran the integrated world for the first time
+— several nations, their people, the root's own day, nothing commanded.
+Five years on seed 7: **unemployment 6.2% to 64.3%, homelessness 1.2% to
+18.8%, households' money down 81%**, with money and tonnage conserved every
+day. It went abroad: households -4.15e10, abroad +4.72e10, net -0.016.
+
+**The cause is the trade deficit**, and it is a calibration fault: every
+town imports 30% of its steel, machinery and timber, so the world imports
+2.2x what it exports against the US's 1.29x.
+
+**The spiral is that nobody can respond.** No unemployment benefit, no
+emigration, no changing trade, no eating cheaply — and every state held
+flat through a depression, 8.26e9 to 8.23e9, where a real one's deficit
+widens automatically. The one response that exists, `leave_town`, is a
+stand-in from early testing with typed thresholds (15 points less
+unemployment, 20% cheaper food), and it correctly finds nowhere to go when
+every town is at 64%.
+
+**The owner's correction: NPCs function as players do.** Facing no work,
+a person fills a niche, learns a new skill, retrains — which is why
+schools, colleges and universities matter. That is spec **A4, marked
+SETTLED and entirely unbuilt**: opportunities as side-effects of other
+lives, pushed rather than scanned; goals with hysteresis; persistent plans
+from task templates; four reconsideration triggers; failure as a normal
+outcome; expiring reservations; a hard think budget.
+
+**Education is what makes retraining possible, and adults have none.**
+Only children enter it, at sixteen — *"the adults are given their skills;
+the children must go and get them."* And schools are public posts counted
+against population, not places with an intake anybody can apply to.
+
+**Revised order for Phase A**, one change at a time, soak after each:
+
+**A0.1 The A4 core.** Opportunity queues, goals with hysteresis, persistent
+plans, the four triggers. First templates: seek work in any trade already
+open to you.
+
+**A0.2 Education as places.** Colleges and universities with intakes an
+adult can apply to, so *retrain* is a plan: a place, years at reduced or no
+earnings, a qualification, then work.
+
+**A0.3 Move for a known vacancy**, replacing `leave_town`'s thresholds.
+
+**A0.4 Fill a niche** — `basket.rs` already records unmet demand; posted as
+an opportunity, somebody can start that business.
+
+**Measured separately, because they are institutions and calibration rather
+than choices:** each state's unemployment benefit, scaled by `Capacity`; and
+the import share that makes the world buy 2.2x what it sells.
+
+*Items as data files (below) waits: content added to a world that falls
+apart in five years is more to fall apart. The owner chose raws as the
+format.*
+
 **A1. Items as data files.** A human-writable format, hand-parsed to keep
 the minimal-dependency rule, every loaded definition put through
 `bom::validate` exactly as the built-in ones are today. What makes content
