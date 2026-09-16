@@ -328,6 +328,54 @@ Real defects, each visible in a test or measurable in a binary.
 Ordered by what unblocks the most, and by what would have to be built twice
 if taken out of order.
 
+**The owner's decision, 2026-09-16: the world functions without the player
+first.** *"Getting the world to function as it would in game without the
+player is the first step of the journey."* People buy food, furnishings and
+property, learn things, have families; factories and machines produce goods;
+trades and construction happen — all of it with nobody at the controls. The
+player comes after, into a world that is already running. The clock and the
+player below move behind this phase accordingly.
+
+### Phase A — the world runs itself
+
+Two facts decide the order, both measured on 2026-09-16:
+
+- **The item layer is not in the living world.** 156 items with full bills
+  of materials exist, and `basket.rs` models a household buying, mending and
+  discarding them — but `standard_catalogue()` is called only by
+  `bin/basket` and `bin/make`. `populace.rs`, `person.rs`, the economy and
+  `game.rs` never touch it, and `GameState::items` is filled by nothing. The
+  running world is 18 commodities in tonnes.
+- **Items are authored as Rust.** All 156 are hand-written in one function,
+  `item.rs:962-2200`, about 1,240 lines before their bills of materials. The
+  owner's stated scope is **thousands of items**, which as code is tens of
+  thousands of lines, a recompile and a ten-minute suite per item, and
+  nothing the owner can add or correct without a programmer. CDDA's content
+  is JSON and DF's is raw text for exactly this reason. The safety net
+  already exists — `bom::validate`, and item keys derived from names rather
+  than position — so moving 156 now is cheap and moving a thousand is not.
+
+**A1. Items as data files.** A human-writable format, hand-parsed to keep
+the minimal-dependency rule, every loaded definition put through
+`bom::validate` exactly as the built-in ones are today. What makes content
+authorable by the owner.
+
+**A2. The basket joins the living world.** Sampled households actually buy,
+own, wear out, repair and discard real items, paid through the money ledger
+and carried in `GameState::items`. "Buys furnishings" stops being a demo.
+
+**A3. The mind runs daily.** `Person` now carries a mind, a memory and
+relationships; nothing in `populace` drives needs, coping or the day's
+memories yet.
+
+**A4. Then property, construction and social life** — including the
+value-gated social skills (Liar gated on `Value::Truth`, as DF does) — on
+top of a population that is already living.
+
+---
+
+### Later — the player and the clock
+
 ### 1. The clock and the player — one job, not two
 
 You cannot have a player who acts without deciding what a tick is, and the
