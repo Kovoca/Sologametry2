@@ -33,7 +33,7 @@ use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
 use scale_sim::game::GameState;
 use scale_sim::money::Account;
 use scale_sim::network::Network;
-use scale_sim::person::Housing;
+use scale_sim::person::{Housing, Trade};
 use scale_sim::polity::Polities;
 use scale_sim::populace::Populace;
 use scale_sim::region::Nations;
@@ -212,6 +212,19 @@ fn main() {
     let mut unpaid_at = 0.0f64;
     snapshot(&g, &mut worked_at, &mut hungry_at);
 
+    // **Who does what, and who changed it.** A figure for the whole sample
+    // cannot say whether the people out of work are stuck in a trade with
+    // none, which is the question the planner exists to answer.
+    let mut trade_at: std::collections::BTreeMap<_, Trade> = Default::default();
+    if let Some(folk) = g.folk.as_ref() {
+        for (id, p) in folk.people.iter() {
+            trade_at.insert(id, p.trade);
+        }
+    }
+    let mut changes = Changes::default();
+    let final_year_from = days.saturating_sub(DAYS_PER_YEAR);
+    let mut worked_final_year: std::collections::BTreeMap<_, u64> = Default::default();
+
     for d in 1..=days {
         g.a_day();
 
@@ -224,7 +237,30 @@ fn main() {
             e.treasury.assert_conserved();
         }
 
+        if d == final_year_from {
+            if let Some(folk) = g.folk.as_ref() {
+                for (id, p) in folk.people.iter() {
+                    worked_final_year.insert(id, p.days_worked);
+                }
+            }
+        }
+
         if d % month == 0 || d == days {
+            if let Some(folk) = g.folk.as_ref() {
+                for (id, p) in folk.people.iter() {
+                    match trade_at.insert(id, p.trade) {
+                        Some(was) if was != p.trade => {
+                            if p.trade == Trade::Supervisor {
+                                changes.promoted += 1;
+                            } else {
+                                changes.switched += 1;
+                                changes.pairs[was.index()][p.trade.index()] += 1;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
             let r = read(&g, d, &worked_at, &hungry_at, unpaid_at);
             unpaid_at = g.economy.as_ref().map(|e| e.treasury.unpaid).unwrap_or(0.0);
             snapshot(&g, &mut worked_at, &mut hungry_at);
@@ -233,6 +269,91 @@ fn main() {
     }
 
     report(&readings, years);
+    by_trade(&g, &worked_final_year, &changes, years, final_year_from, days);
+}
+
+/// Changes of trade over the run, counted monthly.
+#[derive(Default)]
+struct Changes {
+    /// Made up to supervisor: a promotion, not a change of work.
+    promoted: u64,
+    /// Went to work at a different trade.
+    switched: u64,
+    /// From which trade to which.
+    pairs: [[u64; 13]; 13],
+}
+
+/// **The sample by trade at the end**, and how much of the final year each
+/// trade actually worked.
+fn by_trade(
+    g: &GameState,
+    worked_from: &std::collections::BTreeMap<scale_sim::id::Id<scale_sim::person::Person>, u64>,
+    changes: &Changes,
+    years: u64,
+    from_day: u64,
+    to_day: u64,
+) {
+    let Some(folk) = g.folk.as_ref() else { return };
+    let span = to_day.saturating_sub(from_day).max(1) as f64;
+    println!("
+  by trade at the end:
+");
+    println!(
+        "  {:<16} {:>6} {:>12} {:>9}",
+        "", "people", "worked, yr 5", "homeless"
+    );
+    let n = folk.people.len().max(1) as f64;
+    for t in Trade::ALL {
+        let mine: Vec<_> = folk.people.iter().filter(|(_, p)| p.trade == t).collect();
+        if mine.is_empty() {
+            continue;
+        }
+        let worked: f64 = mine
+            .iter()
+            .map(|(id, p)| {
+                let w0 = worked_from.get(id).copied().unwrap_or(p.days_worked);
+                p.days_worked.saturating_sub(w0) as f64 / span
+            })
+            .sum::<f64>()
+            / mine.len() as f64;
+        let homeless = mine
+            .iter()
+            .filter(|(_, p)| p.housing == Housing::Homeless)
+            .count() as f64
+            / mine.len() as f64;
+        println!(
+            "  {:<16} {:>5.1}% {:>11.1}% {:>8.1}%",
+            t.name(),
+            mine.len() as f64 / n * 100.0,
+            worked.min(1.0) * 100.0,
+            homeless * 100.0
+        );
+    }
+    let per_year = changes.switched as f64 / n / years.max(1) as f64;
+    println!(
+        "
+  changed trade: {} times over {years} years, {:.1}% of the sample a year          (real occupational mobility runs roughly 10% a year); promoted {} times",
+        changes.switched,
+        per_year * 100.0,
+        changes.promoted
+    );
+    let mut top: Vec<(u64, usize, usize)> = Vec::new();
+    for a in 0..13 {
+        for b in 0..13 {
+            if changes.pairs[a][b] > 0 {
+                top.push((changes.pairs[a][b], a, b));
+            }
+        }
+    }
+    top.sort_by(|x, y| y.0.cmp(&x.0));
+    for (count, a, b) in top.into_iter().take(8) {
+        println!(
+            "    {:>4}  {} -> {}",
+            count,
+            Trade::ALL[a].name(),
+            Trade::ALL[b].name()
+        );
+    }
 }
 
 fn snapshot(

@@ -4330,6 +4330,44 @@ day 383   food cover differs by 30 days
   Every one of them is a defensible rule and not one of them was the fault:
   **the fault was the amplifier, not any of the things being amplified.**
 
+### A finished job was a day off
+
+Collecting the pay for a job and looking for the next one were two
+different days. The day a job ended was spent only being paid, and the
+search began the morning after — so **every job, of any length, cost its
+worker a day**, and a one-day shift, which is how shops, kitchens, offices
+and carriers take people on, could fill at most half the days there are.
+
+Measured with a casual worker holding savings enough never to be the
+constraint, in a real nation, over a hundred days:
+
+| | before | after |
+|---|---|---|
+| shop worker | 43 days, and 43 more spent only collecting pay | **69** |
+| office work | 35 | 59 *(offices keep weekdays)* |
+| hospitality | 43 | 71 |
+| labourer, six-day shifts | 84 | 96 |
+
+It had been standing under a calibration. **"A shop worker works about a
+third of the days in a year"** and the contract table's 28% for shop work
+were read off a model that could not give a one-day trade more than half.
+Real British part-timers average two and a half to three days a week.
+
+In the soak, five years on the integrated world: days that were paid work
+**45% to 72%**; homelessness held at nought for three and a half years where
+it had begun climbing in year two, and ends at 16% against 19% — still
+rising at the end, because the money is still leaving the country. The
+stuck group is unchanged in kind: shop workers are 53% of the sample and
+28% of them are on the street by year five.
+
+**And a gate measured the wrong thing as a result.** `people_share_a_roof`
+held that sharing leaves people more money than living alone. With the
+days filled, sharers spent the quarter they saved on rent — on a van, 171
+of 199 of them against 41 of 151 living alone — and came out with half the
+cash. A saving that buys something has reached somebody. It counts what
+they hold now, vehicles at replacement cost: sharers 9.5% ahead, and 1.4%
+with the scale deleted.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

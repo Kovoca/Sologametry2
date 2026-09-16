@@ -576,7 +576,19 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // have left in their pockets. Homelessness stays as the sharper
     // consequence, asserted only in the direction that cannot be an
     // artefact: living alone is never *easier*.
-    let purse = |alone: bool| -> f64 {
+    //
+    // **What they have, not only what is in their pocket.** Cash alone was
+    // the measure until a finished shift stopped costing its worker the
+    // next day: with the days filled, the quarter saved on rent was spent,
+    // and what it was spent on was a van — 171 of 199 sharers owned one
+    // against 41 of 151 living alone, and the sharers' cash came out at
+    // *half* the loners'. A saving that buys something has not failed to
+    // reach anybody. So a vehicle counts at what it would cost now.
+    //
+    // Measured: sharers held 9.5% more than people living alone; with
+    // everybody's share of the household set back to a whole one — the
+    // scale deleted — 1.4%. The bar sits between them.
+    let has = |alone: bool| -> f64 {
         let idx: Vec<_> = folk
             .people
             .ids()
@@ -585,12 +597,20 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
         if idx.is_empty() {
             return f64::NAN;
         }
-        idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len() as f64
+        idx.iter()
+            .map(|&i| {
+                let p = &folk.people[i];
+                p.money
+                    + p.conveyance.price_in_wage_days()
+                        * scale_sim::person::day_rate(&e, p.market, Trade::Haulier)
+            })
+            .sum::<f64>()
+            / idx.len() as f64
     };
-    let (alone_purse, shared_purse) = (purse(true), purse(false));
+    let (alone_has, shared_has) = (has(true), has(false));
     assert!(
-        shared_purse > alone_purse * 1.10,
-        "sharing a roof left {shared_purse:.0} against {alone_purse:.0} living alone -- the equivalence scale is not reaching anybody's pocket"
+        shared_has > alone_has * 1.05,
+        "sharing a roof left people holding {shared_has:.0} against {alone_has:.0} living alone, counting what they bought -- the equivalence scale is not reaching anybody"
     );
     assert!(
         alone >= shared - 1e-9,
@@ -627,7 +647,17 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
             .ids()
             .filter(|i| f(folk.households[i.slot()]))
             .collect();
-        idx.iter().map(|&i| folk.people[i].money).sum::<f64>() / idx.len().max(1) as f64
+        // What they hold, counting what they bought — the same measure as
+        // above, for the same reason.
+        idx.iter()
+            .map(|&i| {
+                let p = &folk.people[i];
+                p.money
+                    + p.conveyance.price_in_wage_days()
+                        * scale_sim::person::day_rate(&e, p.market, Trade::Haulier)
+            })
+            .sum::<f64>()
+            / idx.len().max(1) as f64
     };
     let sharing = money(&|h| matches!(h, Household::Shared(_)));
     let living_alone_money = money(&|h| h == Household::Alone);

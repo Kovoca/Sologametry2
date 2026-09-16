@@ -2343,9 +2343,22 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
     }
 
     // --- Work, or look for it ---
-    match person.state {
-        State::Working { until } if day < until => {}
-        State::Working { .. } => {
+    // **A finished job is not a day off.**
+    //
+    // Collecting the pay for a job and looking for the next one used to be
+    // two different days: the day a job ended was spent only being paid,
+    // and the search began the morning after. So every job, of any length,
+    // cost its worker a day — and a one-day shift, which is how shops,
+    // kitchens, offices and carriers take people on, could fill at most
+    // half the days there are. A casual shop worker with savings to spare
+    // and a town full of shifts took forty-three in a hundred days and
+    // spent the other forty-three doing nothing but collecting pay.
+    //
+    // Real shift work is one shift a day, and the next one is the next
+    // day's. The job ends, it is paid, and the same day goes on to what
+    // comes next.
+    if let State::Working { until } = person.state {
+        if day >= until {
             if let Some(job) = person.job.take() {
                 // The work has to actually happen, or the world never
                 // notices it was done. A haul that pays but moves nothing
@@ -2492,6 +2505,10 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             }
             person.state = State::Idle;
         }
+    }
+
+    match person.state {
+        State::Working { .. } => {}
         State::Idle => {
             // **A month of everything, not a month of groceries.**
             //
