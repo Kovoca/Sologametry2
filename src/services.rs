@@ -78,7 +78,26 @@ impl Sector {
         }
     }
 
-    /// Which trade holds these posts.
+    /// **Which trades hold this sector's posts, and in what shares.**
+    ///
+    /// A building site is not one trade and never was: of construction's
+    /// 6.4% of UK employment, general building is about 3.5, electricians
+    /// 1.5 and plumbing and heating 1.4 — and the last two are ticketed
+    /// work nobody else may do. The one place this is written; counting
+    /// posts and offering work both read it.
+    pub fn trades(self) -> &'static [(Trade, f64)] {
+        match self {
+            Sector::Construction => &[
+                (Trade::Builder, 0.55),
+                (Trade::Electrician, 0.23),
+                (Trade::Pipefitter, 0.22),
+            ],
+            Sector::Hospitality | Sector::Recreation => &[(Trade::Hospitality, 1.0)],
+            Sector::Office => &[(Trade::Office, 1.0)],
+        }
+    }
+
+    /// The trade holding most of these posts.
     pub fn trade(self) -> Trade {
         match self {
             Sector::Construction => Trade::Builder,

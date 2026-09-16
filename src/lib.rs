@@ -41,6 +41,7 @@ pub mod network;
 pub mod noise;
 pub mod patch;
 pub mod person;
+pub mod planner;
 pub mod polity;
 pub mod populace;
 pub mod power;

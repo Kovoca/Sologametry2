@@ -259,20 +259,20 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     };
 
     let full = share(None, Employment::FullTime);
-    // **The model runs about twelve points under, and that is recorded
-    // rather than hidden inside a wide band.**
+    // **The model ran twelve points under, and most of it was the sample.**
     //
-    // Measured over three thousand people it is 43.6%, against a real
-    // British 56% permanent full-time. The old band of 40-75% was wide
-    // enough to swallow that and centred above it, so it read as a pass
-    // while the model was a long way from the figure it cites. It is not
-    // an error bar; it is a **calibration gap**, and what it says is that
-    // this economy has more part-time and casual work in it than Britain
-    // does. Closing it means finding out why firms here offer fewer
-    // guaranteed hours, which is a piece of work rather than a wider band.
+    // Measured over three thousand people this was 43.6% against a real
+    // British 56% permanent full-time, and it was recorded as a
+    // calibration gap — this economy offering fewer guaranteed hours than
+    // Britain. It was not the firms. Half of every sample were shop
+    // workers, because trades were drawn from national shares and anybody
+    // unqualified for the draw was put behind a counter, and shop work is
+    // the least full-time trade there is. Seeded from the posts each town
+    // actually has, the same measurement over three thousand people is
+    // **54.6%**, and the band is centred there now with the old width.
     assert!(
-        (0.35..0.52).contains(&full),
-        "{:.1}% of the workforce is permanent full-time. The model's own figure is about          43.6% and the real British one is 56% — outside this band something has moved,          and it is worth knowing which way",
+        (0.46..0.63).contains(&full),
+        "{:.1}% of the workforce is permanent full-time. The model's own figure is about          54.6% and the real British one is 56% — outside this band something has moved,          and it is worth knowing which way",
         full * 100.0
     );
 
@@ -986,6 +986,19 @@ fn grades_gate_what_money_cannot_buy() {
 fn a_dead_person_does_not_become_whoever_takes_their_slot() {
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 40, 20260828);
+
+    // **Somebody has to die, and it is not left to hunger any more.** This
+    // waited six years for the sample to starve somebody, which it did
+    // while people were seeded into trades with no work in them; seeded
+    // from the work their towns actually have, nobody starved. The claim
+    // is about what a freed slot does to a handle, not about famine — so
+    // three lives end on the first day, and the path runs whatever the
+    // country is like.
+    let ending: Vec<_> = folk.people.ids().take(3).collect();
+    for i in ending {
+        folk.people[i].condition = 0.0;
+        folk.people[i].state = scale_sim::person::State::Dead;
+    }
 
     let before: Vec<_> = folk.people.ids().collect();
     let named: Vec<(_, String)> = before

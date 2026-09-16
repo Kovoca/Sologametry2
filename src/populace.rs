@@ -27,8 +27,9 @@ use crate::econ::Economy;
 use crate::id::{Arena, Id};
 use crate::person::{
     day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
-    Qualification, Trade,
+    Qualification, State, Trade,
 };
+use crate::planner::{self, Heard, Lead, Outcome as Day};
 use crate::rng::Rng;
 use crate::travel::Conveyance;
 
@@ -117,7 +118,68 @@ pub struct Populace {
     /// Everyone who has died, so a run can be judged on the people it
     /// killed as well as the ones still standing.
     pub gone: Vec<(String, u64)>,
+    /// **Openings somebody has set out after**, held until they get the
+    /// work, give up, or the hold lapses — spec A4.7. Without it a town
+    /// with one post going would send everybody who heard of it.
+    pub reservations: Vec<Reservation>,
     rng: Rng,
+}
+
+/// **A hold on an opening while somebody goes after it.** Expiring, so a
+/// person who dies or changes their mind does not hold a post for ever.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Reservation {
+    pub who: Id<Person>,
+    pub market: usize,
+    pub trade: Trade,
+    pub until: u64,
+}
+
+/// **How many people who know of an opening tell somebody else about it
+/// each day.** A few; designed. Word of mouth is how about half of real
+/// jobs are found, and it reaches whoever the teller happens to know.
+const TOLD_A_DAY: usize = 3;
+
+/// **Hold an opening for somebody setting out after it**, if one is still
+/// free — spec A4.7, and the only place the rule is written.
+///
+/// `room` is how many posts in that trade the town has beyond the people in
+/// it; every hold already on it counts against that. A whole post must be
+/// left, or the answer is no and they keep doing what they were doing.
+pub fn hold_an_opening(
+    reservations: &mut Vec<Reservation>,
+    who: Id<Person>,
+    market: usize,
+    trade: Trade,
+    room: f64,
+    day: u64,
+) -> bool {
+    let held = reservations
+        .iter()
+        .filter(|r| r.market == market && r.trade == trade)
+        .count() as f64;
+    if room - held < 1.0 {
+        return false;
+    }
+    reservations.push(Reservation {
+        who,
+        market,
+        trade,
+        until: day + planner::LEAD_LIFE_DAYS,
+    });
+    true
+}
+
+/// A deterministic number from a few others — who hears what must rebuild
+/// identically from a seed like everything else.
+fn mix(parts: &[u64]) -> u64 {
+    let mut h = 0x9E37_79B9_7F4A_7C15u64;
+    for &p in parts {
+        h ^= p.wrapping_add(0x6A09_E667_F3BC_C909);
+        h = h.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        h ^= h >> 31;
+    }
+    h
 }
 
 /// Names enough to tell people apart. Not a naming system — that belongs
@@ -145,6 +207,7 @@ impl Populace {
         let mut people = Arena::new();
         let mut represents = Vec::new();
         let mut households = Vec::new();
+        let posts = crate::labour::posts_by_trade(econ);
 
         for m in 0..econ.markets.len() {
             let pop = econ.markets[m].population;
@@ -155,7 +218,9 @@ impl Populace {
             for _ in 0..n {
                 let first = FIRST[(rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
                 let last = LAST[(rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
-                let trade = draw_trade(&mut rng);
+                // Settled below, once it is known what they are qualified
+                // to do.
+                let trade = Trade::Shopworker;
                 // **Nobody starts with anything.** A fortnight's food and
                 // a room, which is the position the single-person runs
                 // start from and the one that makes a bad month bite.
@@ -226,11 +291,15 @@ impl Populace {
                 // aptitude that decides where the ceiling is. Most people
                 // reach it; **legendary is rare because the ability to get
                 // there is rare**, not because the hours are unavailable.
-                // Nobody works at a trade they are not qualified for, so
-                // the sample has to be drawn consistently.
-                if p.qualification < qualification_for(p.trade) {
-                    p.trade = Trade::Shopworker;
-                }
+                // **What they do is drawn from the work this town has**,
+                // among what their qualification lets them do — which is
+                // what this function's own description always said and the
+                // code did not. It drew from national shares and put anybody
+                // not qualified for the draw behind a shop counter, so half
+                // of every sample were shop workers, a few percent were
+                // doctors and electricians the economy has no work for, and
+                // a farming town was sampled with a handful of labourers.
+                p.trade = draw_work(&mut rng, p.qualification, &posts[m]);
                 // **After the trade is settled, not before.** Assigning
                 // the years first put them against the skill of a trade
                 // the person then did not end up in, and 44% of a country
@@ -249,6 +318,7 @@ impl Populace {
             represents,
             households,
             gone: Vec::new(),
+            reservations: Vec::new(),
             rng,
         };
         folk.marry_the_couples();
@@ -307,6 +377,7 @@ impl Populace {
     /// difference public spending makes to how long anybody lives, and it
     /// falls straight out of the budget line that already exists.
     fn a_year_passes(&mut self, econ: &Economy, day: u64) {
+        let posts = crate::labour::posts_by_trade(econ);
         /// Births per woman over a lifetime. Replacement is 2.1.
         const FERTILITY: f64 = 1.7;
         /// Roughly the span over which they arrive: 20 to 40.
@@ -515,13 +586,8 @@ impl Populace {
             let market = household.market;
             let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
-            // A trade they are actually qualified for.
-            let trade = loop {
-                let t = draw_trade(&mut self.rng);
-                if qualification >= qualification_for(t) {
-                    break t;
-                }
-            };
+            // Work this town has, that they are qualified for.
+            let trade = draw_work(&mut self.rng, qualification, &posts[market]);
             let mut p = Person::new(format!("{first} {last}"), trade, market, 30.0);
             p.qualification = qualification;
             p.age_years = 16.0 + qualification.years_to_earn();
@@ -592,9 +658,23 @@ impl Populace {
         // common ones. Trades nobody in the sample works are left absent,
         // and `Economy::hands_at` reads that as the level the trade wants
         // — the honest answer when the sample cannot say.
+        //
+        // **And the sample speaks only for its share of a trade.** Two
+        // sampled labourers in a town whose works give labouring a third of
+        // its posts are two people standing for a small part of that third,
+        // not for all of it: the rest of the labourers are real, experienced
+        // and unsampled. Averaging over whoever happened to be drawn let
+        // three newcomers to a trade halve the skill a works ran at — which
+        // a planner moving people into trades made visible at once, and
+        // which replacing the dead had been doing slowly all along. So what
+        // the sample does not cover is worked at the ordinary level, by the
+        // same honesty as a trade nobody sampled at all.
+        let posts = crate::labour::posts_by_trade(econ);
         {
-            let mut sum = vec![0.0f64; n_markets * Trade::ALL.len()];
-            let mut weight = vec![0.0f64; n_markets * Trade::ALL.len()];
+            let trades = Trade::ALL.len();
+            let mut sum = vec![0.0f64; n_markets * trades];
+            let mut weight = vec![0.0f64; n_markets * trades];
+            let mut on_the_floor = vec![0.0f64; n_markets];
             for (id, p) in self.people.iter() {
                 if p.market >= n_markets {
                     continue;
@@ -605,16 +685,41 @@ impl Populace {
                     .copied()
                     .unwrap_or(1.0)
                     .max(0.0);
-                let i = p.market * Trade::ALL.len() + p.trade.index();
+                let i = p.market * trades + p.trade.index();
                 sum[i] += p.competence() as f64 * stands_for;
                 weight[i] += stands_for;
+                if p.trade != Trade::Supervisor {
+                    on_the_floor[p.market] += stands_for;
+                }
             }
             for m in 0..n_markets {
+                let floor_posts: f64 = Trade::ALL
+                    .iter()
+                    .filter(|&&t| t != Trade::Supervisor)
+                    .map(|t| posts[m][t.index()])
+                    .sum();
                 for (t, &trade) in Trade::ALL.iter().enumerate() {
-                    let i = m * Trade::ALL.len() + t;
-                    if weight[i] > 1e-9 {
-                        econ.set_hands(m, trade, sum[i] / weight[i]);
+                    let i = m * trades + t;
+                    if weight[i] <= 1e-9 {
+                        continue;
                     }
+                    let sampled = sum[i] / weight[i];
+                    let post_share = if floor_posts > 1e-9 {
+                        posts[m][t] / floor_posts
+                    } else {
+                        0.0
+                    };
+                    let cover = if trade == Trade::Supervisor || post_share <= 1e-9 {
+                        // Nothing to say it is a small part of anything.
+                        1.0
+                    } else {
+                        (weight[i] / on_the_floor[m].max(1e-9) / post_share).min(1.0)
+                    };
+                    econ.set_hands(
+                        m,
+                        trade,
+                        cover * sampled + (1.0 - cover) * crate::econ::ORDINARY_HAND,
+                    );
                 }
             }
         }
@@ -650,6 +755,7 @@ impl Populace {
         }
 
         let everyone: Vec<Id<Person>> = self.people.ids().collect();
+        let mut outcomes: std::collections::BTreeMap<Id<Person>, Day> = Default::default();
         for i in everyone {
             if self.people[i].condition <= 0.0 {
                 continue;
@@ -657,17 +763,224 @@ impl Populace {
             let m = self.people[i].market;
             let free = !bounded || vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
             let was = self.people[i].trade;
+            let worked_before = self.people[i].days_worked;
+            // A week's contract that ends today ends in a day of rest, not
+            // in a day of looking for work and finding none.
+            let a_week_ending = matches!(self.people[i].state, State::Working { until } if day >= until)
+                && self.people[i].job.as_ref().is_some_and(|j| j.days > 1.0);
             live_a_day_with(&mut self.people[i], econ, day, free);
             if was != Trade::Supervisor && self.people[i].trade == Trade::Supervisor {
                 if let Some(v) = vacancy.get_mut(m) {
                     *v -= 1.0;
                 }
             }
+
+            // **What the day came to**, which is all a plan learns from.
+            let p = &self.people[i];
+            let outcome = if !p.alive() {
+                Day::Neither
+            } else if p.days_worked > worked_before
+                || (matches!(p.state, State::Working { .. }) && p.job.is_some())
+            {
+                Day::Worked
+            } else if matches!(p.state, State::Idle) && !a_week_ending {
+                Day::Looked
+            } else {
+                // On the road between towns.
+                Day::Neither
+            };
+            let (trade, market) = (p.trade, p.market);
+            let offset = mix(&[i.slot() as u64, 0xD41F7]);
+            self.people[i]
+                .planner
+                .observe(day, trade, market, outcome, offset);
+            outcomes.insert(i, outcome);
         }
-        self.bury_the_dead(day);
+        self.bury_the_dead(day, &posts);
+        self.plan_ahead(econ, day, &outcomes, &posts);
         // A year turns.
         if day > 0 && day.is_multiple_of(crate::econ::DAYS_PER_YEAR) {
             self.a_year_passes(econ, day);
+        }
+    }
+
+    /// **What a town's openings do to the people in it** — spec A4.2, A4.7
+    /// and A4.8, in that order.
+    ///
+    /// 1. **Where the openings are.** The town's posts by trade, against
+    ///    how many of the sample work each; a trade with a whole post more
+    ///    than people in it, after the holds already on it, has an opening.
+    ///    The sample stands for the town, so its shares are held against
+    ///    the town's.
+    /// 2. **Word of it goes out**, pushed and never scanned: somebody who
+    ///    worked that trade today tells a few people they know, and says
+    ///    how often they get work at it. Where nobody in the sample does
+    ///    the work, the employer puts a notice up, and whoever was looking
+    ///    today reads it.
+    /// 3. **Those with a reason think again**, as many as the town's think
+    ///    budget allows, the rest tomorrow — and an opening is held for
+    ///    whoever sets out after it.
+    ///
+    /// Supervising is not on offer here: it is promotion, and it has its
+    /// own count of vacancies.
+    fn plan_ahead(
+        &mut self,
+        econ: &Economy,
+        day: u64,
+        outcomes: &std::collections::BTreeMap<Id<Person>, Day>,
+        posts: &[[f64; 13]],
+    ) {
+        let n_markets = econ.markets.len();
+        let trades = Trade::ALL.len();
+
+        let mut in_town: Vec<Vec<Id<Person>>> = vec![Vec::new(); n_markets];
+        for (id, p) in self.people.iter() {
+            if p.alive() && p.market < n_markets {
+                in_town[p.market].push(id);
+            }
+        }
+
+        // **Holds lapse.** Taken up, given up, dead, or simply out of time.
+        let people = &self.people;
+        self.reservations.retain(|r| {
+            r.until > day
+                && people.holds(r.who)
+                && people[r.who].trade != r.trade
+                && people[r.who].planner.trying_for(r.market) == Some(r.trade)
+        });
+
+        // ---- 1. where the openings are, before anybody's hold ----------
+        let mut room = vec![vec![0.0f64; trades]; n_markets];
+        for m in 0..n_markets {
+            let floor: Vec<Id<Person>> = in_town[m]
+                .iter()
+                .copied()
+                .filter(|&id| self.people[id].trade != Trade::Supervisor)
+                .collect();
+            let total: f64 = Trade::ALL
+                .iter()
+                .filter(|&&t| t != Trade::Supervisor)
+                .map(|t| posts[m][t.index()])
+                .sum();
+            if total <= 1e-9 || floor.is_empty() {
+                continue;
+            }
+            for t in Trade::ALL {
+                if t == Trade::Supervisor {
+                    continue;
+                }
+                let expected = posts[m][t.index()] / total * floor.len() as f64;
+                let holders = floor.iter().filter(|&&id| self.people[id].trade == t).count();
+                room[m][t.index()] = expected - holders as f64;
+            }
+        }
+        let held = |rs: &[Reservation], m: usize, t: Trade| {
+            rs.iter().filter(|r| r.market == m && r.trade == t).count() as f64
+        };
+
+        // ---- 2. word goes out ------------------------------------------
+        for m in 0..n_markets {
+            if in_town[m].len() < 2 {
+                continue;
+            }
+            for t in Trade::ALL {
+                if t == Trade::Supervisor
+                    || room[m][t.index()] - held(&self.reservations[..], m, t) < 1.0
+                {
+                    continue;
+                }
+                let tellers: Vec<Id<Person>> = in_town[m]
+                    .iter()
+                    .copied()
+                    .filter(|&id| {
+                        self.people[id].trade == t && outcomes.get(&id) == Some(&Day::Worked)
+                    })
+                    .collect();
+                let (how, audience, chance_told, teller) = if tellers.is_empty() {
+                    let readers: Vec<Id<Person>> = in_town[m]
+                        .iter()
+                        .copied()
+                        .filter(|&id| {
+                            self.people[id].trade != t
+                                && outcomes.get(&id) == Some(&Day::Looked)
+                        })
+                        .collect();
+                    (Heard::Notice, readers, None, None)
+                } else {
+                    let teller =
+                        tellers[(mix(&[day, m as u64, t.index() as u64]) % tellers.len() as u64)
+                            as usize];
+                    let listeners: Vec<Id<Person>> = in_town[m]
+                        .iter()
+                        .copied()
+                        .filter(|&id| id != teller && self.people[id].trade != t)
+                        .collect();
+                    let chance = self.people[teller].planner.expectation();
+                    (Heard::WordOfMouth, listeners, Some(chance), Some(teller))
+                };
+                if audience.is_empty() {
+                    continue;
+                }
+                let mut told: Vec<Id<Person>> = Vec::new();
+                for j in 0..TOLD_A_DAY {
+                    let pick = audience[(mix(&[day, m as u64, t.index() as u64, j as u64 + 1])
+                        % audience.len() as u64) as usize];
+                    if !told.contains(&pick) {
+                        told.push(pick);
+                    }
+                }
+                // **And the people closest to the teller hear first.**
+                if let Some(spouse) = teller.and_then(|w| self.people[w].spouse) {
+                    if self.people.holds(spouse)
+                        && self.people[spouse].market == m
+                        && self.people[spouse].trade != t
+                        && !told.contains(&spouse)
+                    {
+                        told.push(spouse);
+                    }
+                }
+                for r in told {
+                    let p = &self.people[r];
+                    if p.qualification < qualification_for(t) {
+                        continue;
+                    }
+                    // A notice says a post is going and nothing about the
+                    // work; the reader can only guess from how this town
+                    // has treated them.
+                    let chance = chance_told.unwrap_or_else(|| p.planner.expectation());
+                    let worth = planner::worth_to(p, econ, t, chance);
+                    let now = planner::worth_to(p, econ, p.trade, p.planner.expectation());
+                    let lead = Lead {
+                        trade: t,
+                        market: m,
+                        chance,
+                        heard: day,
+                        expires: day + planner::LEAD_LIFE_DAYS,
+                        how,
+                    };
+                    self.people[r].planner.hear(lead, worth, now);
+                }
+            }
+        }
+
+        // ---- 3. those with a reason think again ------------------------
+        for m in 0..n_markets {
+            let waiting: Vec<Id<Person>> = in_town[m]
+                .iter()
+                .copied()
+                .filter(|&id| self.people[id].planner.pending.is_some())
+                .collect();
+            let allowed = planner::thinks_allowed(in_town[m].len());
+            for id in planner::take_turns(&waiting, allowed, day) {
+                let mut mind = std::mem::take(&mut self.people[id].planner);
+                let reservations = &mut self.reservations;
+                let room = &room;
+                mind.reconsider(&self.people[id], econ, day, |mk, t| {
+                    let open = room.get(mk).map(|r| r[t.index()]).unwrap_or(0.0);
+                    hold_an_opening(reservations, id, mk, t, open, day)
+                });
+                self.people[id].planner = mind;
+            }
         }
     }
 
@@ -790,7 +1103,7 @@ impl Populace {
     /// counting in full. Letting the sample dwindle would make a town look
     /// emptier the longer it was watched, which is an artefact of the
     /// sampling and not a fact about the town.
-    fn bury_the_dead(&mut self, day: u64) {
+    fn bury_the_dead(&mut self, day: u64, posts: &[[f64; 13]]) {
         let everyone: Vec<Id<Person>> = self.people.ids().collect();
         for i in everyone {
             if self.people[i].condition > 0.0 {
@@ -800,13 +1113,9 @@ impl Populace {
             let market = self.people[i].market;
             let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
-            let trade = draw_trade(&mut self.rng);
-            let mut p = Person::new(format!("{first} {last}"), trade, market, 50.0);
+            let mut p = Person::new(format!("{first} {last}"), Trade::Shopworker, market, 50.0);
             p.aptitude =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
-            // A replacement is a cross-section of the living, not a
-            // school leaver, so they bring their years with them.
-            p.settle_into(p.trade);
             p.diligence =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             // **A replacement is somebody else from the population, not a
@@ -822,9 +1131,15 @@ impl Populace {
             } else {
                 Qualification::School
             };
-            if p.qualification < qualification_for(p.trade) {
-                p.trade = Trade::Shopworker;
-            }
+            // **The work this town has, among what they may do**, and the
+            // years at it after the trade is known — settling the years
+            // first put them against a trade the person then did not end
+            // up in, which `seed` already records going wrong.
+            let here = posts.get(market).copied().unwrap_or([0.0; 13]);
+            p.trade = draw_work(&mut self.rng, p.qualification, &here);
+            // A replacement is a cross-section of the living, not a
+            // school leaver, so they bring their years with them.
+            p.settle_into(p.trade);
             let h = draw_household(&mut self.rng);
             p.household_share = household_share_for(h.adults());
             // **Removed and replaced, not overwritten.** The slot is
@@ -940,6 +1255,39 @@ fn draw_household(rng: &mut Rng) -> Household {
     } else {
         Household::Family(2)
     }
+}
+
+/// **A trade from the work a town actually has**, among what a
+/// qualification allows, in proportion to its posts.
+///
+/// Supervising is never drawn: it is what a floor hand is promoted to. A
+/// town with no posts to read — a hand-built fixture with no works in it —
+/// falls back on national shares, still gated by qualification.
+fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; 13]) -> Trade {
+    let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
+    let total: f64 = Trade::ALL
+        .iter()
+        .filter(|&&t| open(t))
+        .map(|t| posts[t.index()].max(0.0))
+        .sum();
+    if total <= 1e-9 {
+        let t = draw_trade(rng);
+        return if open(t) { t } else { Trade::Shopworker };
+    }
+    let r = rng.next_f32() as f64 * total;
+    let mut at = 0.0;
+    let mut last = Trade::Shopworker;
+    for t in Trade::ALL {
+        if !open(t) || posts[t.index()] <= 0.0 {
+            continue;
+        }
+        at += posts[t.index()];
+        last = t;
+        if r < at {
+            return t;
+        }
+    }
+    last
 }
 
 fn draw_trade(rng: &mut Rng) -> Trade {

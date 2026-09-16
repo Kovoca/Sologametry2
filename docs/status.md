@@ -390,9 +390,18 @@ against population, not places with an intake anybody can apply to.
 
 **Revised order for Phase A**, one change at a time, soak after each:
 
-**A0.1 The A4 core.** Opportunity queues, goals with hysteresis, persistent
-plans, the four triggers. First templates: seek work in any trade already
-open to you.
+**A0.1 The A4 core. — BUILT, 2026-09-16.** `src/planner.rs`: leads pushed
+by word of mouth and notices, hysteresis, persistent plans, the four
+triggers, forgotten failures, expiring holds on openings, a think budget.
+One template: take up a trade you are already qualified for. Gated in
+`tests/planner.rs`, each gate checked by deleting its mechanism. Building it
+exposed and fixed three older faults, each measured on three worlds: shifts
+took two days; the sample was seeded from national shares instead of each
+town's posts (half shop workers, doctors with no work); and the skill feed
+trusted whoever happened to be sampled. Seed 7's year-five homelessness
+went 15.8% to 3-4%. The planner's own effect is small and mixed in a world
+already seeded where the work is, as it should be: 0.6-0.8% change trade a
+year against a real ~10%.
 
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no

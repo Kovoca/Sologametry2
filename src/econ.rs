@@ -910,7 +910,7 @@ impl SiteKind {
 /// Two pivots for two questions, which is the honest answer rather than an
 /// awkwardness: what you are *paid* turns on whether you can do the job,
 /// and what a plant *makes* turns on how good the people in it are.
-const ORDINARY_HAND: f64 = 5.0;
+pub const ORDINARY_HAND: f64 = 5.0;
 
 /// **What a workforce at `hands` produces, against an ordinary practised
 /// one.**

@@ -91,6 +91,32 @@ pub enum Service {
 }
 
 impl Service {
+    /// **Which trades hold this service's posts, and in what shares.**
+    ///
+    /// A health service is not a building full of public servants: it is
+    /// **about 3 doctors per 1,000 people against 9 nurses**, with care
+    /// assistants about as numerous as nurses again, and the porters,
+    /// records and administration beside them. Of health's 13.3% of UK
+    /// employment that is doctors 1.6, nurses 4.5, care assistants 4.5 and
+    /// everything else 2.7 — the shares below. The other services are
+    /// public servants throughout.
+    ///
+    /// **The one place this is written.** Counting the posts and offering
+    /// the work both read it, because a trade that has posts nobody may
+    /// apply for is a person seeded into a job that does not exist.
+    pub fn trades(self) -> &'static [(crate::person::Trade, f64)] {
+        use crate::person::Trade;
+        match self {
+            Service::Health => &[
+                (Trade::Doctor, 0.12),
+                (Trade::Nurse, 0.34),
+                (Trade::CareAssistant, 0.34),
+                (Trade::Public, 0.20),
+            ],
+            _ => &[(Trade::Public, 1.0)],
+        }
+    }
+
     pub const ALL: [Service; 6] = [
         Service::Education,
         Service::Health,

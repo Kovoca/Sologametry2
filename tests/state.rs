@@ -117,8 +117,15 @@ fn public_work_is_steady_and_shop_work_is_not() {
         "public service found work on only {:.0}% of days",
         public * 100.0
     );
+    // **By about the real margin, and it is not a large one.** Retail is
+    // 60% part-time at two and a half to three days, so about 3.65 days a
+    // week; the public sector is roughly 30% part-time on the same
+    // hours, so about 4.3. That is 1.18 to one. This bar was 1.4 while a
+    // one-day shift could fill at most half the days there are, which
+    // made shop work look far less steady than it is; measured now at
+    // 1.21.
     assert!(
-        public > shop * 1.4,
+        public > shop * 1.1,
         "public work at {:.0}% of days is no steadier than shop work at {:.0}%",
         public * 100.0,
         shop * 100.0

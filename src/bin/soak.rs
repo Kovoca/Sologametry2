@@ -192,6 +192,17 @@ fn main() {
     );
     let folk = Populace::seed(&n.economy, each, seed);
     let sampled = folk.people.len();
+    {
+        let n = sampled.max(1) as f64;
+        let mix: Vec<String> = Trade::ALL
+            .iter()
+            .filter_map(|&t| {
+                let k = folk.people.values().filter(|p| p.trade == t).count();
+                (k > 0).then(|| format!("{} {:.0}%", t.name(), k as f64 / n * 100.0))
+            })
+            .collect();
+        println!("the sample at the start: {}", mix.join(", "));
+    }
     let markets = n.economy.markets.len();
 
     let mut g = GameState::new(seed).with_economy(n.economy).with_folk(folk);
@@ -336,6 +347,17 @@ fn by_trade(
         changes.switched,
         per_year * 100.0,
         changes.promoted
+    );
+    // **How often people actually thought about it**, which A4.8's think
+    // budget bounds, and how often thinking came to nothing.
+    let thoughts: u64 = folk.people.values().map(|p| p.planner.thoughts).sum();
+    let failed: u64 = folk.people.values().map(|p| p.planner.failures).sum();
+    let took_up: u64 = folk.people.values().map(|p| p.planner.taken_up).sum();
+    println!(
+        "  thought again {:.1} times a person a year; {} plans to take up a trade          came to nothing and {} were carried out (people living at the end)",
+        thoughts as f64 / n / years.max(1) as f64,
+        failed,
+        took_up
     );
     let mut top: Vec<(u64, usize, usize)> = Vec::new();
     for a in 0..13 {

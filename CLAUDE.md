@@ -4360,6 +4360,16 @@ rising at the end, because the money is still leaving the country. The
 stuck group is unchanged in kind: shop workers are 53% of the sample and
 28% of them are on the street by year five.
 
+**And the first version went too far.** A works shift is six days and a
+week in public service seven, each written to cover a working week — and the
+day spent collecting the pay had been, without anybody saying so, the day of
+rest. Rolling straight on put every labourer and public servant at work
+every day of the year: full-time staff at 86% of days against five in seven,
+and the six-day labourer at 96 rather than 84. **A finished shift is not a
+day off; a finished week is.** The figures above for single-day trades
+stand; the soak figures in this paragraph's neighbours were taken before
+the week got its day back, and the current ones are under *People decide*.
+
 **And a gate measured the wrong thing as a result.** `people_share_a_roof`
 held that sharing leaves people more money than living alone. With the
 days filled, sharers spent the quarter they saved on rent — on a van, 171
@@ -4367,6 +4377,132 @@ of 199 of them against 41 of 151 living alone — and came out with half the
 cash. A saving that buys something has reached somebody. It counts what
 they hold now, vehicles at replacement cost: sharers 9.5% ahead, and 1.4%
 with the scale deleted.
+
+## People decide, when they have a reason to (`src/planner.rs`)
+
+Spec A4, marked settled and until this existed not a line of it built. The
+only decision anybody took about their own life was `leave_town`, a pair of
+typed thresholds written for early testing. The owner's rule is that **the
+people in this world function as a player does**: somebody with no work at
+their trade hears the kitchen is taking people on, weighs it against
+waiting, and goes and asks.
+
+| spec | here |
+|---|---|
+| A4.2 opportunities are side-effects, pushed not scanned | a `Lead`, told by somebody who works the trade or read off a notice |
+| A4.3 hysteresis | a new course must be worth a quarter more than the present one |
+| A4.4 plans persist | `Plan`: keep at a trade, or try for another and then work it |
+| A4.5 four triggers, nothing else | a step done, a plan failing (a week of no work, or a lead that came to nothing), news worth twice what they have, a quarterly review |
+| A4.6 failure is normal | a lead that came to nothing is forgotten |
+| A4.7 expiring holds | `populace::hold_an_opening`, the one place the rule is written |
+| A4.8 think budget | an eighth of a town a day, the rest tomorrow |
+
+**One scale for every option**, so the next templates — retrain, move, start
+something — are weighed against these rather than bolted on beside them: the
+going rate for the trade, times what their own skill makes of it, times how
+often they expect to get the work. Expectation is learned from their own
+days on a month's half-life; a lead carries the teller's.
+
+**An opening is a share, not a feeling.** The sample stands for the town,
+so a trade has room when its posts give it a larger share of the sample
+than the people in it hold. `labour::posts_by_trade` is new and sorts what
+every source already counts: a works' floor by `worked_by`, a shop's floor
+off its fixtures, the private services by sector, the state's posts, a
+carrier's drivers.
+
+### It was not shippable until two older things were put right
+
+Measured on three worlds before shipping, because one world is not evidence
+— and the first world said the planner was a success.
+
+**Seed 11 starved.** The same world without the planner was fine; with it,
+food at 4.2 times cost, under a day of cover, unemployment 100% and half the
+sample on the street. The planner was the trigger and not the cause:
+
+- **The sample was seeded from national shares, not the town's work.**
+  `Populace::seed`'s own comment said trades were *drawn in proportion to the
+  posts the labour model says exist*. They were drawn from UK shares, and
+  anybody not qualified for their draw was put behind a shop counter — so
+  half of every sample were shop workers, a few percent were doctors,
+  electricians and care assistants no work in this economy is offered to,
+  and a farming town was sampled with a handful of labourers. Replacements
+  for the dead and school leavers did the same. They now draw from
+  `posts_by_trade`, among what their qualification allows.
+- **The skill feed trusted whoever happened to be sampled.** A trade's level
+  was the average of its sampled holders, so two experienced labourers stood
+  for every labourer in town and three newcomers halved what the works made.
+  The sample now speaks only for its share of a trade's posts; the rest is
+  worked at `ORDINARY_HAND`, the same honesty as a trade nobody sampled.
+
+The planner, moving people into the trades the mis-seeded sample lacked,
+was simply the first thing to move enough of them at once to show it.
+
+| five years, everything in | homeless, planner off → on | households' money, off → on |
+|---|---|---|
+| seed 7 | 3.8% → 3.0% | 18.7e9 → 17.6e9 |
+| seed 11 | 3.1% → 3.1% | 32.9e9 → 30.9e9 |
+| seed 23 | 2.0% → 2.7% | 30.6e9 → 43.8e9 |
+
+Seed 7's year-five homelessness was 15.8% at the commit before; the seeding,
+the week's day of rest and the trades below took it to 3.8% before the
+planner did anything.
+**The planner's effect is now small and mixed**, and that is what it should
+be in a world where people already stand where the work is: 0.6-0.8% of the
+sample change trade a year against a real occupational mobility of roughly
+a tenth, and about a quarter of attempts come to anything.
+
+### A doctor nobody could offer a day's work
+
+`draw_trade` had seeded doctors, nurses, care assistants, electricians and
+pipefitters since it gained them, and **no work offered in this economy
+named any of those trades**: the state's posts were all public service, a
+building site's were all builders, and every works — a hospital, a depot, a
+builders' yard — offered labouring. The posts existed and the skill feed
+read them by `worked_by`; the person's day did not. So every doctor ever
+sampled was a doctor with nothing to do, which seeding from national shares
+hid and seeding from posts exposed as *a country with no doctor*.
+
+`Service::trades` and `Sector::trades` are the one place the split is
+written — health is 12% doctors, 34% nurses, 34% care assistants and 20%
+everything else; construction 55% builders, 23% electricians, 22% plumbing
+and heating — and both counting the posts and offering the work read them.
+A site's shifts go to `worked_by`. In year five of seed 7 doctors work 85%
+of days, nurses 81%, electricians 69%.
+
+### A calibration gap that was the sample
+
+`most_people_have_a_contract` recorded the model twelve points under
+Britain's 56% permanent full-time — 43.6% over three thousand people — as
+firms here offering fewer guaranteed hours. It was half of every sample
+being shop workers, the least full-time trade there is. Seeded from posts,
+the same measurement over three thousand people is **54.6%**.
+
+### A steadiness bar set on the artefact
+
+`public_work_is_steady_and_shop_work_is_not` wanted public work at 1.4 times
+shop work's days — a margin measured while a one-day shift could fill at
+most half the days there are. Real retail is 60% part-time at two and a
+half to three days, about 3.65 a week; the public sector roughly 30%
+part-time, about 4.3: **1.18 to one**. Measured now at 1.21, and the bar is
+1.1. Posting public work a day at a time turns it red at 74% against 70%.
+
+### Still wrong, and named
+
+- **Supervisors are 20-23% of the sample** against about a tenth of posts.
+  Promotion caps the share at 35% of a town, which is not a cap.
+- **The retail gap now shows in people**: samples are about 40% hospitality
+  and 5% shop work, because shop headcount is several times short.
+- **Nothing here touches the drain abroad.** Workforce unemployment in seed
+  7 still reaches 57-63% by year five; the people cope with it far better
+  than they did. What it is for
+arrives with the templates still to come and with works that open and shut.
+
+**Two sabotages stayed green on the first gates**, which is what the habit
+is for. A failed lead "being forgotten" passed because it expired on the
+same day by the calendar; the gate now keeps hearing of it. Letting every
+hold succeed passed a whole-world gate because openings in these worlds are
+plentiful and a hold rarely has to say no; that claim moved to a gate on the
+rule itself.
 
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 

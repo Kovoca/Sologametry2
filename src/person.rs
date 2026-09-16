@@ -966,6 +966,19 @@ pub struct Person {
     /// requires that identical state gives identical bytes, and a
     /// `HashMap` anywhere in it would break that.
     pub relations: std::collections::BTreeMap<crate::id::Id<Person>, crate::relations::Relationship>,
+    /// **What they are trying to do about earning a living**, what they
+    /// have heard that bears on it, and whether anything has given them a
+    /// reason to think again. Spec A4; see `planner.rs`.
+    ///
+    /// The same type the player will have. Nothing in it is told what the
+    /// world holds: it learns of openings by being told, and it decides
+    /// only when one of A4.5's four triggers says to.
+    pub planner: crate::planner::Planner,
+    /// **Days worked at the trade they are in now**, as against in their
+    /// life. The same figure as `days_worked` for anybody who has never
+    /// changed trade; for somebody who has, it is what a new employer has
+    /// seen of them — which is what probation and promotion are judged on.
+    pub days_at_trade: u64,
 }
 
 impl Person {
@@ -1020,6 +1033,8 @@ impl Person {
             // knowing anybody. Both fill up by living.
             memory: crate::memory::Memory::new(),
             relations: Default::default(),
+            planner: crate::planner::Planner::new(),
+            days_at_trade: 0,
             practice: [0.0; 11],
             standing: 0.5,
             visibility: 0.0,
@@ -1889,19 +1904,32 @@ pub fn work_available(
             // One offer per service that is actually staffed here, so a
             // town with a hospital and a school has both going.
             for service in crate::state::Service::ALL {
-                if gov.posts_for(econ, market, service) < 1.0 {
-                    continue;
+                let posts = gov.posts_for(econ, market, service);
+                // **Offered to the trade that holds the post.** A hospital
+                // wants doctors, nurses and care assistants as well as its
+                // administrators, and a doctor who could only ever be
+                // offered a clerk's week was a doctor with no work at all.
+                for &(trade, share) in service.trades() {
+                    if posts * share < 1.0 {
+                        continue;
+                    }
+                    let rate = if trade == Trade::Public {
+                        rate
+                    } else {
+                        day_rate(econ, market, trade)
+                    };
+                    out.push(Contract {
+                        kind: Job::Public { market, service },
+                        posted: day,
+                        expires: day + 7,
+                        // A week at a time: paid on completion like
+                        // everything else here, so the sum is seven days'
+                        // rate.
+                        pay: rate * 7.0,
+                        days: 7.0,
+                        trade,
+                    });
                 }
-                out.push(Contract {
-                    kind: Job::Public { market, service },
-                    posted: day,
-                    expires: day + 7,
-                    // A week at a time: paid on completion like everything
-                    // else here, so the sum is seven days' rate.
-                    pay: rate * 7.0,
-                    days: 7.0,
-                    trade: Trade::Public,
-                });
             }
         }
     }
@@ -1913,19 +1941,23 @@ pub fn work_available(
     // evening.
     if let Some(svc) = econ.services.as_ref() {
         for sector in crate::services::Sector::ALL {
-            if svc.posts_in(market, sector) < 1.0 {
-                continue;
+            let posts = svc.posts_in(market, sector);
+            // A site wants its electrician and its plumber as well as its
+            // builders, each offered to the trade that does it.
+            for &(trade, share) in sector.trades() {
+                if posts * share < 1.0 {
+                    continue;
+                }
+                let rate = day_rate(econ, market, trade);
+                out.push(Contract {
+                    kind: Job::Service { market, sector },
+                    posted: day,
+                    expires: day + 1,
+                    pay: rate,
+                    days: 1.0,
+                    trade,
+                });
             }
-            let trade = sector.trade();
-            let rate = day_rate(econ, market, trade);
-            out.push(Contract {
-                kind: Job::Service { market, sector },
-                posted: day,
-                expires: day + 1,
-                pay: rate,
-                days: 1.0,
-                trade,
-            });
         }
     }
 
@@ -1986,13 +2018,19 @@ pub fn work_available(
         if !is_farm && (!site.powered || site.ran <= 0.0) {
             continue;
         }
+        // **Offered to whoever works that kind of site**, which is also
+        // whose skill decides what it makes: a hospital's shifts are
+        // nurses' and a depot's are drivers'. Every site offering labouring
+        // put a nurse's posts in the economy and a labourer's in the
+        // person's day.
+        let trade = site.kind.worked_by();
         out.push(Contract {
             kind: Job::Shift { site: s, market },
             posted: day,
             expires: day + 3,
-            pay: day_rate(econ, market, Trade::Labourer) * 6.0,
+            pay: day_rate(econ, market, trade) * 6.0,
             days: 6.0,
-            trade: Trade::Labourer,
+            trade,
         });
     }
 
@@ -2357,9 +2395,19 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
     // Real shift work is one shift a day, and the next one is the next
     // day's. The job ends, it is paid, and the same day goes on to what
     // comes next.
+    //
+    // **But a finished week is a day off**, and the first version of this
+    // fix took that away too. A works shift is six days and a week in
+    // public service seven, each written to cover a working week — and the
+    // day spent collecting the pay had been, without anybody saying so,
+    // the day of rest. Rolling straight on put every labourer and every
+    // public servant at work every day of the year, and full-time staff
+    // came out working 86% of days against five in seven.
+    let mut the_week_is_done = false;
     if let State::Working { until } = person.state {
         if day >= until {
             if let Some(job) = person.job.take() {
+                the_week_is_done = job.days > 1.0;
                 // The work has to actually happen, or the world never
                 // notices it was done. A haul that pays but moves nothing
                 // leaves the price gap open, so the same job is offered
@@ -2509,6 +2557,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
 
     match person.state {
         State::Working { .. } => {}
+        State::Idle if the_week_is_done => {}
         State::Idle => {
             // **A month of everything, not a month of groceries.**
             //
@@ -2618,6 +2667,10 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 .get(person.market)
                 .map(|w| w.chance_of_work())
                 .unwrap_or(1.0);
+            // What the town offers somebody with no hold on any work in it,
+            // before anything about their own trade: which is where anybody
+            // going after a different trade starts from.
+            let the_town = hiring;
             // **A contract is a hold on the work, not a daily audition.**
             //
             // Somebody on guaranteed hours is paid on their contracted
@@ -2703,20 +2756,36 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 .iter()
                 .map(|&age| childcare_share_of_wage(age) * borne)
                 .sum();
+            let mut minded = 1.0;
             if childcare > 0.0 {
                 // What is left of a day's pay after paying somebody to
                 // mind them. At 65% for one and 130% for two, the second
                 // child is what actually stops people.
                 let worth_it = (1.0 - childcare).max(0.0);
                 hiring *= worth_it;
+                minded = worth_it;
             }
             // **No address, no job.** A fixed address goes on the form,
             // and not having one is one of the largest barriers there is
             // to getting off the street — which is what makes homelessness
             // self-sustaining rather than a bad month.
+            let no_address = if person.housing == Housing::Homeless {
+                0.45
+            } else {
+                1.0
+            };
             if person.housing == Housing::Homeless {
-                hiring *= 0.45;
+                hiring *= no_address;
             }
+            // **Work at another trade is got the way a stranger gets it.**
+            //
+            // No contract there to guarantee the day, no season of one's
+            // own, and the other trade's own week — while the children
+            // still need minding and the form still wants an address.
+            let elsewhere = |trade: Trade| {
+                the_town * works_on(trade, day, Employment::None) * minded * no_address
+            };
+            let going_after = person.planner.trying_for(person.market);
             let drawn = draw(&person.name, day);
             // **The only way up.** A man who has put in a couple of years
             // on the floor can be made a chargehand; a man off the street
@@ -2728,7 +2797,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             // going and what the people who fill it think of you.
             const WELL_ENOUGH_REGARDED: f64 = 0.62;
             let promotable = person.trade != Trade::Supervisor
-                && person.days_worked >= YEARS_BEFORE_THEY_TRUST_YOU
+                && person.days_at_trade >= YEARS_BEFORE_THEY_TRUST_YOU
                 && vacancy_above
                 && person.standing >= WELL_ENOUGH_REGARDED;
             // **Judge a job by what it pays a day, not by its total.**
@@ -2753,14 +2822,20 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                     .then(a.days.total_cmp(&b.days))
             });
             let taken = offers.into_iter().find(|c| {
-                let hired = c.stake() > 0.0 || drawn < hiring;
+                // **Work they have set out to take up**, which they would
+                // not otherwise have looked at.
+                let other = c.trade != person.trade && going_after == Some(c.trade);
+                let odds = if other { elsewhere(c.trade) } else { hiring };
+                let hired = c.stake() > 0.0 || drawn < odds;
                 // **You cannot take work you are not qualified for.**
                 // Without this a man off the street could be an engineer,
                 // and three years at a university bought nothing because
                 // nothing required it.
                 let allowed = person.qualification >= qualification_for(c.trade);
                 let qualified = allowed
-                    && (c.trade == person.trade || (c.trade == Trade::Supervisor && promotable));
+                    && (c.trade == person.trade
+                        || other
+                        || (c.trade == Trade::Supervisor && promotable));
                 qualified
                     && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
@@ -2773,7 +2848,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             // a job resets that.
             const DAYS_BEFORE_THEY_PUT_YOU_ON_THE_BOOKS: u64 = 120;
             if person.employment == Employment::None
-                && person.days_worked >= DAYS_BEFORE_THEY_PUT_YOU_ON_THE_BOOKS
+                && person.days_at_trade >= DAYS_BEFORE_THEY_PUT_YOU_ON_THE_BOOKS
             {
                 let (full, part, _casual) = employment_mix(person.trade);
                 let r = draw(&person.name, day ^ 0xC0_47_AC_17);
@@ -2814,6 +2889,24 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                     );
                     person.trade = Trade::Supervisor;
                 }
+                // **Taken on at another trade.** A new employer, so no
+                // contract yet and nobody there who has seen them work; the
+                // old trade's practice stays with them and starts to rust.
+                if c.trade != person.trade && c.trade != Trade::Supervisor {
+                    person.note(
+                        day,
+                        format!(
+                            "took up work as {}, after {} days as {}",
+                            c.trade.name(),
+                            person.days_at_trade,
+                            person.trade.name()
+                        ),
+                    );
+                    person.trade = c.trade;
+                    person.employment = Employment::None;
+                    person.visibility = 0.0;
+                    person.days_at_trade = 0;
+                }
                 person.days_idle = 0;
                 if c.stake() > 0.0 {
                     person.days_trading += c.days.ceil() as u64;
@@ -2824,6 +2917,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                     until: day + c.days.ceil() as u64,
                 };
                 person.days_worked += c.days.ceil() as u64;
+                person.days_at_trade += c.days.ceil() as u64;
                 // **A day at the trade is a day of practice at it.**
                 person.practise(true);
                 person.job = Some(c);
