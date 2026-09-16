@@ -4504,6 +4504,71 @@ hold succeed passed a whole-world gate because openings in these worlds are
 plentiful and a hold rarely has to say no; that claim moved to a gate on the
 rule itself.
 
+## Every industry employs a mix of occupations (`src/occupation.rs`, `raws/staffing.txt`)
+
+`cargo run --release --bin jobs`
+
+The owner's rule: **jobs are made through need.** A trade here had always
+been an industry wearing a job's name — a labourer was whoever worked at a
+works, a public servant whoever the state employed — so a steelworks
+employed nobody but machine operators and there was no accountant, engineer,
+cleaner or manager anywhere in the world.
+
+Real labour statistics are a table. **Every industry employs a mix, and the
+mix is published**: a manufacturer is 48.8% production workers and the other
+half managers, engineers, clerks, drivers, mechanics and salespeople; a
+hospital is a third clinicians, 29% care staff and an eighth clerks; police
+are 70.4% sworn. `Industry::staffing` is that table for 24 industries over
+32 occupations — the US Standard Occupational Classification's major groups,
+with doctors, nurses, accountants, electricians, pipefitters, miners,
+drivers, farmers and fishers split out where it decides what somebody may do
+or earns.
+
+### The data file is the source
+
+`raws/staffing.txt` is read at start-up and nothing in it is typed twice:
+BLS OEWS May 2023 for every sector the economy has, the Employment
+Projections matrix for farms and fishing (which OEWS does not survey), DMDC
+for the armed forces and FBI UCR for the sworn share of police. The three
+figures that are prose rather than table rows are constants, and a gate
+requires the file to still say them.
+
+**A summarising fetch invented figures, and it was caught by arithmetic.**
+The first pass read the tables through a tool that answers questions about a
+page, and manufacturing's major groups came to 870,000 jobs short of the
+published total. Asked again it gave a different figure, and with that one the
+groups came to 700,000 over. Read from the page itself in a browser, the
+national table showed farming at 432,200 jobs where the summary had said
+1,530,460, and transport at 13.75 million where it had said 9.27. **Every
+figure from that route was thrown away**, and the file says how it was read.
+The check that caught it — do the groups add up to the printed total, and do
+the counts agree with the printed percentages — is exactly what the gates now
+do to the parser.
+
+### Measured: a nation's workforce against the United States
+
+| | here | US | |
+|---|---|---|---|
+| managers | 7.3% | 6.9% | |
+| office clerks | 11.9% | 12.2% | |
+| teachers | 5.3% | 5.8% | |
+| doctors | 0.5% | 0.5% | |
+| production workers | 5.4% | 5.8% | |
+| **sales** | **4.5%** | **8.8%** | shop headcount, the known retail gap |
+| **drivers** | **0.5%** | **2.0%** | only carriers' trunk drivers exist |
+| **material movers** | **3.4%** | **7.0%** | no warehouses; shops' stockers short |
+| **builders** | **6.6%** | **3.2%** | construction posts sized on a UK share, plus builders' yards |
+
+Most of the economy lands within a point without anything being tuned, which
+says the posts the model already had were about the right size and simply
+the wrong shape. **What does not land is informative**: the two largest gaps
+are distribution — nobody stocks a warehouse or drives a van — and they are
+the same gap `census.rs` already records from the other side.
+
+**Nothing uses it yet.** People still hold one of the thirteen trades; the
+next stage moves them onto occupations, offered by the employers whose
+staffing includes them.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

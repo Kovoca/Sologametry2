@@ -143,6 +143,23 @@ fn hands_for(batches_per_day: f64, labour_hours_per_batch: f64) -> f64 {
     batches_per_day * labour_hours_per_batch * 365.0 / HOURS_PER_WORKING_YEAR
 }
 
+/// **A floor and the people over it.** Chargehands at a span of about ten,
+/// and a manager over them, once a works is big enough to need either.
+fn with_charge(floor: f64) -> f64 {
+    if floor < 6.0 {
+        floor
+    } else {
+        let sup = (floor / SPAN_OF_CONTROL).ceil();
+        floor + sup + (sup / SPAN_OF_CONTROL).ceil().max(1.0)
+    }
+}
+
+/// **Everybody a works employs running at a rate**, the floor and those in
+/// charge of it — the figure an industry's staffing pattern is a pattern of.
+pub fn rated_headcount(batches_per_day: f64, labour_hours_per_batch: f64) -> f64 {
+    with_charge(hands_for(batches_per_day, labour_hours_per_batch))
+}
+
 /// Bring every town's labour market up to date from what its works did
 /// today. Runs inside the economy's day, after production.
 pub fn update(econ: &mut Economy) {
@@ -247,14 +264,6 @@ pub fn update(econ: &mut Economy) {
         // shifts and a manager over them, at a span of about ten. Leaving
         // them out understated industrial employment by a seventh and left
         // nowhere for anybody to be promoted to.
-        let with_charge = |floor: f64| {
-            if floor < 6.0 {
-                floor
-            } else {
-                let sup = (floor / SPAN_OF_CONTROL).ceil();
-                floor + sup + (sup / SPAN_OF_CONTROL).ceil().max(1.0)
-            }
-        };
         posts[site.market] += with_charge(hands_for(rated, labour));
         // **A firm that cannot make payroll employs fewer people.**
         //

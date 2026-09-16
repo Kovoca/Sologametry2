@@ -116,4 +116,69 @@ fn main() {
          whose staffing comes out of labour-hours should be aiming at.",
         retail_share_of_fte() * 100.0
     );
+
+    // ---- who does what, against the whole United States ------------------
+    //
+    // Every industry's jobs spread over the occupations it employs, set
+    // beside the national mix from the same survey. The national figures
+    // leave out farms and the armed forces, so both are shown and neither
+    // is expected to match.
+    use scale_sim::occupation::{jobs_by_occupation, published, Occupation, N_OCCUPATIONS};
+    let mut mine = [0.0f64; N_OCCUPATIONS];
+    for town in jobs_by_occupation(&e) {
+        for (o, v) in town.iter().enumerate() {
+            mine[o] += v;
+        }
+    }
+    let modelled: f64 = mine.iter().sum();
+    let national = published().get("national").expect("the national table");
+    let us_total = national.get("00-0000").copied().unwrap_or(1.0);
+    let us = |o: Occupation| -> f64 {
+        let g = |c: &str| national.get(c).copied().unwrap_or(0.0);
+        let less = |grp: &str, parts: &[&str]| g(grp) - parts.iter().map(|p| g(p)).sum::<f64>();
+        use Occupation::*;
+        let n = match o {
+            Manager => g("11-0000"),
+            Farmer | Fisher | Soldier => 0.0,
+            Accountant => g("13-2011"),
+            BusinessSpecialist => less("13-0000", &["13-2011"]),
+            ComputingSpecialist => g("15-0000"),
+            Engineer => g("17-0000"),
+            Scientist => g("19-0000"),
+            SocialWorker => g("21-0000"),
+            Legal => g("23-0000"),
+            Teacher => g("25-0000"),
+            ArtsAndMedia => g("27-0000"),
+            Doctor => g("29-1210") + g("29-1240"),
+            Nurse => g("29-1141"),
+            HealthTechnician => less("29-0000", &["29-1210", "29-1240", "29-1141"]),
+            CareAssistant => g("31-0000"),
+            ProtectiveService => g("33-0000"),
+            FoodService => g("35-0000"),
+            Cleaner => g("37-0000"),
+            PersonalCare => g("39-0000"),
+            Sales => g("41-0000"),
+            OfficeClerk => g("43-0000"),
+            FarmWorker => g("45-0000"),
+            Builder => less("47-0000", &["47-2111", "47-2152", "47-5000"]),
+            Electrician => g("47-2111"),
+            Pipefitter => g("47-2152"),
+            Miner => g("47-5000"),
+            Mechanic => g("49-0000"),
+            ProductionWorker => g("51-0000"),
+            Driver => g("53-3032") + g("53-3033"),
+            MaterialMover => less("53-0000", &["53-3032", "53-3033"]),
+        };
+        n / us_total
+    };
+    println!(
+        "
+who does what: {modelled:.0} jobs in this nation, against the United States          (OEWS May 2023, which leaves out farms and the armed forces)
+"
+    );
+    println!("  {:<22} {:>8} {:>8}", "", "here", "US");
+    for o in Occupation::ALL {
+        let here = mine[o.index()] / modelled.max(1.0) * 100.0;
+        println!("  {:<22} {:>7.1}% {:>7.1}%", o.name(), here, us(o) * 100.0);
+    }
 }

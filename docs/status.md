@@ -404,6 +404,23 @@ went 15.8% to 3-4%. The planner's own effect is small and mixed in a world
 already seeded where the work is, as it should be: 0.6-0.8% change trade a
 year against a real ~10%.
 
+**A0.1b Jobs made through need — IN PROGRESS, owner's order 2026-09-16.**
+Before education, because retraining means something only once there are
+real occupations to train for.
+1. *Industries and the occupations they employ* — **built.**
+   `src/occupation.rs` over `raws/staffing.txt`: 24 industries, 32
+   occupations, from BLS OEWS May 2023, the EP matrix, DMDC and FBI UCR.
+   A nation's workforce lands within a point of the US in most occupations;
+   sales, drivers and material movers are half or less (distribution), and
+   builders double. Nothing uses it yet.
+2. *People hold occupations* — next: work offered by the employers whose
+   staffing includes it, pay from OEWS medians, qualifications from typical
+   entry education, skills to match.
+3. *Employers by size* — sole traders to multinationals, from published
+   size distributions.
+4. *Positions* — ministers, departments, mayors, councils: posts one person
+   holds.
+
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no
 earnings, a qualification, then work.
