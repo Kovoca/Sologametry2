@@ -85,6 +85,7 @@ and because it existed only in conversation before this.
 | **Networks** | electrical grids, **water systems**, **telecoms** |
 | **Vehicles** | individual to cargo to **mining equipment** |
 | **Marine** | boats from individual to **industrial cargo and fishing**; **oil rigs** |
+| **Jobs** | **made through need**: factories, farmers, miners, fishermen, businessmen, office workers, accountants; **employment by company size**, small to large to international; **the military**; **government agencies, ministers, mayors** *(owner, 2026-09-16)* |
 
 Bold is what does not exist yet. The rest is built or substantially built.
 
