@@ -27,7 +27,7 @@ use crate::econ::Economy;
 use crate::id::{Arena, Id};
 use crate::person::{
     day_rate, household_share_for, live_a_day, qualification_for, Housing, Person, Qualification,
-    Rank, State, Trade,
+    Rank, Review, State, Trade,
 };
 use crate::planner::{self, Heard, Lead, Outcome as Day};
 use crate::rng::Rng;
@@ -122,7 +122,22 @@ pub struct Populace {
     /// work, give up, or the hold lapses — spec A4.7. Without it a town
     /// with one post going would send everybody who heard of it.
     pub reservations: Vec<Reservation>,
+    /// **What reviews came to**, counted since the world began: for the
+    /// readouts, and for a gate that a review is ever anything but sound.
+    pub reviews: Reviews,
     rng: Rng,
+}
+
+/// **Reviews and their consequences**, counted.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Reviews {
+    pub held: u64,
+    pub commended: u64,
+    pub warned: u64,
+    /// A supervisor put back into the crew.
+    pub demoted: u64,
+    /// Lost their place — the contract ended, back to casual work.
+    pub let_go: u64,
 }
 
 /// **A hold on an opening while somebody goes after it.** Expiring, so a
@@ -194,7 +209,7 @@ pub fn hold_an_opening(
 /// supervisor in every world.
 fn rung_posts(world_seed: u64, market: usize, rung: u64, expected: f64) -> f64 {
     let u =
-        (mix(&[world_seed, market as u64, rung, 0x5E7_C4EF]) >> 11) as f64 / (1u64 << 53) as f64;
+        (mix(&[world_seed, market as u64, rung, 0x05E7_C4EF]) >> 11) as f64 / (1u64 << 53) as f64;
     expected.floor() + if expected.fract() > u { 1.0 } else { 0.0 }
 }
 
@@ -220,6 +235,70 @@ const LAST: [&str; 12] = [
     "Ash", "Brook", "Carden", "Dell", "Ewart", "Finn", "Gale", "Hollis", "Ivey", "Judd", "Kemp",
     "Lowe",
 ];
+
+/// **What a review reads**: how well the work was actually done, through
+/// what the people deciding already think, and the noise that makes a rating
+/// a rating. Real ratings track real performance at about 0.3-0.5, so the
+/// read is honest and far from exact. Designed weights.
+pub fn rating_of(performance: f64, standing: f64, noise: f64) -> f64 {
+    0.55 * performance + 0.30 * standing + 0.15 * noise
+}
+
+/// **An ordinary hand's rating**, which every review is read against:
+/// average effort, just up to what the work asks, in good health, in plain
+/// sight of whoever decides and so at the standing that settles to, and a
+/// middling draw of noise.
+///
+/// Read against this rather than against figures picked to give a rate. The
+/// first version cut at fixed figures below nearly everybody, and warned
+/// half a per cent of reviews and let go a tenth of a per cent of people a
+/// year — under even a federal workforce's rate.
+pub fn ordinary_rating() -> f64 {
+    let standing = 0.45 * 0.5 + 0.40 * 1.0 + 0.15 * 0.5;
+    rating_of(0.5, standing, 0.5)
+}
+
+/// **What a review comes to.**
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Verdict {
+    /// Well above what the work asks.
+    Commended,
+    /// Doing the job, or not so far below it as to say so.
+    Sound,
+    /// Below what it asks, and told so.
+    Warned,
+    /// A supervisor who has been warned and is below it again: back into the
+    /// crew, still employed.
+    PutBack,
+    /// The contract ended: a warned hand below it again, or anybody far
+    /// below it.
+    LetGo,
+}
+
+/// **The disciplinary ladder**, from a rating, the rank and what the last
+/// review said: a warning, then a consequence, and dismissal at once only for
+/// the worst. A supervisor falls back into the crew before losing the job,
+/// and a crew's hand has nothing to fall back to.
+///
+/// Designed fractions of the ordinary hand's rating: a quarter above it is
+/// commended, fifteen per cent below it is warned, thirty per cent below it
+/// is the end of the contract.
+pub fn verdict(rating: f64, rank: Rank, before: Review) -> Verdict {
+    let ordinary = ordinary_rating();
+    if rating < 0.70 * ordinary {
+        Verdict::LetGo
+    } else if rating < 0.85 * ordinary {
+        match (before, rank) {
+            (Review::Warned, Rank::Supervisor) => Verdict::PutBack,
+            (Review::Warned, Rank::Hand) => Verdict::LetGo,
+            _ => Verdict::Warned,
+        }
+    } else if rating >= 1.25 * ordinary {
+        Verdict::Commended
+    } else {
+        Verdict::Sound
+    }
+}
 
 impl Populace {
     /// **Seed a cohort in every market**, in the trades the town actually
@@ -347,10 +426,17 @@ impl Populace {
             households,
             gone: Vec::new(),
             reservations: Vec::new(),
+            reviews: Reviews::default(),
             rng,
         };
         folk.marry_the_couples();
         folk.staff_the_crews(econ.world_seed, &posts);
+        // **Reviews fall through the year**, not all on one morning: each
+        // adult's first comes on its own day of the second year.
+        for id in folk.people.ids().collect::<Vec<_>>() {
+            folk.people[id].reviewed_on =
+                mix(&[econ.world_seed, id.slot() as u64, 0x002E_71E3]) % crate::econ::DAYS_PER_YEAR;
+        }
         folk
     }
 
@@ -405,7 +491,15 @@ impl Populace {
                         .then(a.slot().cmp(&b.slot()))
                 });
                 for id in crew.into_iter().take(going) {
-                    self.people[id].rank = Rank::Supervisor;
+                    let p = &mut self.people[id];
+                    p.rank = Rank::Supervisor;
+                    // **And have been running it a while**: half of their
+                    // years at the work, at the half day's practice at
+                    // running things a day that supervising gives.
+                    let years = p.age_years - 18.0 - p.qualification.years_to_earn();
+                    let cap = crate::person::Skill::days_to_reach(p.ceiling());
+                    let i = crate::person::Skill::Management as usize;
+                    p.practice[i] = p.practice[i].max((years * 0.5 * 220.0 * 0.5).min(cap));
                 }
             }
         }
@@ -675,6 +769,7 @@ impl Populace {
             // Work this town has, that they are qualified for.
             let trade = draw_work(&mut self.rng, qualification, &posts[market]);
             let mut p = Person::new(format!("{first} {last}"), trade, market, 30.0);
+            p.reviewed_on = day;
             p.qualification = qualification;
             p.age_years = 16.0 + qualification.years_to_earn();
             p.diligence =
@@ -843,6 +938,7 @@ impl Populace {
                 .observe(day, trade, market, outcome, offset);
             outcomes.insert(i, outcome);
         }
+        self.review_the_work(econ.world_seed, day);
         self.make_up(econ.world_seed, day, &posts, bounded);
         self.bury_the_dead(day, &posts);
         self.plan_ahead(econ, day, &outcomes, &posts);
@@ -1166,7 +1262,104 @@ impl Populace {
     /// **The chief executive is not here yet.** Every works and shop is its
     /// own company, so there is nothing above a branch for one to run; that
     /// rung arrives with employers that own several sites.
-    fn make_up(
+    /// **A year's work is looked at**, for everybody on the books, a year
+    /// after they were last reviewed or last started in a post.
+    ///
+    /// What is looked at is `Person::performance` read the way people are
+    /// read: noisily, and through what the people deciding already think of
+    /// them. What follows depends on how bad it is, which is the ordinary
+    /// shape of a disciplinary procedure — a warning, then a consequence, and
+    /// dismissal at once only for the worst:
+    ///
+    /// - **well above what the work asks** is a commendation, and a
+    ///   commended hand is considered for a crew's post after one year at the
+    ///   work rather than two: performance standing in for experience;
+    /// - **below it** is a warning, and a warning lowers what people think of
+    ///   you;
+    /// - **below it again** is a supervisor put back into the crew, or a hand
+    ///   losing their contract — back to casual work in the same trade;
+    /// - **far below it** is the contract ended whatever the rank.
+    ///
+    /// **Demotion is rarer than dismissal, and that is real.** In 2016
+    /// federal agencies removed 7,411 employees for misconduct and demoted
+    /// 114 *(GAO-18-48)*; of demotions in private firms, 39% are for poor
+    /// performance and 38% for failing after a promotion *(OfficeTeam,
+    /// 2018)*. A crew's hand has nothing to be demoted from. The thresholds
+    /// are designed; what they produce is measured in `bin/soak`, against
+    /// all layoffs and discharges together at 1.1% of jobs a month *(BLS
+    /// JOLTS, 2023-2025)* as the ceiling and federal removals at about 0.35%
+    /// a year as a protected workforce's floor.
+    ///
+    /// **Public for the reason `biota::settle` is**: what follows a review
+    /// has several rungs, and they cannot be checked by running a world for
+    /// years and hoping the right reviews come up.
+    pub fn review_the_work(&mut self, world_seed: u64, day: u64) {
+        const A_YEAR: u64 = crate::econ::DAYS_PER_YEAR;
+        let due: Vec<Id<Person>> = self
+            .people
+            .ids()
+            .filter(|&id| {
+                let p = &self.people[id];
+                p.alive()
+                    && p.employment != crate::person::Employment::None
+                    && day >= p.reviewed_on + A_YEAR
+            })
+            .collect();
+        for id in due {
+            let noise = (mix(&[world_seed, id.slot() as u64, day, 0x004E_F1E3]) >> 11) as f64
+                / (1u64 << 53) as f64;
+            let p = &mut self.people[id];
+            let rating = rating_of(p.performance(), p.standing, noise);
+            p.reviewed_on = day;
+            self.reviews.held += 1;
+            match verdict(rating, p.rank, p.review) {
+                Verdict::Commended => {
+                    p.review = Review::Commended;
+                    self.reviews.commended += 1;
+                }
+                Verdict::Sound => p.review = Review::Sound,
+                Verdict::Warned => {
+                    p.review = Review::Warned;
+                    p.standing = (p.standing - 0.08).max(0.0);
+                    self.reviews.warned += 1;
+                    p.note(day, "warned about the work");
+                }
+                Verdict::PutBack => {
+                    p.rank = Rank::Hand;
+                    p.review = Review::Sound;
+                    p.standing = (p.standing - 0.15).max(0.0);
+                    self.reviews.demoted += 1;
+                    p.note(
+                        day,
+                        format!("put back into the crew of the {}", p.trade.name()),
+                    );
+                }
+                Verdict::LetGo => {
+                    if p.rank == Rank::Supervisor {
+                        self.reviews.demoted += 1;
+                    }
+                    p.rank = Rank::Hand;
+                    p.review = Review::Sound;
+                    p.standing = (p.standing - 0.15).max(0.0);
+                    p.employment = crate::person::Employment::None;
+                    p.job = None;
+                    p.state = State::Idle;
+                    p.days_at_trade = 0;
+                    p.visibility = 0.0;
+                    self.reviews.let_go += 1;
+                    p.note(
+                        day,
+                        format!("let go from the {} for the work", p.trade.name()),
+                    );
+                }
+            }
+        }
+    }
+
+    ///
+    /// **Public for the same reason**, so a gate can put somebody in the
+    /// position it asks about rather than waiting for one to arise.
+    pub fn make_up(
         &mut self,
         world_seed: u64,
         day: u64,
@@ -1231,9 +1424,17 @@ impl Populace {
                     .copied()
                     .filter(|&id| {
                         let p = &self.people[id];
+                        // **Performance stands in for experience**: a
+                        // commended hand is considered after one year.
+                        let served = if p.review == Review::Commended {
+                            DAYS_BEFORE_THEY_TRUST_YOU / 2
+                        } else {
+                            DAYS_BEFORE_THEY_TRUST_YOU
+                        };
                         p.rank == Rank::Hand
                             && p.employment != crate::person::Employment::None
-                            && p.days_at_trade >= DAYS_BEFORE_THEY_TRUST_YOU
+                            && p.review != Review::Warned
+                            && p.days_at_trade >= served
                             && p.standing >= WELL_ENOUGH_REGARDED
                     })
                     .collect();
@@ -1246,6 +1447,8 @@ impl Populace {
                 for id in best_first(&self.people, eligible).into_iter().take(going) {
                     let p = &mut self.people[id];
                     p.rank = Rank::Supervisor;
+                    p.reviewed_on = day;
+                    p.review = Review::Sound;
                     p.note(
                         day,
                         format!(
@@ -1282,7 +1485,7 @@ impl Populace {
                 })
                 .collect();
             let going = if bounded {
-                (rung_posts(world_seed, m, 0xB4A_4C4, expected) - managers).max(0.0) as usize
+                (rung_posts(world_seed, m, 0x00B4_A4C4, expected) - managers).max(0.0) as usize
             } else {
                 0
             };
@@ -1298,6 +1501,8 @@ impl Populace {
                 p.trade = manager;
                 p.rank = Rank::Hand;
                 p.days_at_trade = 0;
+                p.reviewed_on = day;
+                p.review = Review::Sound;
             }
         }
     }
@@ -1313,6 +1518,7 @@ impl Populace {
             let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
             let mut p = Person::new(format!("{first} {last}"), Trade::Sales, market, 50.0);
+            p.reviewed_on = day;
             p.aptitude =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             p.diligence =

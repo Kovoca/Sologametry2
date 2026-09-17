@@ -466,6 +466,49 @@ fn by_trade(
         managers / n * 100.0,
         manager_room / n * 100.0
     );
+    // **What the reviews did**, a year at a time. All layoffs and
+    // discharges together run 1.1% of jobs a month in the United States
+    // (JOLTS, 2023-2025), which is the ceiling; federal removals for
+    // misconduct about 0.35% a year, a protected workforce's floor. A
+    // demotion is far rarer than a dismissal: 114 against 7,411 federally
+    // in 2016 (GAO-18-48).
+    // How the work actually spreads, among those on the books.
+    {
+        let mut perf: Vec<f64> = folk
+            .people
+            .values()
+            .filter(|p| p.employment != scale_sim::person::Employment::None)
+            .map(|p| p.performance())
+            .collect();
+        let mut stand: Vec<f64> = folk
+            .people
+            .values()
+            .filter(|p| p.employment != scale_sim::person::Employment::None)
+            .map(|p| p.standing)
+            .collect();
+        perf.sort_by(f64::total_cmp);
+        stand.sort_by(f64::total_cmp);
+        let q = |v: &[f64], f: f64| {
+            v.get(((v.len() as f64 - 1.0) * f) as usize)
+                .copied()
+                .unwrap_or(0.0)
+        };
+        println!(
+            "  performance on the books: p2 {:.2} p10 {:.2} p50 {:.2} p90 {:.2}; standing p2 {:.2} p10 {:.2} p50 {:.2} p90 {:.2}",
+            q(&perf, 0.02), q(&perf, 0.10), q(&perf, 0.5), q(&perf, 0.9),
+            q(&stand, 0.02), q(&stand, 0.10), q(&stand, 0.5), q(&stand, 0.9)
+        );
+    }
+    let r = folk.reviews;
+    let a_year = years.max(1) as f64;
+    println!(
+        "  reviews {:.0} a year: {:.1}% commended, {:.1}% warned; let go {:.1}% of the sample a year,          supervisors put back {:.1}% of them a year",
+        r.held as f64 / a_year,
+        r.commended as f64 / r.held.max(1) as f64 * 100.0,
+        r.warned as f64 / r.held.max(1) as f64 * 100.0,
+        r.let_go as f64 / n / a_year * 100.0,
+        r.demoted as f64 / supervisors.max(1.0) / a_year * 100.0
+    );
     let per_year = changes.switched as f64 / n / years.max(1) as f64;
     println!(
         "

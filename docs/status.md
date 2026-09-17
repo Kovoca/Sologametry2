@@ -452,13 +452,32 @@ real occupations to train for.
    Management is reached by a degree or by running a crew. Supervisors end
    at 5.6%, 3.9%, 3.6% of the sample against room for 5.3% (real 5.1%);
    managers 8.1%, 7.7%, 8.0% against 7.5% (`bin/soak`, seeds 7, 11, 23).
+   **And the work is reviewed** once a year: commended hands are considered
+   for a post after one year instead of two; a warning, then a supervisor
+   put back into the crew or a hand let go, and the worst let go at once.
+   19% commended, 4% warned, 1.2-1.6% of the sample let go a year,
+   supervisors put back 0-0.9% a year — bounded by federal removals
+   (GAO-18-48) and all US layoffs and discharges (JOLTS).
    **Still open:** posts nobody inside qualifies for go unfilled (no outside
    hiring); no chief executive or middle management until employers own
-   several sites; the armed forces have no ranks.
+   several sites; misconduct is not a route to dismissal yet.
 4. Contract mixes from occupation-level figures.
 5. Distribution: warehouses and van drivers missing; builders doubled.
 6. Occupational mobility 1% a year against 10%.
-7. *Eating out* — owner's note, 2026-09-17. Every meal here is bought as
+7. *Military ranks, by culture* — owner's note, 2026-09-17. Armed forces
+   run on ranks, and **different militaries run them differently**, which
+   should come from the culture rather than one table: how many are
+   officers, whether sergeants carry the work or officers do, conscript or
+   volunteer, and what the ranks are called. Verified so far: US officers
+   including warrant officers are about 18% of the force, warrant officers
+   9% of the officer corps, company grade 56%, field grade 35%, general and
+   flag officers under 0.4% (CRS IF10685, DMDC August 2024). To verify from
+   primary sources before building: UK officers ~20%, a Russian officer
+   share once put near a third and the long absence of a professional NCO
+   corps, the PLA's officers, NCOs and conscripts. Wants a military culture
+   per nation, which nothing derives yet; NATO's OR/OF rank codes give a
+   common frame to map national systems onto.
+8. *Eating out* — owner's note, 2026-09-17. Every meal here is bought as
    tins at a market; real Americans spend **58.5%** of their food money
    away from home ($4,485 a head against $3,187 at home, USDA ERS Food
    Expenditure Series, 2023). Restaurants employ, today, as a private

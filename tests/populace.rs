@@ -92,6 +92,11 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
             .count()
     };
     let (kept, loosed) = (count(&with_posts), count(&without));
+    // And the year's work was looked at: the day runs its reviews.
+    assert!(
+        with_posts.reviews.held > 0,
+        "three years and nobody's work was ever reviewed"
+    );
 
     // **Removing the rule must promote more people.** If it does not, the
     // rule is not doing anything and this file's claim about it is prose.
@@ -1205,4 +1210,123 @@ fn an_heir_inherits_the_house_and_the_vehicle() {
         Conveyance::Van,
         "the vehicle did not pass"
     );
+}
+
+/// **A year's work is looked at, and what follows depends on how bad it
+/// was.** A warning first; a second poor review puts a supervisor back into
+/// the crew and ends a hand's contract; the worst ends the contract at once;
+/// and work well above what it asks is commended — which lets a hand be
+/// considered for a crew's post after one year instead of two.
+#[test]
+fn the_work_is_reviewed_and_what_follows_depends_on_how_bad_it_was() {
+    use scale_sim::person::{Employment, Rank, Review};
+    use scale_sim::populace::{ordinary_rating, verdict, Verdict};
+
+    // **The ladder, exactly**, on ratings rather than people, because a
+    // rating carries noise wider than a rung.
+    let o = ordinary_rating();
+    let poor = 0.80 * o;
+    let worst = 0.50 * o;
+    let fine = o;
+    let best = 1.40 * o;
+    assert_eq!(
+        verdict(poor, Rank::Hand, Review::Sound),
+        Verdict::Warned,
+        "a poor year was not warned"
+    );
+    assert_eq!(
+        verdict(poor, Rank::Hand, Review::Warned),
+        Verdict::LetGo,
+        "two poor years and still on the books"
+    );
+    assert_eq!(
+        verdict(poor, Rank::Supervisor, Review::Warned),
+        Verdict::PutBack,
+        "two poor years running a crew and not put back into it"
+    );
+    assert_eq!(
+        verdict(poor, Rank::Supervisor, Review::Sound),
+        Verdict::Warned
+    );
+    assert_eq!(
+        verdict(worst, Rank::Hand, Review::Sound),
+        Verdict::LetGo,
+        "the worst work kept its contract"
+    );
+    assert_eq!(
+        verdict(worst, Rank::Supervisor, Review::Sound),
+        Verdict::LetGo
+    );
+    assert_eq!(
+        verdict(fine, Rank::Hand, Review::Warned),
+        Verdict::Sound,
+        "a sound year did not clear a warning"
+    );
+    assert_eq!(
+        verdict(best, Rank::Hand, Review::Sound),
+        Verdict::Commended,
+        "the best work went unremarked"
+    );
+
+    // **And the review itself, at the extremes**, where the noise in a
+    // rating cannot move the verdict.
+    let e = a_nation().economy;
+    let seed = e.world_seed;
+    let mut folk = Populace::seed(&e, 40, 20260828);
+    let posts = scale_sim::occupation::jobs_by_occupation(&e);
+    let mut crews: std::collections::BTreeMap<(usize, usize), Vec<_>> = Default::default();
+    for id in folk.people.ids() {
+        let p = &folk.people[id];
+        if p.trade.crew().is_some() {
+            crews
+                .entry((p.market, p.trade.index()))
+                .or_default()
+                .push(id);
+        }
+    }
+    let crew = crews
+        .into_values()
+        .max_by_key(|v| v.len())
+        .expect("no crews in the country");
+    assert!(
+        crew.len() >= 2,
+        "no crew in the country has two people to ask about"
+    );
+    let (worst, good) = (crew[0], crew[1]);
+    for &id in &[worst, good] {
+        let p = &mut folk.people[id];
+        p.employment = Employment::FullTime;
+        p.reviewed_on = 0;
+        p.days_at_trade = 300;
+        p.review = Review::Sound;
+        p.rank = Rank::Hand;
+    }
+    folk.people[worst].diligence = 0.0;
+    folk.people[worst].practice = [0.0; scale_sim::person::N_SKILLS];
+    folk.people[worst].condition = 0.05;
+    folk.people[worst].standing = 0.0;
+    folk.people[good].diligence = 1.0;
+    folk.people[good].standing = 1.0;
+    folk.review_the_work(seed, DAYS_PER_YEAR);
+    assert_eq!(
+        folk.people[worst].employment,
+        Employment::None,
+        "the worst work kept its contract"
+    );
+    assert_eq!(
+        folk.people[good].review,
+        Review::Commended,
+        "the best work went unremarked"
+    );
+
+    // **Performance standing in for experience.** Commended with 300 days
+    // at the work, the good hand is considered for a crew's post; the rule
+    // for everybody else is two years.
+    folk.make_up(seed, DAYS_PER_YEAR, &posts, false);
+    assert_eq!(
+        folk.people[good].rank,
+        Rank::Supervisor,
+        "commended after a year at the work and not considered for a post"
+    );
+    assert!(folk.reviews.let_go >= 1 && folk.reviews.commended >= 1);
 }

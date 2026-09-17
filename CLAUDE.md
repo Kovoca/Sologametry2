@@ -4992,6 +4992,84 @@ posts and no more, held by people with years at the work; nobody works at
 something they are not qualified for, which for a manager may be the years
 of running a crew.
 
+### A year's work is looked at
+
+The owner's point: **in the absence of experience there is performance**, and
+somebody who is not doing the job is demoted or let go depending on how bad
+it is. Nothing here judged the work at all — `standing` was a reputation and
+nobody ever lost a place for what they did in it.
+
+**`Person::performance`** is how well the work is actually done: effort and
+skill against the level the work asks, in equal parts, and nobody works well
+hungry or ill. For a supervisor the skill that counts is running the crew,
+which a year of doing it brings to what the post asks — so somebody made up
+for being the best at the work and no good at running it shows as such.
+That is the Peter Principle, found across 131 firms by Benson, Li and Shue
+(2019): the best salespeople were the ones promoted, and made worse managers.
+
+**Once a year, for everybody on the books**, a review reads that
+performance through what the people deciding already think and the noise
+that makes a rating a rating (`populace::rating_of`), and the disciplinary
+ladder decides what follows (`populace::verdict`):
+
+| the rating, against an ordinary hand's | a hand | a supervisor |
+|---|---|---|
+| a quarter above | commended: considered for a crew's post after one year, not two | commended |
+| fifteen per cent below | warned | warned |
+| fifteen per cent below, already warned | **let go** — back to casual work | **put back into the crew** |
+| thirty per cent below | let go | let go |
+
+**Read against an ordinary hand, not against numbers picked for a rate.** The
+first version cut at fixed figures below nearly everybody: half a per cent
+of reviews warned, a tenth of a per cent of people let go a year and no
+supervisor ever put back — under even a federal workforce's rate. Measured
+first, the work on the books spreads from 0.43 at the second percentile to
+0.79 at the ninetieth; the cut-offs are now designed fractions of an ordinary
+hand's rating — average effort, just up to the work, well, and in plain
+sight.
+
+**What real figures there are bound it rather than set it**, because no
+survey found separates dismissal for cause from redundancy:
+
+- all layoffs and discharges together are **1.1% of American jobs a month**
+  *(BLS JOLTS, 2023-2025)* — the ceiling;
+- federal agencies removed **7,411** employees for misconduct in 2016,
+  suspended 10,249 and **demoted 114** *(GAO-18-48)* — formal discipline
+  under 1% of a protected workforce a year, and demotion about sixty-five
+  times rarer than dismissal;
+- **14%** of American office workers have ever been asked to take a lower
+  role; of demotions, 39% were for poor performance and 38% for failing
+  after a promotion, and 52% of those demoted quit *(OfficeTeam, 2018)*. A
+  summarising search tool reported this as "4-6% demoted a year"; the survey
+  says no such thing, and the page was read to check.
+
+| five years | world 7 | world 11 | world 23 |
+|---|---|---|---|
+| reviews commended | 18.9% | 19.9% | 18.6% |
+| reviews warned | 3.8% | 3.7% | 4.3% |
+| the sample let go for the work, a year | 1.2% | 1.2% | 1.6% |
+| supervisors put back, a year | 0.0% | 0.0% | 0.9% |
+
+Let go at a few times a protected federal workforce's rate and a small
+fraction of all discharges, and demotion rarer than dismissal as it really
+is. Unemployment, hunger, homelessness and households' money moved by what
+these worlds move by on their own.
+
+**Gates, each checked by breaking its rule**: the ladder is asserted exactly
+on ratings, because the noise in a rating is wider than a rung — which the
+first version of the gate found by failing on a poor worker the noise had
+pushed past the warning. The review itself is asserted at the extremes, where
+noise cannot move it: the worst work loses its contract, the best is
+commended, and a commended hand with three hundred days at the work is made
+up. Letting go without a warning, letting a supervisor go instead of putting
+them back, removing the fast track and taking the reviews out of the day
+each turn a gate red.
+
+**Named gaps**: misconduct — theft, violence — is its own route to dismissal
+and is not here, though `custom::will_bend` already says who would; a
+contract ended is the end of that employer, but the person stays in the
+trade and the town.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

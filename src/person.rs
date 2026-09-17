@@ -265,6 +265,29 @@ impl Person {
                 && self.level(Skill::Management) >= trade.wants_level())
     }
 
+    /// **How well they actually do the work**, nought to one — which is not
+    /// what anybody thinks of them.
+    ///
+    /// What they put into it and whether they can do what it asks: effort
+    /// and skill against the level the work wants, in equal parts. For a
+    /// supervisor, the skill that counts is running the crew, which a year of
+    /// doing it takes to level three — so somebody made up for being the best
+    /// at the work and no good at running it shows as such, which is the
+    /// Peter Principle *(Benson, Li and Shue, 2019: across 131 firms, the
+    /// best salespeople were the ones promoted and made worse managers)*.
+    /// And nobody does their best work hungry or ill. Designed weights.
+    pub fn performance(&self) -> f64 {
+        /// The level of running things a supervisor's post asks for:
+        /// designed, at about a year of doing it.
+        const RUNNING_A_CREW_WANTS: u8 = 3;
+        let (skill, wanted) = match self.rank {
+            Rank::Hand => (self.competence(), self.trade.wants_level()),
+            Rank::Supervisor => (self.level(Skill::Management), RUNNING_A_CREW_WANTS),
+        };
+        let fit = (0.5 + 0.1 * (skill as f64 - wanted as f64)).clamp(0.0, 1.0);
+        (0.5 * self.diligence + 0.5 * fit) * (0.6 + 0.4 * self.condition.clamp(0.0, 1.0))
+    }
+
     /// **What running a crew adds to the pay**, as a multiple of the work's
     /// own rate: what the published supervisors of that work earn over its
     /// median, which runs from a quarter more in a kitchen to seven tenths
@@ -825,6 +848,24 @@ pub struct Person {
     /// **Whether they run a crew of the work they do**, or are one of it.
     /// A step up inside the trade, not a trade of its own: see [`Rank`].
     pub rank: Rank,
+    /// **The day their work was last reviewed**, or they last started in a
+    /// post — a year on from either, they are reviewed again.
+    pub reviewed_on: u64,
+    /// **What the last review said**, which is what the next one is read
+    /// against: a warning stands until a review clears it, and a
+    /// commendation until the next review.
+    pub review: Review,
+}
+
+/// **What a review came to.**
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Review {
+    /// Doing the job.
+    Sound,
+    /// Well above what the work asks: considered for a post a year early.
+    Commended,
+    /// Below it, and told so. A second such review has a consequence.
+    Warned,
 }
 
 /// **Where somebody stands in the crew they work in.**
@@ -903,6 +944,8 @@ impl Person {
             planner: crate::planner::Planner::new(),
             days_at_trade: 0,
             rank: Rank::Hand,
+            reviewed_on: 0,
+            review: Review::Sound,
             practice: [0.0; N_SKILLS],
             standing: 0.5,
             visibility: 0.0,
@@ -2771,6 +2814,8 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 } else {
                     Employment::Casual
                 };
+                // Starting in a post: a year from now it is looked at.
+                person.reviewed_on = day;
                 person.note(
                     day,
                     format!(
@@ -2797,6 +2842,8 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                     );
                     person.trade = c.trade;
                     person.rank = Rank::Hand;
+                    person.reviewed_on = day;
+                    person.review = Review::Sound;
                     person.employment = Employment::None;
                     person.visibility = 0.0;
                     person.days_at_trade = 0;
