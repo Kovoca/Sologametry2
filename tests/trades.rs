@@ -213,42 +213,97 @@ fn a_country_contains_the_people_it_needs() {
         graduates * 100.0
     );
 
-    // **And nobody starts as a supervisor.** It is what a floor hand is
-    // promoted to and the only way up this economy contains — handing it
-    // out at the draw put a town at 27% supervisors against 9% of its
-    // posts, because a school leaver redraws until the qualification
-    // allows the trade and only four trades need none.
-    assert_eq!(
-        share(Trade::Supervisor),
-        0.0,
-        "somebody was born a supervisor"
-    );
+    // **A world starts with its crews already run, and no more of them.**
+    // Handing supervising out at the draw once put a town at 27%
+    // supervisors against 9% of its posts. What a world starts with is its
+    // crews' posts, held by somebody with a couple of years at the work.
+    let jobs = scale_sim::occupation::jobs_by_occupation(&e);
+    for m in 0..e.markets.len() {
+        let mine: Vec<_> = folk.people.values().filter(|p| p.market == m).collect();
+        let total: f64 = jobs[m].iter().sum();
+        if mine.is_empty() || total <= 0.0 {
+            continue;
+        }
+        for t in Trade::ALL {
+            let running: Vec<_> = mine
+                .iter()
+                .filter(|p| p.trade == t && p.rank == scale_sim::person::Rank::Supervisor)
+                .collect();
+            let posts = (mine.len() as f64 * jobs[m][t.index()] / total * t.supervisor_share())
+                .floor()
+                + 1.0;
+            assert!(
+                running.is_empty() || t.crew().is_some(),
+                "a world starts with somebody supervising {}, which has no such rung",
+                t.name()
+            );
+            assert!(
+                running.len() as f64 <= posts,
+                "{} starts with {} supervisors of {} against room for {posts}",
+                e.markets[m].name,
+                running.len(),
+                t.name()
+            );
+            for p in running {
+                assert!(
+                    p.age_years - 18.0 - p.qualification.years_to_earn() >= 2.0,
+                    "{} starts out running a crew with no years at the work",
+                    p.name
+                );
+            }
+        }
+    }
 }
 
 /// A vacancy is a number of posts, not a flag.
 #[test]
 fn promotion_is_capped_by_the_posts_that_exist() {
+    // **A vacancy is a number of posts, not a flag**, and the number is the
+    // crew: a town's employers' jobs in each kind of work, over that work's
+    // published crew size.
+    use scale_sim::person::Rank;
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
     for day in 0..(DAYS_PER_YEAR * 4) {
         e.step();
         folk.live_a_day(&mut e, day);
     }
+    let jobs = scale_sim::occupation::jobs_by_occupation(&e);
+    let mut anybody = 0usize;
     for m in 0..e.markets.len() {
         let mine: Vec<_> = folk.people.values().filter(|p| p.market == m).collect();
-        if mine.len() < 10 {
+        let total: f64 = jobs[m].iter().sum();
+        if mine.len() < 10 || total <= 0.0 {
             continue;
         }
-        let bosses =
-            mine.iter().filter(|p| p.trade == Trade::Supervisor).count() as f64 / mine.len() as f64;
-        // Real span of control is 8-15, so about a tenth of a workforce
-        // is in charge of the rest — and there is no ladder with room for
-        // everybody on it.
-        assert!(
-            bosses < 0.25,
-            "{} came out {:.0}% supervisors after four years",
-            e.markets[m].name,
-            bosses * 100.0
-        );
+        let n = mine.len() as f64;
+        // What each kind of work can carry, rounded up the one post a
+        // fraction can come to, and not a head more — whatever the years
+        // served.
+        for t in Trade::ALL {
+            let posts = (n * jobs[m][t.index()] / total * t.supervisor_share()).floor() + 1.0;
+            let running = mine
+                .iter()
+                .filter(|p| p.trade == t && p.rank == Rank::Supervisor)
+                .count();
+            anybody += running;
+            assert!(
+                t.crew().is_some() || running == 0,
+                "{} has somebody supervising {}, which has no such rung",
+                e.markets[m].name,
+                t.name()
+            );
+            assert!(
+                running as f64 <= posts,
+                "{} has {running} supervisors of {} among {n} people, whose jobs \
+                 give that work room for {posts}",
+                e.markets[m].name,
+                t.name()
+            );
+        }
     }
+    assert!(
+        anybody > 0,
+        "four years and no crew anywhere is run by anybody"
+    );
 }

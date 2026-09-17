@@ -425,20 +425,13 @@ fn nobody_is_sent_after_work_the_town_does_not_have() {
         let floor: Vec<_> = folk
             .people
             .values()
-            .filter(|p| p.alive() && p.market == m && p.trade != Trade::Supervisor)
+            .filter(|p| p.alive() && p.market == m)
             .collect();
-        let total: f64 = Trade::ALL
-            .iter()
-            .filter(|&&t| t != Trade::Supervisor)
-            .map(|t| posts[m][t.index()])
-            .sum();
+        let total: f64 = posts[m].iter().sum();
         if floor.is_empty() || total <= 0.0 {
             continue;
         }
         for t in Trade::ALL {
-            if t == Trade::Supervisor {
-                continue;
-            }
             let share = posts[m][t.index()] / total * floor.len() as f64;
             let came = floor
                 .iter()

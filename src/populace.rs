@@ -26,8 +26,8 @@
 use crate::econ::Economy;
 use crate::id::{Arena, Id};
 use crate::person::{
-    day_rate, household_share_for, live_a_day_with, qualification_for, Housing, Person,
-    Qualification, State, Trade,
+    day_rate, household_share_for, live_a_day, qualification_for, Housing, Person, Qualification,
+    Rank, State, Trade,
 };
 use crate::planner::{self, Heard, Lead, Outcome as Day};
 use crate::rng::Rng;
@@ -182,6 +182,22 @@ pub fn hold_an_opening(
     true
 }
 
+/// **How many posts of a rung a town's sample carries**, when what its
+/// employers staff comes to a fraction of a person.
+///
+/// Forty people a town put six in a kitchen, and a crew of nine gives them
+/// 0.6 of a supervisor, which rounding down makes no kitchen anywhere ever
+/// run by anybody. The fraction is settled by a draw fixed for the world,
+/// the town and the rung, so across towns it comes out right and in any one
+/// town it does not flicker from day to day. Leaving the world out drew the
+/// same towns on every planet, and one kind of work went without a
+/// supervisor in every world.
+fn rung_posts(world_seed: u64, market: usize, rung: u64, expected: f64) -> f64 {
+    let u =
+        (mix(&[world_seed, market as u64, rung, 0x5E7_C4EF]) >> 11) as f64 / (1u64 << 53) as f64;
+    expected.floor() + if expected.fract() > u { 1.0 } else { 0.0 }
+}
+
 /// A deterministic number from a few others — who hears what must rebuild
 /// identically from a seed like everything else.
 fn mix(parts: &[u64]) -> u64 {
@@ -334,7 +350,65 @@ impl Populace {
             rng,
         };
         folk.marry_the_couples();
+        folk.staff_the_crews(econ.world_seed, &posts);
         folk
+    }
+
+    /// **The crews a world starts with are already run by somebody.**
+    ///
+    /// The same bootstrapping as skills and qualifications: a world's first
+    /// morning has kitchens and building sites that have been running for
+    /// years, and a model that makes everybody wait two years of service
+    /// before anybody supervises anything starts every world with no
+    /// supervisors and spends its first years catching up. Each town's
+    /// crews get their posts, filled by the most diligent of those with a
+    /// couple of years at the work behind them — which is what the people
+    /// deciding would have come to think of them.
+    fn staff_the_crews(
+        &mut self,
+        world_seed: u64,
+        posts: &[[f64; crate::occupation::N_OCCUPATIONS]],
+    ) {
+        /// Two years at the work, as for a promotion.
+        const YEARS_BEFORE_THEY_TRUST_YOU: f64 = 2.0;
+        for m in 0..posts.len() {
+            let total: f64 = posts[m].iter().sum();
+            let here: Vec<Id<Person>> = self
+                .people
+                .ids()
+                .filter(|&id| self.people[id].market == m)
+                .collect();
+            if total <= 1e-9 || here.is_empty() {
+                continue;
+            }
+            for t in Trade::ALL {
+                let share = t.supervisor_share();
+                if share <= 0.0 {
+                    continue;
+                }
+                let staffed = here.len() as f64 * posts[m][t.index()] / total;
+                let going = rung_posts(world_seed, m, t.index() as u64, staffed * share) as usize;
+                let mut crew: Vec<Id<Person>> = here
+                    .iter()
+                    .copied()
+                    .filter(|&id| {
+                        let p = &self.people[id];
+                        p.trade == t
+                            && p.age_years - 18.0 - p.qualification.years_to_earn()
+                                >= YEARS_BEFORE_THEY_TRUST_YOU
+                    })
+                    .collect();
+                crew.sort_by(|&a, &b| {
+                    self.people[b]
+                        .diligence
+                        .total_cmp(&self.people[a].diligence)
+                        .then(a.slot().cmp(&b.slot()))
+                });
+                for id in crew.into_iter().take(going) {
+                    self.people[id].rank = Rank::Supervisor;
+                }
+            }
+        }
     }
 
     /// **A couple is two people, and the sample knows only one of them.**
@@ -638,19 +712,6 @@ impl Populace {
     /// alone, with nobody to supervise — and is not a mode the game runs
     /// in.
     pub fn live_a_day_bounded(&mut self, econ: &mut Economy, day: u64, bounded: bool) {
-        // **Is there a post going?**
-        //
-        // Not a ratio picked to look right: the number of supervisory
-        // posts is a real figure the labour model already computes from
-        // the works and shops that exist, at a span of control of about
-        // ten. **There is no ladder with room for everybody on it**, and
-        // without this every labourer in a three-year run was made up to
-        // chargehand — the cohort became all supervisors, which is a
-        // promotion timer with nobody left to supervise.
-        //
-        // The cohort is a sample, so the posts are scaled to it: if the
-        // town has one supervisory post per twenty hands, so does the
-        // sample.
         let n_markets = econ.markets.len();
 
         // **Tell the economy how good its workforce actually is.**
@@ -702,17 +763,11 @@ impl Populace {
                 sum[i] += p.competence() as f64 * stands_for;
                 weight[i] += stands_for;
                 heads[i] += 1;
-                if p.trade != Trade::Supervisor {
-                    on_the_floor[p.market] += stands_for;
-                }
+                on_the_floor[p.market] += stands_for;
             }
             for m in 0..n_markets {
-                let floor_posts: f64 = Trade::ALL
-                    .iter()
-                    .filter(|&&t| t != Trade::Supervisor)
-                    .map(|t| posts[m][t.index()])
-                    .sum();
-                for (t, &trade) in Trade::ALL.iter().enumerate() {
+                let floor_posts: f64 = posts[m].iter().sum();
+                for (t, _) in Trade::ALL.iter().enumerate() {
                     let i = m * trades + t;
                     if weight[i] <= 1e-9 {
                         continue;
@@ -723,7 +778,7 @@ impl Populace {
                     } else {
                         0.0
                     };
-                    let cover = if trade == Trade::Supervisor || post_share <= 1e-9 {
+                    let cover = if post_share <= 1e-9 {
                         // Nothing to say it is a small part of anything.
                         1.0
                     } else {
@@ -745,39 +800,13 @@ impl Populace {
                     let n = heads[i] as f64;
                     let trust = n / (n + A_SAMPLE_IS_THIS_MANY_PEOPLE_SHORT);
                     let ordinary = crate::econ::ORDINARY_HAND;
-                    econ.set_hands(m, trade, ordinary + cover * trust * (sampled - ordinary));
+                    econ.set_hands(
+                        m,
+                        Trade::ALL[t],
+                        ordinary + cover * trust * (sampled - ordinary),
+                    );
                 }
             }
-        }
-
-        let mut vacancy = vec![0.0f64; n_markets];
-        for m in 0..n_markets {
-            let mine: Vec<&Person> = self.people.values().filter(|p| p.market == m).collect();
-            if mine.is_empty() {
-                continue;
-            }
-            let w = &econ.workforce[m];
-            let share = if w.posts > 1e-9 {
-                (w.supervisory_posts / w.posts).clamp(0.0, 0.35)
-            } else {
-                0.0
-            };
-            let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count() as f64;
-            // **How many posts are going, not whether any are.**
-            //
-            // This was a boolean, so on any day a vacancy existed *every*
-            // eligible person in the town was made up at once. It went
-            // unnoticed while the sample was mostly shop workers, who
-            // reach the threshold rarely and at scattered times — and then
-            // the population was given its real trade mix, offices and
-            // public service came in at a third of it, and those work 85%
-            // of weekdays rather than 28%. They cleared the threshold
-            // together and a town came out 27% supervisors against 9% of
-            // its posts.
-            //
-            // A vacancy is a number of posts. Counting them down as they
-            // are filled is the whole of the fix.
-            vacancy[m] = (mine.len() as f64 * share - bosses).max(0.0);
         }
 
         let everyone: Vec<Id<Person>> = self.people.ids().collect();
@@ -786,20 +815,12 @@ impl Populace {
             if self.people[i].condition <= 0.0 {
                 continue;
             }
-            let m = self.people[i].market;
-            let free = !bounded || vacancy.get(m).copied().unwrap_or(0.0) >= 1.0;
-            let was = self.people[i].trade;
             let worked_before = self.people[i].days_worked;
             // A week's contract that ends today ends in a day of rest, not
             // in a day of looking for work and finding none.
             let a_week_ending = matches!(self.people[i].state, State::Working { until } if day >= until)
                 && self.people[i].job.as_ref().is_some_and(|j| j.days > 1.0);
-            live_a_day_with(&mut self.people[i], econ, day, free);
-            if was != Trade::Supervisor && self.people[i].trade == Trade::Supervisor {
-                if let Some(v) = vacancy.get_mut(m) {
-                    *v -= 1.0;
-                }
-            }
+            live_a_day(&mut self.people[i], econ, day);
 
             // **What the day came to**, which is all a plan learns from.
             let p = &self.people[i];
@@ -822,6 +843,7 @@ impl Populace {
                 .observe(day, trade, market, outcome, offset);
             outcomes.insert(i, outcome);
         }
+        self.make_up(econ.world_seed, day, &posts, bounded);
         self.bury_the_dead(day, &posts);
         self.plan_ahead(econ, day, &outcomes, &posts);
         // A year turns.
@@ -878,23 +900,12 @@ impl Populace {
         // ---- 1. where the openings are, before anybody's hold ----------
         let mut room = vec![vec![0.0f64; trades]; n_markets];
         for m in 0..n_markets {
-            let floor: Vec<Id<Person>> = in_town[m]
-                .iter()
-                .copied()
-                .filter(|&id| self.people[id].trade != Trade::Supervisor)
-                .collect();
-            let total: f64 = Trade::ALL
-                .iter()
-                .filter(|&&t| t != Trade::Supervisor)
-                .map(|t| posts[m][t.index()])
-                .sum();
+            let floor: &[Id<Person>] = &in_town[m];
+            let total: f64 = posts[m].iter().sum();
             if total <= 1e-9 || floor.is_empty() {
                 continue;
             }
             for t in Trade::ALL {
-                if t == Trade::Supervisor {
-                    continue;
-                }
                 let expected = posts[m][t.index()] / total * floor.len() as f64;
                 let holders = floor
                     .iter()
@@ -913,9 +924,7 @@ impl Populace {
                 continue;
             }
             for t in Trade::ALL {
-                if t == Trade::Supervisor
-                    || room[m][t.index()] - held(&self.reservations[..], m, t) < 1.0
-                {
+                if room[m][t.index()] - held(&self.reservations[..], m, t) < 1.0 {
                     continue;
                 }
                 let tellers: Vec<Id<Person>> = in_town[m]
@@ -968,7 +977,7 @@ impl Populace {
                 }
                 for r in told {
                     let p = &self.people[r];
-                    if p.qualification < qualification_for(t) {
+                    if !p.qualified_for(t) {
                         continue;
                     }
                     // A notice says a post is going and nothing about the
@@ -1130,6 +1139,169 @@ impl Populace {
     /// counting in full. Letting the sample dwindle would make a town look
     /// emptier the longer it was watched, which is an artefact of the
     /// sampling and not a fact about the town.
+    /// **Who is put in charge**, once the day's work is done.
+    ///
+    /// Two rungs, and a post on either is the employer's to fill:
+    ///
+    /// - **A crew needs somebody running it.** Each town's people in a
+    ///   trade carry supervisors at that trade's published crew size —
+    ///   `Occupation::crew` — and a post going is filled from that trade's
+    ///   own people. A teacher is never made up to supervise teachers; the
+    ///   rung is not in the work.
+    /// - **Management is filled from the crews.** When a town has fewer
+    ///   managers than its employers' staffing gives it, a supervisor who
+    ///   has run a crew long enough to be qualified for it
+    ///   (`Person::qualified_for`) may be made one, degree or none, which
+    ///   is how most shop, kitchen and site managers come to the job.
+    ///   Degree-holders still come in from outside through `plan_ahead`.
+    ///
+    /// **Whoever is best thought of gets it**, among those who have put the
+    /// time in, and nobody else: time served is necessary and nowhere near
+    /// sufficient. Walking the town in slot order let the first eligible
+    /// person in the vector take every post.
+    ///
+    /// **A post is a share, and a share of a sample is a fraction**:
+    /// `rung_posts`.
+    ///
+    /// **The chief executive is not here yet.** Every works and shop is its
+    /// own company, so there is nothing above a branch for one to run; that
+    /// rung arrives with employers that own several sites.
+    fn make_up(
+        &mut self,
+        world_seed: u64,
+        day: u64,
+        posts: &[[f64; crate::occupation::N_OCCUPATIONS]],
+        bounded: bool,
+    ) {
+        /// Two years of working days at the trade, about where real
+        /// promotion to supervisor falls.
+        const DAYS_BEFORE_THEY_TRUST_YOU: u64 = 500;
+        /// What the people deciding have to think of you.
+        const WELL_ENOUGH_REGARDED: f64 = 0.62;
+
+        let n_markets = posts.len();
+        for m in 0..n_markets {
+            let here: Vec<Id<Person>> = self
+                .people
+                .ids()
+                .filter(|&id| self.people[id].market == m && self.people[id].alive())
+                .collect();
+            if here.is_empty() {
+                continue;
+            }
+            // Best thought of first, and the slot only to settle a tie.
+            let best_first = |people: &Arena<Person>, mut ids: Vec<Id<Person>>| {
+                ids.sort_by(|&a, &b| {
+                    people[b]
+                        .standing
+                        .total_cmp(&people[a].standing)
+                        .then(a.slot().cmp(&b.slot()))
+                });
+                ids
+            };
+
+            let total: f64 = posts[m].iter().sum();
+            if total <= 1e-9 {
+                continue;
+            }
+            // **The posts, not whoever is in the work today.** Counting a
+            // crew off the people who happened to hold the trade filled
+            // posts at every peak as people came and went, and nobody steps
+            // down at a trough: world 7 came out 21% supervisors among its
+            // cooks against a crew's 10%. What the employers staff is slow.
+            let staffed = |t: Trade| here.len() as f64 * posts[m][t.index()] / total;
+
+            // ---- a crew's supervisor ------------------------------------
+            for t in Trade::ALL {
+                let share = t.supervisor_share();
+                if share <= 0.0 {
+                    continue;
+                }
+                let crew: Vec<Id<Person>> = here
+                    .iter()
+                    .copied()
+                    .filter(|&id| self.people[id].trade == t)
+                    .collect();
+                let running = crew
+                    .iter()
+                    .filter(|&&id| self.people[id].rank == Rank::Supervisor)
+                    .count() as f64;
+                let eligible: Vec<Id<Person>> = crew
+                    .iter()
+                    .copied()
+                    .filter(|&id| {
+                        let p = &self.people[id];
+                        p.rank == Rank::Hand
+                            && p.employment != crate::person::Employment::None
+                            && p.days_at_trade >= DAYS_BEFORE_THEY_TRUST_YOU
+                            && p.standing >= WELL_ENOUGH_REGARDED
+                    })
+                    .collect();
+                let going = if bounded {
+                    (rung_posts(world_seed, m, t.index() as u64, staffed(t) * share) - running)
+                        .max(0.0) as usize
+                } else {
+                    eligible.len()
+                };
+                for id in best_first(&self.people, eligible).into_iter().take(going) {
+                    let p = &mut self.people[id];
+                    p.rank = Rank::Supervisor;
+                    p.note(
+                        day,
+                        format!(
+                            "made up to supervisor of the {} after {} days at it",
+                            t.name(),
+                            p.days_at_trade
+                        ),
+                    );
+                }
+            }
+
+            // ---- a branch -----------------------------------------------
+            let manager = Trade::Manager;
+            // Counting those already on their way to a post they were told
+            // of, or a branch is given away twice.
+            let managers = here
+                .iter()
+                .filter(|&&id| self.people[id].trade == manager)
+                .count() as f64
+                + self
+                    .reservations
+                    .iter()
+                    .filter(|r| r.market == m && r.trade == manager)
+                    .count() as f64;
+            let expected = staffed(manager);
+            let eligible: Vec<Id<Person>> = here
+                .iter()
+                .copied()
+                .filter(|&id| {
+                    let p = &self.people[id];
+                    p.rank == Rank::Supervisor
+                        && p.qualified_for(manager)
+                        && p.standing >= WELL_ENOUGH_REGARDED
+                })
+                .collect();
+            let going = if bounded {
+                (rung_posts(world_seed, m, 0xB4A_4C4, expected) - managers).max(0.0) as usize
+            } else {
+                0
+            };
+            for id in best_first(&self.people, eligible).into_iter().take(going) {
+                let p = &mut self.people[id];
+                p.note(
+                    day,
+                    format!(
+                        "given a branch to manage, after running a crew of the {}",
+                        p.trade.name()
+                    ),
+                );
+                p.trade = manager;
+                p.rank = Rank::Hand;
+                p.days_at_trade = 0;
+            }
+        }
+    }
+
     fn bury_the_dead(&mut self, day: u64, posts: &[[f64; crate::occupation::N_OCCUPATIONS]]) {
         let everyone: Vec<Id<Person>> = self.people.ids().collect();
         for i in everyone {
@@ -1290,15 +1462,14 @@ fn draw_household(rng: &mut Rng) -> Household {
 /// **A trade from the work a town actually has**, among what a
 /// qualification allows, in proportion to its posts.
 ///
-/// Supervising is never drawn: it is what a floor hand is promoted to. A
-/// town with no posts to read — a hand-built fixture with no works in it —
+/// A town with no posts to read — a hand-built fixture with no works in it —
 /// falls back on national shares, still gated by qualification.
 fn draw_work(
     rng: &mut Rng,
     qualification: Qualification,
     posts: &[f64; crate::occupation::N_OCCUPATIONS],
 ) -> Trade {
-    let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
+    let open = |t: Trade| qualification >= qualification_for(t);
     let total: f64 = Trade::ALL
         .iter()
         .filter(|&&t| open(t))
@@ -1318,7 +1489,7 @@ fn draw_from(
     qualification: Qualification,
     weights: &[f64; crate::occupation::N_OCCUPATIONS],
 ) -> Trade {
-    let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
+    let open = |t: Trade| qualification >= qualification_for(t);
     let total: f64 = Trade::ALL
         .iter()
         .filter(|&&t| open(t))

@@ -204,7 +204,6 @@ fn unused(t: Trade) -> &'static str {
         Trade::Driver => "haulier",
         Trade::ProductionWorker => "labourer",
         Trade::Sales => "shop work",
-        Trade::Supervisor => "supervisor",
         Trade::Teacher => "public",
         _ => "other",
     }

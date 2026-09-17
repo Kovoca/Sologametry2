@@ -65,6 +65,23 @@
 53-7051 778,920 $21.38 $45,720
 # 11-9013 counts only salaried farm managers: most farmers are self-employed
 # and not in OEWS. 45-3031 fishers are not published nationally at all.
+# First-line supervisors, each counted inside the major group above it.
+# 35-1010 includes chefs and head cooks; 53-1040 includes aircraft cargo
+# handling supervisors. Management, business, science, legal, education,
+# arts, healthcare and healthcare support have no first-line supervisor
+# group: they answer to managers (11-0000).
+33-1000 359,050 $39.06 $87,710
+35-1010 1,348,910 $19.69 $45,780
+37-1010 297,150 $23.71 $53,770
+39-1000 219,680 $22.86 $51,690
+41-1010 1,315,030 $23.57 $60,140
+43-1011 1,504,570 $30.50 $68,620
+45-1011 27,150 $27.56 $60,790
+47-1011 777,420 $36.90 $81,340
+49-1011 589,880 $36.45 $79,020
+53-1040 603,350 $29.09 $63,860
+11-1011 211,230 $99.37 $258,900
+11-1021 3,507,810 $48.69 $129,330
 
 == 21 mining, quarrying, oil and gas
 00-0000 571,160 100.00% $29.71

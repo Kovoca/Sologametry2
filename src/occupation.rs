@@ -116,14 +116,9 @@ pub enum Occupation {
     MaterialMover,
     /// The armed forces, enlisted and officers.
     Soldier,
-    /// **Somebody in charge of a floor.** Not drawn from any staffing
-    /// pattern — every published group already counts its own first-line
-    /// supervisors — because here it is what a floor hand is promoted to,
-    /// against a count of posts `labour.rs` keeps at a span of control.
-    Supervisor,
 }
 
-pub const N_OCCUPATIONS: usize = 33;
+pub const N_OCCUPATIONS: usize = 32;
 
 impl Occupation {
     /// **Every occupation, in the order `index` gives.**
@@ -160,7 +155,6 @@ impl Occupation {
         Occupation::Driver,
         Occupation::MaterialMover,
         Occupation::Soldier,
-        Occupation::Supervisor,
     ];
 
     /// Where it sits in `ALL`, by exhaustive match, so a new occupation
@@ -200,7 +194,6 @@ impl Occupation {
             Driver => 29,
             MaterialMover => 30,
             Soldier => 31,
-            Supervisor => 32,
         }
     }
 
@@ -239,7 +232,6 @@ impl Occupation {
             Driver => "driver",
             MaterialMover => "material mover",
             Soldier => "soldier",
-            Supervisor => "supervisor",
         }
     }
 
@@ -248,7 +240,7 @@ impl Occupation {
     pub fn skill(self) -> Skill {
         use Occupation::*;
         match self {
-            Manager | Supervisor => Skill::Management,
+            Manager => Skill::Management,
             Farmer | FarmWorker => Skill::Husbandry,
             Accountant => Skill::Accounting,
             BusinessSpecialist => Skill::Commerce,
@@ -293,7 +285,7 @@ impl Occupation {
             Engineer | Scientist | Legal => 6,
             Manager | Accountant | ComputingSpecialist | Nurse | Electrician | Pipefitter => 5,
             Farmer | BusinessSpecialist | SocialWorker | Teacher | HealthTechnician | Builder
-            | Mechanic | Supervisor => 4,
+            | Mechanic => 4,
             ArtsAndMedia | CareAssistant | ProtectiveService | Miner | Driver | Soldier => 3,
             PersonalCare | OfficeClerk | FarmWorker | Fisher | ProductionWorker => 2,
             FoodService | Cleaner | Sales | MaterialMover => 1,
@@ -316,7 +308,7 @@ impl Occupation {
             | Driver => Qualification::Vocational,
             Farmer | ProtectiveService | FoodService | Cleaner | PersonalCare | Sales
             | OfficeClerk | FarmWorker | Fisher | Miner | ProductionWorker | MaterialMover
-            | Soldier | Supervisor => Qualification::School,
+            | Soldier => Qualification::School,
         }
     }
 
@@ -346,7 +338,6 @@ impl Occupation {
             Farmer | FarmWorker | Fisher | Miner | Mechanic | ProductionWorker | MaterialMover => {
                 (0.85, 0.10, 0.05)
             }
-            Supervisor => (0.90, 0.08, 0.02),
         }
     }
 
@@ -363,7 +354,7 @@ impl Occupation {
             Electrician | Pipefitter | Mechanic => Week::SiteWithCallOuts,
             Sales | FoodService | PersonalCare | ArtsAndMedia => Week::OpenSevenDays,
             Farmer | FarmWorker | Fisher | Miner | ProductionWorker | MaterialMover | Builder
-            | Driver | Cleaner | Supervisor => Week::Rota,
+            | Driver | Cleaner => Week::Rota,
         }
     }
 
@@ -442,7 +433,6 @@ impl Occupation {
             }
             MaterialMover => median("53-0000"),
             Soldier => (SOLDIER_RMC_E1 + SOLDIER_RMC_E5) / 2.0 / HOURS_IN_A_PAID_YEAR,
-            Supervisor => median("51-1011"),
         }
     }
 
@@ -456,6 +446,84 @@ impl Occupation {
     /// figure rather than a guess.
     pub fn days_of_food_a_day(self) -> f64 {
         PRODUCTION_WORKER_DAYS_OF_FOOD * self.median_hourly()
+            / Occupation::ProductionWorker.median_hourly()
+    }
+
+    /// **Whether the work is done in crews with somebody running each**,
+    /// and which published group of first-line supervisors runs it: the
+    /// supervisors' code, and the major group they are counted inside.
+    ///
+    /// A supervisor is a step up *within* the work — a cook made kitchen
+    /// supervisor is still in food service, and the statistics count her
+    /// there. **The professions have no such rung**: nurses, teachers,
+    /// engineers, accountants and doctors answer to a manager, and so do
+    /// care assistants, whose supervisors are nurses. The armed forces run
+    /// on ranks, which the survey does not cover and this does not model
+    /// yet. Exhaustive, so a new occupation cannot compile until somebody
+    /// has said how its work is run.
+    fn first_line(self) -> Option<(&'static str, &'static str)> {
+        use Occupation::*;
+        match self {
+            ProtectiveService => Some(("33-1000", "33-0000")),
+            FoodService => Some(("35-1010", "35-0000")),
+            Cleaner => Some(("37-1010", "37-0000")),
+            PersonalCare => Some(("39-1000", "39-0000")),
+            Sales => Some(("41-1010", "41-0000")),
+            OfficeClerk => Some(("43-1011", "43-0000")),
+            FarmWorker | Fisher => Some(("45-1011", "45-0000")),
+            Builder | Electrician | Pipefitter | Miner => Some(("47-1011", "47-0000")),
+            Mechanic => Some(("49-1011", "49-0000")),
+            ProductionWorker => Some(("51-1011", "51-0000")),
+            Driver | MaterialMover => Some(("53-1040", "53-0000")),
+            Manager | Farmer | Accountant | BusinessSpecialist | ComputingSpecialist | Engineer
+            | Scientist | SocialWorker | Legal | Teacher | ArtsAndMedia | Doctor | Nurse
+            | HealthTechnician | CareAssistant | Soldier => None,
+        }
+    }
+
+    /// **How many hands one supervisor runs**, read off the published
+    /// counts: the group less its supervisors, over its supervisors.
+    ///
+    /// OEWS May 2023: a construction crew is 7.0 to a supervisor, police
+    /// and security 8.8, a kitchen 8.8 counting head cooks, a sales floor
+    /// 9.2, a repair shop 9.2, an office 11.3, a production line 12.1,
+    /// personal care 12.8, cleaning 13.9, farm employees 14.9, and drivers
+    /// and warehouse hands 21.8 — a driver is out on the road alone, and a
+    /// crew of loaders is one supervisor on a dock. `None` where the work
+    /// has no first-line rung.
+    pub fn crew(self) -> Option<f64> {
+        let (sup, group) = self.first_line()?;
+        let national = wages();
+        let count = |code: &str| {
+            national
+                .get(code)
+                .map(|w| w.employment)
+                .unwrap_or_else(|| panic!("no employment for {code} in the raws"))
+        };
+        let (s, g) = (count(sup), count(group));
+        Some((g - s) / s)
+    }
+
+    /// **What share of the people in the work run a crew of it**: one in a
+    /// crew and its supervisor. Nought where there is no such rung.
+    pub fn supervisor_share(self) -> f64 {
+        self.crew().map(|c| 1.0 / (c + 1.0)).unwrap_or(0.0)
+    }
+
+    /// **What a supervisor of this work is paid**, in the same days of food
+    /// as everybody else: what the published group of supervisors earns,
+    /// or the work's own median if that is higher — an electrician made up
+    /// is not paid below the electrician he was. Nought where there is no
+    /// rung.
+    pub fn supervisor_days_of_food_a_day(self) -> f64 {
+        let Some((sup, _)) = self.first_line() else {
+            return 0.0;
+        };
+        let median = wages()
+            .get(sup)
+            .and_then(|w| w.median_hourly)
+            .unwrap_or_else(|| panic!("no median hourly wage for {sup} in the raws"));
+        PRODUCTION_WORKER_DAYS_OF_FOOD * median.max(self.median_hourly())
             / Occupation::ProductionWorker.median_hourly()
     }
 }

@@ -12,7 +12,6 @@ use scale_sim::person::{self, Person, Trade, FOOD_PER_DAY};
 use scale_sim::polity::Polities;
 use scale_sim::region::Region;
 use scale_sim::settlement::Settlements;
-use scale_sim::travel::Conveyance;
 use scale_sim::world::World;
 
 fn a_nation(doctrine: Doctrine) -> Region {
@@ -399,71 +398,83 @@ fn a_quiet_shop_puts_fewer_people_on() {
 
 #[test]
 fn the_floor_is_the_only_way_up() {
-    // Supervising is the one promotion this economy contains, and it is
-    // gated the way promotions are: a man off the street is not made a
-    // chargehand. Real promotion to supervisor runs two to three years in.
+    // **A supervisor is a step up inside the work, and the employer picks
+    // who.** Nobody is made up on the first morning, because nobody has put
+    // the years in; with the years in, the posts go to whoever is best
+    // thought of, and never in work that has no such rung — a teacher is
+    // not made supervisor of teachers.
+    //
+    // It is a choice among a town's people, so it is made by the populace
+    // rather than inside one person's day.
+    use scale_sim::person::Rank;
+    use scale_sim::populace::Populace;
+    // **A world starts with its crews already run**, the way it starts with
+    // its adults already skilled — so what is asserted is that the first
+    // morning makes nobody up, not that there is nobody in charge.
     let mut r = a_nation(Doctrine::Prudent);
-    let mut green = Person::new("Green", Trade::Sales, 0, 60.0);
-    let day = r.economy.ledger.day;
-    r.economy.step();
-    let offers = person::work_available(&r.economy, 0, day, 0.0, Conveyance::OnFoot, &|_| true);
+    let mut folk = Populace::seed(&r.economy, 40, 20260828);
+    let running_at_the_start = |f: &Populace| {
+        f.people
+            .ids()
+            .filter(|&id| f.people[id].rank == Rank::Supervisor)
+            .collect::<Vec<_>>()
+    };
+    let before = running_at_the_start(&folk);
     assert!(
-        offers.iter().any(|c| c.trade == Trade::Supervisor),
-        "nowhere in a nation is anybody supervising anything"
+        !before.is_empty(),
+        "a world whose kitchens and building sites nobody runs on its first morning"
     );
-    person::live_a_day(&mut green, &mut r.economy, day);
+    r.economy.step();
+    let day = r.economy.ledger.day;
+    folk.live_a_day(&mut r.economy, day);
     assert_eq!(
-        green.trade,
-        Trade::Sales,
-        "made chargehand on his first morning"
+        running_at_the_start(&folk),
+        before,
+        "somebody was made supervisor on the first morning"
     );
 
-    // **And with the years in he *may* be — which is not the same thing.**
-    //
-    // Time on the floor is necessary and nowhere near sufficient. What
-    // decides it is whether a post is going and what the people who fill
-    // it think of you, and the strongest finding in the research on real
-    // promotions is that **73% went to somebody who had worked with the
-    // hiring manager or the manager's boss**. Proximity beats ability.
-    //
-    // Gated on tenure alone, every labourer in a three-year run of a
-    // whole town was made up to chargehand and the cohort became all
-    // supervisors, which is not a workforce.
-    let mut good = Person::new("Hal", Trade::Sales, 0, 60.0);
-    good.diligence = 0.85;
-    let mut poor = Person::new("Wat", Trade::Sales, 0, 60.0);
-    poor.diligence = 0.05;
-    // **Five years, not four**, because the working week now means a shop
-    // worker does not get 365 chances a year — and somebody who ends up
-    // part-time takes longer to reach the two years of *service* the
-    // threshold stands for. Which is real: part-timers are promoted more
-    // slowly, and it is one of the ways part-time work costs more than
-    // the hours it gives up.
-    for _ in 0..(DAYS_PER_YEAR * 5) {
+    for _ in 0..(DAYS_PER_YEAR * 4) {
         r.economy.step();
         let d = r.economy.ledger.day;
-        person::live_a_day(&mut good, &mut r.economy, d);
-        person::live_a_day(&mut poor, &mut r.economy, d);
+        folk.live_a_day(&mut r.economy, d);
     }
-    assert_eq!(
-        good.trade,
-        Trade::Supervisor,
-        "four years on the floor, well thought of, and never made up — \
-         worked {} days, standing {:.2}",
-        good.days_worked,
-        good.standing
-    );
-    assert_eq!(
-        poor.trade,
-        Trade::Sales,
-        "made up to chargehand on time served alone, standing {:.2}",
-        poor.standing
-    );
+    let running: Vec<&Person> = folk
+        .people
+        .values()
+        .filter(|p| p.rank == Rank::Supervisor)
+        .collect();
     assert!(
-        good.standing > poor.standing,
-        "the better worker is no better regarded: {:.2} against {:.2}",
-        good.standing,
-        poor.standing
+        !running.is_empty(),
+        "four years and nobody in a nation runs a crew of anything"
+    );
+    for p in running.iter() {
+        assert!(
+            p.trade.crew().is_some(),
+            "{} runs a crew of {}, which is work with no such rung",
+            p.name,
+            p.trade.name()
+        );
+        assert!(
+            p.days_at_trade >= 500,
+            "{} was made up after {} days at the work",
+            p.name,
+            p.days_at_trade
+        );
+    }
+    // **Time served is not enough.** Among those who have put it in, the
+    // ones made up are the better thought of.
+    let mean = |ps: &[&Person]| ps.iter().map(|p| p.standing).sum::<f64>() / ps.len().max(1) as f64;
+    let passed_over: Vec<&Person> = folk
+        .people
+        .values()
+        .filter(|p| p.rank == Rank::Hand && p.trade.crew().is_some() && p.days_at_trade >= 500)
+        .collect();
+    assert!(
+        mean(&running) > mean(&passed_over),
+        "the supervisors are no better thought of than the hands passed over: \
+         {:.2} against {:.2}",
+        mean(&running),
+        mean(&passed_over)
     );
 
     // **Being good somewhere nobody watches is worth very little.** A

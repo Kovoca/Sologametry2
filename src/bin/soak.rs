@@ -33,7 +33,7 @@ use scale_sim::econ::{Commodity, Doctrine, DAYS_PER_YEAR};
 use scale_sim::game::GameState;
 use scale_sim::money::Account;
 use scale_sim::network::Network;
-use scale_sim::person::{Housing, Trade};
+use scale_sim::person::{Housing, Rank, Trade};
 use scale_sim::polity::Polities;
 use scale_sim::populace::Populace;
 use scale_sim::region::Nations;
@@ -237,10 +237,10 @@ fn main() {
     // **Who does what, and who changed it.** A figure for the whole sample
     // cannot say whether the people out of work are stuck in a trade with
     // none, which is the question the planner exists to answer.
-    let mut trade_at: std::collections::BTreeMap<_, Trade> = Default::default();
+    let mut trade_at: std::collections::BTreeMap<_, (Trade, Rank)> = Default::default();
     if let Some(folk) = g.folk.as_ref() {
         for (id, p) in folk.people.iter() {
-            trade_at.insert(id, p.trade);
+            trade_at.insert(id, (p.trade, p.rank));
         }
     }
     let mut changes = Changes {
@@ -312,14 +312,19 @@ fn main() {
         if d % month == 0 || d == days {
             if let Some(folk) = g.folk.as_ref() {
                 for (id, p) in folk.people.iter() {
-                    match trade_at.insert(id, p.trade) {
-                        Some(was) if was != p.trade => {
-                            if p.trade == Trade::Supervisor {
-                                changes.promoted += 1;
+                    match trade_at.insert(id, (p.trade, p.rank)) {
+                        Some((was, was_rank)) if was != p.trade => {
+                            // A supervisor who becomes a manager has moved up
+                            // a rung, not changed work.
+                            if p.trade == Trade::Manager && was_rank == Rank::Supervisor {
+                                changes.given_a_branch += 1;
                             } else {
                                 changes.switched += 1;
                                 changes.pairs[was.index()][p.trade.index()] += 1;
                             }
+                        }
+                        Some((_, Rank::Hand)) if p.rank == Rank::Supervisor => {
+                            changes.promoted += 1;
                         }
                         _ => {}
                     }
@@ -358,6 +363,8 @@ fn main() {
 struct Changes {
     /// Made up to supervisor: a promotion, not a change of work.
     promoted: u64,
+    /// A supervisor given a branch to manage.
+    given_a_branch: u64,
     /// Went to work at a different trade.
     switched: u64,
     /// From which trade to which.
@@ -382,8 +389,8 @@ fn by_trade(
 "
     );
     println!(
-        "  {:<16} {:>6} {:>12} {:>9}",
-        "", "people", "worked, yr 5", "homeless"
+        "  {:<16} {:>6} {:>12} {:>9} {:>9}",
+        "", "people", "worked, yr 5", "homeless", "run crews"
     );
     let n = folk.people.len().max(1) as f64;
     for t in Trade::ALL {
@@ -404,21 +411,69 @@ fn by_trade(
             .filter(|(_, p)| p.housing == Housing::Homeless)
             .count() as f64
             / mine.len() as f64;
+        let running = mine
+            .iter()
+            .filter(|(_, p)| p.rank == Rank::Supervisor)
+            .count() as f64
+            / mine.len() as f64;
+        let crews = if t.crew().is_some() {
+            format!("{:>8.1}%", running * 100.0)
+        } else {
+            "        -".to_string()
+        };
         println!(
-            "  {:<16} {:>5.1}% {:>11.1}% {:>8.1}%",
+            "  {:<16} {:>5.1}% {:>11.1}% {:>8.1}% {}",
             t.name(),
             mine.len() as f64 / n * 100.0,
             worked.min(1.0) * 100.0,
-            homeless * 100.0
+            homeless * 100.0,
+            crews
         );
     }
+    // **The rungs, against what they really are.** First-line supervisors
+    // are 5.1% of US jobs and managers 6.9% (OEWS, May 2023).
+    let supervisors = folk
+        .people
+        .values()
+        .filter(|p| p.rank == Rank::Supervisor)
+        .count() as f64;
+    let managers = folk
+        .people
+        .values()
+        .filter(|p| p.trade == Trade::Manager)
+        .count() as f64;
+    // And what this world's own employers staff, which is what the rungs
+    // are filled against: each town's people over its jobs.
+    let (mut crew_room, mut manager_room) = (0.0f64, 0.0f64);
+    if let Some(e) = g.economy.as_ref() {
+        let jobs = scale_sim::occupation::jobs_by_occupation(e);
+        for (m, town) in jobs.iter().enumerate() {
+            let total: f64 = town.iter().sum();
+            let here = folk.people.values().filter(|p| p.market == m).count() as f64;
+            if total <= 0.0 {
+                continue;
+            }
+            for t in Trade::ALL {
+                crew_room += here * town[t.index()] / total * t.supervisor_share();
+            }
+            manager_room += here * town[Trade::Manager.index()] / total;
+        }
+    }
+    println!(
+        "\n  supervisors {:.1}% of the sample; this world's jobs have room for {:.1}% (real 5.1% of jobs)\n  managers {:.1}%; room for {:.1}% (real 6.9%)",
+        supervisors / n * 100.0,
+        crew_room / n * 100.0,
+        managers / n * 100.0,
+        manager_room / n * 100.0
+    );
     let per_year = changes.switched as f64 / n / years.max(1) as f64;
     println!(
         "
-  changed trade: {} times over {years} years, {:.1}% of the sample a year          (real occupational mobility runs roughly 10% a year); promoted {} times",
+  changed trade: {} times over {years} years, {:.1}% of the sample a year          (real occupational mobility runs roughly 10% a year); made supervisor {} times, given a branch {} times",
         changes.switched,
         per_year * 100.0,
-        changes.promoted
+        changes.promoted,
+        changes.given_a_branch
     );
     // **How often people actually thought about it**, which A4.8's think
     // budget bounds, and how often thinking came to nothing.

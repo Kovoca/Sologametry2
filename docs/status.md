@@ -444,7 +444,17 @@ real occupations to train for.
    existed because nobody could buy meat, and its households end 17% down.
    A rule for where traders deliver was tried and rejected (CLAUDE.md).
 2. The lowest pay under the 6-10 days-of-food band.
-3. Supervisors a fifth of the sample against a tenth of posts.
+3. *Supervisors* — **fixed.** A supervisor is a rank inside a crew, not an
+   occupation; each kind of work carries supervisors at its published crew
+   size (OEWS: 7 to a supervisor in construction up to 22 among drivers and
+   loaders), posts come from the town's jobs, the best-regarded with two
+   years at the work are made up, and a world starts with its crews run.
+   Management is reached by a degree or by running a crew. Supervisors end
+   at 5.6%, 3.9%, 3.6% of the sample against room for 5.3% (real 5.1%);
+   managers 8.1%, 7.7%, 8.0% against 7.5% (`bin/soak`, seeds 7, 11, 23).
+   **Still open:** posts nobody inside qualifies for go unfilled (no outside
+   hiring); no chief executive or middle management until employers own
+   several sites; the armed forces have no ranks.
 4. Contract mixes from occupation-level figures.
 5. Distribution: warehouses and van drivers missing; builders doubled.
 6. Occupational mobility 1% a year against 10%.

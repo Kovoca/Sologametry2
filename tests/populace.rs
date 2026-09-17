@@ -69,26 +69,11 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
     // made up to chargehand** — the whole cohort became supervisors, which
     // is not a workforce but a promotion timer with nobody to supervise.
     //
-    // Real span of control is eight to fifteen, so about one in ten of a
-    // shop or a works is in charge of the rest and the rest stay on the
-    // floor because there is nowhere to go.
-    //
-    // **This gate could not fail, and two versions of it could not.** A
-    // flat multiple of the true rate read 6.7% and then 30% in one town on
-    // an unchanged model with *the same three supervisors in it* — the
-    // cohort had redistributed and the sample fell from forty-five people
-    // to ten. Replacing it with a three-standard-error band fixed that and
-    // bought nothing: deleting the vacancy rule outright moved the largest
-    // town from six supervisors to eleven, which is 1.75 standard errors
-    // and passes. Pooling every town does not rescue it either — fifteen
-    // against twenty out of two hundred is half a standard error.
-    //
-    // The effect is real and it is modest, because the model has other
-    // brakes on promotion now. **A modest effect cannot be read off a
-    // population statistic**, which is the rule this project has already
-    // had to learn three times — over soil depth, over childcare and over
+    // **A modest effect cannot be read off a population statistic**, which
+    // this project has had to learn over soil depth, childcare and
     // education. So the same cohort is run twice from the same seed and
     // the only difference is whether the supply of posts binds.
+    use scale_sim::person::Rank;
     let mut bounded = a_nation().economy;
     let mut unbounded = a_nation().economy;
     let mut with_posts = Populace::seed(&bounded, 40, 20260828);
@@ -103,7 +88,7 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
     let count = |f: &Populace| {
         f.people
             .values()
-            .filter(|p| p.trade == Trade::Supervisor)
+            .filter(|p| p.rank == Rank::Supervisor)
             .count()
     };
     let (kept, loosed) = (count(&with_posts), count(&without));
@@ -116,10 +101,13 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
          the vacancy rule is not binding on anybody"
     );
 
-    // And the bounded run must sit near the posts that exist, town by
-    // town, which is the calibration half. The supply of promotions is a
-    // real figure: the labour model counts supervisory posts off the works
-    // and shops that actually exist, at a span of control of about ten.
+    // **And the bounded run sits at the crews that exist, town by town.**
+    // A crew's size is published — seven to a supervisor on a building
+    // site, twelve on a production line, twenty-two among drivers and
+    // loaders — so what a town can carry is its employers' jobs in each
+    // kind of work, over that work's crew. Real first-line supervisors are
+    // 5.1% of American jobs.
+    let jobs = scale_sim::occupation::jobs_by_occupation(&bounded);
     for m in 0..bounded.markets.len() {
         let mine: Vec<&scale_sim::person::Person> = with_posts
             .people
@@ -129,37 +117,31 @@ fn advancement_needs_a_vacancy_and_not_a_timer() {
         if mine.len() < 30 {
             continue;
         }
-        let bosses = mine.iter().filter(|p| p.trade == Trade::Supervisor).count();
-        let share = bosses as f64 / mine.len() as f64;
-        let w = &bounded.workforce[m];
-        let real_share = w.supervisory_posts / w.posts.max(1e-9);
+        let bosses = mine.iter().filter(|p| p.rank == Rank::Supervisor).count();
+        let n = mine.len() as f64;
+        let share = bosses as f64 / n;
+        let total: f64 = jobs[m].iter().sum();
+        let room = Trade::ALL
+            .iter()
+            .map(|t| jobs[m][t.index()] / total * t.supervisor_share())
+            .sum::<f64>();
         assert!(
-            (0.03..0.15).contains(&real_share),
-            "{} has {:.0}% of its posts supervising, against a real 6-10%",
+            (0.02..0.12).contains(&room),
+            "{} has room for {:.0}% of its people to run crews, against a real 5%",
             bounded.markets[m].name,
-            real_share * 100.0
+            room * 100.0
         );
-        // Three standard errors of the posts that exist. Loose on a small
-        // town and tight on a large one, which is the honest shape — and
-        // the paired comparison above is what carries the mechanism.
-        let se = (real_share * (1.0 - real_share) / mine.len() as f64)
-            .sqrt()
-            .max(1e-9);
+        // Three standard errors, plus the one post a fraction can round up
+        // to in a small town.
+        let se = (room * (1.0 - room) / n).sqrt().max(1e-9);
         assert!(
-            (share - real_share) / se < 3.0,
-            "{} is {:.0}% supervisors after three years against {:.0}% of posts \
+            share <= room + 3.0 * se + 1.0 / n,
+            "{} is {:.0}% supervisors after three years against room for {:.0}% \
              — {:.1} standard errors over, on {} people",
             bounded.markets[m].name,
             share * 100.0,
-            real_share * 100.0,
-            (share - real_share) / se,
-            mine.len()
-        );
-        // And the floor is still there to supervise.
-        assert!(
-            bosses * 3 < mine.len(),
-            "{} has {bosses} supervisors among {} people",
-            bounded.markets[m].name,
+            room * 100.0,
+            (share - room) / se,
             mine.len()
         );
     }
@@ -723,16 +705,37 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
         "an office job is degree-entry"
     );
     assert_eq!(qualification_for(Trade::Teacher), Qualification::Degree);
-    // **Nothing gates a chargehand**, which is the whole point of it: the
-    // only ladder somebody without a qualification can climb.
-    assert_eq!(qualification_for(Trade::Supervisor), Qualification::School);
-
     // A degree is three years not earning; an apprenticeship is three
     // years earning badly. That difference in what it *costs* is why one
     // tracks family background far more than the other.
     assert_eq!(Qualification::Degree.pay_while_training(), 0.0);
     assert!(Qualification::Vocational.pay_while_training() > 0.3);
     assert!(Qualification::School.years_to_earn() == 0.0);
+
+    // **Management alone can be come to by experience.** Most shop, kitchen
+    // and site managers get there by running a crew, not through a degree;
+    // no other work takes years of something else in place of its
+    // qualification.
+    use scale_sim::person::Skill;
+    let mut ran_a_crew = Person::new("Ida", Trade::FoodService, 0, 50.0);
+    ran_a_crew.qualification = Qualification::School;
+    assert!(
+        !ran_a_crew.qualified_for(Trade::Manager),
+        "a cook is a manager on day one"
+    );
+    ran_a_crew.practice[Skill::Management as usize] =
+        Skill::days_to_reach(Trade::Manager.wants_level());
+    assert!(
+        ran_a_crew.qualified_for(Trade::Manager),
+        "years of running things and no way into management without a degree"
+    );
+    let mut long_at_the_till = Person::new("Ida", Trade::Sales, 0, 50.0);
+    long_at_the_till.qualification = Qualification::School;
+    long_at_the_till.practice[Skill::Retail as usize] = Skill::days_to_reach(10);
+    assert!(
+        !long_at_the_till.qualified_for(Trade::BusinessSpecialist),
+        "a lifetime at a till stood in for a degree in an office"
+    );
 
     // **And the gate bites.** Somebody with school and no more cannot take
     // office work however many days they look for it.
@@ -835,10 +838,12 @@ fn the_adults_are_given_their_skills_and_the_children_must_go_and_get_them() {
         "most people should have school and no more, because most work needs no more"
     );
 
-    // Nobody is working at something they are not qualified for.
+    // Nobody is working at something they are not qualified for — which
+    // for a manager may be the years of running a crew rather than a
+    // degree.
     for p in folk.people.values() {
         assert!(
-            p.qualification >= scale_sim::person::qualification_for(p.trade),
+            p.qualified_for(p.trade),
             "{} is a {} without the qualification for it",
             p.name,
             p.trade.name()

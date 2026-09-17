@@ -4489,7 +4489,9 @@ part-time, about 4.3: **1.18 to one**. Measured now at 1.21, and the bar is
 ### Still wrong, and named
 
 - **Supervisors are 20-23% of the sample** against about a tenth of posts.
-  Promotion caps the share at 35% of a town, which is not a cap.
+  Promotion caps the share at 35% of a town, which is not a cap. *(Fixed
+  since: a supervisor is a rank inside a crew, sized from the published
+  counts — see "A crew and whoever runs it".)*
 - **The retail gap now shows in people**: samples are about 40% hospitality
   and 5% shop work, because shop headcount is several times short.
 - **Nothing here touches the drain abroad.** Workforce unemployment in seed
@@ -4874,6 +4876,121 @@ what went unpaid by what for.
 **Tests corrected to their claims:** the gate that every country's taxes pay
 its own teachers counts tax out of a town's pay packets as well as a till's
 duty.
+
+## A crew and whoever runs it (`src/occupation.rs`, `src/populace.rs`)
+
+`bin/soak` ends with the rungs against what they really are.
+
+**A supervisor was an occupation of its own**, drawn from no staffing
+pattern and promoted into from anywhere — while every published group
+already counts its own first-line supervisors inside it (production
+supervisors, SOC 51-1011, are among the 8.77 million production workers).
+So a supervisor was counted twice, and the posts a town had were worked out
+from its works and shops and then offered to everybody in it, including
+teachers and nurses, whose work has no such rung. The sample came out a
+tenth supervisors at the last commit, and a fifth before the seeding was
+put right, against a real twentieth.
+
+**Now a supervisor is a step up inside the work** (`person::Rank`): a cook
+made up runs the kitchen, is still in food service, still practises it, and
+is paid what the published supervisors of that work earn. How many there are
+is the crew, read off OEWS May 2023:
+
+| the work | hands to a supervisor | a supervisor's pay over the work's median |
+|---|---|---|
+| construction and extraction | 7.0 | 1.38 |
+| police, fire and security | 8.8 | 1.70 |
+| kitchens and serving, head cooks included | 8.8 | 1.27 |
+| sales | 9.2 | 1.33 |
+| installation and repair | 9.2 | 1.41 |
+| office and administration | 11.3 | 1.43 |
+| production | 12.1 | 1.51 |
+| personal care | 12.8 | 1.39 |
+| cleaning and grounds | 13.9 | 1.37 |
+| farm employees | 14.9 | 1.61 |
+| drivers and material moving | 21.8 | 1.51 |
+
+First-line supervisors are **5.1%** of American jobs and managers **6.9%**.
+Management, business, science, law, teaching, the arts and healthcare have
+no first-line group in the classification; they answer to managers, and so
+does nobody here. The armed forces run on ranks the survey does not cover —
+a named gap.
+
+- **A post is the employer's to fill, and it goes to whoever is best
+  thought of** among those with two years at the work and on the books,
+  every morning after the work is done.
+  That is a choice among a town's people, so it moved out of one person's
+  day and into the populace, which picks by standing. Walking the town in
+  slot order had let the first eligible person in the vector take every
+  post.
+- **The posts come from the jobs, not from whoever holds the trade today.**
+  Counting a crew off its current holders filled posts at every peak as
+  people came and went, and nobody steps down at a trough. The same draw
+  settles a town's fraction of a post, fixed for the world, the town and
+  the work: left without the world in it, the same towns got the post on
+  every planet and police and security went unsupervised in two worlds of
+  three.
+- **A new town is a new employer.** Somebody who moves is nobody's
+  supervisor there.
+- **A world starts with its crews run**, the way it starts with its adults
+  skilled: each town's posts filled by the most diligent with a couple of
+  years at the work. Without it nobody supervised anything for two years.
+
+### Management above them
+
+**Management is filled from the crews.** When a town has fewer managers
+than its employers staff, a supervisor well enough thought of may be given
+the post — degree or none, because running a crew is practice at running
+things (half a day's worth a day), and a manager's post is the one piece of
+work where experience stands in for the qualification. The BLS gives food
+service managers a high school diploma and a few years' experience as the
+usual way in; it comes to about seven hundred working days of running a
+crew. Degree-holders still come in from outside through the planner.
+
+**It found a hole in what "qualified" meant.** A supervisor made a manager
+without a degree could not take manager's work — every shift asked for the
+degree again — so promoted managers sat idle and drifted back to the
+kitchen, and the vacancy was filled again. The first fix waived the check
+for anybody's own trade, and a gate caught it: an unqualified clerk handed
+the tag walked into office work. The waiver is now the experience route and
+nothing else, and a gate holds both halves.
+
+**The chief executive is not here yet**, because every works and shop is
+its own company and there is nothing above a branch to run. That rung, and
+the managers in between, arrive with employers that own several sites.
+
+| five years | world 7 | world 11 | world 23 |
+|---|---|---|---|
+| supervisors, before | 10.3% | 9.5% | 10.5% |
+| supervisors, now | 5.6% | 3.9% | 3.6% |
+| room in that world's jobs | 5.3% | 5.3% | 5.3% |
+| managers, before | 7.0% | 6.2% | 6.7% |
+| managers, now | 8.1% | 7.7% | 8.0% |
+| room in that world's jobs | 7.5% | 7.5% | 7.5% |
+
+**Worlds 11 and 23 fall short** where a crew has a post going and nobody
+has put in the years and is well enough thought of — a real employer would
+hire from outside, which is not modelled. Managers run a fifth of a point
+to half a point over their room, from a start well under it: seeded adults
+reach a manager's post only through a degree, and the crews and the planner
+fill the gap from there. Unemployment, hunger, homelessness and households' money
+moved by what these worlds move by on their own.
+
+**Gates, each checked by breaking what it names.** Taking the cap off crew
+posts turns two red: removing the supply of posts must promote more people,
+and no town may carry more supervisors of a kind of work than its jobs have
+room for. Starting a world with no crews run turns the first-morning gate
+red. Closing the experience route turns the qualification gate red. And
+letting nurses and teachers run crews **stayed green** on every gate that
+decided who may by asking `crew()` — the function whose getting it wrong was
+the defect — so a gate now names the professions and the published crew
+sizes outright, and goes red.
+
+Tests corrected to their claims: nobody is *made* supervisor on the first
+morning (a world starts with its crews run); a world starts with its crews'
+posts and no more, held by people with years at the work; nobody works at
+something they are not qualified for, which for a manager may be the years
+of running a crew.
 
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
@@ -6143,7 +6260,7 @@ school and you can be a shop worker without anything at all.
 | shop work, hospitality, labouring | **nothing** — no licence, no ticket, no training, which is why anybody can do it and the wage knows it |
 | builder, haulier | **an apprenticeship or a licence** — years, and why the work pays more than shop work |
 | public service, office | **a degree** — teaching and nursing are degree-entry, and so is everything in an office worth having |
-| supervisor | **nothing** — promotion from the floor, the only ladder somebody without a qualification can climb |
+| supervisor | **nothing** — promotion from the floor, the only ladder somebody without a qualification can climb *(now a rank inside the work, and management can be reached by running a crew — see "A crew and whoever runs it")* |
 
 Real: about **35% of British working-age adults hold a degree**, initial
 participation in higher education is ~38% of young people, and

@@ -35,7 +35,7 @@
 //! reason the scale is expected earnings rather than a mood.
 
 use crate::econ::Economy;
-use crate::person::{day_rate, qualification_for, skill_premium, Person, Trade};
+use crate::person::{day_rate, skill_premium, Person, Trade};
 
 /// **How long experience takes to fade from what somebody expects.**
 ///
@@ -438,8 +438,7 @@ impl Planner {
                 l.market == who.market
                     && l.trade != who.trade
                     && Some(l.trade) != chasing
-                    && l.trade != Trade::Supervisor
-                    && who.qualification >= qualification_for(l.trade)
+                    && who.qualified_for(l.trade)
             })
             .map(|l| (worth_to(who, econ, l.trade, l.chance), l.clone()))
             .collect();

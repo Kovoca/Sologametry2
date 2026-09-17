@@ -183,3 +183,66 @@ fn spreading_jobs_over_occupations_keeps_every_job() {
         assert_eq!(o.len(), N_OCCUPATIONS);
     }
 }
+
+/// **A crew is run at the size the published counts give it, and the
+/// professions have no such rung.**
+///
+/// Named here rather than asked of `crew` itself, because a gate that asks
+/// the function whose getting it wrong is the defect agrees with whatever it
+/// says: letting nurses run crews of office staff passed every gate that
+/// read `crew()` to decide who may.
+#[test]
+fn a_crew_is_the_size_the_counts_give_it() {
+    use Occupation::*;
+    // OEWS May 2023: the major group less its first-line supervisors, over
+    // them.
+    let cases: [(Occupation, f64); 6] = [
+        (Builder, 7.0),
+        (FoodService, 8.8),
+        (Sales, 9.2),
+        (OfficeClerk, 11.3),
+        (ProductionWorker, 12.1),
+        (MaterialMover, 21.8),
+    ];
+    for (o, published) in cases {
+        let crew = o.crew().expect("work done in crews has a crew");
+        assert!(
+            (crew - published).abs() < 0.06,
+            "a crew of {} comes out {crew:.2} to a supervisor, published {published}",
+            o.name()
+        );
+    }
+    // Management, business, science, law, teaching, the arts, healthcare and
+    // its support have no first-line supervisor group: they answer to
+    // managers. The armed forces run on ranks the survey does not cover.
+    for o in [
+        Manager,
+        Accountant,
+        BusinessSpecialist,
+        ComputingSpecialist,
+        Engineer,
+        Scientist,
+        SocialWorker,
+        Legal,
+        Teacher,
+        ArtsAndMedia,
+        Doctor,
+        Nurse,
+        HealthTechnician,
+        CareAssistant,
+        Soldier,
+    ] {
+        assert!(o.crew().is_none(), "somebody runs a crew of {}", o.name());
+        assert_eq!(o.supervisor_share(), 0.0);
+    }
+    // And running one pays more than doing the work, never less.
+    for o in Occupation::ALL {
+        if o.crew().is_some() {
+            assert!(
+                o.supervisor_days_of_food_a_day() > o.days_of_food_a_day(),
+                "a supervisor of {} is paid no more than the crew",
+                o.name()
+            );
+        }
+    }
+}

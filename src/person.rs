@@ -249,6 +249,40 @@ impl Person {
         skill_premium(self.competence(), self.trade.wants_level())
     }
 
+    /// **Whether they may be taken on at the work.**
+    ///
+    /// The qualification the work asks for, or — for management alone — the
+    /// experience that stands in for it. Most shop, kitchen and site
+    /// managers come to it through running a crew rather than a degree: the
+    /// BLS gives food service managers a high school diploma and a few
+    /// years' experience as the usual way in. So somebody whose practice at
+    /// running things has reached what a manager's post wants is qualified
+    /// for one. Running a crew builds it at half a day's practice a day,
+    /// which reaches that level in about seven hundred working days.
+    pub fn qualified_for(&self, trade: Trade) -> bool {
+        self.qualification >= qualification_for(trade)
+            || (trade.skill() == Skill::Management
+                && self.level(Skill::Management) >= trade.wants_level())
+    }
+
+    /// **What running a crew adds to the pay**, as a multiple of the work's
+    /// own rate: what the published supervisors of that work earn over its
+    /// median, which runs from a quarter more in a kitchen to seven tenths
+    /// in police and security. One for one of the crew.
+    pub fn rank_premium(&self) -> f64 {
+        match self.rank {
+            Rank::Hand => 1.0,
+            Rank::Supervisor => {
+                let own = self.trade.days_of_food_a_day();
+                if own > 0.0 {
+                    (self.trade.supervisor_days_of_food_a_day() / own).max(1.0)
+                } else {
+                    1.0
+                }
+            }
+        }
+    }
+
     /// **The ceiling on what somebody can become.**
     ///
     /// Aptitude is what they can learn — the same axis that decides
@@ -302,13 +336,23 @@ impl Person {
             // Somebody diligent gets more out of the same day.
             self.practice[here] += 0.6 + 0.8 * self.diligence;
         }
+        // **Running a crew is practice at running things**, alongside the
+        // work itself — which is what a supervisor brings to a manager's
+        // post. Half a day's worth, because most of the day is still the
+        // work: designed.
+        let running = Skill::Management as usize;
+        let supervising = worked && self.rank == Rank::Supervisor && running != here;
+        if supervising && self.level(Skill::Management) < self.ceiling() {
+            self.practice[running] += (0.6 + 0.8 * self.diligence) * 0.5;
+        }
         // **Everything else fades.** Real skill decay is slow — a trade
         // is still there years later, just rusty — so this is set so that
         // a decade away costs a couple of levels rather than all of them.
         for i in 0..self.practice.len() {
-            if i != here || !worked {
-                self.practice[i] = (self.practice[i] - 0.06).max(0.0);
+            if (i == running && supervising) || (i == here && worked) {
+                continue;
             }
+            self.practice[i] = (self.practice[i] - 0.06).max(0.0);
         }
     }
 }
@@ -778,6 +822,30 @@ pub struct Person {
     /// changed trade; for somebody who has, it is what a new employer has
     /// seen of them — which is what probation and promotion are judged on.
     pub days_at_trade: u64,
+    /// **Whether they run a crew of the work they do**, or are one of it.
+    /// A step up inside the trade, not a trade of its own: see [`Rank`].
+    pub rank: Rank,
+}
+
+/// **Where somebody stands in the crew they work in.**
+///
+/// A supervisor was an occupation of its own, drawn from no staffing
+/// pattern and promoted into from anywhere — while every published group
+/// already counts its own first-line supervisors inside it. So the sample
+/// came out a fifth supervisors against a real twentieth: a cook made up
+/// was counted once as a cook's post and again as a supervisor's, and
+/// teachers and nurses were promoted into a rung their work does not have.
+///
+/// A supervisor is now a cook who runs the kitchen, still in food service
+/// and still practising it, paid what the published supervisors of that
+/// work are paid. How many there are is the crew: `Occupation::crew`.
+/// Management above them is an occupation, because it is different work.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Rank {
+    /// One of the crew.
+    Hand,
+    /// Runs a crew of the work.
+    Supervisor,
 }
 
 impl Person {
@@ -834,6 +902,7 @@ impl Person {
             relations: Default::default(),
             planner: crate::planner::Planner::new(),
             days_at_trade: 0,
+            rank: Rank::Hand,
             practice: [0.0; N_SKILLS],
             standing: 0.5,
             visibility: 0.0,
@@ -1253,6 +1322,7 @@ pub fn skill_premium(level: u8, wanted: u8) -> f64 {
 pub fn day_rate_for(econ: &Economy, market: usize, person: &Person) -> f64 {
     day_rate(econ, market, person.trade)
         * skill_premium(person.competence(), person.trade.wants_level())
+        * person.rank_premium()
 }
 
 pub fn day_rate(econ: &Economy, market: usize, trade: Trade) -> f64 {
@@ -1626,7 +1696,7 @@ pub fn work_available(
             // a manager — in the shares transport as a whole employs them.
             let staff = carrier.drivers() / Industry::Transport.share(Trade::Driver).max(1e-9);
             for o in Trade::ALL {
-                if o == Trade::Driver || o == Trade::Supervisor || !wants(o) {
+                if o == Trade::Driver || !wants(o) {
                     continue;
                 }
                 if staff * Industry::Transport.share(o) < 1.0 {
@@ -1717,7 +1787,7 @@ pub fn work_available(
         // a day at a time like the tills.
         let staff = b.staff();
         for o in Trade::ALL {
-            if o == Trade::Sales || o == Trade::Supervisor || !wants(o) {
+            if o == Trade::Sales || !wants(o) {
                 continue;
             }
             if staff * industry_of_site(site.kind).share(o) < 1.0 {
@@ -1762,7 +1832,7 @@ pub fn work_available(
             // soldiers and its civilian staff.
             let staffing = industry_of_service(service);
             for o in Trade::ALL {
-                if o == Trade::Supervisor || !wants(o) || posts * staffing.share(o) < 1.0 {
+                if !wants(o) || posts * staffing.share(o) < 1.0 {
                     continue;
                 }
                 out.push(Contract {
@@ -1796,7 +1866,7 @@ pub fn work_available(
             let parts = industries_of_sector(sector);
             let weight: f64 = parts.iter().map(|p| p.1).sum();
             for o in Trade::ALL {
-                if o == Trade::Supervisor || !wants(o) {
+                if !wants(o) {
                     continue;
                 }
                 let share: f64 =
@@ -1814,40 +1884,6 @@ pub fn work_available(
                 });
             }
         }
-    }
-
-    // **Supervising.** There is one of these for every ten on the floor,
-    // and they exist wherever the floor is big enough to need watching.
-    //
-    // It is the only promotion in the economy, and it is gated the way
-    // promotions are: you have to have done the job. A man off the street
-    // is not made a chargehand.
-    for s in 0..econ.ledger.sites.len() {
-        let site = &econ.ledger.sites[s];
-        if site.market != market {
-            continue;
-        }
-        let posts = match &site.fitted {
-            Some(b) => b.supervisors() + b.managers(),
-            None => {
-                if site.ran <= 0.0 {
-                    continue;
-                }
-                // A works of any size has chargehands over the shifts.
-                (site.throughput / 500.0).ceil().min(20.0)
-            }
-        };
-        if posts < 1.0 {
-            continue;
-        }
-        out.push(Contract {
-            kind: Job::Shift { site: s, market },
-            posted: day,
-            expires: day + 3,
-            pay: day_rate(econ, market, Trade::Supervisor) * 6.0,
-            days: 6.0,
-            trade: Trade::Supervisor,
-        });
     }
 
     // Shifts: a works that **is running** wants hands.
@@ -1889,7 +1925,7 @@ pub fn work_available(
         let staff = crate::labour::rated_headcount(rated, labour);
         let staffing = industry_of_site(site.kind);
         for o in Trade::ALL {
-            if o == Trade::Supervisor || !wants(o) || staff * staffing.share(o) < 1.0 {
+            if !wants(o) || staff * staffing.share(o) < 1.0 {
                 continue;
             }
             out.push(Contract {
@@ -2036,23 +2072,13 @@ fn hash_unit(name: &str, salt: u64) -> f64 {
     (h >> 11) as f64 / (1u64 << 53) as f64
 }
 
+/// **A day of somebody's life.**
+///
+/// Nobody is made a supervisor in here: a post is the employer's to fill,
+/// and it goes to whoever the people deciding think best of among those who
+/// have put the years in. That is a choice among a town's people, so it is
+/// `populace.rs`'s to make.
 pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
-    live_a_day_with(person, econ, day, true)
-}
-
-/// The same, but the caller says whether there is a supervisor's post
-/// going.
-///
-/// **Advancement needs a real vacancy, not a timer.** Gated on days worked
-/// alone, every labourer in a three-year run was made up to chargehand —
-/// the whole cohort became supervisors, which is not a workforce. Real
-/// span of control is eight to fifteen, so about one in ten of a shop or a
-/// works is in charge of the rest, and the rest stay on the floor because
-/// there is nowhere to go.
-///
-/// The person cannot see that: it is a fact about the labour market, and
-/// whoever is running the labour market has to say.
-pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacancy_above: bool) {
     // **What people think of you moves on the days they see you work.**
     //
     // Toward how good you actually are, but never all the way and never
@@ -2291,7 +2317,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                     // tonnage would be inventing freight that did not
                     // happen.
                     Job::Driving { km, .. } => {
-                        let paid = job.pay * person.worth();
+                        let paid = job.pay * person.worth() * person.rank_premium();
                         person.money += paid;
                         person.earned += paid;
                         let job = Contract {
@@ -2306,7 +2332,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                     // A day's service work: it produces nothing that
                     // moves, which is what a service is.
                     Job::Service { sector, .. } => {
-                        let paid = job.pay * person.worth();
+                        let paid = job.pay * person.worth() * person.rank_premium();
                         person.money += paid;
                         person.earned += paid;
                         let job = Contract {
@@ -2324,6 +2350,10 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                         );
                     }
                     Job::Public { service, .. } => {
+                        let job = Contract {
+                            pay: job.pay * person.rank_premium(),
+                            ..job.clone()
+                        };
                         person.money += job.pay;
                         person.earned += job.pay;
                         person.note(
@@ -2406,6 +2436,12 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                         }
                     }
                     Job::Counter { .. } | Job::Shift { .. } | Job::Depot { .. } => {
+                        // A supervisor works the same shift as the crew and
+                        // is paid for running it.
+                        let job = Contract {
+                            pay: job.pay * person.rank_premium(),
+                            ..job.clone()
+                        };
                         person.money += job.pay;
                         person.earned += job.pay;
                         person.note(
@@ -2517,7 +2553,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 day,
                 stakeable,
                 person.conveyance,
-                &|t| t == own || t == Trade::Supervisor || Some(t) == going_after,
+                &|t| t == own || Some(t) == going_after,
             );
             // Take the best work this person is trained for, can afford to
             // stake, and is well enough to do. Never stake so much that a
@@ -2666,19 +2702,6 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 the_town * works_on(trade, day, Employment::None) * minded * no_address
             };
             let drawn = draw(&person.name, day);
-            // **The only way up.** A man who has put in a couple of years
-            // on the floor can be made a chargehand; a man off the street
-            // cannot. Real promotion to supervisor runs two to three years
-            // in, which is about where this sits.
-            const YEARS_BEFORE_THEY_TRUST_YOU: u64 = 500;
-            // **Not a timer.** Time on the floor is necessary and nowhere
-            // near sufficient: what decides it is whether there is a post
-            // going and what the people who fill it think of you.
-            const WELL_ENOUGH_REGARDED: f64 = 0.62;
-            let promotable = person.trade != Trade::Supervisor
-                && person.days_at_trade >= YEARS_BEFORE_THEY_TRUST_YOU
-                && vacancy_above
-                && person.standing >= WELL_ENOUGH_REGARDED;
             // **Judge a job by what it pays a day, not by its total.**
             //
             // `find` took the first offer in list order, so a fourteen-day
@@ -2710,11 +2733,12 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 // Without this a man off the street could be an engineer,
                 // and three years at a university bought nothing because
                 // nothing required it.
-                let allowed = person.qualification >= qualification_for(c.trade);
-                let qualified = allowed
-                    && (c.trade == person.trade
-                        || other
-                        || (c.trade == Trade::Supervisor && promotable));
+                // A supervisor made a manager has no degree and the years
+                // instead, which `qualified_for` counts; asking for the
+                // degree alone left them unable to work the job they had
+                // been given, and they drifted back to the kitchen.
+                let allowed = person.qualified_for(c.trade);
+                let qualified = allowed && (c.trade == person.trade || other);
                 qualified
                     && hired
                     && (person.condition > 0.4 || c.days <= 3.0)
@@ -2757,21 +2781,11 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 );
             }
             if let Some(c) = taken {
-                // Take the stripes and you keep them.
-                if c.trade == Trade::Supervisor && person.trade != Trade::Supervisor {
-                    person.note(
-                        day,
-                        format!(
-                            "made up to chargehand after {} days on the floor",
-                            person.days_worked
-                        ),
-                    );
-                    person.trade = Trade::Supervisor;
-                }
                 // **Taken on at another trade.** A new employer, so no
                 // contract yet and nobody there who has seen them work; the
                 // old trade's practice stays with them and starts to rust.
-                if c.trade != person.trade && c.trade != Trade::Supervisor {
+                // And nobody there has put them in charge of anything.
+                if c.trade != person.trade {
                     person.note(
                         day,
                         format!(
@@ -2782,6 +2796,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                         ),
                     );
                     person.trade = c.trade;
+                    person.rank = Rank::Hand;
                     person.employment = Employment::None;
                     person.visibility = 0.0;
                     person.days_at_trade = 0;
@@ -2909,6 +2924,9 @@ fn leave_town(person: &mut Person, econ: &Economy, day: u64) -> bool {
     person.money -= fare;
     person.spent += fare;
     person.market = there;
+    // A new town is a new employer, and nobody there has put them in
+    // charge of anything.
+    person.rank = Rank::Hand;
     person.larder = (person.larder + days * 0.5).min(7.0);
     person.state = State::Working {
         until: day + days as u64,
