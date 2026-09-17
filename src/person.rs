@@ -37,150 +37,14 @@ const DAYS_TO_STARVE: f64 = 45.0;
 /// 0.40 t of processed food a year.
 pub const FOOD_PER_DAY: f64 = 0.40 / 365.0;
 
-/// A trade a person can work at. Deliberately a handful, not B1.1's
-/// hundred — the point is that a skill gates what work can be taken, and
-/// one example proves that as well as ninety do.
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Trade {
-    /// Drives a lorry. Entry-level freight work, per spec A4.9.
-    Haulier,
-    /// Works a shift at a mill or cannery.
-    Labourer,
-    /// **Sees that the others are doing as directed.** A chargehand over
-    /// a shift, or the manager over them.
-    ///
-    /// Not a job anybody starts in: it is what a floor hand is promoted
-    /// to, and the only way up that this economy contains.
-    Supervisor,
-    /// **Works in a shop** — on the checkouts, filling shelves, or in the
-    /// stockroom taking the lorries in. The single biggest employer in
-    /// the economy, and until now it employed nobody, because a shop was
-    /// a stockpile with a name over the door.
-    Shopworker,
-    /// **Works for the state.** Teaching, nursing, clerking, policing —
-    /// the sixth of the workforce that a model of farms, mills and shops
-    /// left with nowhere to go at all.
-    ///
-    /// Real government employment is **14-21% of the workforce** (UK 17%,
-    /// US 14%, France 21%), and it is the largest single block of jobs in
-    /// a developed economy. Which post it is depends on the service; that
-    /// distinction lives on the contract, not on the person.
-    Public,
-    /// **Builds things, and fixes them.** About 6.4% of employment, and
-    /// roughly half of construction output is repair and maintenance
-    /// rather than new build — which makes this the answer to "who mends
-    /// it when it breaks".
-    Builder,
-    /// **Wires a building, and comes back when it fails.**
-    ///
-    /// A construction site is not one trade and never was. Real UK
-    /// construction employs about 250,000 electricians against 2.1M in
-    /// the industry, and the work is gated: domestic electrical work
-    /// needs certification, which is what an apprenticeship buys.
-    ///
-    /// **The gate is the point.** A building cannot be finished without
-    /// one, so a shortage of electricians is not a slightly slower site,
-    /// it is a stopped one.
-    Electrician,
-    /// **Pipes: water in, waste out, gas and heating.**
-    ///
-    /// ~120,000 plumbing and heating engineers in the UK, and gas work is
-    /// registered work — you may not legally do it untrained, which is
-    /// exactly the kind of gate that makes a trade a trade.
-    Pipefitter,
-    /// **Diagnoses and treats.** The longest training of any work here:
-    /// five or six years of medical school and foundation training after
-    /// it, which is why there are ~3 doctors per 1,000 people and not
-    /// thirty.
-    Doctor,
-    /// **Registered nursing.** Degree-entry in Britain since 2013, and
-    /// about 9 per 1,000 people — three times as many as doctors, which
-    /// is the real shape of a health service.
-    Nurse,
-    /// **The practical nurse**: healthcare assistant, nursing associate,
-    /// the person who does most of the hands-on care.
-    ///
-    /// About as numerous as registered nurses and trained in a year
-    /// rather than three. **They cannot do a nurse's work and a nurse
-    /// cannot do a doctor's** — which is the same rule this economy
-    /// already applies to medicines, where you do not anaesthetise
-    /// anybody with aspirin.
-    CareAssistant,
-    /// **Pubs, cafés, hotels and everything that is open in the evening.**
-    /// 6.8% of employment, plus 2.5% in arts and recreation. The
-    /// worst-paid sector there is, and the one where insecurity lives:
-    /// 28.8% on zero-hours contracts.
-    Hospitality,
-    /// Professional, technical, financial, administrative — offices, in a
-    /// word. The largest single block at about 21% once its parts are
-    /// added up, and the best paid.
-    Office,
-}
-
-impl Trade {
-    /// **Every trade, in discriminant order.**
-    ///
-    /// A roster, and this project's own rule is that *an exhaustive match
-    /// is a test a roster cannot fake* — so `Trade::at` below is the
-    /// exhaustive one and a gate holds the two together. Adding a variant
-    /// without adding it here is then a failing test rather than a trade
-    /// that silently employs nobody.
-    pub const ALL: [Trade; 13] = [
-        Trade::Haulier,
-        Trade::Labourer,
-        Trade::Shopworker,
-        Trade::Supervisor,
-        Trade::Electrician,
-        Trade::Pipefitter,
-        Trade::Doctor,
-        Trade::Nurse,
-        Trade::CareAssistant,
-        Trade::Public,
-        Trade::Builder,
-        Trade::Hospitality,
-        Trade::Office,
-    ];
-
-    /// **Where a trade sits in `ALL`**, by exhaustive match.
-    ///
-    /// The compiler will not let this compile with a variant missing,
-    /// which is what makes the roster above checkable rather than trusted.
-    pub fn index(self) -> usize {
-        match self {
-            Trade::Haulier => 0,
-            Trade::Labourer => 1,
-            Trade::Shopworker => 2,
-            Trade::Supervisor => 3,
-            Trade::Electrician => 4,
-            Trade::Pipefitter => 5,
-            Trade::Doctor => 6,
-            Trade::Nurse => 7,
-            Trade::CareAssistant => 8,
-            Trade::Public => 9,
-            Trade::Builder => 10,
-            Trade::Hospitality => 11,
-            Trade::Office => 12,
-        }
-    }
-
-    pub fn name(self) -> &'static str {
-        match self {
-            Trade::Haulier => "haulier",
-            Trade::Labourer => "labourer",
-            Trade::Shopworker => "shop worker",
-            Trade::Supervisor => "supervisor",
-            Trade::Electrician => "electrician",
-            Trade::Pipefitter => "pipe fitter",
-            Trade::Doctor => "doctor",
-            Trade::Nurse => "nurse",
-            Trade::CareAssistant => "care assistant",
-            Trade::Public => "public service",
-            Trade::Builder => "builder",
-            Trade::Hospitality => "hospitality",
-            Trade::Office => "office work",
-        }
-    }
-}
+/// **What somebody does for a living.**
+///
+/// Thirteen trades that were really industries wearing a job's name — a
+/// labourer was whoever worked at a works — until they became the
+/// occupations `occupation.rs` reads from the published staffing of every
+/// industry. The name stays because a person *has a trade*; what it is now
+/// is an occupation, whoever employs them.
+pub use crate::occupation::Occupation as Trade;
 
 /// **What kind of hold somebody has on their work.**
 ///
@@ -290,33 +154,32 @@ impl Employment {
 /// not.
 pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
     use crate::econ::Weekday;
+    use crate::occupation::Week;
     let wd = Weekday::on(day);
-    match trade {
+    match trade.week() {
         // Monday to Friday, and that is the whole of it.
-        Trade::Office => {
+        Week::Weekdays => {
             if wd.is_weekend() {
                 0.0
             } else {
                 1.0
             }
         }
-        // Mostly weekdays — teaching and administration keep school and
-        // office hours — but hospitals and police do not stop, so a share
-        // of it runs at the weekend.
-        Trade::Public => {
+        // Mostly weekdays, with a share of the weekend covered.
+        Week::MostlyWeekdays => {
             if wd.is_weekend() {
                 0.35
             } else {
                 1.0
             }
         }
-        // **A hospital does not close on Sunday**, which is most of what
-        // makes clinical work different from every other qualified job:
-        // the rota runs through the weekend, the nights and Christmas.
-        Trade::Doctor | Trade::Nurse | Trade::CareAssistant => 1.0,
+        // **A hospital does not close on Sunday**, and nor does a police
+        // station or a garrison: the rota runs through the weekend, the
+        // nights and Christmas.
+        Week::EveryDay => 1.0,
         // A site keeps weekday hours; an emergency call-out does not, and
         // that is where a fair part of the trade's money comes from.
-        Trade::Electrician | Trade::Pipefitter => {
+        Week::SiteWithCallOuts => {
             if wd.is_weekend() {
                 0.30
             } else {
@@ -327,7 +190,7 @@ pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
         // shifts are covered by the people who are not on a full-time
         // contract, because the full-timers have Monday to Friday and
         // somebody has to be on the till on Saturday.
-        Trade::Shopworker | Trade::Hospitality => {
+        Week::OpenSevenDays => {
             let trade_today = wd.retail_trade();
             match employment {
                 Employment::FullTime => {
@@ -350,7 +213,7 @@ pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
             }
         }
         // Rotas, and a herd does not observe Sunday.
-        Trade::Labourer | Trade::Builder | Trade::Haulier | Trade::Supervisor => {
+        Week::Rota => {
             if wd == Weekday::Sunday {
                 0.55
             } else {
@@ -366,88 +229,7 @@ pub fn works_on(trade: Trade, day: u64, employment: Employment) -> f64 {
 /// Retail and hospitality carry the insecurity; public administration
 /// carries almost none of it.
 pub fn employment_mix(trade: Trade) -> (f64, f64, f64) {
-    match trade {
-        // Public administration is 2.1% zero-hours — the securest work
-        // there is, and a large part of why people take it.
-        Trade::Public => (0.70, 0.28, 0.02),
-        // **Retail is where the insecurity lives.** About 60% part-time,
-        // and the casual share is an order of magnitude above the public
-        // sector's.
-        Trade::Shopworker => (0.30, 0.58, 0.12),
-        // A works runs shifts and wants the same people on them.
-        // A works runs shifts and wants the same people on them — but a
-        // farm does not, and the same trade covers both. The seasonal
-        // share is drawn separately below.
-        Trade::Labourer => (0.85, 0.10, 0.05),
-        // Driving is full-time employment or your own lorry.
-        Trade::Haulier => (0.60, 0.10, 0.30),
-        Trade::Supervisor => (0.90, 0.08, 0.02),
-        // Construction is full-time work interrupted by the job ending:
-        // real self-employment in the trade runs very high.
-        Trade::Builder => (0.60, 0.08, 0.32),
-        // **A qualified trade is more its own boss than a labourer is.**
-        // Real self-employment among electricians and plumbers is very
-        // high — the ticket is what lets you work for yourself.
-        Trade::Electrician | Trade::Pipefitter => (0.45, 0.07, 0.48),
-        // **Clinical work is salaried and permanent**, and that security
-        // is a real part of why people take the training. Bank and agency
-        // nursing is the casual share and it is not small.
-        Trade::Doctor => (0.92, 0.06, 0.02),
-        Trade::Nurse => (0.72, 0.18, 0.10),
-        Trade::CareAssistant => (0.55, 0.28, 0.17),
-        // **28.8% of this workforce is on zero-hours**, the highest of any
-        // industry and fourteen times public administration's 2.1%.
-        Trade::Hospitality => (0.35, 0.36, 0.29),
-        // Offices are salaried and permanent almost to a fault.
-        Trade::Office => (0.88, 0.10, 0.02),
-    }
-}
-
-impl Trade {
-    /// **The skill this work practises**, which is what improves by doing
-    /// it and what decides how well it is done.
-    pub fn skill(self) -> Skill {
-        match self {
-            Trade::Haulier => Skill::Driving,
-            Trade::Labourer => Skill::Machining,
-            Trade::Shopworker => Skill::Retail,
-            Trade::Hospitality => Skill::Catering,
-            Trade::Builder => Skill::Building,
-            Trade::Electrician => Skill::Wiring,
-            Trade::Pipefitter => Skill::Pipework,
-            Trade::Doctor => Skill::Medicine,
-            Trade::Nurse | Trade::CareAssistant => Skill::Nursing,
-            // Teaching, clerking, administering: the same competence, and
-            // the difference between a school and an office is the
-            // employer rather than the work.
-            Trade::Public | Trade::Office => Skill::Clerical,
-            // **Supervising is not a skill of its own here.** Real
-            // management is largely the trade plus the watching of it,
-            // and inventing a separate one would mean a chargehand
-            // forgetting how to do the job he is in charge of.
-            Trade::Supervisor => Skill::Clerical,
-        }
-    }
-
-    /// **The level the work wants**, below which somebody is not up to it.
-    ///
-    /// CDDA's rule: a recipe names a level and you cannot do it under.
-    /// This is softer — a job below your level is done badly rather than
-    /// refused — but the figures are the same shape, and they line up with
-    /// what the training actually is. A doctor is expected to be expert
-    /// because that is what six years and a foundation programme buy.
-    pub fn wants_level(self) -> u8 {
-        match self {
-            Trade::Doctor => 7,
-            Trade::Nurse => 5,
-            Trade::Electrician | Trade::Pipefitter => 5,
-            Trade::Builder | Trade::Supervisor => 4,
-            Trade::CareAssistant | Trade::Public | Trade::Office => 3,
-            Trade::Haulier => 3,
-            Trade::Labourer => 2,
-            Trade::Shopworker | Trade::Hospitality => 1,
-        }
-    }
+    trade.employment_mix()
 }
 
 impl Person {
@@ -603,6 +385,9 @@ pub enum Job {
         market: usize,
         sector: crate::services::Sector,
     },
+    /// **A day at a carrier's depot** — dispatching, loading, keeping the
+    /// fleet on the road — rather than behind the wheel.
+    Depot { carrier: usize },
     /// A shift in a shop, at one of the jobs a shop actually contains.
     Counter {
         site: usize,
@@ -660,8 +445,21 @@ impl Contract {
                 econ.markets[*market].name, self.pay,
             ),
             Job::Shift { site, .. } => format!(
-                "a shift at {} — {:.0} for {:.1} days",
-                econ.ledger.sites[*site].name, self.pay, self.days,
+                "a shift at {} as {} — {:.0} for {:.1} days",
+                econ.ledger.sites[*site].name,
+                self.trade.name(),
+                self.pay,
+                self.days,
+            ),
+            Job::Depot { carrier } => format!(
+                "a day at {}'s depot as {} — {:.0}",
+                econ.logistics
+                    .as_ref()
+                    .and_then(|l| l.carriers.get(*carrier))
+                    .map(|c| c.name.as_str())
+                    .unwrap_or("a carrier"),
+                self.trade.name(),
+                self.pay,
             ),
             Job::Driving { carrier, km } => format!(
                 "a day on the road for {} — {:.0} km, {:.0}",
@@ -864,7 +662,7 @@ pub struct Person {
     pub aptitude: f64,
     /// **Days of practice at each skill.** Levels are read off this rather
     /// than stored, the way experience works in both references.
-    pub practice: [f64; 11],
+    pub practice: [f64; N_SKILLS],
     /// **How they are regarded**, 0 to 1 — which is a different thing.
     ///
     /// Promotion does not run on days worked. It runs on what the people
@@ -1035,7 +833,7 @@ impl Person {
             relations: Default::default(),
             planner: crate::planner::Planner::new(),
             days_at_trade: 0,
-            practice: [0.0; 11],
+            practice: [0.0; N_SKILLS],
             standing: 0.5,
             visibility: 0.0,
             log: Vec::new(),
@@ -1080,7 +878,7 @@ pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     // housing becomes the only housing some people can afford — and why
     // letting it go is a decision somebody makes rather than an accident.
     let kept = 0.55 + 0.45 * econ.fabric_condition(market);
-    day_rate(econ, market, Trade::Labourer) * SHARE_OF_A_WAGE * kept
+    day_rate(econ, market, Trade::ProductionWorker) * SHARE_OF_A_WAGE * kept
 }
 
 /// **What somebody is actually good at**, as against what they are
@@ -1127,10 +925,49 @@ pub enum Skill {
     Medicine,
     /// Paper, numbers, records and the running of things.
     Clerical,
+    /// Running people and a budget.
+    Management,
+    /// Books, ledgers and audits.
+    Accounting,
+    /// Buying, planning, hiring, analysis: the business of a business.
+    Commerce,
+    /// Programs and the numbers under them.
+    Computing,
+    /// Designing what gets built, and making it stand up.
+    Engineering,
+    /// Measurement, experiment and the laboratory.
+    Science,
+    /// Listening, advising and seeing somebody through.
+    Counselling,
+    /// Statute, contract and procedure.
+    Law,
+    /// Getting something into somebody else's head.
+    Teaching,
+    /// Making something people want to look at, read or hear.
+    Artistry,
+    /// Keeping order and keeping people safe from it failing.
+    Protection,
+    /// Keeping a building clean and its grounds kept.
+    Cleaning,
+    /// Looking after people: children, hair, a gym floor.
+    Tending,
+    /// Boats, nets and the sea.
+    Fishing,
+    /// The seam, the drill and the ground that might come down.
+    Mining,
+    /// Keeping machines running and mending them when they stop.
+    Mechanics,
+    /// Loading, stacking, picking and moving goods about.
+    Handling,
+    /// Arms, drill and doing it under fire.
+    Soldiering,
 }
 
+/// How many skills there are.
+pub const N_SKILLS: usize = 29;
+
 impl Skill {
-    pub const ALL: [Skill; 11] = [
+    pub const ALL: [Skill; N_SKILLS] = [
         Skill::Husbandry,
         Skill::Machining,
         Skill::Wiring,
@@ -1142,6 +979,24 @@ impl Skill {
         Skill::Nursing,
         Skill::Medicine,
         Skill::Clerical,
+        Skill::Management,
+        Skill::Accounting,
+        Skill::Commerce,
+        Skill::Computing,
+        Skill::Engineering,
+        Skill::Science,
+        Skill::Counselling,
+        Skill::Law,
+        Skill::Teaching,
+        Skill::Artistry,
+        Skill::Protection,
+        Skill::Cleaning,
+        Skill::Tending,
+        Skill::Fishing,
+        Skill::Mining,
+        Skill::Mechanics,
+        Skill::Handling,
+        Skill::Soldiering,
     ];
 
     pub fn name(self) -> &'static str {
@@ -1157,6 +1012,24 @@ impl Skill {
             Skill::Nursing => "nursing",
             Skill::Medicine => "medicine",
             Skill::Clerical => "clerical",
+            Skill::Management => "management",
+            Skill::Accounting => "accounting",
+            Skill::Commerce => "commerce",
+            Skill::Computing => "computing",
+            Skill::Engineering => "engineering",
+            Skill::Science => "science",
+            Skill::Counselling => "counselling",
+            Skill::Law => "law",
+            Skill::Teaching => "teaching",
+            Skill::Artistry => "artistry",
+            Skill::Protection => "protection",
+            Skill::Cleaning => "cleaning",
+            Skill::Tending => "tending",
+            Skill::Fishing => "fishing",
+            Skill::Mining => "mining",
+            Skill::Mechanics => "mechanics",
+            Skill::Handling => "handling",
+            Skill::Soldiering => "soldiering",
         }
     }
 
@@ -1292,33 +1165,7 @@ impl Qualification {
 /// This is what makes education worth anything: without it a degree is
 /// three years of not earning in exchange for nothing.
 pub fn qualification_for(trade: Trade) -> Qualification {
-    match trade {
-        // No licence, no ticket, no training. Which is why anybody can do
-        // it and why the wage knows it.
-        Trade::Shopworker | Trade::Hospitality | Trade::Labourer => Qualification::School,
-        // **A skilled trade is an apprenticeship**, and a lorry is a
-        // licence. Both are years, and both are why the work pays more
-        // than shop work does.
-        Trade::Builder | Trade::Haulier => Qualification::Vocational,
-        // Teaching and nursing are degree-entry, and so is everything in
-        // an office worth having.
-        Trade::Public | Trade::Office => Qualification::Degree,
-        // **A ticket, and years to get it.** You may not wire a house or
-        // fit a gas appliance without one, which is exactly why the work
-        // pays what it does.
-        Trade::Electrician | Trade::Pipefitter => Qualification::Vocational,
-        // Nursing has been degree-entry in Britain since 2013, and
-        // medicine has never been anything else.
-        Trade::Doctor | Trade::Nurse => Qualification::Degree,
-        // **The route into healthcare that a degree is not needed for**,
-        // which is most of why it exists: a year of practical training
-        // against three of university.
-        Trade::CareAssistant => Qualification::Vocational,
-        // **Nothing gates a chargehand.** It is promotion from the floor,
-        // which is the whole point of it and the only ladder somebody
-        // without a qualification can climb.
-        Trade::Supervisor => Qualification::School,
-    }
+    trade.qualification()
 }
 
 /// **When a child stops being ruinously expensive**, in years.
@@ -1479,52 +1326,7 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
 /// slack. The relativities between trades are the part that carries
 /// meaning; see `day_rate_for_food` for the band they sit in.
 pub fn days_of_food_a_day(trade: Trade) -> f64 {
-    match trade {
-        // Driving is entry-level freight work; a shift at a works pays a
-        // little less for less risk and no lorry.
-        Trade::Haulier => 7.0,
-        Trade::Labourer => 6.0,
-        // Shop work is the worst-paid of the three and always has been:
-        // it needs no licence, no ticket and no strength, so anybody can
-        // do it and the wage knows it. **But it is still a wage**, and
-        // this file already records the band: real low-wage work buys 6-10
-        // days of food. At 5.0 a shop worker who got 35% of the days —
-        // which is what part-time retail on a weekend rota actually is —
-        // could not keep a roof, and that is not the historical condition
-        // of shop work, it is destitution.
-        Trade::Shopworker => 6.0,
-        // A chargehand is paid a third again over the people watched,
-        // which is about the real premium and about what makes it worth
-        // the aggravation.
-        Trade::Supervisor => 8.5,
-        // **The public sector pays a little better at the bottom and
-        // rather worse at the top**, which is the real and well-measured
-        // shape of it: a cleaner or a clerk does better in the public
-        // sector than out of it, a senior professional does considerably
-        // worse. Averaged across teaching, nursing, clerking and policing
-        // it sits a shade above a labourer — and it comes with something
-        // the private jobs here do not have, which is that the work is
-        // steady.
-        Trade::Public => 6.5,
-        // Construction pays a shade above the average — UK median £35k
-        // against £33k for all employees — and more for a skilled trade.
-        Trade::Builder => 7.0,
-        // **The worst-paid sector there is.** Around £20k against a £33k
-        // median, and the hours are not guaranteed either — so it sits at
-        // the very bottom of the 6-10 band rather than below it.
-        Trade::Hospitality => 5.5,
-        // Professional, technical and financial work is the best paid,
-        // and it is why people move to cities for it.
-        Trade::Office => 9.5,
-        // Real UK medians against a ~£33k economy-wide figure: a doctor
-        // ~£80k, a registered nurse ~£37k, an electrician ~£40k, a
-        // healthcare assistant ~£24k. The ladder is the training.
-        Trade::Doctor => 18.0,
-        Trade::Nurse => 8.5,
-        Trade::Electrician => 9.0,
-        Trade::Pipefitter => 8.8,
-        Trade::CareAssistant => 5.5,
-    }
+    trade.days_of_food_a_day()
 }
 
 /// **What a day in this trade paid when the reference costs were set** —
@@ -1556,7 +1358,9 @@ pub fn work_available(
     day: u64,
     purse: f64,
     conveyance: Conveyance,
+    wants: &dyn Fn(Trade) -> bool,
 ) -> Vec<Contract> {
+    use crate::occupation::{industries_of_sector, industry_of_service, industry_of_site, Industry};
     let mut out = Vec::new();
 
     // Hauls: the arbitrage the trade system is already finding, offered as
@@ -1613,7 +1417,7 @@ pub fn work_available(
             // A haul on a route the merchant is making good money on pays
             // a little over the going rate, because he can afford it and
             // wants it done today.
-            let rate = day_rate(econ, market, Trade::Haulier);
+            let rate = day_rate(econ, market, Trade::Driver);
             let keenness = (1.0 + margin / c.base_cost()).clamp(1.0, 1.6);
             out.push(Contract {
                 kind: Job::Haul {
@@ -1629,7 +1433,7 @@ pub fn work_available(
                 expires: day + 7,
                 pay: rate * days * keenness,
                 days,
-                trade: Trade::Haulier,
+                trade: Trade::Driver,
             });
 
             // The same journey on your own account. The margin is yours
@@ -1659,7 +1463,7 @@ pub fn work_available(
             // Getting there costs something even before the cargo: fodder
             // for an animal that eats whether it earns or not, diesel for
             // a lorry that costs several times its driver's wage to run.
-            let wage = day_rate(econ, market, Trade::Haulier);
+            let wage = day_rate(econ, market, Trade::Driver);
             let running = conveyance.upkeep_in_wage_days(true) * wage * own_days;
             if affordable >= 0.005 {
                 let outlay = unit * affordable;
@@ -1693,7 +1497,7 @@ pub fn work_available(
                     // better wage.
                     pay: (econ.price(to, c) * affordable - outlay - running).max(0.0),
                     days,
-                    trade: Trade::Haulier,
+                    trade: Trade::Driver,
                 });
             }
         }
@@ -1731,7 +1535,7 @@ pub fn work_available(
         }
         let other = to;
         let days = (route.freight_cost / 40.0).clamp(1.0, 14.0);
-        let rate = day_rate(econ, market, Trade::Haulier);
+        let rate = day_rate(econ, market, Trade::Driver);
         let tonnes = shipped.min(Conveyance::Artic.payload());
         if tonnes < 0.2 {
             continue;
@@ -1749,7 +1553,7 @@ pub fn work_available(
             expires: day + 7,
             pay: rate * days,
             days,
-            trade: Trade::Haulier,
+            trade: Trade::Driver,
         });
     }
 
@@ -1801,7 +1605,7 @@ pub fn work_available(
             // A carrier employs drivers because it has a fleet. Whether
             // he gets a shift is the labour market's business, and
             // `chance_of_work` already decides that.
-            let rate = day_rate(econ, market, Trade::Haulier);
+            let rate = day_rate(econ, market, Trade::Driver);
             out.push(Contract {
                 kind: Job::Driving {
                     carrier: i,
@@ -1811,8 +1615,29 @@ pub fn work_available(
                 expires: day + 1,
                 pay: rate,
                 days: 1.0,
-                trade: Trade::Haulier,
+                trade: Trade::Driver,
             });
+
+            // **And the depot.** A carrier is its drivers and the people who
+            // keep them moving — dispatchers and clerks, loaders, mechanics,
+            // a manager — in the shares transport as a whole employs them.
+            let staff = carrier.drivers() / Industry::Transport.share(Trade::Driver).max(1e-9);
+            for o in Trade::ALL {
+                if o == Trade::Driver || o == Trade::Supervisor || !wants(o) {
+                    continue;
+                }
+                if staff * Industry::Transport.share(o) < 1.0 {
+                    continue;
+                }
+                out.push(Contract {
+                    kind: Job::Depot { carrier: i },
+                    posted: day,
+                    expires: day + 1,
+                    pay: day_rate(econ, market, o),
+                    days: 1.0,
+                    trade: o,
+                });
+            }
         }
     }
 
@@ -1836,7 +1661,7 @@ pub fn work_available(
         .iter()
         .any(|s| s.market == market && s.ran > 0.0);
     if working_town {
-        let rate = day_rate(econ, market, Trade::Haulier);
+        let rate = day_rate(econ, market, Trade::Driver);
         out.push(Contract {
             kind: Job::Shift {
                 site: usize::MAX,
@@ -1846,7 +1671,7 @@ pub fn work_available(
             expires: day + 1,
             pay: rate,
             days: 1.0,
-            trade: Trade::Haulier,
+            trade: Trade::Driver,
         });
     }
 
@@ -1862,7 +1687,7 @@ pub fn work_available(
         if !stocked {
             continue;
         }
-        let rate = day_rate(econ, market, Trade::Shopworker);
+        let rate = day_rate(econ, market, Trade::Sales);
         for &(role, count) in b.fixtures.iter() {
             if count * role.staff() < 1.0 {
                 continue;
@@ -1881,7 +1706,27 @@ pub fn work_available(
                 expires: day + 1,
                 pay: rate,
                 days: 1.0,
-                trade: Trade::Shopworker,
+                trade: Trade::Sales,
+            });
+        }
+        // **And everybody else a shop employs** — stockers, clerks, a
+        // manager, the mechanic in the tyre bay — in retail's own shares,
+        // a day at a time like the tills.
+        let staff = b.staff();
+        for o in Trade::ALL {
+            if o == Trade::Sales || o == Trade::Supervisor || !wants(o) {
+                continue;
+            }
+            if staff * industry_of_site(site.kind).share(o) < 1.0 {
+                continue;
+            }
+            out.push(Contract {
+                kind: Job::Shift { site: s, market },
+                posted: day,
+                expires: day + 1,
+                pay: day_rate(econ, market, o),
+                days: 1.0,
+                trade: o,
             });
         }
     }
@@ -1898,38 +1743,32 @@ pub fn work_available(
     // the mill has shut, which is exactly why they are the services a
     // state insists on funding.
     if let Some(gov) = econ.government(market) {
-        let posts = gov.posts_in(market);
-        if posts >= 1.0 {
-            let rate = day_rate(econ, market, Trade::Public);
-            // One offer per service that is actually staffed here, so a
-            // town with a hospital and a school has both going.
-            for service in crate::state::Service::ALL {
-                let posts = gov.posts_for(econ, market, service);
-                // **Offered to the trade that holds the post.** A hospital
-                // wants doctors, nurses and care assistants as well as its
-                // administrators, and a doctor who could only ever be
-                // offered a clerk's week was a doctor with no work at all.
-                for &(trade, share) in service.trades() {
-                    if posts * share < 1.0 {
-                        continue;
-                    }
-                    let rate = if trade == Trade::Public {
-                        rate
-                    } else {
-                        day_rate(econ, market, trade)
-                    };
-                    out.push(Contract {
-                        kind: Job::Public { market, service },
-                        posted: day,
-                        expires: day + 7,
-                        // A week at a time: paid on completion like
-                        // everything else here, so the sum is seven days'
-                        // rate.
-                        pay: rate * 7.0,
-                        days: 7.0,
-                        trade,
-                    });
+        for service in crate::state::Service::ALL {
+            let posts = gov.posts_for(econ, market, service);
+            if posts < 1.0 {
+                continue;
+            }
+            // **Offered to every occupation the service employs**, in the
+            // shares its industry employs them: a hospital's doctors,
+            // nurses, porters and clerks, a school's teachers and caretakers,
+            // a police force's officers and dispatchers, a garrison's
+            // soldiers and its civilian staff.
+            let staffing = industry_of_service(service);
+            for o in Trade::ALL {
+                if o == Trade::Supervisor || !wants(o) || posts * staffing.share(o) < 1.0 {
+                    continue;
                 }
+                out.push(Contract {
+                    kind: Job::Public { market, service },
+                    posted: day,
+                    expires: day + 7,
+                    // A week at a time: paid on completion like
+                    // everything else here, so the sum is seven days'
+                    // rate.
+                    pay: day_rate(econ, market, o) * 7.0,
+                    days: 7.0,
+                    trade: o,
+                });
             }
         }
     }
@@ -1942,20 +1781,29 @@ pub fn work_available(
     if let Some(svc) = econ.services.as_ref() {
         for sector in crate::services::Sector::ALL {
             let posts = svc.posts_in(market, sector);
-            // A site wants its electrician and its plumber as well as its
-            // builders, each offered to the trade that does it.
-            for &(trade, share) in sector.trades() {
+            if posts < 1.0 {
+                continue;
+            }
+            // Offered to every occupation the sector's industries employ,
+            // weighted by how much of the sector each industry is.
+            let parts = industries_of_sector(sector);
+            let weight: f64 = parts.iter().map(|p| p.1).sum();
+            for o in Trade::ALL {
+                if o == Trade::Supervisor || !wants(o) {
+                    continue;
+                }
+                let share: f64 =
+                    parts.iter().map(|&(i, w)| i.share(o) * w).sum::<f64>() / weight.max(1e-9);
                 if posts * share < 1.0 {
                     continue;
                 }
-                let rate = day_rate(econ, market, trade);
                 out.push(Contract {
                     kind: Job::Service { market, sector },
                     posted: day,
                     expires: day + 1,
-                    pay: rate,
+                    pay: day_rate(econ, market, o),
                     days: 1.0,
-                    trade,
+                    trade: o,
                 });
             }
         }
@@ -2018,22 +1866,37 @@ pub fn work_available(
         if !is_farm && (!site.powered || site.ran <= 0.0) {
             continue;
         }
-        // **Offered to whoever works that kind of site**, which is also
-        // whose skill decides what it makes: a hospital's shifts are
-        // nurses' and a depot's are drivers'. Every site offering labouring
-        // put a nurse's posts in the economy and a labourer's in the
-        // person's day.
-        let trade = site.kind.worked_by();
-        out.push(Contract {
-            kind: Job::Shift { site: s, market },
-            posted: day,
-            expires: day + 3,
-            pay: day_rate(econ, market, trade) * 6.0,
-            days: 6.0,
-            trade,
-        });
+        // **Offered to every occupation the works employs**, in its
+        // industry's shares: a steelworks' furnace crews and also its
+        // engineers, fitters, clerks, drivers and accountants. Every site
+        // offering one trade put a mill in the economy that employed
+        // nobody but millers.
+        let rated = match site.kind {
+            crate::econ::SiteKind::PowerPlant => econ.grid.capacity(),
+            _ => site.throughput,
+        };
+        let labour = site
+            .recipe
+            .map(|r| crate::econ::RECIPES[r].labour)
+            .unwrap_or(0.0);
+        let staff = crate::labour::rated_headcount(rated, labour);
+        let staffing = industry_of_site(site.kind);
+        for o in Trade::ALL {
+            if o == Trade::Supervisor || !wants(o) || staff * staffing.share(o) < 1.0 {
+                continue;
+            }
+            out.push(Contract {
+                kind: Job::Shift { site: s, market },
+                posted: day,
+                expires: day + 3,
+                pay: day_rate(econ, market, o) * 6.0,
+                days: 6.0,
+                trade: o,
+            });
+        }
     }
 
+    out.retain(|c| wants(c.trade));
     out.sort_by(|a, b| b.daily_rate().total_cmp(&a.daily_rate()));
     out
 }
@@ -2197,10 +2060,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
         // from the manager, so the same ability gets noticed in one and
         // not the other.
         const HOW_FAST_YOU_GET_NOTICED: f64 = 1.0 / 200.0;
-        let in_sight = match person.trade {
-            Trade::Haulier => 0.25,
-            _ => 1.0,
-        };
+        let in_sight = person.trade.in_sight();
         person.visibility += (in_sight - person.visibility) * HOW_FAST_YOU_GET_NOTICED;
 
         // Standing is the work, weighted by whether anybody watched it,
@@ -2372,7 +2232,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
     // lorry for nothing on the days he was driving somebody else's.
     {
         let standing = person.conveyance.upkeep_in_wage_days(false)
-            * day_rate(econ, person.market, Trade::Haulier);
+            * day_rate(econ, person.market, Trade::Driver);
         if standing > 0.0 {
             let paid = standing.min(person.money.max(0.0));
             person.money -= paid;
@@ -2538,7 +2398,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                             person.note(day, "the price had moved against him");
                         }
                     }
-                    Job::Counter { .. } | Job::Shift { .. } => {
+                    Job::Counter { .. } | Job::Shift { .. } | Job::Depot { .. } => {
                         person.money += job.pay;
                         person.earned += job.pay;
                         person.note(
@@ -2583,7 +2443,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             // food behind him, which is why the careful get there and the
             // desperate never do.
             {
-                let wage = day_rate(econ, person.market, Trade::Haulier);
+                let wage = day_rate(econ, person.market, Trade::Driver);
                 let budget = (person.money - reserve_for_food * 2.0).max(0.0);
                 // The ground he would actually be working. The worst road
                 // out of this town, because that is the one that decides
@@ -2638,7 +2498,20 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             }
 
             let stakeable = (person.money - reserve_for_food).max(0.0);
-            let offers = work_available(econ, person.market, day, stakeable, person.conveyance);
+            // **Only work they would look at**: their own trade, a
+            // chargehand's post above it, and whatever they have set out to
+            // take up. Every employer offers every occupation it employs,
+            // and nobody reads the whole of that.
+            let going_after = person.planner.trying_for(person.market);
+            let own = person.trade;
+            let offers = work_available(
+                econ,
+                person.market,
+                day,
+                stakeable,
+                person.conveyance,
+                &|t| t == own || t == Trade::Supervisor || Some(t) == going_after,
+            );
             // Take the best work this person is trained for, can afford to
             // stake, and is well enough to do. Never stake so much that a
             // bad trip leaves nothing to eat with — which is what keeps a
@@ -2785,7 +2658,6 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
             let elsewhere = |trade: Trade| {
                 the_town * works_on(trade, day, Employment::None) * minded * no_address
             };
-            let going_after = person.planner.trying_for(person.market);
             let drawn = draw(&person.name, day);
             // **The only way up.** A man who has put in a couple of years
             // on the floor can be made a chargehand; a man off the street
@@ -2857,7 +2729,7 @@ pub fn live_a_day_with(person: &mut Person, econ: &mut Economy, day: u64, vacanc
                 // year purely to get the harvest in, and real agricultural
                 // employment swings about twofold season to season.
                 const LAND_WORK_THAT_IS_SEASONAL: f64 = 0.30;
-                person.employment = if person.trade == Trade::Labourer
+                person.employment = if matches!(person.trade, Trade::FarmWorker | Trade::Fisher)
                     && draw(&person.name, day ^ 0x05EA_504A) < LAND_WORK_THAT_IS_SEASONAL
                 {
                     Employment::Seasonal
@@ -2999,7 +2871,7 @@ fn leave_town(person: &mut Person, econ: &Economy, day: u64) -> bool {
         // days in hand, or the journey kills him rather than saving him.
         let fare = food * days * 1.5
             + person.conveyance.upkeep_in_wage_days(true)
-                * day_rate(econ, person.market, Trade::Haulier)
+                * day_rate(econ, person.market, Trade::Driver)
                 * days;
         if fare > person.money {
             continue;

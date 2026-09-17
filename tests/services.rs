@@ -83,19 +83,19 @@ fn what_a_sector_pays_and_how_securely_it_employs() {
 
     let casual = |t: Trade| employment_mix(t).2;
     assert!(
-        casual(Trade::Hospitality) > casual(Trade::Office) * 5.0,
+        casual(Trade::FoodService) > casual(Trade::BusinessSpecialist) * 5.0,
         "hospitality at {:.0}% casual is no less secure than office work at {:.0}%",
-        casual(Trade::Hospitality) * 100.0,
-        casual(Trade::Office) * 100.0
+        casual(Trade::FoodService) * 100.0,
+        casual(Trade::BusinessSpecialist) * 100.0
     );
     assert!(
-        casual(Trade::Hospitality) > casual(Trade::Public) * 5.0,
+        casual(Trade::FoodService) > casual(Trade::Teacher) * 5.0,
         "hospitality is as secure as public administration"
     );
 
     // Construction carries high self-employment, because the job ends.
     assert!(
-        casual(Trade::Builder) > casual(Trade::Office),
+        casual(Trade::Builder) > casual(Trade::BusinessSpecialist),
         "a builder's work is as continuous as an office's"
     );
 }

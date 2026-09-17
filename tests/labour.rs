@@ -144,14 +144,14 @@ fn a_blackout_is_paid_for_in_wages_not_in_corpses() {
     for _ in 0..30 {
         r.economy.step();
     }
-    let before = person::day_rate(&r.economy, 0, Trade::Labourer)
+    let before = person::day_rate(&r.economy, 0, Trade::ProductionWorker)
         / (r.economy.price(0, Commodity::ProcessedFood) * FOOD_PER_DAY);
 
     r.economy.grid.fail_transformer("main line");
     let mut worst = before;
     for _ in 0..120 {
         r.economy.step();
-        let now = person::day_rate(&r.economy, 0, Trade::Labourer)
+        let now = person::day_rate(&r.economy, 0, Trade::ProductionWorker)
             / (r.economy.price(0, Commodity::ProcessedFood) * FOOD_PER_DAY);
         worst = worst.min(now);
     }
@@ -319,7 +319,7 @@ fn shop_work_is_shifts_not_a_salary() {
     // it. Rostering him a guaranteed six-day week instead gave him 85% of
     // the days in the year, which is a salary with a different name.
     let mut r = a_nation(Doctrine::Prudent);
-    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    let mut hal = Person::new("Hal", Trade::Sales, 0, 60.0);
     let days = DAYS_PER_YEAR * 2;
     for _ in 0..days {
         r.economy.step();
@@ -403,10 +403,10 @@ fn the_floor_is_the_only_way_up() {
     // gated the way promotions are: a man off the street is not made a
     // chargehand. Real promotion to supervisor runs two to three years in.
     let mut r = a_nation(Doctrine::Prudent);
-    let mut green = Person::new("Green", Trade::Shopworker, 0, 60.0);
+    let mut green = Person::new("Green", Trade::Sales, 0, 60.0);
     let day = r.economy.ledger.day;
     r.economy.step();
-    let offers = person::work_available(&r.economy, 0, day, 0.0, Conveyance::OnFoot);
+    let offers = person::work_available(&r.economy, 0, day, 0.0, Conveyance::OnFoot, &|_| true);
     assert!(
         offers.iter().any(|c| c.trade == Trade::Supervisor),
         "nowhere in a nation is anybody supervising anything"
@@ -414,7 +414,7 @@ fn the_floor_is_the_only_way_up() {
     person::live_a_day(&mut green, &mut r.economy, day);
     assert_eq!(
         green.trade,
-        Trade::Shopworker,
+        Trade::Sales,
         "made chargehand on his first morning"
     );
 
@@ -429,9 +429,9 @@ fn the_floor_is_the_only_way_up() {
     // Gated on tenure alone, every labourer in a three-year run of a
     // whole town was made up to chargehand and the cohort became all
     // supervisors, which is not a workforce.
-    let mut good = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    let mut good = Person::new("Hal", Trade::Sales, 0, 60.0);
     good.diligence = 0.85;
-    let mut poor = Person::new("Wat", Trade::Shopworker, 0, 60.0);
+    let mut poor = Person::new("Wat", Trade::Sales, 0, 60.0);
     poor.diligence = 0.05;
     // **Five years, not four**, because the working week now means a shop
     // worker does not get 365 chances a year — and somebody who ends up
@@ -455,7 +455,7 @@ fn the_floor_is_the_only_way_up() {
     );
     assert_eq!(
         poor.trade,
-        Trade::Shopworker,
+        Trade::Sales,
         "made up to chargehand on time served alone, standing {:.2}",
         poor.standing
     );
@@ -470,14 +470,14 @@ fn the_floor_is_the_only_way_up() {
     // haulier is on the road and a shop worker is across the counter from
     // whoever decides, so the same ability gets noticed in one and not the
     // other.
-    let mut away = Person::new("Hal", Trade::Haulier, 0, 60.0);
+    let mut away = Person::new("Hal", Trade::Driver, 0, 60.0);
     away.diligence = 0.85;
     for _ in 0..(DAYS_PER_YEAR * 2) {
         r.economy.step();
         let d = r.economy.ledger.day;
         person::live_a_day(&mut away, &mut r.economy, d);
     }
-    let mut seen = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    let mut seen = Person::new("Hal", Trade::Sales, 0, 60.0);
     seen.diligence = 0.85;
     for _ in 0..(DAYS_PER_YEAR * 2) {
         r.economy.step();

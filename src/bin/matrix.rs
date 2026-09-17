@@ -221,7 +221,7 @@ fn run(mut e: Economy, x: Experiments) -> Reading {
         }
     }
 
-    let wage = scale_sim::person::day_rate(&e, 0, scale_sim::person::Trade::Labourer) * 260.0;
+    let wage = scale_sim::person::day_rate(&e, 0, scale_sim::person::Trade::ProductionWorker) * 260.0;
     let conserves =
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| e.ledger.assert_conserved()))
             .is_ok();

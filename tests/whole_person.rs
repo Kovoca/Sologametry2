@@ -31,10 +31,10 @@ use scale_sim::rng::Rng;
 /// compile, which is the strongest form this gate can take.
 #[test]
 fn the_man_with_a_trade_is_the_man_with_convictions() {
-    let p = Person::new("Alder", Trade::Labourer, 0, 100.0);
+    let p = Person::new("Alder", Trade::ProductionWorker, 0, 100.0);
 
     // The economic half.
-    assert_eq!(p.trade, Trade::Labourer);
+    assert_eq!(p.trade, Trade::ProductionWorker);
     assert_eq!(p.market, 0);
 
     // And the same object carries what he believes.
@@ -58,8 +58,8 @@ fn the_man_with_a_trade_is_the_man_with_convictions() {
 /// off would have nothing to bite on.
 #[test]
 fn no_two_people_are_the_same_person() {
-    let a = Person::new("Alder", Trade::Labourer, 0, 100.0);
-    let b = Person::new("Bramwell", Trade::Labourer, 0, 100.0);
+    let a = Person::new("Alder", Trade::ProductionWorker, 0, 100.0);
+    let b = Person::new("Bramwell", Trade::ProductionWorker, 0, 100.0);
 
     let differs = Value::ALL
         .iter()
@@ -93,8 +93,8 @@ fn no_two_people_are_the_same_person() {
 /// drawn from a wandering RNG would come back a different human being.
 #[test]
 fn a_name_rebuilds_the_same_mind() {
-    let a = Person::new("Alder", Trade::Labourer, 0, 100.0);
-    let again = Person::new("Alder", Trade::Labourer, 0, 100.0);
+    let a = Person::new("Alder", Trade::ProductionWorker, 0, 100.0);
+    let again = Person::new("Alder", Trade::ProductionWorker, 0, 100.0);
     for &v in Value::ALL.iter() {
         assert_eq!(
             a.mind.conviction(v),
@@ -106,7 +106,7 @@ fn a_name_rebuilds_the_same_mind() {
 
     // And it is the *name* that decides, not the trade or the town — or
     // moving somebody between markets would replace them.
-    let moved = Person::new("Alder", Trade::Shopworker, 3, 7.0);
+    let moved = Person::new("Alder", Trade::Sales, 3, 7.0);
     for &v in Value::ALL.iter() {
         assert_eq!(
             a.mind.conviction(v),
@@ -125,7 +125,7 @@ fn a_name_rebuilds_the_same_mind() {
 #[test]
 fn a_town_holds_a_spread_of_opinion() {
     let folk: Vec<Person> = (0..60)
-        .map(|i| Person::new(format!("person {i}"), Trade::Labourer, 0, 100.0))
+        .map(|i| Person::new(format!("person {i}"), Trade::ProductionWorker, 0, 100.0))
         .collect();
 
     // Truth is the one the social skills will gate on: DF will not let a
@@ -201,9 +201,9 @@ fn saw_it(p: &mut Person, ev: &WorldEvent, of: Id<WorldEvent>, seed: u64) {
 #[test]
 fn a_person_answers_from_their_own_memory() {
     let mut folk: Arena<Person> = Arena::new();
-    let watched = folk.add(Person::new("Alder", Trade::Labourer, 0, 100.0));
-    let elsewhere = folk.add(Person::new("Bramwell", Trade::Labourer, 0, 100.0));
-    let asker = folk.add(Person::new("Cade", Trade::Labourer, 0, 100.0));
+    let watched = folk.add(Person::new("Alder", Trade::ProductionWorker, 0, 100.0));
+    let elsewhere = folk.add(Person::new("Bramwell", Trade::ProductionWorker, 0, 100.0));
+    let asker = folk.add(Person::new("Cade", Trade::ProductionWorker, 0, 100.0));
 
     let mut happened: Arena<WorldEvent> = Arena::new();
     let ev = a_fight(10, watched, elsewhere);
@@ -249,9 +249,9 @@ fn a_person_answers_from_their_own_memory() {
 #[test]
 fn what_they_think_of_you_is_held_in_their_own_head() {
     let mut folk: Arena<Person> = Arena::new();
-    let them = folk.add(Person::new("Alder", Trade::Labourer, 0, 100.0));
-    let asker = folk.add(Person::new("Cade", Trade::Labourer, 0, 100.0));
-    let stranger = folk.add(Person::new("Dunn", Trade::Labourer, 0, 100.0));
+    let them = folk.add(Person::new("Alder", Trade::ProductionWorker, 0, 100.0));
+    let asker = folk.add(Person::new("Cade", Trade::ProductionWorker, 0, 100.0));
+    let stranger = folk.add(Person::new("Dunn", Trade::ProductionWorker, 0, 100.0));
 
     // A relationship is something that happens, not something issued.
     assert!(

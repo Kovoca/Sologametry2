@@ -42,6 +42,8 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
+use crate::person::{Qualification, Skill};
+
 /// **An occupation**: what somebody does, whoever employs them.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub enum Occupation {
@@ -114,9 +116,14 @@ pub enum Occupation {
     MaterialMover,
     /// The armed forces, enlisted and officers.
     Soldier,
+    /// **Somebody in charge of a floor.** Not drawn from any staffing
+    /// pattern — every published group already counts its own first-line
+    /// supervisors — because here it is what a floor hand is promoted to,
+    /// against a count of posts `labour.rs` keeps at a span of control.
+    Supervisor,
 }
 
-pub const N_OCCUPATIONS: usize = 32;
+pub const N_OCCUPATIONS: usize = 33;
 
 impl Occupation {
     /// **Every occupation, in the order `index` gives.**
@@ -153,6 +160,7 @@ impl Occupation {
         Occupation::Driver,
         Occupation::MaterialMover,
         Occupation::Soldier,
+        Occupation::Supervisor,
     ];
 
     /// Where it sits in `ALL`, by exhaustive match, so a new occupation
@@ -192,6 +200,7 @@ impl Occupation {
             Driver => 29,
             MaterialMover => 30,
             Soldier => 31,
+            Supervisor => 32,
         }
     }
 
@@ -230,8 +239,318 @@ impl Occupation {
             Driver => "driver",
             MaterialMover => "material mover",
             Soldier => "soldier",
+            Supervisor => "supervisor",
         }
     }
+
+    /// **The skill the work practises**, which is what improves by doing it
+    /// and what decides how well it is done.
+    pub fn skill(self) -> Skill {
+        use Occupation::*;
+        match self {
+            Manager | Supervisor => Skill::Management,
+            Farmer | FarmWorker => Skill::Husbandry,
+            Accountant => Skill::Accounting,
+            BusinessSpecialist => Skill::Commerce,
+            ComputingSpecialist => Skill::Computing,
+            Engineer => Skill::Engineering,
+            Scientist => Skill::Science,
+            SocialWorker => Skill::Counselling,
+            Legal => Skill::Law,
+            Teacher => Skill::Teaching,
+            ArtsAndMedia => Skill::Artistry,
+            // A pharmacist, a radiographer and a paramedic practise the
+            // same clinical science a doctor does, to a shallower depth.
+            Doctor | HealthTechnician => Skill::Medicine,
+            Nurse | CareAssistant => Skill::Nursing,
+            ProtectiveService => Skill::Protection,
+            FoodService => Skill::Catering,
+            Cleaner => Skill::Cleaning,
+            PersonalCare => Skill::Tending,
+            Sales => Skill::Retail,
+            OfficeClerk => Skill::Clerical,
+            Fisher => Skill::Fishing,
+            Builder => Skill::Building,
+            Electrician => Skill::Wiring,
+            Pipefitter => Skill::Pipework,
+            Miner => Skill::Mining,
+            Mechanic => Skill::Mechanics,
+            ProductionWorker => Skill::Machining,
+            Driver => Skill::Driving,
+            MaterialMover => Skill::Handling,
+            Soldier => Skill::Soldiering,
+        }
+    }
+
+    /// **The level the work wants**, below which somebody is not up to it
+    /// and is paid accordingly. Set by the depth of the training the work
+    /// takes — a week of being shown, an apprenticeship, a degree, six years
+    /// and a foundation programme. Designed, on CDDA's 0-10.
+    pub fn wants_level(self) -> u8 {
+        use Occupation::*;
+        match self {
+            Doctor => 7,
+            Engineer | Scientist | Legal => 6,
+            Manager | Accountant | ComputingSpecialist | Nurse | Electrician | Pipefitter => 5,
+            Farmer | BusinessSpecialist | SocialWorker | Teacher | HealthTechnician | Builder
+            | Mechanic | Supervisor => 4,
+            ArtsAndMedia | CareAssistant | ProtectiveService | Miner | Driver | Soldier => 3,
+            PersonalCare | OfficeClerk | FarmWorker | Fisher | ProductionWorker => 2,
+            FoodService | Cleaner | Sales | MaterialMover => 1,
+        }
+    }
+
+    /// **What the work requires before anybody will have you**, from the BLS
+    /// Employment Projections' *typical entry-level education*, read onto
+    /// the three steps this model has: a bachelor's degree or more is a
+    /// degree; an apprenticeship, a certificate or an associate degree is
+    /// vocational; a high school diploma or nothing is school.
+    pub fn qualification(self) -> Qualification {
+        use Occupation::*;
+        match self {
+            Manager | Accountant | BusinessSpecialist | ComputingSpecialist | Engineer
+            | Scientist | SocialWorker | Legal | Teacher | ArtsAndMedia | Doctor | Nurse => {
+                Qualification::Degree
+            }
+            HealthTechnician | CareAssistant | Builder | Electrician | Pipefitter | Mechanic
+            | Driver => Qualification::Vocational,
+            Farmer | ProtectiveService | FoodService | Cleaner | PersonalCare | Sales
+            | OfficeClerk | FarmWorker | Fisher | Miner | ProductionWorker | MaterialMover
+            | Soldier | Supervisor => Qualification::School,
+        }
+    }
+
+    /// **How the work is held**: the chance of full-time, part-time and
+    /// casual. Carried over from the trade each occupation replaces until
+    /// occupation-level figures are read in — offices salaried and
+    /// permanent, public service steady, clinical work salaried with a bank
+    /// and agency share, a ticket being what lets you work for yourself,
+    /// hospitality and retail where the insecurity lives.
+    pub fn employment_mix(self) -> (f64, f64, f64) {
+        use Occupation::*;
+        match self {
+            Manager | Accountant | BusinessSpecialist | ComputingSpecialist | Engineer
+            | Scientist | Legal | OfficeClerk => (0.88, 0.10, 0.02),
+            Teacher | SocialWorker | ProtectiveService => (0.70, 0.28, 0.02),
+            // An enlistment is a contract for years.
+            Soldier => (1.0, 0.0, 0.0),
+            Doctor => (0.92, 0.06, 0.02),
+            Nurse | HealthTechnician => (0.72, 0.18, 0.10),
+            CareAssistant => (0.55, 0.28, 0.17),
+            FoodService | PersonalCare => (0.35, 0.36, 0.29),
+            Sales | Cleaner => (0.30, 0.58, 0.12),
+            Builder => (0.60, 0.08, 0.32),
+            // Freelance, like a ticketed trade. Designed.
+            ArtsAndMedia | Electrician | Pipefitter => (0.45, 0.07, 0.48),
+            Driver => (0.60, 0.10, 0.30),
+            Farmer | FarmWorker | Fisher | Miner | Mechanic | ProductionWorker | MaterialMover => {
+                (0.85, 0.10, 0.05)
+            }
+            Supervisor => (0.90, 0.08, 0.02),
+        }
+    }
+
+    /// **What the work's week looks like.**
+    pub fn week(self) -> Week {
+        use Occupation::*;
+        match self {
+            Manager | Accountant | BusinessSpecialist | ComputingSpecialist | Engineer
+            | Scientist | Legal | OfficeClerk | Teacher => Week::Weekdays,
+            SocialWorker => Week::MostlyWeekdays,
+            Doctor | Nurse | HealthTechnician | CareAssistant | ProtectiveService | Soldier => {
+                Week::EveryDay
+            }
+            Electrician | Pipefitter | Mechanic => Week::SiteWithCallOuts,
+            Sales | FoodService | PersonalCare | ArtsAndMedia => Week::OpenSevenDays,
+            Farmer | FarmWorker | Fisher | Miner | ProductionWorker | MaterialMover | Builder
+            | Driver | Cleaner | Supervisor => Week::Rota,
+        }
+    }
+
+    /// **How much of the work is done where whoever decides can see it.** A
+    /// driver is on the road and a fisher at sea; everybody else works in
+    /// front of the people who promote them.
+    pub fn in_sight(self) -> f64 {
+        match self {
+            Occupation::Driver | Occupation::Fisher => 0.25,
+            _ => 1.0,
+        }
+    }
+
+    /// **Median hourly pay**, OEWS May 2023, from the national table in the
+    /// raws.
+    ///
+    /// For a group, the group's median; where a detailed occupation carries
+    /// its own, that. Three are not published as medians and say what stands
+    /// in: physicians' median is above the survey's $115 an hour ceiling, so
+    /// their mean is used; fishers are not published nationally, so the
+    /// farming, fishing and forestry median is; and the armed forces are not
+    /// in the survey at all, so a soldier is the midpoint of an E-1 and an
+    /// E-5's Regular Military Compensation — pay, housing, subsistence and
+    /// the tax advantage, which is what a civilian buys out of a wage —
+    /// from DOD's January 2026 tables, three years on from the rest.
+    pub fn median_hourly(self) -> f64 {
+        use Occupation::*;
+        let national = wages();
+        let median = |code: &str| {
+            national
+                .get(code)
+                .and_then(|w| w.median_hourly)
+                .unwrap_or_else(|| panic!("no median hourly wage for {code} in the raws"))
+        };
+        match self {
+            Manager => median("11-0000"),
+            Farmer => median("11-9013"),
+            Accountant => median("13-2011"),
+            BusinessSpecialist => median("13-0000"),
+            ComputingSpecialist => median("15-0000"),
+            Engineer => median("17-0000"),
+            Scientist => median("19-0000"),
+            SocialWorker => median("21-0000"),
+            Legal => median("23-0000"),
+            Teacher => median("25-0000"),
+            ArtsAndMedia => median("27-0000"),
+            Doctor => {
+                national
+                    .get("29-1210")
+                    .and_then(|w| w.mean_annual)
+                    .expect("physicians' mean wage in the raws")
+                    / HOURS_IN_A_PAID_YEAR
+            }
+            Nurse => median("29-1141"),
+            HealthTechnician => median("29-0000"),
+            CareAssistant => median("31-0000"),
+            ProtectiveService => median("33-0000"),
+            FoodService => median("35-0000"),
+            Cleaner => median("37-0000"),
+            PersonalCare => median("39-0000"),
+            Sales => median("41-0000"),
+            OfficeClerk => median("43-0000"),
+            FarmWorker | Fisher => median("45-0000"),
+            Builder => median("47-0000"),
+            Electrician => median("47-2111"),
+            Pipefitter => median("47-2152"),
+            Miner => median("47-5000"),
+            Mechanic => median("49-0000"),
+            ProductionWorker => median("51-0000"),
+            Driver => {
+                // Heavy and light, by how many of each there are.
+                let heavy = national.get("53-3032").expect("heavy truck drivers");
+                let light = national.get("53-3033").expect("light truck drivers");
+                (heavy.employment * median("53-3032") + light.employment * median("53-3033"))
+                    / (heavy.employment + light.employment)
+            }
+            MaterialMover => median("53-0000"),
+            Soldier => (SOLDIER_RMC_E1 + SOLDIER_RMC_E5) / 2.0 / HOURS_IN_A_PAID_YEAR,
+            Supervisor => median("51-1011"),
+        }
+    }
+
+    /// **Days of food a day's work buys**, the scale this model pays in.
+    ///
+    /// Pinned where it always was: a production worker at six, the figure
+    /// the labourer carried — so the rent, which is set off that wage, and
+    /// every cost of production, which reads it as a ratio, do not move.
+    /// Every other occupation is placed against it by the ratio of real
+    /// median pay, so what a doctor earns against a cook is the American
+    /// figure rather than a guess.
+    pub fn days_of_food_a_day(self) -> f64 {
+        PRODUCTION_WORKER_DAYS_OF_FOOD * self.median_hourly()
+            / Occupation::ProductionWorker.median_hourly()
+    }
+}
+
+/// What a production worker's day buys, which everything else is placed
+/// against. The labourer's figure, unchanged.
+pub const PRODUCTION_WORKER_DAYS_OF_FOOD: f64 = 6.0;
+
+/// A full-time paid year in hours, which is how OEWS turns an hourly wage
+/// into an annual one.
+pub const HOURS_IN_A_PAID_YEAR: f64 = 2080.0;
+
+/// Regular Military Compensation, January 2026 *(DOD Selected Military
+/// Compensation Tables, via CRS IF10532)*: an E-1 private and an E-5
+/// sergeant.
+pub const SOLDIER_RMC_E1: f64 = 60_810.0;
+pub const SOLDIER_RMC_E5: f64 = 89_148.0;
+
+/// **The shape of a working week.**
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Week {
+    /// Monday to Friday and nothing else: offices and schools.
+    Weekdays,
+    /// Weekdays, with a share of the weekend covered.
+    MostlyWeekdays,
+    /// A rota that does not care what day it is: hospitals, police, the
+    /// armed forces.
+    EveryDay,
+    /// Weekday site hours, and call-outs at the weekend.
+    SiteWithCallOuts,
+    /// Open seven days and busiest at the weekend.
+    OpenSevenDays,
+    /// Shifts, quieter on a Sunday: works, farms, mines, depots.
+    Rota,
+}
+
+/// **One occupation's line in the national table.**
+#[derive(Copy, Clone, Debug)]
+pub struct NationalWage {
+    pub employment: f64,
+    pub median_hourly: Option<f64>,
+    pub mean_annual: Option<f64>,
+}
+
+/// The national section of the raws, with its wages.
+pub fn wages() -> &'static BTreeMap<String, NationalWage> {
+    static CELL: OnceLock<BTreeMap<String, NationalWage>> = OnceLock::new();
+    CELL.get_or_init(|| {
+        let money = |w: Option<&str>| {
+            w.filter(|t| t.starts_with('$'))
+                .and_then(|t| t.trim_start_matches('$').replace(',', "").parse::<f64>().ok())
+        };
+        let mut out = BTreeMap::new();
+        let mut in_national = false;
+        for line in RAWS.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix("== ") {
+                in_national = rest.starts_with("national");
+                continue;
+            }
+            if !in_national {
+                continue;
+            }
+            let words: Vec<&str> = t.split_whitespace().collect();
+            if words.len() < 2 || !is_soc(words[0]) {
+                continue;
+            }
+            let Ok(employment) = words[1].replace(',', "").parse::<f64>() else {
+                continue;
+            };
+            out.insert(
+                words[0].to_string(),
+                NationalWage {
+                    employment,
+                    median_hourly: money(words.get(2).copied()),
+                    mean_annual: money(words.get(3).copied()),
+                },
+            );
+        }
+        out
+    })
+}
+
+/// **The United States' mix of occupations**, for a town with no employers
+/// to read one from. OEWS leaves out farms and the armed forces, so this
+/// does too.
+pub fn national_mix() -> &'static [f64; N_OCCUPATIONS] {
+    static CELL: OnceLock<[f64; N_OCCUPATIONS]> = OnceLock::new();
+    CELL.get_or_init(|| {
+        from_counts(
+            published()
+                .get("national")
+                .expect("the national table in the raws"),
+        )
+    })
 }
 
 /// **What an employer makes or does**, as the statistics classify it.
@@ -676,10 +995,14 @@ pub fn jobs_by_industry(econ: &crate::econ::Economy) -> Vec<[f64; N_INDUSTRIES]>
             }
         }
     }
+    // **A carrier's drivers are its drivers**, and the firm employs clerks,
+    // loaders and mechanics besides — so its jobs are the drivers over the
+    // share of transport jobs that drive.
     if let Some(freight) = econ.logistics.as_ref() {
+        let driving = Industry::Transport.share(Occupation::Driver).max(1e-9);
         for c in freight.carriers.iter() {
             if c.home < n {
-                out[c.home][Industry::Transport.index()] += c.drivers();
+                out[c.home][Industry::Transport.index()] += c.drivers() / driving;
             }
         }
     }

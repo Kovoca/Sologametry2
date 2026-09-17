@@ -43,7 +43,7 @@ fn a_wage_covers_food_but_not_by_much() {
     for seed in [1u64, 42, 20260828] {
         let r = a_nation(seed);
         for m in 0..r.economy.markets.len() {
-            for trade in [Trade::Haulier, Trade::Labourer] {
+            for trade in [Trade::Driver, Trade::ProductionWorker] {
                 let wage = person::day_rate(&r.economy, m, trade);
                 let food = r.economy.price(m, FOOD) * FOOD_PER_DAY;
                 let ratio = wage / food.max(1e-9);
@@ -61,7 +61,7 @@ fn a_wage_covers_food_but_not_by_much() {
 fn a_year_of_work_makes_a_living() {
     let mut r = a_nation(20260828);
     let start = 0;
-    let mut hal = Person::new("Hal", Trade::Haulier, start, 60.0);
+    let mut hal = Person::new("Hal", Trade::Driver, start, 60.0);
 
     for _ in 0..DAYS_PER_YEAR {
         r.economy.step();
@@ -106,7 +106,7 @@ fn a_man_with_nothing_and_no_work_dies() {
     // person starves, and that must actually happen rather than being a
     // number that never reaches zero.
     let mut r = a_nation(20260828);
-    let mut hal = Person::new("Hal", Trade::Haulier, 0, 0.0);
+    let mut hal = Person::new("Hal", Trade::Driver, 0, 0.0);
     hal.larder = 0.0;
 
     // A genuinely workless place: every road shut *and* every works
@@ -119,6 +119,13 @@ fn a_man_with_nothing_and_no_work_dies() {
     for site in r.economy.ledger.sites.iter_mut() {
         site.throughput = 0.0;
     }
+    // **And the state and the private services.** A government keeps
+    // drivers of its own, and so do offices and hospitals — so a driver in
+    // a town whose works have stopped still picks up the odd week, eats,
+    // and does not starve. That is right, and it means a genuinely
+    // workless place is one with nobody employing anybody.
+    r.economy.governments.clear();
+    r.economy.services = None;
 
     let mut died_on = None;
     for _ in 0..120 {
@@ -149,7 +156,7 @@ fn work_moves_real_goods_and_conserves() {
     // never closes and the same job is offered for ever. His work must go
     // through the journal like everything else.
     let mut r = a_nation(20260828);
-    let mut hal = Person::new("Hal", Trade::Haulier, 0, 200.0);
+    let mut hal = Person::new("Hal", Trade::Driver, 0, 200.0);
 
     for _ in 0..(DAYS_PER_YEAR / 2) {
         r.economy.step();
@@ -177,7 +184,7 @@ fn nothing_is_offered_that_the_economy_does_not_want() {
     r.economy.step();
 
     let day = r.economy.ledger.day;
-    let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Artic);
+    let offers = person::work_available(&r.economy, 0, day, 500.0, Conveyance::Artic, &|_| true);
     assert!(
         !offers.iter().any(|c| matches!(
             c.kind,
@@ -196,7 +203,7 @@ fn a_hungry_man_cannot_take_heavy_work() {
     for _ in 0..30 {
         r.economy.step();
     }
-    let mut hal = Person::new("Hal", Trade::Haulier, 0, 0.0);
+    let mut hal = Person::new("Hal", Trade::Driver, 0, 0.0);
     hal.larder = 0.0;
     hal.condition = 0.2;
 
@@ -253,7 +260,7 @@ fn a_trader_is_not_a_money_printer() {
     // *meant* to carry rather than what was loaded, and being charged for
     // a cargo the warehouse never handed over.
     let mut r = a_nation(20260828);
-    let mut hal = Person::new("Hal", Trade::Haulier, 0, 60.0);
+    let mut hal = Person::new("Hal", Trade::Driver, 0, 60.0);
     for _ in 0..(DAYS_PER_YEAR * 2) {
         r.economy.step();
         let day = r.economy.ledger.day;
@@ -298,8 +305,8 @@ fn routine_haulage_exists_when_nothing_is_mispriced() {
     let day = r.economy.ledger.day;
     let mut found = 0;
     for m in 0..r.economy.markets.len() {
-        let offers = person::work_available(&r.economy, m, day, 0.0, Conveyance::Artic);
-        if offers.iter().any(|c| c.trade == Trade::Haulier) {
+        let offers = person::work_available(&r.economy, m, day, 0.0, Conveyance::Artic, &|_| true);
+        if offers.iter().any(|c| c.trade == Trade::Driver) {
             found += 1;
         }
     }
@@ -314,7 +321,7 @@ fn routine_haulage_exists_when_nothing_is_mispriced() {
 fn a_life_is_deterministic() {
     let run = || {
         let mut r = a_nation(555);
-        let mut p = Person::new("Hal", Trade::Haulier, 0, 60.0);
+        let mut p = Person::new("Hal", Trade::Driver, 0, 60.0);
         for _ in 0..200 {
             r.economy.step();
             let day = r.economy.ledger.day;
@@ -336,7 +343,7 @@ fn rent_is_the_biggest_thing_he_buys() {
     for m in 0..r.economy.markets.len() {
         let rent = person::rent_per_day(&r.economy, m);
         let food = r.economy.price(m, FOOD) * FOOD_PER_DAY;
-        let wage = person::day_rate(&r.economy, m, Trade::Labourer);
+        let wage = person::day_rate(&r.economy, m, Trade::ProductionWorker);
         assert!(
             rent > food,
             "{}: rent {rent:.2} a day against {food:.2} for food — housing is \
@@ -359,7 +366,7 @@ fn a_man_in_work_keeps_his_roof() {
     // failure state means nothing. A shop worker on three and a half days
     // a week should hold a rented room and put a little by.
     let mut r = a_nation(20260828);
-    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 60.0);
+    let mut hal = Person::new("Hal", Trade::Sales, 0, 60.0);
     for _ in 0..(DAYS_PER_YEAR * 2) {
         r.economy.step();
         let day = r.economy.ledger.day;
@@ -406,7 +413,7 @@ fn a_price_shock_can_put_a_working_man_on_the_street() {
         Doctrine::Negligent,
     )
     .expect("no region");
-    let mut hal = Person::new("Hal", Trade::Shopworker, 0, 5.0);
+    let mut hal = Person::new("Hal", Trade::Sales, 0, 5.0);
     let mut evicted = false;
     for n in 0..800u64 {
         if n == 20 {
@@ -471,8 +478,8 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
     // family policy**, which is the case the 65% figure describes.
     let mut r = a_nation(20260828);
     r.economy.governments.clear();
-    let mut free = Person::new("Ann", Trade::Shopworker, 0, 200.0);
-    let mut parent = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    let mut free = Person::new("Ann", Trade::Sales, 0, 200.0);
+    let mut parent = Person::new("Ann", Trade::Sales, 0, 200.0);
     parent.children.push(1.0);
 
     for _ in 0..(DAYS_PER_YEAR * 2) {
@@ -491,7 +498,7 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
     // **A second child is what actually stops people**: at 65% each, two
     // under-fives cost more than the day pays, and the day stops being
     // worth working at all.
-    let mut two = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    let mut two = Person::new("Ann", Trade::Sales, 0, 200.0);
     two.children.push(1.0);
     two.children.push(3.0);
     for _ in 0..(DAYS_PER_YEAR * 2) {
@@ -519,7 +526,7 @@ fn a_child_under_school_age_is_a_reason_people_do_not_work() {
         );
         supported.economy.governments.insert(n, gov);
     }
-    let mut helped = Person::new("Ann", Trade::Shopworker, 0, 200.0);
+    let mut helped = Person::new("Ann", Trade::Sales, 0, 200.0);
     helped.children.push(1.0);
     helped.children.push(3.0);
     for _ in 0..(DAYS_PER_YEAR * 2) {

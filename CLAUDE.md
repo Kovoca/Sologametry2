@@ -4565,9 +4565,110 @@ the wrong shape. **What does not land is informative**: the two largest gaps
 are distribution — nobody stocks a warehouse or drives a van — and they are
 the same gap `census.rs` already records from the other side.
 
-**Nothing uses it yet.** People still hold one of the thirteen trades; the
-next stage moves them onto occupations, offered by the employers whose
-staffing includes them.
+### And people hold them
+
+A person's trade *is* an occupation now — `person::Trade` is
+`occupation::Occupation` — and everything a trade used to type in comes
+from the occupation:
+
+- **Who offers the work is whoever employs it.** A steelworks offers
+  shifts to its furnace crews and also to its engineers, fitters, clerks,
+  drivers and accountants, in manufacturing's published shares; a hospital
+  to doctors, nurses, porters and clerks; a police force to officers and
+  dispatchers; a garrison to soldiers and civilians; a carrier to drivers
+  and, at the depot, to the people who keep them moving. Offers are filtered
+  to what a person would look at — their own occupation, a chargehand's post
+  above it, and anything they have set out to take up — or every person
+  would read every post in town every morning.
+- **Pay is the real median, placed against the production worker.** The
+  labourer's six days of food a day stays where it was, so rent and every
+  cost of production do not move; everything else is placed by the ratio of
+  OEWS May 2023 medians:
+
+  | | median | days of food |
+  |---|---|---|
+  | food service | $15.50 | 4.4 |
+  | sales | $17.67 | 5.1 |
+  | production worker | $20.98 | **6.0** |
+  | teacher | $28.82 | 8.2 |
+  | accountant | $38.41 | 11.0 |
+  | nurse | $41.38 | 11.8 |
+  | manager | $56.19 | 16.1 |
+  | soldier *(RMC, 2026)* | $36.05 | 10.3 |
+  | doctor *(mean; median above $115)* | $126.85 | 36.3 |
+
+  **The bottom now sits under the band this file records** for low-wage
+  work, 6-10 days of food, because it was always the labourer who was put at
+  the band's floor and food service really does pay three quarters of what
+  production does. That is the recentring this file has said is unblocked,
+  and it is its own change to measure.
+- **The gate is the typical entry-level education**, read onto three
+  steps; **the skill is the occupation's own**, eighteen of them new —
+  management, accounting, teaching, mining, soldiering and the rest; **the
+  week, the contract mix and whether anybody sees your work** are carried
+  over from the trade each replaces until occupation-level figures are read.
+
+### A small sample cannot say a town is unusually skilled
+
+Splitting thirteen trades into thirty-three split the sample with them:
+forty people a town is two or three a trade. **The skill feed read their
+average as the town's**, and an average of two people swings half a level
+from one draw to the next — seed 7's production workers came out at 4.77
+and its dockers at 5.55, so its works made less and its depots landed 5%
+more imports, and households ended the run with less than half the money of
+the commit before.
+
+Found by elimination rather than guessed: with the skill feed switched off,
+the two versions ended seed 7 within 3% of each other; switching the planner
+off changed nothing. The fix is the ordinary shrinkage of a small sample's
+mean toward what is expected — trusted `n / (n + 9)`, so three people count
+a quarter and thirty count three quarters. Nine is designed: individuals
+spread about a level and a half around their town's mean, and towns' means
+plausibly differ by half a level.
+
+| five years | homeless, before → after | households' money, before → after |
+|---|---|---|
+| seed 7 | 3.0% → 1.1% | 17.6e9 → 12.3e9 |
+| seed 11 | 3.1% → 0.2% | 30.9e9 → 34.2e9 |
+| seed 23 | 2.7% → 0.0% | 43.8e9 → 37.5e9 |
+
+Money moves either way by amounts these worlds move by on their own — seed
+7 lands where both versions landed with the skill feed off. **Homelessness
+falls in all three**, and the careers the planner finds are the recognisable
+ones: graduates in food service and shop work moving into management, care
+assistants with a degree becoming nurses.
+
+**Tests that measured the old roster**, each corrected to its claim: a
+roster of thirteen became the occupation count; what works a farm is a farm
+hand and a mine a miner; "offices are 4-20%" became the degree professions
+together; and a genuinely workless town now also has no state and no private
+services, because a government keeps drivers of its own and a driver in a
+town whose works had stopped kept eating.
+
+**Four claims that had only been true while pay was squeezed together, or
+while a trade was an industry:**
+
+- **"Nobody buys a house on wages alone."** A house costs 8.1 years of a
+  production worker's pay and that has not moved; what moved is that a
+  manager now earns sixteen days of food a day. Over 25 years ownership
+  follows pay almost exactly — nobody under five days of food bought except
+  a few who inherited or had moved down, a quarter of office clerks did, 24
+  of 28 supervisors and 15 of 17 managers did. The claim is now what is
+  true: the price is 6-12 years of ordinary pay, owners are paid well above
+  everybody else, and without a mortgage ownership stays under the United
+  States' ~65% with one. Supervisors being a fifth of the sample inflates
+  it, which is the gap already named.
+- **"Public work is steadier than shop work, by days worked."** Sales is an
+  occupation now and includes wholesale and manufacturing representatives
+  on full-time shifts, so it stopped standing for the tills. What separates
+  a school from a shop is how the work is posted — a week against a day —
+  and that is what is asserted. Posting public work by the day turns it red.
+- **The contract mix moved again**, to 63.9% full-time over three thousand
+  people: an American composition — a fifth of it office clerks — carrying
+  British trade mixes. Recentred on the measurement and recorded as the next
+  thing to replace.
+- **Seasonal work is on the land**, so the test puts farm hands on it rather
+  than production workers.
 
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 

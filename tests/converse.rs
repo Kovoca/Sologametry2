@@ -17,9 +17,9 @@ use scale_sim::rng::Rng;
 
 fn who(n: u32) -> Id<Person> {
     let mut a: Arena<Person> = Arena::new();
-    let mut last = a.add(Person::new("x", Trade::Labourer, 0, 0.0));
+    let mut last = a.add(Person::new("x", Trade::ProductionWorker, 0, 0.0));
     for _ in 0..n {
-        last = a.add(Person::new("x", Trade::Labourer, 0, 0.0));
+        last = a.add(Person::new("x", Trade::ProductionWorker, 0, 0.0));
     }
     last
 }

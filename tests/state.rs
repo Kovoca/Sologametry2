@@ -91,10 +91,10 @@ fn public_work_is_steady_and_shop_work_is_not() {
     let mut folk = scale_sim::populace::Populace::seed(&e, 50, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
-            p.settle_into(Trade::Public);
+            p.settle_into(Trade::Teacher);
             // Qualified for it: a trade you cannot enter is not a trade
             // you are in, and the gate is the point of the qualification.
-            p.qualification = scale_sim::person::qualification_for(Trade::Public);
+            p.qualification = scale_sim::person::qualification_for(Trade::Teacher);
         }
     }
     for day in 0..DAYS_PER_YEAR {
@@ -110,25 +110,48 @@ fn public_work_is_steady_and_shop_work_is_not() {
         let d: u64 = mine.iter().map(|p| p.days_worked).sum();
         d as f64 / (DAYS_PER_YEAR * mine.len() as u64) as f64
     };
-    let public = worked_share(Trade::Public);
-    let shop = worked_share(Trade::Shopworker);
+    let public = worked_share(Trade::Teacher);
     assert!(
         public > 0.6,
         "public service found work on only {:.0}% of days",
         public * 100.0
     );
-    // **By about the real margin, and it is not a large one.** Retail is
-    // 60% part-time at two and a half to three days, so about 3.65 days a
-    // week; the public sector is roughly 30% part-time on the same
-    // hours, so about 4.3. That is 1.18 to one. This bar was 1.4 while a
-    // one-day shift could fill at most half the days there are, which
-    // made shop work look far less steady than it is; measured now at
-    // 1.21.
+
+    // **The difference is how the work is posted.** This compared days
+    // worked against shop workers, and it cannot any more: `Trade::Sales`
+    // is now an occupation, and it includes wholesale and manufacturing
+    // sales representatives on full-time shifts as well as the tills. What
+    // separates a school from a shop is that one posts its work a week at a
+    // time and the other a day at a time — so that is what is asserted.
+    let offers = scale_sim::person::work_available(
+        &e,
+        0,
+        DAYS_PER_YEAR,
+        0.0,
+        scale_sim::travel::Conveyance::OnFoot,
+        &|_| true,
+    );
+    let public_weeks: Vec<f64> = offers
+        .iter()
+        .filter(|c| matches!(c.kind, scale_sim::person::Job::Public { .. }))
+        .map(|c| c.days)
+        .collect();
+    let shop_days: Vec<f64> = offers
+        .iter()
+        .filter(|c| matches!(c.kind, scale_sim::person::Job::Counter { .. }))
+        .map(|c| c.days)
+        .collect();
     assert!(
-        public > shop * 1.1,
-        "public work at {:.0}% of days is no steadier than shop work at {:.0}%",
-        public * 100.0,
-        shop * 100.0
+        !public_weeks.is_empty() && !shop_days.is_empty(),
+        "no public or shop work on offer to compare"
+    );
+    assert!(
+        public_weeks.iter().all(|&d| d >= 7.0),
+        "public work posted by the day: {public_weeks:?}"
+    );
+    assert!(
+        shop_days.iter().all(|&d| d <= 1.0),
+        "shop work posted for longer than a shift: {shop_days:?}"
     );
 
     // And everything still balances: the state pays out of tax, and a week

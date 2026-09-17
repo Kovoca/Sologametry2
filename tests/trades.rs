@@ -51,8 +51,8 @@ fn a_trade_is_gated_and_that_is_the_point() {
 
     // And the trades anybody can walk into are still there, which is what
     // makes them pay what they pay.
-    assert_eq!(qualification_for(Trade::Shopworker), Qualification::School);
-    assert_eq!(qualification_for(Trade::Labourer), Qualification::School);
+    assert_eq!(qualification_for(Trade::Sales), Qualification::School);
+    assert_eq!(qualification_for(Trade::ProductionWorker), Qualification::School);
 }
 
 /// **The ladder is the training.** Real UK medians against a ~£33k
@@ -65,8 +65,8 @@ fn what_a_trade_pays_follows_what_it_took_to_enter() {
 
     assert!(rate(Trade::Doctor) > rate(Trade::Nurse) * 1.5);
     assert!(rate(Trade::Nurse) > rate(Trade::CareAssistant));
-    assert!(rate(Trade::Electrician) > rate(Trade::Labourer));
-    assert!(rate(Trade::Pipefitter) > rate(Trade::Labourer));
+    assert!(rate(Trade::Electrician) > rate(Trade::ProductionWorker));
+    assert!(rate(Trade::Pipefitter) > rate(Trade::ProductionWorker));
     // A care assistant is close to the bottom of the wage scale, which is
     // a real and much-remarked fact about social care.
     assert!(rate(Trade::CareAssistant) < rate(Trade::Electrician));
@@ -97,7 +97,7 @@ fn the_week_is_not_the_same_for_every_trade() {
     // An office keeps Monday to Friday, and that is most of why people
     // want the job.
     assert_eq!(
-        person::works_on(Trade::Office, weekend, Employment::FullTime),
+        person::works_on(Trade::BusinessSpecialist, weekend, Employment::FullTime),
         0.0
     );
     // Clinical work does not stop.
@@ -122,11 +122,11 @@ fn the_week_is_not_the_same_for_every_trade() {
 #[test]
 fn a_ticket_is_what_lets_you_work_for_yourself() {
     let casual = |t| person::employment_mix(t).2;
-    assert!(casual(Trade::Electrician) > casual(Trade::Labourer));
-    assert!(casual(Trade::Pipefitter) > casual(Trade::Labourer));
+    assert!(casual(Trade::Electrician) > casual(Trade::ProductionWorker));
+    assert!(casual(Trade::Pipefitter) > casual(Trade::ProductionWorker));
     // Clinical work is salaried and permanent, and that security is a
     // real part of why people take the training.
-    assert!(casual(Trade::Doctor) < casual(Trade::Hospitality));
+    assert!(casual(Trade::Doctor) < casual(Trade::FoodService));
     assert!(person::employment_mix(Trade::Doctor).0 > 0.85);
 }
 
@@ -151,8 +151,8 @@ fn a_country_contains_the_people_it_needs() {
         Trade::CareAssistant,
         Trade::Electrician,
         Trade::Pipefitter,
-        Trade::Office,
-        Trade::Public,
+        Trade::BusinessSpecialist,
+        Trade::Teacher,
         Trade::Builder,
     ] {
         assert!(share(t) > 0.0, "a country with no {}", t.name());
@@ -167,19 +167,29 @@ fn a_country_contains_the_people_it_needs() {
         share(Trade::Nurse) * 100.0,
         share(Trade::Doctor) * 100.0
     );
-    // **Offices are a quarter of the posts and cannot be a quarter of the
-    // people**, because an office job wants a degree and only about 35%
-    // of working-age adults hold one. A drawn office worker without the
-    // qualification takes shop work instead, so the trade comes out well
-    // below its share of the jobs.
-    //
-    // That is a real constraint rather than a modelling artefact: it is
-    // the skills shortage, and it is why the same country can have
-    // vacancies it cannot fill and people it cannot employ.
-    let office = share(Trade::Office);
+    // **The professions want a degree, and cannot hold more people than
+    // there are graduates.** Managers, accountants and the rest of the
+    // business professions, computing, engineering, science and law —
+    // every one degree-entry — together hold a real 26% of American jobs;
+    // only about a third of adults hold a degree, so they come out below
+    // their share of the posts. A real constraint rather than an artefact:
+    // the skills shortage, and why a country can have vacancies it cannot
+    // fill and people it cannot employ.
+    let office: f64 = [
+        Trade::Manager,
+        Trade::Accountant,
+        Trade::BusinessSpecialist,
+        Trade::ComputingSpecialist,
+        Trade::Engineer,
+        Trade::Scientist,
+        Trade::Legal,
+    ]
+    .iter()
+    .map(|&t| share(t))
+    .sum();
     assert!(
         (0.04..0.20).contains(&office),
-        "offices came out at {:.1}% of the workforce",
+        "the professions came out at {:.1}% of the workforce",
         office * 100.0
     );
     let graduates = folk

@@ -46,17 +46,17 @@ fn a_life_going_fine_is_not_reconsidered_before_its_review() {
     // Offset so the first review falls on day 90.
     let offset = 89;
     for day in 0..90u64 {
-        pl.observe(day, Trade::Labourer, 0, Outcome::Worked, offset);
+        pl.observe(day, Trade::ProductionWorker, 0, Outcome::Worked, offset);
         if day == 40 {
             // Somewhat better news — not twice as good.
-            pl.hear(lead(Trade::Haulier, 0, 0.9, day), 1.5, 1.0);
+            pl.hear(lead(Trade::Driver, 0, 0.9, day), 1.5, 1.0);
         }
         assert_eq!(
             pl.pending, None,
             "somebody in steady work had a reason to think again on day {day}"
         );
     }
-    pl.observe(90, Trade::Labourer, 0, Outcome::Worked, offset);
+    pl.observe(90, Trade::ProductionWorker, 0, Outcome::Worked, offset);
     assert_eq!(
         pl.pending,
         Some(Trigger::Drift),
@@ -66,7 +66,7 @@ fn a_life_going_fine_is_not_reconsidered_before_its_review() {
     // And once seen to, the next review is a quarter off, not tomorrow.
     pl.pending = None;
     for day in 91..(91 + DRIFT_DAYS - 1) {
-        pl.observe(day, Trade::Labourer, 0, Outcome::Worked, offset);
+        pl.observe(day, Trade::ProductionWorker, 0, Outcome::Worked, offset);
         assert_eq!(pl.pending, None, "reviewed again on day {day}");
     }
 }
@@ -76,10 +76,10 @@ fn a_life_going_fine_is_not_reconsidered_before_its_review() {
 fn a_week_without_work_is_a_reason_to_think_again() {
     let mut pl = Planner::new();
     for day in 0..(A_WEEK_OF_LOOKING as u64 - 1) {
-        pl.observe(day, Trade::Shopworker, 0, Outcome::Looked, 60);
+        pl.observe(day, Trade::Sales, 0, Outcome::Looked, 60);
         assert_eq!(pl.pending, None, "gave up on day {day}");
     }
-    pl.observe(A_WEEK_OF_LOOKING as u64 - 1, Trade::Shopworker, 0, Outcome::Looked, 60);
+    pl.observe(A_WEEK_OF_LOOKING as u64 - 1, Trade::Sales, 0, Outcome::Looked, 60);
     assert_eq!(pl.pending, Some(Trigger::PlanFailed));
     assert!(
         pl.expectation() < 0.5,
@@ -92,8 +92,8 @@ fn a_week_without_work_is_a_reason_to_think_again() {
 #[test]
 fn news_too_good_to_wait_is_acted_on() {
     let mut pl = Planner::new();
-    pl.observe(0, Trade::Shopworker, 0, Outcome::Worked, 60);
-    pl.hear(lead(Trade::Labourer, 0, 0.9, 0), 2.5, 1.0);
+    pl.observe(0, Trade::Sales, 0, Outcome::Worked, 60);
+    pl.hear(lead(Trade::ProductionWorker, 0, 0.9, 0), 2.5, 1.0);
     assert_eq!(pl.pending, Some(Trigger::Salient));
 }
 
@@ -105,7 +105,7 @@ fn news_too_good_to_wait_is_acted_on() {
 #[test]
 fn a_new_trade_must_clearly_beat_the_old_one() {
     let e = warmed();
-    let mut who = Person::new("Hal Judd", Trade::Shopworker, 0, 100.0);
+    let mut who = Person::new("Hal Judd", Trade::Sales, 0, 100.0);
     who.qualification = Qualification::School;
 
     let decide = |factor: f64| {
@@ -116,10 +116,10 @@ fn a_new_trade_must_clearly_beat_the_old_one() {
             pl.observe(day, who.trade, 0, Outcome::Looked, 60);
         }
         let now = worth_to(&who, &e, who.trade, pl.expectation());
-        let per = worth_to(&who, &e, Trade::Labourer, 1.0);
+        let per = worth_to(&who, &e, Trade::ProductionWorker, 1.0);
         let chance = factor * now / per;
         assert!(chance <= 1.0, "the fixture cannot express {factor}x");
-        pl.hear(lead(Trade::Labourer, 0, chance, 21), factor * now, now);
+        pl.hear(lead(Trade::ProductionWorker, 0, chance, 21), factor * now, now);
         pl.reconsider(&who, &e, 21, |_, _| true)
     };
 
@@ -131,7 +131,7 @@ fn a_new_trade_must_clearly_beat_the_old_one() {
     );
     assert_eq!(
         decide(1.60),
-        Some(Trade::Labourer),
+        Some(Trade::ProductionWorker),
         "turned down labouring that is plainly worth half as much again"
     );
 }
@@ -140,12 +140,12 @@ fn a_new_trade_must_clearly_beat_the_old_one() {
 #[test]
 fn a_lead_for_work_you_cannot_do_is_not_an_option() {
     let e = warmed();
-    let who = Person::new("Ida Kemp", Trade::Labourer, 0, 100.0);
+    let who = Person::new("Ida Kemp", Trade::ProductionWorker, 0, 100.0);
     // A labourer is School; office work wants a degree.
     let mut pl = Planner::new();
     pl.observe(0, who.trade, 0, Outcome::Looked, 60);
     let now = worth_to(&who, &e, who.trade, pl.expectation());
-    pl.hear(lead(Trade::Office, 0, 1.0, 1), 50.0 * now, now);
+    pl.hear(lead(Trade::BusinessSpecialist, 0, 1.0, 1), 50.0 * now, now);
     assert_eq!(
         pl.reconsider(&who, &e, 1, |_, _| true),
         None,
@@ -172,11 +172,11 @@ fn one_opening_is_not_promised_twice() {
     };
     let mut set_out = 0;
     for name in ["Alma Ash", "Bert Brook"] {
-        let who = Person::new(name, Trade::Shopworker, 0, 100.0);
+        let who = Person::new(name, Trade::Sales, 0, 100.0);
         let mut pl = Planner::new();
         pl.observe(0, who.trade, 0, Outcome::Looked, 60);
         let now = worth_to(&who, &e, who.trade, pl.expectation());
-        pl.hear(lead(Trade::Labourer, 0, 1.0, 1), 10.0 * now, now);
+        pl.hear(lead(Trade::ProductionWorker, 0, 1.0, 1), 10.0 * now, now);
         if pl.reconsider(&who, &e, 1, &mut reserve).is_some() {
             set_out += 1;
         }
@@ -197,22 +197,22 @@ fn an_opening_is_held_for_one_person_at_a_time() {
     use scale_sim::populace::hold_an_opening;
 
     let mut folk: Arena<Person> = Arena::new();
-    let a = folk.add(Person::new("Alma Ash", Trade::Shopworker, 0, 100.0));
-    let b = folk.add(Person::new("Bert Brook", Trade::Shopworker, 0, 100.0));
-    let c = folk.add(Person::new("Cora Dell", Trade::Shopworker, 0, 100.0));
+    let a = folk.add(Person::new("Alma Ash", Trade::Sales, 0, 100.0));
+    let b = folk.add(Person::new("Bert Brook", Trade::Sales, 0, 100.0));
+    let c = folk.add(Person::new("Cora Dell", Trade::Sales, 0, 100.0));
 
     let mut holds = Vec::new();
     // A post and a half going: room for one.
-    assert!(hold_an_opening(&mut holds, a, 0, Trade::Labourer, 1.5, 10));
+    assert!(hold_an_opening(&mut holds, a, 0, Trade::ProductionWorker, 1.5, 10));
     assert!(
-        !hold_an_opening(&mut holds, b, 0, Trade::Labourer, 1.5, 10),
+        !hold_an_opening(&mut holds, b, 0, Trade::ProductionWorker, 1.5, 10),
         "two people were sent after one post"
     );
     // A different trade, or a different town, is a different opening.
-    assert!(hold_an_opening(&mut holds, b, 0, Trade::Hospitality, 1.5, 10));
-    assert!(hold_an_opening(&mut holds, c, 1, Trade::Labourer, 1.5, 10));
+    assert!(hold_an_opening(&mut holds, b, 0, Trade::FoodService, 1.5, 10));
+    assert!(hold_an_opening(&mut holds, c, 1, Trade::ProductionWorker, 1.5, 10));
     // Nothing going at all.
-    assert!(!hold_an_opening(&mut holds, c, 0, Trade::Office, 0.4, 10));
+    assert!(!hold_an_opening(&mut holds, c, 0, Trade::BusinessSpecialist, 0.4, 10));
     // And a hold lapses with the lead it was taken on.
     assert!(holds.iter().all(|h| h.until == 10 + LEAD_LIFE_DAYS));
 }
@@ -225,12 +225,12 @@ fn an_opening_is_held_for_one_person_at_a_time() {
 #[test]
 fn a_lead_that_came_to_nothing_is_forgotten() {
     let e = warmed();
-    let who = Person::new("Cora Dell", Trade::Shopworker, 0, 100.0);
+    let who = Person::new("Cora Dell", Trade::Sales, 0, 100.0);
     let mut pl = Planner::new();
     pl.observe(0, who.trade, 0, Outcome::Looked, 60);
     let now = worth_to(&who, &e, who.trade, pl.expectation());
-    pl.hear(lead(Trade::Labourer, 0, 1.0, 1), 10.0 * now, now);
-    assert_eq!(pl.reconsider(&who, &e, 1, |_, _| true), Some(Trade::Labourer));
+    pl.hear(lead(Trade::ProductionWorker, 0, 1.0, 1), 10.0 * now, now);
+    assert_eq!(pl.reconsider(&who, &e, 1, |_, _| true), Some(Trade::ProductionWorker));
 
     // They ask, and nobody takes them on — while they go on hearing that
     // the works are hiring, so the lead itself would outlast the attempt.
@@ -240,22 +240,22 @@ fn a_lead_that_came_to_nothing_is_forgotten() {
         day += 1;
         if day == 5 {
             // Heard again, and no longer news: they are already after it.
-            pl.hear(lead(Trade::Labourer, 0, 1.0, day), now, now);
+            pl.hear(lead(Trade::ProductionWorker, 0, 1.0, day), now, now);
         }
-        pl.observe(day, Trade::Shopworker, 0, Outcome::Looked, 60);
+        pl.observe(day, Trade::Sales, 0, Outcome::Looked, 60);
     }
     assert!(day < 5 + LEAD_LIFE_DAYS, "the attempt outlasted the lead it was on");
     assert_eq!(pl.pending, Some(Trigger::PlanFailed), "never gave up on it");
     assert_eq!(pl.failures, 1);
     assert!(
-        pl.leads().iter().all(|l| l.trade != Trade::Labourer),
+        pl.leads().iter().all(|l| l.trade != Trade::ProductionWorker),
         "still believes in the post that was not there"
     );
     assert!(
         matches!(
             pl.plan.as_ref().and_then(|p| p.step()),
             Some(Step::Work {
-                trade: Trade::Shopworker,
+                trade: Trade::Sales,
                 ..
             })
         ),
@@ -289,14 +289,14 @@ fn the_think_budget_is_a_cap_and_everybody_gets_a_turn() {
 #[test]
 fn a_plan_to_take_up_a_trade_is_carried_out() {
     let mut e = warmed();
-    let mut told = Person::new("Dai Ewart", Trade::Shopworker, 0, 500.0);
-    let mut not = Person::new("Elsie Finn", Trade::Shopworker, 0, 500.0);
+    let mut told = Person::new("Dai Ewart", Trade::Sales, 0, 500.0);
+    let mut not = Person::new("Elsie Finn", Trade::Sales, 0, 500.0);
 
     let mut pl = std::mem::take(&mut told.planner);
     pl.observe(30, told.trade, 0, Outcome::Looked, 60);
     let now = worth_to(&told, &e, told.trade, pl.expectation());
-    pl.hear(lead(Trade::Labourer, 0, 0.9, 30), 10.0 * now, now);
-    assert_eq!(pl.reconsider(&told, &e, 30, |_, _| true), Some(Trade::Labourer));
+    pl.hear(lead(Trade::ProductionWorker, 0, 0.9, 30), 10.0 * now, now);
+    assert_eq!(pl.reconsider(&told, &e, 30, |_, _| true), Some(Trade::ProductionWorker));
     told.planner = pl;
 
     for day in 31..(31 + LEAD_LIFE_DAYS) {
@@ -306,12 +306,12 @@ fn a_plan_to_take_up_a_trade_is_carried_out() {
     }
     assert_eq!(
         told.trade,
-        Trade::Labourer,
+        Trade::ProductionWorker,
         "went after labouring and never got a shift in a week"
     );
     assert_eq!(
         not.trade,
-        Trade::Shopworker,
+        Trade::Sales,
         "somebody who never heard of the work took it up anyway"
     );
 }
@@ -333,7 +333,7 @@ fn a_plan_to_take_up_a_trade_is_carried_out() {
 #[test]
 fn nobody_is_sent_after_work_the_town_does_not_have() {
     use scale_sim::game::GameState;
-    use scale_sim::labour::posts_by_trade;
+    use scale_sim::occupation::jobs_by_occupation;
     use scale_sim::network::Network;
     use scale_sim::polity::Polities;
     use scale_sim::populace::Populace;
@@ -360,7 +360,7 @@ fn nobody_is_sent_after_work_the_town_does_not_have() {
          in — a gate on a flood that never had the chance to happen"
     );
 
-    let posts = posts_by_trade(e);
+    let posts = jobs_by_occupation(e);
     for m in 0..e.markets.len() {
         let floor: Vec<_> = folk
             .people

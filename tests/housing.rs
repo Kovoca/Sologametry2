@@ -25,7 +25,7 @@ fn a_house_costs_about_eight_years_of_wages() {
     let e = a_nation().economy;
     for m in 0..e.markets.len() {
         let price = e.house_price(m);
-        let wage = person::day_rate(&e, m, Trade::Labourer);
+        let wage = person::day_rate(&e, m, Trade::ProductionWorker);
         // Real UK house prices run about eight times median annual
         // earnings, up from four in the 1990s. Nothing here was tuned to
         // produce it: a dwelling is 76 m², its bill of materials comes
@@ -72,7 +72,7 @@ fn the_ladder_goes_up_one_rung_at_a_time() {
     }
 
     // Somebody with a great deal of money climbs the whole way.
-    let mut rich = Person::new("Moneybags", Trade::Office, 0, e.house_price(0) * 4.0);
+    let mut rich = Person::new("Moneybags", Trade::BusinessSpecialist, 0, e.house_price(0) * 4.0);
     rich.housing = Housing::Lodging;
     let mut saw_rented = false;
     for day in 0..400 {
@@ -102,16 +102,22 @@ fn the_ladder_goes_up_one_rung_at_a_time() {
     );
 }
 
-/// **Nobody buys a house on wages alone**, and the reason is nameable.
+/// **Without credit, a house is out of reach of ordinary pay, and not of
+/// good pay.**
 ///
-/// At eight or nine times a year's income, saving the price outright while
-/// paying rent and eating is not something a working life allows. Real
-/// buyers use a mortgage; there is no credit in this economy, so ownership
-/// is reachable in principle and unreached in practice.
+/// At eight or nine times an ordinary year's income, saving the price
+/// outright while paying rent and eating takes most of a working life —
+/// which is why real buyers use a mortgage. This used to say nobody buys at
+/// all, and that was only true while every wage sat within a few days of
+/// food of every other. With pay placed by real medians a manager earns
+/// sixteen days of food a day against a production worker's six, and saves
+/// the price in about a decade: measured over 25 years, nobody paid under
+/// five days of food bought except the few who inherited or had moved down,
+/// a quarter of office clerks did, and 15 of 17 managers did. Real outright
+/// ownership is a fact about the well-off and the old, and so it is here.
 ///
-/// **That is a true statement about housing, not a broken feature** — and
-/// it is exactly why a mortgage market is the thing to build next if
-/// ownership is meant to be ordinary rather than exceptional.
+/// **What credit adds is reach**, so ownership without it stays below what
+/// the United States reaches with it — about 65% of households.
 #[test]
 fn without_credit_ownership_stays_out_of_reach() {
     let mut e = a_nation().economy;
@@ -132,10 +138,32 @@ fn without_credit_ownership_stays_out_of_reach() {
         .filter(|p| p.housing != Housing::Homeless)
         .count() as f64;
 
+    // **The price is years of ordinary pay**, which is what puts it out of
+    // reach of most people and within reach of a few.
+    let years = e.house_price(0) / (person::day_rate(&e, 0, Trade::ProductionWorker) * 260.0);
     assert!(
-        owned / n < 0.05,
-        "{:.0}% bought outright over a working life, which would mean the \
-         price or the wage is wrong",
+        (6.0..12.0).contains(&years),
+        "a house costs {years:.1} years of a production worker's pay, which would          mean the price or the wage is wrong"
+    );
+    // **Ownership follows pay.**
+    let pay = |own: bool| -> f64 {
+        let m: Vec<_> = folk
+            .people
+            .values()
+            .filter(|p| (p.housing == Housing::Owned) == own)
+            .collect();
+        m.iter().map(|p| p.trade.days_of_food_a_day()).sum::<f64>() / m.len().max(1) as f64
+    };
+    assert!(
+        pay(true) > pay(false) * 1.2,
+        "owners are paid {:.1} days of food against {:.1} for everybody else —          ownership has come loose from what people earn",
+        pay(true),
+        pay(false)
+    );
+    // **And without a mortgage it stays below what a mortgage reaches.**
+    assert!(
+        owned / n < 0.65,
+        "{:.0}% own outright without anybody ever borrowing, which is more than          own with a mortgage market",
         owned / n * 100.0
     );
     // But most people do get and keep a roof, and a good share of them

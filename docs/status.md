@@ -412,10 +412,15 @@ real occupations to train for.
    occupations, from BLS OEWS May 2023, the EP matrix, DMDC and FBI UCR.
    A nation's workforce lands within a point of the US in most occupations;
    sales, drivers and material movers are half or less (distribution), and
-   builders double. Nothing uses it yet.
-2. *People hold occupations* — next: work offered by the employers whose
-   staffing includes it, pay from OEWS medians, qualifications from typical
-   entry education, skills to match.
+   builders double.
+2. *People hold occupations* — **built.** Work is offered by every
+   employer to every occupation its staffing includes; pay is OEWS medians
+   placed against the production worker at six days of food; the gate is
+   typical entry education; 18 new skills. The skill feed now shrinks a
+   small sample toward the ordinary. Homelessness falls in all three soak
+   worlds. **Next inside this step:** the bottom of the pay scale sits under
+   the 6-10 days-of-food band (food service 4.4), which is the recentring
+   to measure on its own.
 3. *Employers by size* — sole traders to multinationals, from published
    size distributions.
 4. *Positions* — ministers, departments, mayors, councils: posts one person

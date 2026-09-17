@@ -184,7 +184,7 @@ fn a_town_the_statistics_call_idle_is_one_where_people_find_less_work() {
 
     let mut seen: Vec<(f64, f64)> = Vec::new();
     for m in 0..e.markets.len() {
-        let worked = folk.worked_by(m, Trade::Labourer, days);
+        let worked = folk.worked_by(m, Trade::ProductionWorker, days);
         if worked.is_nan() {
             continue;
         }
@@ -238,10 +238,10 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     let mut folk = Populace::seed(&e, 200, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
         if i % 6 == 0 {
-            p.settle_into(Trade::Public);
+            p.settle_into(Trade::Teacher);
             // Qualified for it: a trade you cannot enter is not a trade
             // you are in, and the gate is the point of the qualification.
-            p.qualification = scale_sim::person::qualification_for(Trade::Public);
+            p.qualification = scale_sim::person::qualification_for(Trade::Teacher);
         }
     }
     for day in 0..(DAYS_PER_YEAR * 2) {
@@ -268,11 +268,21 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     // workers, because trades were drawn from national shares and anybody
     // unqualified for the draw was put behind a counter, and shop work is
     // the least full-time trade there is. Seeded from the posts each town
-    // actually has, the same measurement over three thousand people is
-    // **54.6%**, and the band is centred there now with the old width.
+    // actually has, the same measurement was 54.6%.
+    //
+    // **And then people held occupations, and it moved again, upward.**
+    // The workforce now follows the published staffing of American
+    // employers — a fifth of it office clerks — and each occupation
+    // carries the contract mix of the trade it replaced, so clerks hold an
+    // office's salaried terms. Over three thousand people: **63.9%
+    // full-time, 26.0% part-time, 9.6% casual.** That is above Britain's
+    // 56% and toward the United States, where about 83% of workers are
+    // full-time — the composition is American and the mixes are still
+    // British, which is the thing to replace with occupation-level
+    // figures. The band is centred on the measurement with the old width.
     assert!(
-        (0.46..0.63).contains(&full),
-        "{:.1}% of the workforce is permanent full-time. The model's own figure is about          54.6% and the real British one is 56% — outside this band something has moved,          and it is worth knowing which way",
+        (0.55..0.72).contains(&full),
+        "{:.1}% of the workforce is permanent full-time. The model's own figure is about          63.9% and the real British one is 56% — outside this band something has moved,          and it is worth knowing which way",
         full * 100.0
     );
 
@@ -285,8 +295,8 @@ fn most_people_have_a_contract_and_some_have_nothing() {
     // workforce are on zero-hours against 2.1% in public administration.
     // Shop work sits between the two and cannot separate them at this
     // sample size.
-    let public_casual = mix_casual(Trade::Public);
-    let shop_casual = mix_casual(Trade::Hospitality);
+    let public_casual = mix_casual(Trade::Teacher);
+    let shop_casual = mix_casual(Trade::FoodService);
     assert!(
         public_casual < 0.05,
         "public service is {:.0}% casual, against a real 2.1%",
@@ -350,10 +360,12 @@ fn a_seasonal_worker_has_a_year_with_a_shape() {
     let mut e = a_nation().economy;
     let mut folk = Populace::seed(&e, 60, 20260828);
     for p in folk.people.values_mut() {
-        p.settle_into(Trade::Labourer);
+        // Farm hands, which is where seasonal work is: a production
+        // worker in a mill is on the rota all year.
+        p.settle_into(Trade::FarmWorker);
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
-        p.qualification = scale_sim::person::qualification_for(Trade::Labourer);
+        p.qualification = scale_sim::person::qualification_for(Trade::FarmWorker);
     }
 
     let mut by_quarter = [[0u64; 4]; 2]; // [seasonal, full-time]
@@ -427,9 +439,9 @@ fn the_week_decides_who_works_when() {
     let mut folk = Populace::seed(&e, 60, 20260828);
     for (i, p) in folk.people.values_mut().enumerate() {
         p.settle_into(match i % 3 {
-            0 => Trade::Office,
-            1 => Trade::Shopworker,
-            _ => Trade::Labourer,
+            0 => Trade::BusinessSpecialist,
+            1 => Trade::Sales,
+            _ => Trade::ProductionWorker,
         });
     }
 
@@ -461,19 +473,19 @@ fn the_week_decides_who_works_when() {
     // **An office keeps Monday to Friday**, and that is most of why people
     // want the job.
     assert_eq!(
-        per_day("office work", true, true),
+        per_day("business specialist", true, true),
         0.0,
         "a full-time office worker came in at the weekend"
     );
     assert!(
-        per_day("office work", true, false) > 1.0,
+        per_day("business specialist", true, false) > 1.0,
         "nobody is in the office on a Tuesday"
     );
 
     // **And the weekend shifts fall to whoever is not on a full-time
     // contract.** This is the shape of student and part-time work.
-    let casual_weekend = per_day("shop worker", false, true);
-    let casual_weekday = per_day("shop worker", false, false);
+    let casual_weekend = per_day("sales", false, true);
+    let casual_weekday = per_day("sales", false, false);
     assert!(
         casual_weekend > casual_weekday,
         "part-time shop work is no busier at the weekend: {casual_weekend:.1} against \
@@ -481,8 +493,8 @@ fn the_week_decides_who_works_when() {
     );
 
     // While the full-timers in the same shop are on weekdays.
-    let ft_weekend = per_day("shop worker", true, true);
-    let ft_weekday = per_day("shop worker", true, false);
+    let ft_weekend = per_day("sales", true, true);
+    let ft_weekday = per_day("sales", true, false);
     assert!(
         ft_weekend < ft_weekday,
         "full-time shop staff work the weekend as hard as the week"
@@ -490,7 +502,7 @@ fn the_week_decides_who_works_when() {
 
     // A works runs a rota: quieter on a Sunday, not shut.
     assert!(
-        per_day("labourer", true, true) > 0.0,
+        per_day("production worker", true, true) > 0.0,
         "the mill closes at the weekend"
     );
 }
@@ -529,10 +541,10 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // Put everybody in the worst-paid, least secure work there is, so the
     // margin is where it can actually be seen.
     for p in folk.people.values_mut() {
-        p.settle_into(Trade::Hospitality);
+        p.settle_into(Trade::FoodService);
         // Qualified for it: a trade you cannot enter is not a trade
         // you are in, and the gate is the point of the qualification.
-        p.qualification = scale_sim::person::qualification_for(Trade::Hospitality);
+        p.qualification = scale_sim::person::qualification_for(Trade::FoodService);
     }
     for day in 0..(DAYS_PER_YEAR * 2) {
         e.step();
@@ -602,7 +614,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
                 let p = &folk.people[i];
                 p.money
                     + p.conveyance.price_in_wage_days()
-                        * scale_sim::person::day_rate(&e, p.market, Trade::Haulier)
+                        * scale_sim::person::day_rate(&e, p.market, Trade::Driver)
             })
             .sum::<f64>()
             / idx.len() as f64
@@ -654,7 +666,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
                 let p = &folk.people[i];
                 p.money
                     + p.conveyance.price_in_wage_days()
-                        * scale_sim::person::day_rate(&e, p.market, Trade::Haulier)
+                        * scale_sim::person::day_rate(&e, p.market, Trade::Driver)
             })
             .sum::<f64>()
             / idx.len().max(1) as f64
@@ -697,20 +709,20 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
 
     // The gate itself: no licence, no ticket, no training for the work
     // anybody can do â€” and years for the work they cannot.
-    assert_eq!(qualification_for(Trade::Shopworker), Qualification::School);
-    assert_eq!(qualification_for(Trade::Hospitality), Qualification::School);
+    assert_eq!(qualification_for(Trade::Sales), Qualification::School);
+    assert_eq!(qualification_for(Trade::FoodService), Qualification::School);
     assert_eq!(
-        qualification_for(Trade::Haulier),
+        qualification_for(Trade::Driver),
         Qualification::Vocational,
         "a lorry is a licence"
     );
     assert_eq!(qualification_for(Trade::Builder), Qualification::Vocational);
     assert_eq!(
-        qualification_for(Trade::Office),
+        qualification_for(Trade::BusinessSpecialist),
         Qualification::Degree,
         "an office job is degree-entry"
     );
-    assert_eq!(qualification_for(Trade::Public), Qualification::Degree);
+    assert_eq!(qualification_for(Trade::Teacher), Qualification::Degree);
     // **Nothing gates a chargehand**, which is the whole point of it: the
     // only ladder somebody without a qualification can climb.
     assert_eq!(qualification_for(Trade::Supervisor), Qualification::School);
@@ -725,9 +737,9 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
     // **And the gate bites.** Somebody with school and no more cannot take
     // office work however many days they look for it.
     let mut e = a_nation().economy;
-    let mut unqualified = Person::new("Bert", Trade::Office, 0, 200.0);
+    let mut unqualified = Person::new("Bert", Trade::BusinessSpecialist, 0, 200.0);
     unqualified.qualification = Qualification::School;
-    let mut graduate = Person::new("Bert", Trade::Office, 0, 200.0);
+    let mut graduate = Person::new("Bert", Trade::BusinessSpecialist, 0, 200.0);
     for day in 0..DAYS_PER_YEAR {
         e.step();
         scale_sim::person::live_a_day(&mut unqualified, &mut e, day);
@@ -745,8 +757,8 @@ fn a_qualification_is_a_gate_and_that_is_what_makes_it_worth_getting() {
 
     // Which is what makes the three years worth spending: the work behind
     // the gate pays half as much again.
-    let office = scale_sim::person::day_rate(&e, 0, Trade::Office);
-    let shop = scale_sim::person::day_rate(&e, 0, Trade::Shopworker);
+    let office = scale_sim::person::day_rate(&e, 0, Trade::BusinessSpecialist);
+    let shop = scale_sim::person::day_rate(&e, 0, Trade::Sales);
     assert!(
         office > shop * 1.4,
         "an office pays {office:.0} against a shop's {shop:.0} â€” the degree buys nothing"

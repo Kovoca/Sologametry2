@@ -123,7 +123,7 @@ fn main() {
     println!("labourers only — the trade the workforce statistics actually count:");
     println!("{:<18} {:>10} {:>10}", "town", "worked", "idle");
     for m in 0..econ.markets.len() {
-        let w = folk.worked_by(m, Trade::Labourer, days);
+        let w = folk.worked_by(m, Trade::ProductionWorker, days);
         if w.is_nan() {
             continue;
         }
@@ -201,11 +201,11 @@ fn trade_name(t: Trade) -> &'static str {
 #[allow(dead_code)]
 fn unused(t: Trade) -> &'static str {
     match t {
-        Trade::Haulier => "haulier",
-        Trade::Labourer => "labourer",
-        Trade::Shopworker => "shop work",
+        Trade::Driver => "haulier",
+        Trade::ProductionWorker => "labourer",
+        Trade::Sales => "shop work",
         Trade::Supervisor => "supervisor",
-        Trade::Public => "public",
+        Trade::Teacher => "public",
         _ => "other",
     }
 }

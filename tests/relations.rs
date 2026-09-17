@@ -19,7 +19,7 @@ fn a_village() -> (Arena<Person>, Vec<Id<Person>>) {
     let mut folk = Arena::new();
     let ids: Vec<Id<Person>> = ["Alice", "Bob", "Carol", "Dan"]
         .iter()
-        .map(|n| folk.add(Person::new(*n, Trade::Labourer, 0, 100.0)))
+        .map(|n| folk.add(Person::new(*n, Trade::ProductionWorker, 0, 100.0)))
         .collect();
     (folk, ids)
 }
@@ -550,7 +550,7 @@ fn the_dead_can_still_be_loved_and_resented() {
     assert!(labels(&r, &[SocialFact::MarriedTo]).contains(&Label::Spouse));
 
     // And nobody else can become her.
-    let newcomer = folk.add(Person::new("Erin", Trade::Labourer, 0, 100.0));
+    let newcomer = folk.add(Person::new("Erin", Trade::ProductionWorker, 0, 100.0));
     assert_ne!(
         newcomer, gone,
         "somebody moved into the dead woman's identity"

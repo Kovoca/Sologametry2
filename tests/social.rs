@@ -25,7 +25,7 @@ fn a_village() -> (Arena<Person>, Vec<Id<Person>>) {
     let mut folk = Arena::new();
     let ids = ["Alice", "Bob", "Carol", "Dan"]
         .iter()
-        .map(|n| folk.add(Person::new(*n, Trade::Labourer, 0, 100.0)))
+        .map(|n| folk.add(Person::new(*n, Trade::ProductionWorker, 0, 100.0)))
         .collect();
     (folk, ids)
 }

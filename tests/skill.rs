@@ -133,14 +133,17 @@ fn a_better_workforce_makes_more() {
 fn every_kind_of_works_is_staffed_by_somebody_plausible() {
     use SiteKind::*;
     let cases = [
-        (Farm, Trade::Labourer),
-        (Mill, Trade::Labourer),
-        (Steelworks, Trade::Labourer),
-        (PowerPlant, Trade::Labourer),
+        (Farm, Trade::FarmWorker),
+        (Pasture, Trade::FarmWorker),
+        (Mine, Trade::Miner),
+        (OilField, Trade::Miner),
+        (Mill, Trade::ProductionWorker),
+        (Steelworks, Trade::ProductionWorker),
+        (PowerPlant, Trade::ProductionWorker),
         (Builders, Trade::Builder),
         (Hospital, Trade::Nurse),
-        (Shop, Trade::Shopworker),
-        (Depot, Trade::Haulier),
+        (Shop, Trade::Sales),
+        (Depot, Trade::MaterialMover),
     ];
     for (kind, want) in cases {
         assert_eq!(
@@ -171,7 +174,11 @@ fn every_kind_of_works_is_staffed_by_somebody_plausible() {
 /// list to it.
 #[test]
 fn the_trade_roster_is_complete() {
-    assert_eq!(Trade::ALL.len(), 13, "a trade has been added or removed");
+    assert_eq!(
+        Trade::ALL.len(),
+        scale_sim::occupation::N_OCCUPATIONS,
+        "an occupation has been added or removed"
+    );
     for (i, t) in Trade::ALL.iter().enumerate() {
         assert_eq!(
             t.index(),

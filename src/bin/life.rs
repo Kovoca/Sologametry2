@@ -46,7 +46,7 @@ fn parse_args() -> Args {
         seed: random_seed(),
         rank: 1,
         days: 365,
-        trade: Trade::Haulier,
+        trade: Trade::Driver,
         money: 60.0,
         doctrine: Doctrine::Prudent,
         fault: None,
@@ -61,9 +61,9 @@ fn parse_args() -> Args {
             "--money" => a.money = it.next().and_then(|v| v.parse().ok()).unwrap_or(60.0),
             "--trade" => {
                 a.trade = match it.next().as_deref() {
-                    Some("labourer") => Trade::Labourer,
-                    Some("shop") => Trade::Shopworker,
-                    _ => Trade::Haulier,
+                    Some("labourer") => Trade::ProductionWorker,
+                    Some("shop") => Trade::Sales,
+                    _ => Trade::Driver,
                 }
             }
             "--doctrine" => {

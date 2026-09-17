@@ -135,6 +135,18 @@ pub struct Reservation {
     pub until: u64,
 }
 
+/// **How far a sampled trade's skill is drawn toward the ordinary**, in
+/// people.
+///
+/// The standard shrinkage of a sample mean: a reading from `n` people is
+/// weighted `n / (n + k)` against the expected level, with `k` the ratio of
+/// how much individuals differ to how much towns do. Individuals in a trade
+/// here spread about a level and a half either side of their town's mean;
+/// towns' means plausibly differ by about half a level. Nine, designed:
+/// three people are trusted a quarter, nine people a half, thirty people
+/// three quarters.
+const A_SAMPLE_IS_THIS_MANY_PEOPLE_SHORT: f64 = 9.0;
+
 /// **How many people who know of an opening tell somebody else about it
 /// each day.** A few; designed. Word of mouth is how about half of real
 /// jobs are found, and it reaches whoever the teller happens to know.
@@ -207,7 +219,7 @@ impl Populace {
         let mut people = Arena::new();
         let mut represents = Vec::new();
         let mut households = Vec::new();
-        let posts = crate::labour::posts_by_trade(econ);
+        let posts = crate::occupation::jobs_by_occupation(econ);
 
         for m in 0..econ.markets.len() {
             let pop = econ.markets[m].population;
@@ -220,7 +232,7 @@ impl Populace {
                 let last = LAST[(rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
                 // Settled below, once it is known what they are qualified
                 // to do.
-                let trade = Trade::Shopworker;
+                let trade = Trade::Sales;
                 // **Nobody starts with anything.** A fortnight's food and
                 // a room, which is the position the single-person runs
                 // start from and the one that makes a bad month bite.
@@ -377,7 +389,7 @@ impl Populace {
     /// difference public spending makes to how long anybody lives, and it
     /// falls straight out of the budget line that already exists.
     fn a_year_passes(&mut self, econ: &Economy, day: u64) {
-        let posts = crate::labour::posts_by_trade(econ);
+        let posts = crate::occupation::jobs_by_occupation(econ);
         /// Births per woman over a lifetime. Replacement is 2.1.
         const FERTILITY: f64 = 1.7;
         /// Roughly the span over which they arrive: 20 to 40.
@@ -496,7 +508,7 @@ impl Populace {
             let household = &self.people[parent];
             // What the family can carry, roughly: money in hand against
             // three years of somebody not earning.
-            let three_years = day_rate(econ, household.market, Trade::Shopworker)
+            let three_years = day_rate(econ, household.market, Trade::Sales)
                 * crate::econ::DAYS_PER_YEAR as f64
                 * 3.0;
             let can_carry = (household.money / three_years.max(1.0)).clamp(0.0, 1.0);
@@ -669,11 +681,12 @@ impl Populace {
         // which replacing the dead had been doing slowly all along. So what
         // the sample does not cover is worked at the ordinary level, by the
         // same honesty as a trade nobody sampled at all.
-        let posts = crate::labour::posts_by_trade(econ);
+        let posts = crate::occupation::jobs_by_occupation(econ);
         {
             let trades = Trade::ALL.len();
             let mut sum = vec![0.0f64; n_markets * trades];
             let mut weight = vec![0.0f64; n_markets * trades];
+            let mut heads = vec![0usize; n_markets * trades];
             let mut on_the_floor = vec![0.0f64; n_markets];
             for (id, p) in self.people.iter() {
                 if p.market >= n_markets {
@@ -688,6 +701,7 @@ impl Populace {
                 let i = p.market * trades + p.trade.index();
                 sum[i] += p.competence() as f64 * stands_for;
                 weight[i] += stands_for;
+                heads[i] += 1;
                 if p.trade != Trade::Supervisor {
                     on_the_floor[p.market] += stands_for;
                 }
@@ -715,11 +729,23 @@ impl Populace {
                     } else {
                         (weight[i] / on_the_floor[m].max(1e-9) / post_share).min(1.0)
                     };
-                    econ.set_hands(
-                        m,
-                        trade,
-                        cover * sampled + (1.0 - cover) * crate::econ::ORDINARY_HAND,
-                    );
+                    // **And for only as much as that many people can say.**
+                    // Three sampled farm hands are three people, and three
+                    // people cannot tell anybody that a town's thousands of
+                    // farm hands are unusually good: their average swings
+                    // by half a level from one draw to the next, and a
+                    // works' output swung with it. Split into thirty-odd
+                    // occupations the sample holds two or three people a
+                    // trade, and seed 7's depots landed 5% more imports
+                    // because two dockers happened to be good at it.
+                    //
+                    // So the reading is trusted in proportion to the people
+                    // behind it — the ordinary shrinkage of a small
+                    // sample's mean toward what is expected.
+                    let n = heads[i] as f64;
+                    let trust = n / (n + A_SAMPLE_IS_THIS_MANY_PEOPLE_SHORT);
+                    let ordinary = crate::econ::ORDINARY_HAND;
+                    econ.set_hands(m, trade, ordinary + cover * trust * (sampled - ordinary));
                 }
             }
         }
@@ -828,7 +854,7 @@ impl Populace {
         econ: &Economy,
         day: u64,
         outcomes: &std::collections::BTreeMap<Id<Person>, Day>,
-        posts: &[[f64; 13]],
+        posts: &[[f64; crate::occupation::N_OCCUPATIONS]],
     ) {
         let n_markets = econ.markets.len();
         let trades = Trade::ALL.len();
@@ -1103,7 +1129,7 @@ impl Populace {
     /// counting in full. Letting the sample dwindle would make a town look
     /// emptier the longer it was watched, which is an artefact of the
     /// sampling and not a fact about the town.
-    fn bury_the_dead(&mut self, day: u64, posts: &[[f64; 13]]) {
+    fn bury_the_dead(&mut self, day: u64, posts: &[[f64; crate::occupation::N_OCCUPATIONS]]) {
         let everyone: Vec<Id<Person>> = self.people.ids().collect();
         for i in everyone {
             if self.people[i].condition > 0.0 {
@@ -1113,7 +1139,7 @@ impl Populace {
             let market = self.people[i].market;
             let first = FIRST[(self.rng.next_f32() * FIRST.len() as f32) as usize % FIRST.len()];
             let last = LAST[(self.rng.next_f32() * LAST.len() as f32) as usize % LAST.len()];
-            let mut p = Person::new(format!("{first} {last}"), Trade::Shopworker, market, 50.0);
+            let mut p = Person::new(format!("{first} {last}"), Trade::Sales, market, 50.0);
             p.aptitude =
                 ((self.rng.next_f32() + self.rng.next_f32() + self.rng.next_f32()) / 3.0) as f64;
             p.diligence =
@@ -1135,7 +1161,7 @@ impl Populace {
             // years at it after the trade is known — settling the years
             // first put them against a trade the person then did not end
             // up in, which `seed` already records going wrong.
-            let here = posts.get(market).copied().unwrap_or([0.0; 13]);
+            let here = posts.get(market).copied().unwrap_or([0.0; crate::occupation::N_OCCUPATIONS]);
             p.trade = draw_work(&mut self.rng, p.qualification, &here);
             // A replacement is a cross-section of the living, not a
             // school leaver, so they bring their years with them.
@@ -1263,7 +1289,7 @@ fn draw_household(rng: &mut Rng) -> Household {
 /// Supervising is never drawn: it is what a floor hand is promoted to. A
 /// town with no posts to read — a hand-built fixture with no works in it —
 /// falls back on national shares, still gated by qualification.
-fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; 13]) -> Trade {
+fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; crate::occupation::N_OCCUPATIONS]) -> Trade {
     let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
     let total: f64 = Trade::ALL
         .iter()
@@ -1271,17 +1297,35 @@ fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; 13]) -> 
         .map(|t| posts[t.index()].max(0.0))
         .sum();
     if total <= 1e-9 {
-        let t = draw_trade(rng);
-        return if open(t) { t } else { Trade::Shopworker };
+        // No employers to read: the United States' mix, among what they
+        // may do.
+        return draw_from(rng, qualification, crate::occupation::national_mix());
     }
+    draw_from(rng, qualification, posts)
+}
+
+/// A trade in proportion to `weights`, among what a qualification allows.
+fn draw_from(
+    rng: &mut Rng,
+    qualification: Qualification,
+    weights: &[f64; crate::occupation::N_OCCUPATIONS],
+) -> Trade {
+    let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
+    let total: f64 = Trade::ALL
+        .iter()
+        .filter(|&&t| open(t))
+        .map(|t| weights[t.index()].max(0.0))
+        .sum();
     let r = rng.next_f32() as f64 * total;
     let mut at = 0.0;
-    let mut last = Trade::Shopworker;
+    // Nothing at all open to them is not possible — every qualification
+    // allows the work that needs none — but a fixture can have no posts.
+    let mut last = Trade::Sales;
     for t in Trade::ALL {
-        if !open(t) || posts[t.index()] <= 0.0 {
+        if !open(t) || weights[t.index()] <= 0.0 {
             continue;
         }
-        at += posts[t.index()];
+        at += weights[t.index()];
         last = t;
         if r < at {
             return t;
@@ -1290,77 +1334,3 @@ fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; 13]) -> 
     last
 }
 
-fn draw_trade(rng: &mut Rng) -> Trade {
-    // **The real shape of employment**, which this drew four trades from
-    // and there are thirteen. `services.rs` and `state.rs` between them
-    // create posts for over half the workforce — offices, teaching,
-    // nursing, construction — and not one sampled person could ever hold
-    // one, because the draw did not contain them.
-    //
-    // Shares are the UK's, by sector *(~33M jobs)*:
-    //
-    // | | share |
-    // |---|---|
-    // | wholesale and retail | 14.1% |
-    // | health and social work | 13.3% |
-    // | professional, technical, admin, finance, information | 25.5% |
-    // | education and public administration | 13.2% |
-    // | manufacturing, agriculture, utilities, mining | 10.1% |
-    // | accommodation and food | 6.8% |
-    // | construction | 6.4% |
-    // | transport and storage | 5.0% |
-    //
-    // Health splits the way a real health service does: about **3 doctors
-    // per 1,000 people against 9 nurses**, with care assistants about as
-    // numerous as nurses again. Construction splits into the general
-    // trade and the two that carry a ticket.
-    let r = rng.next_f32();
-    let mut at = 0.0f32;
-    let mut upto = |share: f32| {
-        at += share;
-        r < at
-    };
-    if upto(0.141) {
-        Trade::Shopworker
-    } else if upto(0.255) {
-        Trade::Office
-    } else if upto(0.132) {
-        Trade::Public
-    } else if upto(0.101) {
-        Trade::Labourer
-    } else if upto(0.068) {
-        Trade::Hospitality
-    } else if upto(0.050) {
-        Trade::Haulier
-    // --- health, 13.3% all told ---
-    } else if upto(0.016) {
-        Trade::Doctor
-    } else if upto(0.045) {
-        Trade::Nurse
-    } else if upto(0.045) {
-        Trade::CareAssistant
-    } else if upto(0.027) {
-        // Health service administration, porters, records.
-        Trade::Public
-    // --- construction, 6.4% ---
-    } else if upto(0.035) {
-        Trade::Builder
-    } else if upto(0.015) {
-        Trade::Electrician
-    } else if upto(0.014) {
-        Trade::Pipefitter
-    } else {
-        // **Nobody starts as a supervisor**, which this file's own
-        // definition of the trade says: it is what a floor hand is
-        // promoted to and the only way up the economy contains. Handing
-        // it out at the draw was wrong twice over.
-        //
-        // Once directly, and once far worse through the school-leaver's
-        // rejection loop: a child leaving at sixteen redraws until it
-        // finds work its qualification allows, and only four trades need
-        // none. Supervisor being one of them turned 5.6% of the draw into
-        // 15% of everybody who left school — and a town came out 27%
-        // supervisors against 9% of its posts.
-        Trade::Shopworker
-    }
-}

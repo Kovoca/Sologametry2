@@ -850,36 +850,33 @@ impl SiteKind {
     pub fn worked_by(self) -> crate::person::Trade {
         use crate::person::Trade;
         match self {
-            // The floor of a works, a field, a seam or a forest. All of
-            // them are shift work at a rated plant, which is what
-            // `Trade::Labourer` is, and its skill is machining — "running
-            // a machine: a mill, a furnace, a press".
-            SiteKind::Farm
-            | SiteKind::Pasture
-            | SiteKind::Butcher
-            | SiteKind::Mine
+            // A field, a herd or a stand of timber: farm and forest hands,
+            // whose skill is husbandry.
+            SiteKind::Farm | SiteKind::Pasture | SiteKind::Forestry => Trade::FarmWorker,
+            // A seam, a pit or a well.
+            SiteKind::Mine | SiteKind::IronMine | SiteKind::OilField => Trade::Miner,
+            // The floor of a works, and a power station's plant operators,
+            // who are production occupations in the statistics too.
+            SiteKind::Butcher
             | SiteKind::Mill
             | SiteKind::Factory
-            | SiteKind::IronMine
             | SiteKind::Steelworks
             | SiteKind::Works
-            | SiteKind::Forestry
-            | SiteKind::OilField
             | SiteKind::Cracker
             | SiteKind::MachineWorks
             | SiteKind::CementWorks
             | SiteKind::Pharma
             | SiteKind::ChemicalWorks
-            | SiteKind::PowerPlant => Trade::Labourer,
+            | SiteKind::PowerPlant => Trade::ProductionWorker,
             // Construction is its own trade and a deeper one — an
             // apprenticeship rather than a week of being shown.
             SiteKind::Builders => Trade::Builder,
             // A hospital runs on hands-on care. The doctors are a smaller
             // number on top and the ward is nurses.
             SiteKind::Hospital => Trade::Nurse,
-            SiteKind::Shop => Trade::Shopworker,
-            // A depot is a yard, a dock and lorries going in and out.
-            SiteKind::Depot => Trade::Haulier,
+            SiteKind::Shop => Trade::Sales,
+            // A depot is a yard and a dock: goods landed, picked and loaded.
+            SiteKind::Depot => Trade::MaterialMover,
         }
     }
 }
@@ -6126,11 +6123,11 @@ impl Economy {
     /// Dynamics Network survey is annual)*, and the wage curve, which takes
     /// about a tenth off for a doubling of local unemployment.
     pub fn wage_level(&self, m: usize) -> f64 {
-        let reference = crate::person::reference_day_rate(crate::person::Trade::Labourer);
+        let reference = crate::person::reference_day_rate(crate::person::Trade::ProductionWorker);
         if reference <= 1e-12 {
             return 1.0;
         }
-        crate::person::day_rate(self, m, crate::person::Trade::Labourer) / reference
+        crate::person::day_rate(self, m, crate::person::Trade::ProductionWorker) / reference
     }
 
     /// **What a nation pays, which is what its costs are built on.**

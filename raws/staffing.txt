@@ -41,6 +41,30 @@
 53-0000 13,752,760 $19.26 $46,690
 53-3032 2,044,400 $26.12 $55,990
 53-3033 1,003,960 $20.42 $46,090
+11-9013 6,150 $40.27 $90,160
+13-1071 895,970 $32.53 $76,060
+15-1252 1,656,880 $63.59 $138,110
+17-2141 281,290 $47.84 $105,220
+19-1042 136,620 $48.50 $112,380
+21-1021 352,160 $25.93 $59,190
+23-2011 354,890 $29.31 $66,460
+27-1024 212,720 $28.32 $64,700
+29-1051 331,700 $65.40 $134,790
+29-2061 630,250 $28.72 $60,790
+33-2011 315,460 $27.46 $60,390
+33-9032 1,202,940 $17.82 $40,440
+35-2021 879,610 $15.59 $32,960
+37-2012 836,230 $16.08 $34,650
+39-5012 294,840 $16.81 $41,780
+45-2093 32,590 $16.88 $37,060
+45-4022 23,720 $23.19 $49,790
+47-2031 700,290 $27.09 $60,970
+47-2073 450,370 $27.00 $62,180
+49-3023 676,570 $22.96 $51,940
+51-4121 421,730 $23.53 $52,640
+53-7051 778,920 $21.38 $45,720
+# 11-9013 counts only salaried farm managers: most farmers are self-employed
+# and not in OEWS. 45-3031 fishers are not published nationally at all.
 
 == 21 mining, quarrying, oil and gas
 00-0000 571,160 100.00% $29.71
@@ -714,3 +738,18 @@ sworn officers: 70.4% of all law enforcement personnel
 sworn officers per 1,000 inhabitants: 2.4
 all full-time law enforcement employees per 1,000 inhabitants: 3.4
 civilians include clerks, radio dispatchers, meter attendants, jailers, correctional officers, mechanics
+
+# ---------------------------------------------------------------------------
+# Military pay. CRS In Focus IF10532, Defense Primer: Regular Military
+# Compensation, Table 1, from DOD Selected Military Compensation Tables,
+# January 1, 2026: https://www.everycrsreport.com/reports/IF10532.html
+# Regular Military Compensation is basic pay, housing and subsistence
+# allowances and the tax advantage on them — what a civilian would have to
+# buy out of a wage. Note the year: 2026, against OEWS's 2023.
+== military pay, January 2026 (annual RMC)
+E-1 private: basic 27,965; housing 23,076; subsistence 5,723; tax advantage 4,045; RMC 60,810
+E-5 sergeant: basic 49,965; housing 27,121; subsistence 5,723; tax advantage 6,339; RMC 89,148
+E-8 master sergeant: basic 83,807; housing 34,246; subsistence 5,723; tax advantage 5,939; RMC 129,715
+O-1 second lieutenant: basic 51,289; housing 24,654; subsistence 3,942; tax advantage 5,682; RMC 85,567
+O-4 major: basic 118,273; housing 39,463; subsistence 3,942; tax advantage 10,800; RMC 172,477
+O-6 colonel: basic 174,534; housing 45,385; subsistence 3,942; tax advantage 14,117; RMC 237,978

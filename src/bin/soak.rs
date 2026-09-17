@@ -232,7 +232,10 @@ fn main() {
             trade_at.insert(id, p.trade);
         }
     }
-    let mut changes = Changes::default();
+    let mut changes = Changes {
+        pairs: vec![vec![0; Trade::ALL.len()]; Trade::ALL.len()],
+        ..Default::default()
+    };
     let final_year_from = days.saturating_sub(DAYS_PER_YEAR);
     let mut worked_final_year: std::collections::BTreeMap<_, u64> = Default::default();
 
@@ -291,7 +294,7 @@ struct Changes {
     /// Went to work at a different trade.
     switched: u64,
     /// From which trade to which.
-    pairs: [[u64; 13]; 13],
+    pairs: Vec<Vec<u64>>,
 }
 
 /// **The sample by trade at the end**, and how much of the final year each
@@ -360,8 +363,8 @@ fn by_trade(
         took_up
     );
     let mut top: Vec<(u64, usize, usize)> = Vec::new();
-    for a in 0..13 {
-        for b in 0..13 {
+    for a in 0..scale_sim::occupation::N_OCCUPATIONS {
+        for b in 0..scale_sim::occupation::N_OCCUPATIONS {
             if changes.pairs[a][b] > 0 {
                 top.push((changes.pairs[a][b], a, b));
             }

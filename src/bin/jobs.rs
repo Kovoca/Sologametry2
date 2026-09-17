@@ -139,7 +139,7 @@ fn main() {
         use Occupation::*;
         let n = match o {
             Manager => g("11-0000"),
-            Farmer | Fisher | Soldier => 0.0,
+            Farmer | Fisher | Soldier | Supervisor => 0.0,
             Accountant => g("13-2011"),
             BusinessSpecialist => less("13-0000", &["13-2011"]),
             ComputingSpecialist => g("15-0000"),

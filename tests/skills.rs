@@ -134,12 +134,12 @@ fn experience_pays_more_in_a_trade_that_has_room_for_it() {
     assert!(top(Trade::Electrician) > 1.0);
     // Nobody is worth twice the going rate for being very good at a till.
     assert!(
-        top(Trade::Shopworker) < 1.5,
+        top(Trade::Sales) < 1.5,
         "a legendary shop worker came out at {:.2}x",
-        top(Trade::Shopworker)
+        top(Trade::Sales)
     );
     // At exactly what the work wants, you are worth exactly the rate.
-    for t in [Trade::Doctor, Trade::Nurse, Trade::Labourer] {
+    for t in [Trade::Doctor, Trade::Nurse, Trade::ProductionWorker] {
         assert_eq!(person::skill_premium(t.wants_level(), t.wants_level()), 1.0);
     }
     // **And below it, it shows in the pay packet** — but never to nothing,
@@ -158,8 +158,8 @@ fn the_ticket_and_the_competence_line_up() {
         Trade::Doctor,
         Trade::Nurse,
         Trade::Electrician,
-        Trade::Shopworker,
-        Trade::Labourer,
+        Trade::Sales,
+        Trade::ProductionWorker,
     ] {
         let gated = qualification_for(t) != Qualification::School;
         if gated {
@@ -173,7 +173,7 @@ fn the_ticket_and_the_competence_line_up() {
     }
     assert!(Trade::Doctor.wants_level() > Trade::Nurse.wants_level());
     assert!(Trade::Nurse.wants_level() > Trade::CareAssistant.wants_level());
-    assert!(Trade::Electrician.wants_level() > Trade::Labourer.wants_level());
+    assert!(Trade::Electrician.wants_level() > Trade::ProductionWorker.wants_level());
 }
 
 /// **A country starts with people who have already worked.**
