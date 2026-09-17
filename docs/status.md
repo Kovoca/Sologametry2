@@ -464,19 +464,29 @@ real occupations to train for.
 4. Contract mixes from occupation-level figures.
 5. Distribution: warehouses and van drivers missing; builders doubled.
 6. Occupational mobility 1% a year against 10%.
-7. *Military ranks, by culture* — owner's note, 2026-09-17. Armed forces
-   run on ranks, and **different militaries run them differently**, which
-   should come from the culture rather than one table: how many are
-   officers, whether sergeants carry the work or officers do, conscript or
-   volunteer, and what the ranks are called. Verified so far: US officers
-   including warrant officers are about 18% of the force, warrant officers
-   9% of the officer corps, company grade 56%, field grade 35%, general and
-   flag officers under 0.4% (CRS IF10685, DMDC August 2024). To verify from
-   primary sources before building: UK officers ~20%, a Russian officer
-   share once put near a third and the long absence of a professional NCO
-   corps, the PLA's officers, NCOs and conscripts. Wants a military culture
-   per nation, which nothing derives yet; NATO's OR/OF rank codes give a
-   common frame to map national systems onto.
+7. *Rank structures, as data a player can write* — owner's notes,
+   2026-09-17. A military is **its structure**: which ranks it has, in what
+   order and under what names, how they group (enlisted, NCOs, warrant
+   officers, officers, general officers), how many of each it carries, and
+   **the standards** for moving between them — time in the rank and in
+   service, schooling, performance, and posts that must be free. Real forces
+   differ in all of it, so each nation's default comes from its culture;
+   and **a player who comes to command a force can replace it with their
+   own**, so rank structures are authored data (the raws format the owner
+   chose for items), never tables in the code, and every one — shipped or
+   player-written — goes through a validator the way `bom::validate`
+   checks an item: a ladder with no bottom rung, a promotion to a rank that
+   does not exist, or a standard nobody can ever meet is refused with the
+   reason. NATO's OR-1..OR-9 and OF-1..OF-10 codes are the common frame a
+   national or invented structure maps onto, so the rest of the model can
+   ask what a rank *is* whatever it is called.
+   Verified so far: US officers including warrant officers are about 18% of
+   the force, warrant officers 9% of the officer corps, company grade 56%,
+   field grade 35%, general and flag officers under 0.4% (CRS IF10685, DMDC
+   August 2024). To verify from primary sources before building: UK
+   officers ~20%, a Russian officer share once put near a third and the
+   long absence of a professional NCO corps, the PLA's officers, NCOs and
+   conscripts, and each force's promotion standards.
 8. *Eating out* — owner's note, 2026-09-17. Every meal here is bought as
    tins at a market; real Americans spend **58.5%** of their food money
    away from home ($4,485 a head against $3,187 at home, USDA ERS Food
