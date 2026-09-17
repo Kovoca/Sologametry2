@@ -426,6 +426,21 @@ real occupations to train for.
 4. *Positions* — ministers, departments, mayors, councils: posts one person
    holds.
 
+**Fixing what is wrong before moving on — owner's order, 2026-09-17.**
+1. *The drain abroad* — **fixed.** Countries were built to make 75% of their
+   goods and 70% of their steel, with no exports on the other side. Built to
+   make what they need; hands follow the work done; a capital-account bug
+   fixed. Households gain money in all three soak worlds.
+   **Still open inside it:** the unemployment statistic, 25% and 33% in two
+   worlds, because firms selling below cost cannot meet payroll. A shutdown
+   rule was tried and made every world worse; the question is why prices
+   settle under cost.
+2. The lowest pay under the 6-10 days-of-food band.
+3. Supervisors a fifth of the sample against a tenth of posts.
+4. Contract mixes from occupation-level figures.
+5. Distribution: warehouses and van drivers missing; builders doubled.
+6. Occupational mobility 1% a year against 10%.
+
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no
 earnings, a qualification, then work.

@@ -4670,6 +4670,74 @@ while a trade was an industry:**
 - **Seasonal work is on the land**, so the test puts farm hands on it rather
   than production workers.
 
+## The drain abroad was a country built short (`src/region.rs`, `bin/border`)
+
+`cargo run --release --bin border` now prints what the country buys abroad
+good by good — tonnes made, tonnes landed, money paid — and what it ships.
+
+The suspect was the 30% stockholders. **It was not them.** World 7, one year:
+manufactured goods were **47%** of everything paid abroad and grain 27%;
+steel, timber and machinery together about 13%. And not a tonne of goods,
+oil or coal was ever exported.
+
+**Every country was built to make three quarters of its goods and 70% of its
+steel, medicines and remedies**, on the true observation that manufactured
+imports run a quarter to a half of consumption. That is half the
+observation: the same countries export manufactures on the same scale,
+because a German car and a Japanese one are different things. With one
+undifferentiated commodity a country cannot import and export the same good,
+so the quarter it was built unable to make was a permanent deficit with
+nothing on the other side. Countries are now built to make what they need,
+and every town keeps its merchants, who land when the price says to. Two-way
+trade in manufactures is a named gap until goods are differentiated.
+
+**And a town's workforce followed the jobs its works were rated for**, not
+the jobs they ran. Real plants run at about 78% of capacity *(US Federal
+Reserve, manufacturing)*, and a works built with a third of headroom read
+that third as people permanently out of work. Hands now follow the work
+actually done, at the same slow pace; a town is founded staffed to its
+rating.
+
+**It found a real accounting bug.** When the country runs a surplus, firms
+lend it abroad — and a firm short of cash pays less than was meant, while the
+capital account recorded the full loan. Latent while every world ran a
+deficit, because the outside world is never short; the first surplus put the
+stock 0.9% adrift. It records what crossed now.
+
+| five years, whole world | households' money | net abroad | homeless | unemployment stat |
+|---|---|---|---|---|
+| world 7, before → after | 12.3e9 → **57.4e9** | lost 44.4e9 → gained 1.4e9 | 1.1% → 0.2% | 64% → 25% |
+| world 11 | 34.2e9 → **45.7e9** | lost 5.8e9 → gained 8.0e9 | 0.2% → 0.2% | 24% → 13% |
+| world 23 | 37.5e9 → **56.7e9** | lost 2.5e9 → gained 13.0e9 | 0.0% → 0.0% | 25% → 33% |
+
+Every banded figure is in its band in all three worlds **except the
+unemployment statistic in worlds 7 and 23.** `bin/soak` now ends with where
+the idle jobs are and why, and it is not a lack of work: in world 23 cement
+works run at 75% of rating and meet **none** of their payroll, pastures and
+butchers none, hospitals 54%, builders 45%, while food sells at 0.79 of its
+cost. Firms selling below cost make losses until they cannot pay.
+
+### A shutdown rule, tried and rejected
+
+The textbook answer — a works makes less as its price falls below cost and
+stops when it no longer covers materials and wages, about 84% of cost in US
+manufacturing — made every world worse: world 7's homelessness went to 15.6%
+in the first year, households lost 89% of their money and 5.3e10 went
+abroad; worlds 11 and 23 the same way. Works cut back, prices rose to import
+parity, and merchants landed the gap. **The rule was right and the
+comparison was not**: this model's prices sit below its cost figure in
+ordinary times — food at about 0.8 in healthy worlds — so it read normal
+trading as a glut and throttled production. Reverted, and the run afterwards
+matched the drain-fix run line for line. What is next is why prices here
+settle under cost at all.
+
+Tests corrected to their claims: an importer fixture now makes its deficit on
+purpose; the morning-position gate finds the good lorries actually carry
+(plastic, now steel is not hauled) and fills yards only halfway to capacity,
+because pushing one past it made the delivery physically impossible; and
+nurses against doctors is read off the country's jobs, not five and three
+sampled people.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

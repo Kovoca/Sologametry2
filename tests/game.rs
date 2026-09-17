@@ -454,7 +454,40 @@ fn nothing_leaks_when_a_cargo_moves() {
 fn a_decision_is_taken_on_the_morning_position() {
     use scale_sim::econ::{Commodity, RECIPES};
 
-    let c = Commodity::Steel;
+    // **The commodity the dispatcher actually hauls**, found rather than
+    // named. This was steel, the most-hauled good while every town was
+    // built short of it and bought the balance from its neighbours; built
+    // to make what they need, towns stopped sending steel about and the gate
+    // was left watching an empty road. What it watches has to be something
+    // lorries carry this morning, to works that consume it.
+    let c = {
+        let mut e = a_nation().economy;
+        let mut freight = scale_sim::logistics::Logistics::found(&e);
+        for _ in 0..40 {
+            e.step();
+        }
+        let before: std::collections::BTreeSet<_> = e.shipments.iter().map(|(id, _)| id).collect();
+        let day = e.ledger.day;
+        freight.haul(&mut e, day);
+        let mut count = vec![0usize; Commodity::ALL.len()];
+        for (_, s) in e.shipments.iter().filter(|(id, _)| !before.contains(id)) {
+            count[s.commodity as usize] += 1;
+        }
+        let consumed = |c: Commodity| {
+            RECIPES
+                .iter()
+                .any(|r| !r.from_abroad && r.inputs.iter().any(|&(ic, _)| ic == c))
+        };
+        let mut hauled: Vec<Commodity> = Commodity::ALL
+            .iter()
+            .copied()
+            .filter(|&c| count[c as usize] > 0 && consumed(c))
+            .collect();
+        hauled.sort_by(|a, b| count[*b as usize].cmp(&count[*a as usize]));
+        *hauled
+            .first()
+            .expect("the dispatcher hauled nothing that any works consumes")
+    };
 
     // Sites that *consume* the commodity. Piling stock into these changes
     // what the country looks like and changes nothing about what it can
@@ -471,7 +504,7 @@ fn a_decision_is_taken_on_the_morning_position() {
             .collect()
     };
 
-    let run = |flatter: &[usize]| -> Vec<usize> {
+    let run = |flatter: &[usize], suppliers: &[usize]| -> (Vec<usize>, Vec<usize>) {
         let mut e = a_nation().economy;
         let mut freight = scale_sim::logistics::Logistics::found(&e);
         for _ in 0..40 {
@@ -479,30 +512,57 @@ fn a_decision_is_taken_on_the_morning_position() {
         }
 
         if !flatter.is_empty() {
-            // Take from the consuming yards of towns nobody is serving...
-            let mut pot = 0.0;
-            for m in 0..e.markets.len() {
-                if flatter.contains(&m) {
-                    continue;
-                }
-                for s in consumers(&e, m) {
-                    pot += e.ledger.sites[s].stock[c as usize];
-                    e.ledger.sites[s].stock[c as usize] = 0.0;
-                }
-            }
-            // ...and give it to the towns the lorries were about to visit.
+            // The towns the lorries were about to visit, and their consuming
+            // yards. **Filled halfway to full and no further**: a yard pushed
+            // past its capacity cannot take the delivery, and a dispatcher
+            // declining to send goods to a full yard is reading live room,
+            // which it should. A gate that has to break a physical limit to
+            // make its point is testing a world that cannot exist.
             let mut targets: Vec<usize> = Vec::new();
             for &m in flatter {
                 targets.extend(consumers(&e, m));
             }
             assert!(
                 !targets.is_empty(),
-                "the towns the dispatcher served have no works that consume {c}, \
-                 so there is nowhere to put the stock without touching a supplier"
+                "the towns the dispatcher served have no works that consume {c},                  so there is nowhere to put the stock without touching a supplier"
             );
-            let each = pot / targets.len() as f64;
-            for s in targets {
-                e.ledger.sites[s].stock[c as usize] += each;
+            let room: Vec<f64> = targets
+                .iter()
+                .map(|&s| {
+                    let site = &e.ledger.sites[s];
+                    ((site.capacity[c as usize] - site.stock[c as usize]) * 0.5).max(0.0)
+                })
+                .collect();
+            let placeable: f64 = room.iter().sum();
+
+            // Taken from the consuming yards of towns nobody is serving and
+            // nobody is sending from — a supplier's own yards count in what
+            // it has to spare, which the dispatcher rightly reads live — and
+            // no more than can be placed.
+            let mut donors: Vec<usize> = Vec::new();
+            for m in 0..e.markets.len() {
+                if flatter.contains(&m) || suppliers.contains(&m) {
+                    continue;
+                }
+                donors.extend(consumers(&e, m));
+            }
+            let held: f64 = donors
+                .iter()
+                .map(|&s| e.ledger.sites[s].stock[c as usize])
+                .sum();
+            let share = if held > 0.0 { (placeable / held).min(1.0) } else { 0.0 };
+            let mut pot = 0.0;
+            for s in donors {
+                let give = e.ledger.sites[s].stock[c as usize] * share;
+                e.ledger.sites[s].stock[c as usize] -= give;
+                pot += give;
+            }
+            assert!(
+                pot > 0.0,
+                "no town that neither sends nor receives {c} holds any to move"
+            );
+            for (k, s) in targets.into_iter().enumerate() {
+                e.ledger.sites[s].stock[c as usize] += pot * room[k] / placeable.max(1e-9);
             }
             e.ledger.assert_conserved();
         }
@@ -510,20 +570,24 @@ fn a_decision_is_taken_on_the_morning_position() {
         let before: std::collections::BTreeSet<_> = e.shipments.iter().map(|(id, _)| id).collect();
         let day = e.ledger.day;
         freight.haul(&mut e, day);
-        let mut went: Vec<usize> = e
+        let today: Vec<_> = e
             .shipments
             .iter()
             .filter(|(id, _)| !before.contains(id))
             .filter(|(_, s)| s.commodity == c)
-            .map(|(_, s)| s.to_market)
+            .map(|(_, s)| (s.to_market, s.from_market))
             .collect();
+        let mut went: Vec<usize> = today.iter().map(|t| t.0).collect();
+        let mut from: Vec<usize> = today.iter().map(|t| t.1).collect();
         went.sort_unstable();
         went.dedup();
-        went
+        from.sort_unstable();
+        from.dedup();
+        (went, from)
     };
 
     // Where the lorries go when nothing has been interfered with.
-    let ordinarily = run(&[]);
+    let (ordinarily, sent_from) = run(&[], &[]);
     assert!(
         !ordinarily.is_empty(),
         "the dispatcher carried no {c} at all, so this gate is watching an \
@@ -532,7 +596,7 @@ fn a_decision_is_taken_on_the_morning_position() {
 
     // And where they go when live state says those very towns are the
     // best-stocked in the country.
-    let contradicted = run(&ordinarily);
+    let (contradicted, _) = run(&ordinarily, &sent_from);
 
     let names = |v: &[usize]| -> String {
         if v.is_empty() {

@@ -424,26 +424,45 @@ fn national_grain_potential(world: &World, pol: &Polities, polity: u16) -> f64 {
     total
 }
 
-/// **What share of its own manufactured goods a country makes.**
+/// **What share of its own manufactured goods a country is built to make.**
 ///
-/// No economy makes everything; manufactured imports run a quarter to a
-/// half of consumption nearly everywhere, and the rest of a country's
-/// goods come off its own shop floors.
-const DOMESTIC_GOODS_SHARE: f64 = 0.75;
+/// **All of them**, and what is bought abroad is decided by price. This was
+/// three quarters, on the true observation that manufactured imports run a
+/// quarter to a half of consumption nearly everywhere — and that is only
+/// half of the observation. The same countries export manufactures on much
+/// the same scale, because a German car and a Japanese one are different
+/// things and both countries buy both. This model has one undifferentiated
+/// commodity of goods, and a country cannot both import and export one
+/// thing without a round trip, so the quarter it was built unable to make
+/// was a permanent deficit with nothing on the other side: in seed 7 goods
+/// were 47% of everything paid abroad and not a tonne was ever exported.
+///
+/// Two-way trade in manufactures is a **named gap** until goods are
+/// differentiated, which items as data files will make possible.
+const DOMESTIC_GOODS_SHARE: f64 = 1.0;
 
-/// **What share of its steel a country rolls itself.**
+/// **How much of a town's goods its import merchant can land**, if the
+/// price says to — the capacity to import, not an obligation to.
+const GOODS_MERCHANT_SHARE: f64 = 0.25;
+
+/// **What share of its steel, medicines and remedies a country is built to
+/// make.** All of it, for the reason goods are: the 30% it was built unable
+/// to make had no export on the other side of it.
+const DOMESTIC_STEEL_SHARE: f64 = 1.0;
+
+/// **How much of a town's draw its stockholders can land**, if the price
+/// says to.
 ///
 /// There are perhaps fifty countries with a steel industry and a hundred
 /// and fifty without, and even the producers import: real steel import
-/// dependency runs 30-50% across most of Europe. A town buys the rest
-/// from a stockholder, exactly as a town short of grain buys grain.
-///
-/// This is not a convenience. Making the food chain depend on a single
-/// domestic intermediate meant a nation whose works were a thousand
-/// kilometres from its one steelworks could not put food in a tin, and
-/// 84 of a sample of 150 died of it — a famine caused by a shortage of
-/// **cans**.
-const DOMESTIC_STEEL_SHARE: f64 = 0.70;
+/// dependency runs 30-50% across most of Europe. So every town keeps a
+/// merchant who can buy abroad — and it is not a convenience. Making the
+/// food chain depend on a single domestic intermediate meant a nation whose
+/// works were a thousand kilometres from its one steelworks could not put
+/// food in a tin, and 84 of a sample of 150 died of it — a famine caused by
+/// a shortage of **cans**. What changed is only that the merchant lands
+/// when the price says to, rather than because the country was built short.
+const STOCKHOLDER_SHARE: f64 = 0.30;
 
 /// **A forest worth felling**, in cubic metres a hectare. Real: managed
 /// temperate forest carries 150-350, boreal 100-200, and anything under
@@ -1865,7 +1884,7 @@ impl Region {
                 };
                 let draw =
                     works_draw + markets[m].population * c.per_capita_annual() / 365.0 + public;
-                let bought = draw * (1.0 - DOMESTIC_STEEL_SHARE);
+                let bought = draw * STOCKHOLDER_SHARE;
                 if bought < 0.01 {
                     continue;
                 }
@@ -1891,11 +1910,10 @@ impl Region {
         //
         // **Now a residual, not the whole supply.** Before the factories
         // existed this depot conjured every manufactured article the
-        // country used out of nothing. What remains is the share a real
-        // economy genuinely imports — no country makes everything, and
-        // manufactured imports run a quarter to a half of consumption
-        // nearly everywhere.
-        let bought_in = goods_day * (1.0 - DOMESTIC_GOODS_SHARE);
+        // country used out of nothing. What remains is a merchant who can
+        // land a quarter of what the country buys, and does when the price
+        // is above what it costs to bring in.
+        let bought_in = goods_day * GOODS_MERCHANT_SHARE;
         sites.push(Site {
             address: None,
             name: format!("{capital_name} depot"),
@@ -2109,6 +2127,7 @@ impl Region {
             next_route_id: named_roads,
             routing: crate::quote::Routing::default(),
             hands: Default::default(),
+            exported_today: Vec::new(),
             reservations: crate::quote::Reservations::new(),
             import_duty: Default::default(),
             exchange: crate::exchange::Exchange::at_par(),

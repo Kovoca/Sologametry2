@@ -160,12 +160,17 @@ fn a_country_contains_the_people_it_needs() {
 
     // **Nurses outnumber doctors about three to one**, which is the real
     // shape of a health service: ~3 doctors per 1,000 people against ~9
-    // nurses.
+    // nurses. Read off the country's jobs rather than a sample: a thousand
+    // people hold five nurses and three doctors, and a ratio of two small
+    // counts is a coin toss, which is the small-sample mistake this project
+    // records over supervisors and over crash outcomes.
+    let jobs = scale_sim::occupation::jobs_by_occupation(&e);
+    let posts = |t: Trade| jobs.iter().map(|town| town[t.index()]).sum::<f64>();
     assert!(
-        share(Trade::Nurse) > share(Trade::Doctor) * 1.8,
-        "{:.1}% nurses against {:.1}% doctors",
-        share(Trade::Nurse) * 100.0,
-        share(Trade::Doctor) * 100.0
+        posts(Trade::Nurse) > posts(Trade::Doctor) * 1.8,
+        "{:.0} nursing posts against {:.0} doctors'",
+        posts(Trade::Nurse),
+        posts(Trade::Doctor)
     );
     // **The professions want a degree, and cannot hold more people than
     // there are graduates.** Managers, accountants and the rest of the

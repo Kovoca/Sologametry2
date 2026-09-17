@@ -280,4 +280,17 @@ impl Exchange {
         self.owed_abroad += net;
         net
     }
+
+    /// **What was actually lent, where it fell short of what was meant.**
+    ///
+    /// `settle` records the funded part as lent, and when the outside world
+    /// is the lender that is exactly what happens: its account is never short.
+    /// When the country is — a surplus lent abroad by firms that may not
+    /// have the money — a payment can come up short, and a stock that kept
+    /// the intended figure would record claims nobody paid for. Latent while
+    /// every world ran a deficit; the first world built to make what it needs
+    /// ran a surplus and the stock came adrift by 0.9%.
+    pub fn fell_short(&mut self, intended: f64, actual: f64) {
+        self.owed_abroad += actual - intended;
+    }
 }

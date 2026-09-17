@@ -39,16 +39,38 @@ fn a_world(seed: u64, nations: usize) -> Economy {
     .economy
 }
 
+/// **A heavy importer**: the same world with its factories, steelworks and
+/// machine works cut to a little over half of what they were built for.
+///
+/// Worlds used to be built short of manufactures, so every one of them was
+/// a heavy importer and a fixture got one for nothing. They are built to
+/// make what they need now, and a deficit has to be made on purpose — which
+/// is the honest way round, since the claim is about what a deficit does and
+/// not about how a country came to have one.
+fn a_heavy_importer() -> Economy {
+    use scale_sim::econ::SiteKind;
+    let mut e = a_world(7, 4);
+    for site in e.ledger.sites.iter_mut() {
+        if matches!(
+            site.kind,
+            SiteKind::Factory | SiteKind::Steelworks | SiteKind::MachineWorks | SiteKind::Cracker
+        ) {
+            site.throughput *= 0.55;
+        }
+    }
+    e
+}
+
 /// **A deficit nobody will fund makes the money worth less.**
 ///
-/// This world buys about three times what it sells, which on the measure
-/// the rate reads is an imbalance around +0.5 — three times the most
-/// persistent real one there is. Nobody funds that, so the currency has to
-/// go, and the direction is the whole claim: foreign money gets dearer,
-/// which is what makes imports dear and exports worth having.
+/// This world buys far more than it sells, which on the measure the rate
+/// reads is an imbalance well past +0.3 — twice the most persistent real
+/// one there is. Nobody funds that, so the currency has to go, and the
+/// direction is the whole claim: foreign money gets dearer, which is what
+/// makes imports dear and exports worth having.
 #[test]
 fn a_deficit_nobody_funds_makes_the_money_worth_less() {
-    let mut e = a_world(7, 4);
+    let mut e = a_heavy_importer();
     assert!(
         (e.exchange.foreign_money() - 1.0).abs() < 1e-12,
         "a world should start at par"

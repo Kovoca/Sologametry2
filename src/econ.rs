@@ -3296,6 +3296,11 @@ pub struct Economy {
     /// region — produces exactly what it produced before any of this
     /// existed. See `Economy::hands_at`.
     pub hands: std::collections::BTreeMap<(usize, u8), f64>,
+    /// **What went out through the quays today**, good by good: tonnes and
+    /// what the world paid. A reading for the diagnostics, emptied at the
+    /// start of every day and not saved — the money is already in the
+    /// treasury's day book, where it cannot be split by good.
+    pub exported_today: Vec<(Commodity, f64, f64)>,
     /// **What the roads have already been promised to carry.**
     ///
     /// A quote says what a road *can* take; this says what is left. A
@@ -3601,14 +3606,18 @@ impl Economy {
             .iter()
             .map(|&(s, v)| (s, net.abs() * v / total))
             .collect();
+        let mut moved = 0.0;
         for (s, amount) in moves {
             let (from, to) = if from_world {
                 (Account::Abroad, Account::Firm(s))
             } else {
                 (Account::Firm(s), Account::Abroad)
             };
-            self.treasury.pay(day, from, to, amount, Why::Capital);
+            moved += self.treasury.pay(day, from, to, amount, Why::Capital);
         }
+        // **The stock is what crossed**, not what was meant to.
+        let actual = if from_world { moved } else { -moved };
+        self.exchange.fell_short(net, actual);
     }
 
     /// Draw the coming year's weather, once, on the day the growing year
@@ -8355,6 +8364,7 @@ impl Economy {
     /// different is that the far side has a fixed price this country cannot
     /// move — which is what being a small trader in a large world means.
     fn sell_abroad(&mut self) {
+        self.exported_today.clear();
         let day = self.ledger.day;
         for m in 0..self.markets.len() {
             if !self.markets[m].port {
@@ -8419,13 +8429,15 @@ impl Economy {
                 }
                 let at = Self::WHOLESALE_MARGIN * sold;
                 let voyage = c.sea_freight().unwrap_or(0.0);
+                let earned = at * self.world_price(c) * (1.0 - voyage);
                 self.treasury.pay(
                     day,
                     crate::money::Account::Abroad,
                     crate::money::Account::Firm(quay),
-                    at * self.world_price(c) * (1.0 - voyage),
+                    earned,
                     crate::money::Why::Trade,
                 );
+                self.exported_today.push((c, sold, earned));
                 let price = self.markets[m].price[c as usize];
                 for (s, q) in taken {
                     self.treasury.pay(

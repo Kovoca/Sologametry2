@@ -59,6 +59,15 @@ fn main() {
     let mut out_of_importers: std::collections::BTreeMap<String, f64> = Default::default();
     let mut unpaid = 0.0f64;
     let mut unpaid_why: std::collections::BTreeMap<&'static str, f64> = Default::default();
+    // **What the country buys abroad, good by good**, against what it makes:
+    // tonnes made here, tonnes landed from abroad, and the money each good
+    // sends over the border.
+    let n_c = Commodity::ALL.len();
+    let mut made = vec![0.0f64; n_c];
+    let mut landed = vec![0.0f64; n_c];
+    let mut paid_for = vec![0.0f64; n_c];
+    let mut shipped = vec![0.0f64; n_c];
+    let mut earned_for = vec![0.0f64; n_c];
     for _ in 0..days {
         n.economy.step();
         unpaid += n.economy.treasury.unpaid;
@@ -94,6 +103,33 @@ fn main() {
             }
         }
         let e = &n.economy;
+        for site in e.ledger.sites.iter() {
+            let Some(r) = site.recipe else { continue };
+            let recipe = &scale_sim::econ::RECIPES[r];
+            for &(c, q) in recipe.outputs {
+                if recipe.from_abroad {
+                    landed[c as usize] += site.ran * q;
+                } else {
+                    made[c as usize] += site.ran * q;
+                }
+            }
+        }
+        for &(c, t, money) in e.exported_today.iter() {
+            shipped[c as usize] += t;
+            earned_for[c as usize] += money;
+        }
+        for t in e.treasury.today.iter() {
+            if t.why != scale_sim::money::Why::Trade || t.to != Account::Abroad {
+                continue;
+            }
+            let Account::Firm(s) = t.from else { continue };
+            let Some(r) = e.ledger.sites.get(s).and_then(|x| x.recipe) else {
+                continue;
+            };
+            if let Some(&(c, _)) = scale_sim::econ::RECIPES[r].outputs.first() {
+                paid_for[c as usize] += t.amount;
+            }
+        }
         for m in 0..e.markets.len() {
             let c = Commodity::ProcessedFood;
             let cover = e.markets[m].cover[c as usize] / e.target_cover(m, c);
@@ -105,6 +141,34 @@ fn main() {
     }
     let e = &n.economy;
 
+    {
+        let total: f64 = paid_for.iter().sum();
+        println!("what the country buys abroad, by good ({days} days):
+");
+        println!(
+            "  {:<12} {:>12} {:>12} {:>9} {:>11} {:>7} {:>12} {:>11}",
+            "", "made (t)", "landed (t)", "imported", "paid abroad", "share", "shipped (t)", "earned"
+        );
+        let mut order: Vec<usize> = (0..n_c).collect();
+        order.sort_by(|&a, &b| (paid_for[b] + earned_for[b]).total_cmp(&(paid_for[a] + earned_for[a])));
+        for c in order {
+            if made[c] + landed[c] <= 0.0 && paid_for[c] <= 0.0 {
+                continue;
+            }
+            println!(
+                "  {:<12} {:>12.3e} {:>12.3e} {:>8.1}% {:>11.3e} {:>6.1}% {:>12.3e} {:>11.3e}",
+                Commodity::ALL[c].to_string(),
+                made[c],
+                landed[c],
+                landed[c] / (made[c] + landed[c]).max(1e-9) * 100.0,
+                paid_for[c],
+                paid_for[c] / total.max(1e-9) * 100.0,
+                shipped[c],
+                earned_for[c]
+            );
+        }
+        println!();
+    }
     println!(
         "seed {seed}, {nations} nations, {} towns, {days} days",
         e.markets.len()

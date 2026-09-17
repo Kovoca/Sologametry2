@@ -323,9 +323,20 @@ pub fn update(econ: &mut Economy) {
         // A town's stock of tradesmen follows the work, slowly. The target
         // carries the natural rate because a market with exactly as many
         // hands as posts has nobody free to fill the next vacancy.
-        let target = w.posts * (1.0 + NATURAL_UNEMPLOYMENT);
+        //
+        // **The work being done, not the work a plant is rated for.** It
+        // followed rated posts, which is fine while every works runs flat
+        // out and wrong the moment one does not: real plants run at about
+        // 78% of capacity *(US Federal Reserve, manufacturing, long-run
+        // average)*, and a mill built with a third of headroom — which is
+        // what lets anybody build a stockpile — read a third of its rating
+        // as people permanently out of work. A trade's workforce shrinks
+        // and grows with the jobs actually on offer, through retirement,
+        // moves and people taking other work; a town is founded staffed to
+        // its rating and follows what it does from there.
+        let target = w.working * (1.0 + NATURAL_UNEMPLOYMENT);
         if w.hands <= 0.0 {
-            w.hands = target;
+            w.hands = w.posts * (1.0 + NATURAL_UNEMPLOYMENT);
         } else {
             w.hands += (target - w.hands) * drift;
         }

@@ -283,6 +283,7 @@ fn main() {
     }
 
     report(&readings, years);
+    idle_jobs(&g);
     by_trade(&g, &worked_final_year, &changes, years, final_year_from, days);
 }
 
@@ -640,4 +641,59 @@ fn report(readings: &[Reading], years: u64) {
              nothing here is asserted until the whole world has been seen."
         }
     );
+}
+
+/// **Where the idle jobs are, and why.** For each kind of employer at the
+/// end of the run: the jobs it is rated for, the people on today, how much
+/// of its rating it actually ran, and what share of its payroll it could
+/// meet — which separates a works with nothing to do from a works that
+/// cannot pay the people to do it.
+fn idle_jobs(g: &GameState) {
+    let Some(e) = g.economy.as_ref() else { return };
+    let mut rows: std::collections::BTreeMap<String, (f64, f64, f64, f64, f64)> = Default::default();
+    let grid = e.grid.capacity();
+    for (i, site) in e.ledger.sites.iter().enumerate() {
+        let Some(r) = site.recipe else { continue };
+        let rated = match site.kind {
+            scale_sim::econ::SiteKind::PowerPlant => grid,
+            _ => site.throughput,
+        };
+        let posts = scale_sim::labour::rated_headcount(rated, scale_sim::econ::RECIPES[r].labour);
+        let on = e.staff_today.get(i).copied().unwrap_or(0.0);
+        let met = e.payroll_met.get(i).copied().unwrap_or(1.0);
+        let running = if rated > 0.0 && site.kind != scale_sim::econ::SiteKind::PowerPlant {
+            site.ran / rated
+        } else if site.ran > 0.0 {
+            1.0
+        } else {
+            0.0
+        };
+        let x = rows.entry(format!("{:?}", site.kind)).or_default();
+        x.0 += posts;
+        x.1 += on;
+        x.2 += running * posts;
+        x.3 += met * posts;
+        x.4 += 1.0;
+    }
+    println!("
+  idle jobs at the end, by kind of works:
+");
+    println!(
+        "  {:<14} {:>6} {:>12} {:>12} {:>8} {:>10}",
+        "", "sites", "rated jobs", "on today", "running", "pay met"
+    );
+    for (kind, (posts, on, run, met, n)) in rows {
+        if posts < 1.0 {
+            continue;
+        }
+        println!(
+            "  {:<14} {:>6.0} {:>12.0} {:>12.0} {:>7.0}% {:>9.0}%",
+            kind,
+            n,
+            posts,
+            on,
+            run / posts * 100.0,
+            met / posts * 100.0
+        );
+    }
 }

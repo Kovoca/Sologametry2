@@ -1529,6 +1529,7 @@ impl Store for crate::econ::Economy {
             experiments,
             routing: crate::quote::Routing::default(),
             hands: Default::default(),
+            exported_today: Vec::new(),
             reservations,
             import_duty,
             exchange,
