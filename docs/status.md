@@ -496,6 +496,23 @@ real occupations to train for.
    through a kitchen and the shops sell less. Belongs with 5: supplying
    restaurants is foodservice distribution. Measure the cost structure
    (food's share of a menu price) from a real source before building.
+   **Owner's notes, same day: it comes down to the individual and their own
+   choices.** Nobody eats out at a population rate. Some people eat out
+   because they cannot cook or will not — a `Catering` skill already
+   exists to say who can — and some because they are tired after work or a
+   partner does the cooking; for others a restaurant is a treat, a classy
+   place or a special occasion rather than a meal. And **keeping a reserve
+   of food at home** is a practice of the person, commoner where there is
+   room and money to buy ahead — the owner's own, and a homeowner's more
+   than a renter's — so a household spends less by buying in bulk and
+   seldom. `Person::larder` is where that lives. Leads to check against
+   primary sources before building: 28% of Americans say they cannot cook
+   (Tufts Health & Nutrition Letter); time and after-work fatigue lead the
+   reasons people give for not cooking more (HelloFresh, 2025); cooking
+   skill by age and sex in the UK National Diet and Nutrition Survey; 4.9%
+   of homeowners against 15.5% of renters food insecure (US Census, 2015
+   American Housing Survey); full-service dining increasingly kept for
+   celebrations as its prices rise (National Restaurant Association, 2025).
 
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no
