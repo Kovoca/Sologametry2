@@ -448,6 +448,15 @@ real occupations to train for.
 4. Contract mixes from occupation-level figures.
 5. Distribution: warehouses and van drivers missing; builders doubled.
 6. Occupational mobility 1% a year against 10%.
+7. *Eating out* — owner's note, 2026-09-17. Every meal here is bought as
+   tins at a market; real Americans spend **58.5%** of their food money
+   away from home ($4,485 a head against $3,187 at home, USDA ERS Food
+   Expenditure Series, 2023). Restaurants employ, today, as a private
+   service paid only for wages, and buy no food at all. They want to buy
+   food from suppliers and sell meals, so a share of household food goes
+   through a kitchen and the shops sell less. Belongs with 5: supplying
+   restaurants is foodservice distribution. Measure the cost structure
+   (food's share of a menu price) from a real source before building.
 
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no
