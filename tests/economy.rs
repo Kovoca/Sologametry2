@@ -14,6 +14,22 @@ fn run(econ: &mut Economy, days: u64) {
     }
 }
 
+/// **Whether a haul between the two towns is worth anybody's while.**
+///
+/// A town that makes none of a thing pays what it costs where it is made
+/// plus the haul, so in a settled fixture the gap between the towns *is* the
+/// freight, and the arbitrage settles at nought from one side or the other.
+/// Read as `> 0.0` the gates turned on which side: the fixture passed at
+/// 0.07 under and failed at 0.05 over, on a price of 946, when a trader
+/// changed how much he delivered and nothing else moved. The same hundredth
+/// of a per cent the allocation treats as a tie — nobody acts on a margin
+/// that fine.
+fn a_haul_pays(econ: &Economy) -> bool {
+    let r = &econ.routes[0];
+    let dearer = econ.price(r.a, FOOD).max(econ.price(r.b, FOOD));
+    econ.arbitrage(0, FOOD) > dearer * 1e-4
+}
+
 #[test]
 fn conservation_holds_over_a_long_run() {
     // Rule R1. Nothing may enter or leave except through the journal —
@@ -258,7 +274,7 @@ fn a_haul_contract_appears_because_the_arithmetic_changed() {
     let mut econ = slice::build(Doctrine::Negligent);
     run(&mut econ, 20);
     assert!(
-        econ.arbitrage(0, FOOD) <= 0.0,
+        !a_haul_pays(&econ),
         "a profitable haul exists in an undisturbed economy — \
          the markets should be within freight cost of each other"
     );
@@ -270,7 +286,7 @@ fn a_haul_contract_appears_because_the_arithmetic_changed() {
     let mut appeared = false;
     for _ in 0..40 {
         econ.step();
-        if econ.arbitrage(0, FOOD) > 0.0 {
+        if a_haul_pays(&econ) {
             appeared = true;
             break;
         }
@@ -296,7 +312,7 @@ fn a_routine_fault_never_reaches_the_shops() {
         "a four-day line repair left people hungry"
     );
     assert!(
-        econ.arbitrage(0, FOOD) <= 0.0,
+        !a_haul_pays(&econ),
         "a routine fault created a trade opportunity"
     );
 }

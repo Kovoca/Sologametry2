@@ -52,7 +52,10 @@ fn a_trade_is_gated_and_that_is_the_point() {
     // And the trades anybody can walk into are still there, which is what
     // makes them pay what they pay.
     assert_eq!(qualification_for(Trade::Sales), Qualification::School);
-    assert_eq!(qualification_for(Trade::ProductionWorker), Qualification::School);
+    assert_eq!(
+        qualification_for(Trade::ProductionWorker),
+        Qualification::School
+    );
 }
 
 /// **The ladder is the training.** Real UK medians against a ~£33k

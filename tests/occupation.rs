@@ -59,7 +59,10 @@ fn the_published_figures_come_through() {
             (got - percent).abs() <= tol,
             "{} comes out {got:.2}% {}, published {percent}%",
             industry.name(),
-            occs.iter().map(|o| o.name()).collect::<Vec<_>>().join(" and ")
+            occs.iter()
+                .map(|o| o.name())
+                .collect::<Vec<_>>()
+                .join(" and ")
         );
     }
 }

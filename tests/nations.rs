@@ -1289,7 +1289,8 @@ fn what_can_tie_up_is_decided_by_the_water() {
 /// and this world is supposed to hold several.
 ///
 /// The gate is the identity rather than a level: every penny of tax reaches
-/// the state of the nation the till stands in, and every penny of public
+/// the state of the nation it was earned in — a till's duty or a town's pay
+/// packets — and every penny of public
 /// spending leaves the state of the nation the wage is paid in. A single
 /// crossing is a defect and there is no tolerance to set.
 #[test]
@@ -1313,6 +1314,16 @@ fn a_countrys_taxes_pay_its_own_teachers() {
                             e.ledger.day,
                             nation_of_site(s),
                             t.amount
+                        ));
+                    }
+                }
+                // Income tax, out of what a town's people were paid.
+                (Account::Households(m), Account::State(g)) => {
+                    taxed += t.amount;
+                    if e.markets[m].nation != g {
+                        crossings.push(format!(
+                            "day {}: households in nation {} paid {:.0} of tax to the state of {g}",
+                            e.ledger.day, e.markets[m].nation, t.amount
                         ));
                     }
                 }

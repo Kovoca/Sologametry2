@@ -61,7 +61,10 @@ fn main() {
         Surface::Open,
         Surface::Water,
     ];
-    println!("{:<14} {:>6} {:>8} {:>10}", "surface", "roads", "km", "pace");
+    println!(
+        "{:<14} {:>6} {:>8} {:>10}",
+        "surface", "roads", "km", "pace"
+    );
     for s in all {
         let roads: Vec<&_> = e.routes.iter().filter(|r| r.surface == s).collect();
         if roads.is_empty() {

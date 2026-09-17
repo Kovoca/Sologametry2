@@ -216,7 +216,10 @@ fn an_economy_with_no_people_in_it_is_staffed_to_standard() {
         e.step();
         ran += e.ledger.sites.iter().map(|s| s.ran).sum::<f64>();
     }
-    assert!(ran > 0.0, "this fixture produced nothing at all in ten days");
+    assert!(
+        ran > 0.0,
+        "this fixture produced nothing at all in ten days"
+    );
     // Food is what the fixture is for.
     assert!(
         e.markets

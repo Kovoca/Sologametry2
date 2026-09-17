@@ -763,7 +763,8 @@ pub struct Person {
     /// A `BTreeMap` rather than a hash: this project's save format
     /// requires that identical state gives identical bytes, and a
     /// `HashMap` anywhere in it would break that.
-    pub relations: std::collections::BTreeMap<crate::id::Id<Person>, crate::relations::Relationship>,
+    pub relations:
+        std::collections::BTreeMap<crate::id::Id<Person>, crate::relations::Relationship>,
     /// **What they are trying to do about earning a living**, what they
     /// have heard that bears on it, and whether anything has given them a
     /// reason to think again. Spec A4; see `planner.rs`.
@@ -1360,7 +1361,9 @@ pub fn work_available(
     conveyance: Conveyance,
     wants: &dyn Fn(Trade) -> bool,
 ) -> Vec<Contract> {
-    use crate::occupation::{industries_of_sector, industry_of_service, industry_of_site, Industry};
+    use crate::occupation::{
+        industries_of_sector, industry_of_service, industry_of_site, Industry,
+    };
     let mut out = Vec::new();
 
     // Hauls: the arbitrage the trade system is already finding, offered as
@@ -1744,6 +1747,10 @@ pub fn work_available(
     // state insists on funding.
     if let Some(gov) = econ.government(market) {
         for service in crate::state::Service::ALL {
+            // A hospital's jobs are its own shifts, offered with the works.
+            if service.staffed_at_its_sites() {
+                continue;
+            }
             let posts = gov.posts_for(econ, market, service);
             if posts < 1.0 {
                 continue;

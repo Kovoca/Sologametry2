@@ -597,6 +597,7 @@ impl Region {
 
             let food_day = pop * Commodity::ProcessedFood.per_capita_annual() / 365.0;
             let goods_day = pop * Commodity::RetailGoods.per_capita_annual() / 365.0;
+            let meat_day = pop * Commodity::Meat.per_capita_annual() / 365.0;
 
             // Hemisphere from the town's own latitude: a country can
             // straddle the equator, and a market's farming year follows
@@ -623,13 +624,21 @@ impl Region {
                 name: format!("{name} market"),
                 kind: SiteKind::Shop,
                 market: m,
+                // **And a meat counter.** A butcher killed and cut for a
+                // town that had nowhere to buy it: households shop here and
+                // nowhere else, and this held tins and goods, so every
+                // tonne of meat spoiled on the block and the pasture and
+                // the butcher were never paid. A supermarket's chillers
+                // hold days of it, the same as the butcher's.
                 stock: cap(&[
                     (Commodity::ProcessedFood, food_day * 4.0),
                     (Commodity::RetailGoods, goods_day * 14.0),
+                    (Commodity::Meat, meat_day * 2.0),
                 ]),
                 capacity: cap(&[
                     (Commodity::ProcessedFood, food_day * 20.0),
                     (Commodity::RetailGoods, goods_day * 60.0),
+                    (Commodity::Meat, meat_day * 5.0),
                 ]),
                 recipe: None,
                 throughput: 0.0,
@@ -642,7 +651,10 @@ impl Region {
                 // lorries and a served counter or two. A village shop and
                 // a city supermarket are the same furniture at different
                 // counts.
-                fitted: Some(crate::building::Building::shop(food_day + goods_day, 4.0)),
+                fitted: Some(crate::building::Building::shop(
+                    food_day + goods_day + meat_day,
+                    4.0,
+                )),
                 cost_factor: 1.0,
             });
         }

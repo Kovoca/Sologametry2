@@ -3505,10 +3505,11 @@ impl Economy {
         self.pay_for_services();
         self.run_the_service_sector();
         self.pay_wages();
-        // The state takes its share and pays its own staff out of it.
-        self.tax_and_spend();
-        // And what is left over after the wages is somebody's income too.
+        // What is left over after the wages is somebody's income too.
         self.distribute_profits();
+        // The state takes its share of the day's pay and dividends, which is
+        // why it comes after both, and pays its own staff out of it.
+        self.tax_and_spend();
         self.update_prices();
         // **At the end of the day, after everything has moved.** Meat
         // that was sold this morning is not in the cold store tonight,
@@ -4329,9 +4330,9 @@ impl Economy {
             }
             self.ledger.sites[site].ran = batches;
 
-            // Power is drawn from the plants that generated it.
+            // Power is drawn from the plants that generated it, and paid for.
             let draw = recipe.power * batches;
-            self.draw_power(draw);
+            self.draw_power(crate::money::Account::Firm(site), draw);
 
             for &(c, need) in recipe.inputs {
                 self.ledger.apply(
@@ -4364,7 +4365,30 @@ impl Economy {
     }
 
     /// Consume electricity from wherever it was generated.
-    fn draw_power(&mut self, mut qty: f64) {
+    /// **Draw power from the plants that made it, and pay them for it.**
+    ///
+    /// Power was drawn and never paid for, by anybody: a works took what it
+    /// needed off the grid and a household's share was generated and never
+    /// sold. So every power station in the world had no income at all, and
+    /// the tens of thousands of people its rating employs could never be paid
+    /// — in world 23 a fleet rated for 64,812 jobs had nobody on shift. A
+    /// works and a household both pay the price where they stand.
+    ///
+    /// **Not the wholesale share a works takes off other inputs.** The price
+    /// of electricity here is already the wholesale price — the clearing
+    /// price of the merit order, set by the fuel cost of the last station
+    /// dispatched — so taking a quarter off it again left the stations paid
+    /// less than their coal cost: 9.89e9 in, 9.89e9 out on fuel and its
+    /// carriage, and nothing for anybody's wages.
+    fn draw_power(&mut self, buyer: crate::money::Account, mut qty: f64) {
+        use crate::money::{Account, Why};
+        let day = self.ledger.day;
+        let market = match buyer {
+            Account::Firm(s) => self.ledger.sites[s].market,
+            Account::Households(m) => m,
+            _ => return,
+        };
+        let price = self.markets[market].price[Commodity::Electricity as usize];
         for site in 0..self.ledger.sites.len() {
             if qty <= 1e-12 {
                 break;
@@ -4377,15 +4401,21 @@ impl Economy {
             if take <= 0.0 {
                 continue;
             }
+            let reason = match buyer {
+                Account::Households(_) => Use::Household,
+                _ => Use::Input,
+            };
             self.ledger.apply(
                 &mut self.journal,
                 Event::Consumed {
                     site,
                     commodity: Commodity::Electricity,
                     qty: take,
-                    reason: Use::Input,
+                    reason,
                 },
             );
+            self.treasury
+                .pay(day, buyer, Account::Firm(site), take * price, Why::Supply);
             qty -= take;
         }
     }
@@ -5035,7 +5065,16 @@ impl Economy {
         for m in 0..self.markets.len() {
             for &c in Commodity::ALL.iter() {
                 let want = self.markets[m].daily_household_demand(c);
-                if want <= 0.0 || !c.storable() {
+                if want <= 0.0 {
+                    continue;
+                }
+                // **The household's share of the grid**, generated for it
+                // every day and never sold to it.
+                if c == Commodity::Electricity {
+                    self.draw_power(crate::money::Account::Households(m), want);
+                    continue;
+                }
+                if !c.storable() {
                     continue;
                 }
                 let mut left = want;
@@ -5233,8 +5272,8 @@ impl Economy {
     /// precisely why real turnover taxes are levied on the value added.
     ///
     /// So the wage bill is computed first and collected second, in
-    /// proportion to who took money today — capped by what the state can
-    /// actually reach. **A weak state cannot tax what it cannot reach**,
+    /// proportion to what each town's people were paid today — capped by
+    /// what the state can actually reach. **A weak state cannot tax what it cannot reach**,
     /// and the shortfall shows up the way it does everywhere else: as
     /// fewer people paid, not a worse multiplier.
     ///
@@ -5247,18 +5286,30 @@ impl Economy {
     fn tax_and_spend(&mut self) {
         use crate::money::{Account, Why};
         let day = self.ledger.day;
-        // Who took money over the counter today, and how much. Read once
-        // and split by whose country the till stands in.
-        let takings: Vec<(usize, f64)> = self
-            .treasury
-            .today
-            .iter()
-            .filter(|t| t.why == Why::Purchase)
-            .filter_map(|t| match t.to {
-                Account::Firm(i) => Some((i, t.amount)),
-                _ => None,
-            })
-            .collect();
+        // What each town's households were paid today, in wages and
+        // dividends. Read once and split by whose country the town is in.
+        //
+        // **Taxed where it is earned, not where it is spent.** The levy fell
+        // on the tills of shops and builders, out of whatever was left after
+        // they had paid their suppliers — and a builder charges its wages and
+        // its materials and nothing over, so any tax at all put it under. In
+        // world 23 the states were owed 1.84e10 a year and collected 61% of
+        // it; their hospitals, paid on what they could afford, ran at half
+        // strength and were most of the idle jobs in the world. Real states
+        // raise most of it from incomes: taxes on income and profits and
+        // social contributions are about three fifths of OECD revenue, and
+        // taxes on goods and services about a third *(OECD Revenue
+        // Statistics, 2023)*. Consumption taxes are folded in here, because
+        // out of the same households' pockets is where they come from too.
+        let mut earned_in = vec![0.0f64; self.markets.len()];
+        for t in self.treasury.today.iter() {
+            if !matches!(t.why, Why::Payroll | Why::Profit) {
+                continue;
+            }
+            if let Account::Households(m) = t.to {
+                earned_in[m] += t.amount;
+            }
+        }
 
         for nation in self.nations() {
             let Some(gov) = self.governments.get(&nation) else {
@@ -5285,36 +5336,34 @@ impl Economy {
                     if self.markets[m].nation != nation {
                         continue;
                     }
-                    bill +=
-                        self.staff_today.get(site).copied().unwrap_or(0.0) * self.day_rate_here(m);
+                    // And what its wards used, which it is paid for too.
+                    bill += self.staff_today.get(site).copied().unwrap_or(0.0)
+                        * self.day_rate_here(m)
+                        + self.inputs_used_cost(site);
                 }
             }
             if bill <= 0.0 {
                 continue;
             }
 
-            // **Only the tills inside its own borders.** A state taxes what
-            // it can reach, and it cannot reach a shop in another country.
-            let ours: Vec<(usize, f64)> = takings
-                .iter()
-                .copied()
-                .filter(|&(i, _)| self.markets[self.ledger.sites[i].market].nation == nation)
-                .collect();
-            let turnover: f64 = ours.iter().map(|&(_, a)| a).sum();
-            if turnover <= 0.0 {
+            // **Only the people inside its own borders.** A state taxes what
+            // it can reach, and it cannot reach a pay packet in another
+            // country.
+            let earned: f64 = mine.iter().map(|&m| earned_in[m]).sum();
+            if earned <= 0.0 {
                 continue;
             }
 
             // What it needs, or what it can reach, whichever is less.
-            let wanted = bill.min(turnover * ceiling);
-            let rate = wanted / turnover;
+            let wanted = bill.min(earned * ceiling);
+            let rate = wanted / earned;
             let mut collected = 0.0;
-            for (firm, amount) in ours {
+            for &m in mine.iter() {
                 collected += self.treasury.pay(
                     day,
-                    Account::Firm(firm),
+                    Account::Households(m),
                     Account::State(nation),
-                    amount * rate,
+                    earned_in[m] * rate,
                     Why::Tax,
                 );
             }
@@ -5428,7 +5477,13 @@ impl Economy {
             let m = self.ledger.sites[site].market;
             let nation = self.markets[m].nation;
             let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
-            let due = hands * self.day_rate_here(m) * self.state_affords(nation);
+            // **Wages and the supplies the wards used**, as the builders
+            // below are paid. A budget covering only a hospital's payroll
+            // left it buying medicine out of the wage bill: every hospital
+            // in world 23 met under two thirds of its payroll with the
+            // state paying all it could.
+            let supplies = self.inputs_used_cost(site);
+            let due = (hands * self.day_rate_here(m) + supplies) * self.state_affords(nation);
             self.treasury.pay(
                 day,
                 Account::State(nation),
@@ -5446,13 +5501,16 @@ impl Economy {
             let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
             // Wages plus what the materials cost them, which is what a
             // builder actually charges for.
-            let materials: f64 = self
-                .treasury
-                .today
-                .iter()
-                .filter(|t| t.from == Account::Firm(site) && t.why == Why::Supply)
-                .map(|t| t.amount)
-                .sum();
+            //
+            // **The materials the work used, at the price a firm pays for
+            // them** — not the supply bills the builder managed to settle
+            // today. Charging only for what had been paid made a loop with
+            // no way in: a builder whose income was exactly its wage bill
+            // never held the money to pay for cement, so was never paid for
+            // cement, so never held the money. In world 23 builders paid for
+            // no materials all year and every cement works in the world met
+            // none of its payroll.
+            let materials = self.inputs_used_cost(site);
             let due = hands * self.day_rate_here(m) + materials;
             self.treasury.pay(
                 day,
@@ -5603,6 +5661,27 @@ impl Economy {
                 }
             }
         }
+    }
+
+    /// **What the inputs a service site used today cost it**, at the price
+    /// a firm pays. A service sells to nobody, so whoever pays for it — a
+    /// household for the builders, the state for a hospital — has to pay
+    /// for what the work used as well as for the hands, or the site pays its
+    /// suppliers out of the wage bill.
+    fn inputs_used_cost(&self, site: usize) -> f64 {
+        let s = &self.ledger.sites[site];
+        let (m, used) = (s.market, s.ran);
+        s.recipe
+            .map(|r| {
+                RECIPES[r]
+                    .inputs
+                    .iter()
+                    .map(|&(c, per)| {
+                        per * used * self.markets[m].price[c as usize] * Self::WHOLESALE_MARGIN
+                    })
+                    .sum::<f64>()
+            })
+            .unwrap_or(0.0)
     }
 
     /// What a day's work fetches in this market, against the settled cost
@@ -5821,6 +5900,18 @@ impl Economy {
                     );
                     self.take_delivery(to_m, c, qty, paid + freight);
                     self.pay_the_carrier(dst, freight);
+                    // **And the buyer pays the seller**, at the price where
+                    // the goods were bought. This moved goods between towns
+                    // and paid only the haulier, so whoever grew or made
+                    // them gave them away.
+                    let due = qty * self.markets[from_m].price[c as usize] * Self::WHOLESALE_MARGIN;
+                    self.treasury.pay(
+                        self.ledger.day,
+                        crate::money::Account::Firm(dst),
+                        crate::money::Account::Firm(src),
+                        due,
+                        crate::money::Why::Supply,
+                    );
                     let carried = self.routes[r].moved.map_or(0.0, |(_, _, t)| t);
                     if qty > carried {
                         self.routes[r].moved = Some((c, to_m, qty));

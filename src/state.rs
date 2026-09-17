@@ -111,6 +111,20 @@ impl Service {
         }
     }
 
+    /// **Whether the service's staff work at sites the economy builds**,
+    /// and are paid there rather than as public posts.
+    ///
+    /// Every town has a hospital, staffed off this same one in forty-five,
+    /// and paid by the state for the hands it has on. Counting health as
+    /// public posts as well put the health service on the state's payroll
+    /// twice: the state could afford a little over half its bill, and the
+    /// hospitals — paid on what it afforded — were where the cut fell,
+    /// leaving more idle jobs in them than in every other kind of works
+    /// together.
+    pub fn staffed_at_its_sites(self) -> bool {
+        matches!(self, Service::Health)
+    }
+
     /// Share of the economy a peacetime state spends here *(spec C.2)*.
     pub fn peacetime_share(self) -> f64 {
         match self {
@@ -162,7 +176,8 @@ pub struct Government {
     /// a line and it employs fewer people**, which is the whole point of
     /// the budget competing with itself.
     pub funded: [f64; 6],
-    /// Public posts in each market, summed over the services.
+    /// Public posts in each market, summed over the services **paid as
+    /// posts** — not the health service, whose staff are the hospitals'.
     pub posts: Vec<f64>,
     /// **What share of its supplies the state actually got**, 0 to 1.
     ///
@@ -245,6 +260,7 @@ impl Government {
                 Service::ALL
                     .iter()
                     .enumerate()
+                    .filter(|(_, s)| !s.staffed_at_its_sites())
                     .map(|(i, s)| m.population * s.staff_per_head() * funded[i])
                     .sum::<f64>()
             })
@@ -300,7 +316,10 @@ impl Government {
         self.posts.get(market).copied().unwrap_or(0.0)
     }
 
-    /// Public posts in one market for one service.
+    /// **The establishment of one service in one market**, whether it is
+    /// paid as posts or staffs a site. A caller offering or counting jobs
+    /// skips the services `staffed_at_its_sites`, because the site offers
+    /// and counts them.
     pub fn posts_for(&self, econ: &Economy, market: usize, service: Service) -> f64 {
         let i = Service::ALL.iter().position(|&s| s == service).unwrap_or(0);
         econ.markets
@@ -321,7 +340,19 @@ impl Government {
         /// young, the old and the unwaged are taken out.
         const IN_WORK: f64 = 0.5;
         let people: f64 = econ.markets.iter().map(|m| m.population).sum();
-        let posts: f64 = self.posts.iter().sum();
+        // The posts it pays, and the health staff it pays through its
+        // hospitals, in the towns it governs.
+        let at_sites: f64 = (0..econ.markets.len())
+            .filter(|&m| self.posts_in(m) > 0.0)
+            .map(|m| {
+                Service::ALL
+                    .iter()
+                    .filter(|s| s.staffed_at_its_sites())
+                    .map(|&s| self.posts_for(econ, m, s))
+                    .sum::<f64>()
+            })
+            .sum();
+        let posts: f64 = self.posts.iter().sum::<f64>() + at_sites;
         if people <= 0.0 {
             return 0.0;
         }

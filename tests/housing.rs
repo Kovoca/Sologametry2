@@ -72,7 +72,12 @@ fn the_ladder_goes_up_one_rung_at_a_time() {
     }
 
     // Somebody with a great deal of money climbs the whole way.
-    let mut rich = Person::new("Moneybags", Trade::BusinessSpecialist, 0, e.house_price(0) * 4.0);
+    let mut rich = Person::new(
+        "Moneybags",
+        Trade::BusinessSpecialist,
+        0,
+        e.house_price(0) * 4.0,
+    );
     rich.housing = Housing::Lodging;
     let mut saw_rented = false;
     for day in 0..400 {

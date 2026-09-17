@@ -54,6 +54,9 @@ struct Reading {
     worked: f64,
     /// The workforce statistics' own unemployment, averaged over towns.
     unemployed: f64,
+    /// **The same, over heads**: idle hands over all hands. A national
+    /// rate is this — a village at sixty per cent is not a city.
+    unemployed_by_head: f64,
     /// Days of food held in the worst-supplied town.
     worst_food_cover: f64,
     /// Food's price against what it costs to make, across the world.
@@ -124,6 +127,14 @@ fn bands() -> Vec<Band> {
             hi: 0.15,
             source: "developed economies 3-10%, a bad recession past 12",
             read: |r| r.unemployed,
+            percent: true,
+        },
+        Band {
+            name: "unemployment, by head",
+            lo: 0.02,
+            hi: 0.15,
+            source: "idle hands over all hands; the way a national rate is counted",
+            read: |r| r.unemployed_by_head,
             percent: true,
         },
         Band {
@@ -238,6 +249,11 @@ fn main() {
     };
     let final_year_from = days.saturating_sub(DAYS_PER_YEAR);
     let mut worked_final_year: std::collections::BTreeMap<_, u64> = Default::default();
+    // **Each kind of works' books over the final year**: what came in and
+    // what went out, by reason.
+    let mut books: std::collections::BTreeMap<(String, bool, String), f64> = Default::default();
+    // **And what went unpaid, by what it was for**, over the same year.
+    let mut unpaid_year: std::collections::BTreeMap<&'static str, f64> = Default::default();
 
     for d in 1..=days {
         g.a_day();
@@ -251,6 +267,40 @@ fn main() {
             e.treasury.assert_conserved();
         }
 
+        if d > final_year_from {
+            if let Some(e) = g.economy.as_ref() {
+                use scale_sim::money::Account;
+                for (why, v) in e.treasury.unpaid_why.iter() {
+                    *unpaid_year.entry(why).or_default() += v;
+                }
+                for t in e.treasury.today.iter() {
+                    if let Account::State(_) = t.to {
+                        *books
+                            .entry(("~State".into(), true, format!("{:?}", t.why)))
+                            .or_default() += t.amount;
+                    }
+                    if let Account::State(_) = t.from {
+                        *books
+                            .entry(("~State".into(), false, format!("{:?}", t.why)))
+                            .or_default() += t.amount;
+                    }
+                    if let Account::Firm(s) = t.to {
+                        if let Some(site) = e.ledger.sites.get(s) {
+                            *books
+                                .entry((format!("{:?}", site.kind), true, format!("{:?}", t.why)))
+                                .or_default() += t.amount;
+                        }
+                    }
+                    if let Account::Firm(s) = t.from {
+                        if let Some(site) = e.ledger.sites.get(s) {
+                            *books
+                                .entry((format!("{:?}", site.kind), false, format!("{:?}", t.why)))
+                                .or_default() += t.amount;
+                        }
+                    }
+                }
+            }
+        }
         if d == final_year_from {
             if let Some(folk) = g.folk.as_ref() {
                 for (id, p) in folk.people.iter() {
@@ -284,7 +334,23 @@ fn main() {
 
     report(&readings, years);
     idle_jobs(&g);
-    by_trade(&g, &worked_final_year, &changes, years, final_year_from, days);
+    firm_books(&books);
+    println!(
+        "
+  owed and not paid over the final year, by what for:
+"
+    );
+    for (why, v) in unpaid_year.iter() {
+        println!("  {:<24} {:>10.2e}", why, v);
+    }
+    by_trade(
+        &g,
+        &worked_final_year,
+        &changes,
+        years,
+        final_year_from,
+        days,
+    );
 }
 
 /// Changes of trade over the run, counted monthly.
@@ -310,9 +376,11 @@ fn by_trade(
 ) {
     let Some(folk) = g.folk.as_ref() else { return };
     let span = to_day.saturating_sub(from_day).max(1) as f64;
-    println!("
+    println!(
+        "
   by trade at the end:
-");
+"
+    );
     println!(
         "  {:<16} {:>6} {:>12} {:>9}",
         "", "people", "worked, yr 5", "homeless"
@@ -371,7 +439,7 @@ fn by_trade(
             }
         }
     }
-    top.sort_by(|x, y| y.0.cmp(&x.0));
+    top.sort_by_key(|x| std::cmp::Reverse(x.0));
     for (count, a, b) in top.into_iter().take(8) {
         println!(
             "    {:>4}  {} -> {}",
@@ -440,6 +508,16 @@ fn read(
     // ---- the economy --------------------------------------------------
     let towns = e.markets.len().max(1);
     r.unemployed = e.workforce.iter().map(|w| w.unemployment).sum::<f64>() / towns as f64;
+    let hands: f64 = e.workforce.iter().map(|w| w.hands).sum();
+    r.unemployed_by_head = if hands > 0.0 {
+        e.workforce
+            .iter()
+            .map(|w| w.hands * w.unemployment)
+            .sum::<f64>()
+            / hands
+    } else {
+        0.0
+    };
 
     let food = Commodity::ProcessedFood as usize;
     // Read off the morning's position, which is what every decision that
@@ -490,8 +568,17 @@ fn report(readings: &[Reading], years: u64) {
     // ---- a quarter at a time, so a transient is visible -----------------
     println!(
         "{:>6} {:>6} {:>7} {:>8} {:>7} {:>7} {:>8} {:>7} {:>7} {:>11} {:>10}",
-        "day", "people", "hungry", "homeless", "worked", "unempl", "foodcov", "fp/fc", "fx",
-        "hh money", "unpaid/mo"
+        "day",
+        "people",
+        "hungry",
+        "homeless",
+        "worked",
+        "unempl",
+        "foodcov",
+        "fp/fc",
+        "fx",
+        "hh money",
+        "unpaid/mo"
     );
     println!("{}", "-".repeat(98));
     for (i, r) in readings.iter().enumerate() {
@@ -538,7 +625,9 @@ fn report(readings: &[Reading], years: u64) {
         let (lo, hi) = readings
             .iter()
             .map(|r| (b.read)(r))
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, z), v| (a.min(v), z.max(v)));
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(a, z), v| {
+                (a.min(v), z.max(v))
+            });
         let verdict = if outside.is_empty() {
             "ok".to_string()
         } else {
@@ -582,9 +671,11 @@ fn report(readings: &[Reading], years: u64) {
     // rise in another, and reading that off is a measurement rather than a
     // theory about the cause.
     if let (Some(a), Some(z)) = (readings.first(), readings.last()) {
-        println!("
+        println!(
+            "
   who holds the money:
-");
+"
+        );
         println!("  {:<14} {:>12} {:>12} {:>12}", "", "start", "end", "moved");
         let rows = [
             ("households", a.held.households, z.held.households),
@@ -595,7 +686,13 @@ fn report(readings: &[Reading], years: u64) {
             ("banks, other", a.held.banks, z.held.banks),
         ];
         for (name, s0, s1) in rows {
-            println!("  {:<14} {:>12.3e} {:>12.3e} {:>+12.3e}", name, s0, s1, s1 - s0);
+            println!(
+                "  {:<14} {:>12.3e} {:>12.3e} {:>+12.3e}",
+                name,
+                s0,
+                s1,
+                s1 - s0
+            );
         }
         let net: f64 = rows.iter().map(|r| r.2 - r.1).sum();
         println!("  {:<14} {:>12} {:>12} {:>+12.3e}", "net", "", "", net);
@@ -630,7 +727,9 @@ fn report(readings: &[Reading], years: u64) {
             "    (the sample replaces the dead, so a moving figure here is itself worth a look)"
         );
     }
-    println!("  money and tonnage conserved every day: yes (checked daily; a failure stops the run)");
+    println!(
+        "  money and tonnage conserved every day: yes (checked daily; a failure stops the run)"
+    );
     println!();
     println!(
         "{}",
@@ -650,7 +749,54 @@ fn report(readings: &[Reading], years: u64) {
 /// cannot pay the people to do it.
 fn idle_jobs(g: &GameState) {
     let Some(e) = g.economy.as_ref() else { return };
-    let mut rows: std::collections::BTreeMap<String, (f64, f64, f64, f64, f64)> = Default::default();
+    println!(
+        "
+  towns at the end:
+"
+    );
+    println!(
+        "  {:<18} {:>12} {:>12} {:>12} {:>8}",
+        "", "people", "hands", "working", "unempl"
+    );
+    let grid = e.grid.capacity();
+    for (m, w) in e.workforce.iter().enumerate() {
+        // Where the idle jobs are: the three kinds of works furthest short
+        // of their rated staff in this town.
+        let mut short: std::collections::BTreeMap<String, f64> = Default::default();
+        for (i, site) in e.ledger.sites.iter().enumerate() {
+            if site.market != m {
+                continue;
+            }
+            let Some(r) = site.recipe else { continue };
+            let rated = match site.kind {
+                scale_sim::econ::SiteKind::PowerPlant => grid,
+                _ => site.throughput,
+            };
+            let posts =
+                scale_sim::labour::rated_headcount(rated, scale_sim::econ::RECIPES[r].labour);
+            let on = e.staff_today.get(i).copied().unwrap_or(0.0);
+            *short.entry(format!("{:?}", site.kind)).or_default() += posts - on;
+        }
+        let mut worst: Vec<(String, f64)> = short.into_iter().collect();
+        worst.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let worst: Vec<String> = worst
+            .iter()
+            .take(3)
+            .map(|(k, v)| format!("{k} {:.0}k", v / 1e3))
+            .collect();
+        println!(
+            "  {:<18} {:>12.0} {:>12.0} {:>12.0} {:>7.1}%  n{} {}",
+            e.markets[m].name.chars().take(18).collect::<String>(),
+            e.markets[m].population,
+            w.hands,
+            w.working,
+            w.unemployment * 100.0,
+            e.markets[m].nation,
+            worst.join(", ")
+        );
+    }
+    let mut rows: std::collections::BTreeMap<String, (f64, f64, f64, f64, f64)> =
+        Default::default();
     let grid = e.grid.capacity();
     for (i, site) in e.ledger.sites.iter().enumerate() {
         let Some(r) = site.recipe else { continue };
@@ -675,9 +821,11 @@ fn idle_jobs(g: &GameState) {
         x.3 += met * posts;
         x.4 += 1.0;
     }
-    println!("
+    println!(
+        "
   idle jobs at the end, by kind of works:
-");
+"
+    );
     println!(
         "  {:<14} {:>6} {:>12} {:>12} {:>8} {:>10}",
         "", "sites", "rated jobs", "on today", "running", "pay met"
@@ -694,6 +842,56 @@ fn idle_jobs(g: &GameState) {
             on,
             run / posts * 100.0,
             met / posts * 100.0
+        );
+    }
+}
+
+/// **The final year's books for each kind of works**: income, and each
+/// outgoing by reason, and what was left.
+fn firm_books(books: &std::collections::BTreeMap<(String, bool, String), f64>) {
+    let mut kinds: Vec<String> = books.keys().map(|k| k.0.clone()).collect();
+    kinds.sort();
+    kinds.dedup();
+    println!(
+        "
+  the final year's books, by kind of works (money in, and out by reason):
+"
+    );
+    println!(
+        "  {:<14} {:>10} {:>9} {:>9} {:>9} {:>9} {:>9} {:>9} {:>10}",
+        "", "income", "payroll", "supply", "purchase", "freight", "tax", "profit", "left"
+    );
+    for k in kinds {
+        let get = |inc: bool, why: &str| {
+            books
+                .get(&(k.clone(), inc, why.to_string()))
+                .copied()
+                .unwrap_or(0.0)
+        };
+        let income: f64 = books
+            .iter()
+            .filter(|(key, _)| key.0 == k && key.1)
+            .map(|(_, v)| v)
+            .sum();
+        let out: f64 = books
+            .iter()
+            .filter(|(key, _)| key.0 == k && !key.1)
+            .map(|(_, v)| v)
+            .sum();
+        if income + out <= 0.0 {
+            continue;
+        }
+        println!(
+            "  {:<14} {:>10.2e} {:>9.2e} {:>9.2e} {:>9.2e} {:>9.2e} {:>9.2e} {:>9.2e} {:>+10.2e}",
+            k,
+            income,
+            get(false, "Payroll"),
+            get(false, "Supply"),
+            get(false, "Purchase"),
+            get(false, "Freight"),
+            get(false, "Tax"),
+            get(false, "Profit"),
+            income - out
         );
     }
 }

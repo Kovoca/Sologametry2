@@ -398,14 +398,7 @@ impl Logistics {
 /// Move goods between two markets, through the journal like everything
 /// else — so conservation covers a haulier's work the way it covers a
 /// farm's.
-fn ship(
-    econ: &mut Economy,
-    from: usize,
-    to: usize,
-    c: Commodity,
-    qty: f64,
-    carrier: usize,
-) -> f64 {
+fn ship(econ: &mut Economy, from: usize, to: usize, c: Commodity, qty: f64, carrier: usize) -> f64 {
     let mut left = qty;
     let mut moved = 0.0;
 
@@ -528,8 +521,7 @@ fn ship(
                     0
                 }
             };
-            let Some((id, take)) =
-                econ.consign(src, dst, carrier, c, take, nights, c.needs_cold())
+            let Some((id, take)) = econ.consign(src, dst, carrier, c, take, nights, c.needs_cold())
             else {
                 continue;
             };

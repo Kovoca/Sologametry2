@@ -431,10 +431,18 @@ real occupations to train for.
    goods and 70% of their steel, with no exports on the other side. Built to
    make what they need; hands follow the work done; a capital-account bug
    fixed. Households gain money in all three soak worlds.
-   **Still open inside it:** the unemployment statistic, 25% and 33% in two
-   worlds, because firms selling below cost cannot meet payroll. A shutdown
-   rule was tried and made every world worse; the question is why prices
-   settle under cost.
+   **And the unemployment statistic — fixed.** It was not firms selling
+   under cost; it was seven places where goods or services changed hands
+   with nobody paid: power, builders' materials, trade between towns, meat
+   with no counter to sell it, health staff on the state's payroll twice,
+   a tax levied on tills that could not pay it, and hospitals buying
+   medicine out of their wage bill. Workforce unemployment ends at 11.1%,
+   10.4% and 14.4% (`bin/soak`, seeds 7, 11, 23), every band in range at
+   the end. **Still open:** builders meet 46-63% of payroll; hospital
+   supplies cost 0.7-1.4x hospital payroll against a real third, which
+   belongs with pay (item 2); world 7 lost live-cattle exports that only
+   existed because nobody could buy meat, and its households end 17% down.
+   A rule for where traders deliver was tried and rejected (CLAUDE.md).
 2. The lowest pay under the 6-10 days-of-food band.
 3. Supervisors a fifth of the sample against a tenth of posts.
 4. Contract mixes from occupation-level figures.

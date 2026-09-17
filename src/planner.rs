@@ -137,7 +137,11 @@ pub enum Step {
     /// **Go after an opening at another trade**, in one town, until a day.
     /// Holding a reservation on the opening while it lasts, so two people
     /// are not both told they have the same post.
-    TryFor { trade: Trade, market: usize, by: u64 },
+    TryFor {
+        trade: Trade,
+        market: usize,
+        by: u64,
+    },
 }
 
 /// **A plan persists.** Taken on a trigger and executed on every day after
@@ -333,7 +337,7 @@ impl Planner {
                     self.plan = Some(Plan::keep_at(trade, day, review_on.max(day + 1)));
                 } else if outcome == Outcome::Looked
                     && self.looked_without_work >= A_WEEK_OF_LOOKING
-                    && self.looked_without_work % A_WEEK_OF_LOOKING == 0
+                    && self.looked_without_work.is_multiple_of(A_WEEK_OF_LOOKING)
                 {
                     self.raise(Trigger::PlanFailed);
                 } else if day >= review_on {
@@ -492,5 +496,7 @@ pub fn take_turns<T: Copy>(waiting: &[T], allowed: usize, day: u64) -> Vec<T> {
     }
     let n = waiting.len();
     let start = (day as usize).wrapping_mul(7) % n;
-    (0..n.min(allowed)).map(|i| waiting[(start + i) % n]).collect()
+    (0..n.min(allowed))
+        .map(|i| waiting[(start + i) % n])
+        .collect()
 }

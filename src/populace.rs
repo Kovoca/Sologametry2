@@ -896,7 +896,10 @@ impl Populace {
                     continue;
                 }
                 let expected = posts[m][t.index()] / total * floor.len() as f64;
-                let holders = floor.iter().filter(|&&id| self.people[id].trade == t).count();
+                let holders = floor
+                    .iter()
+                    .filter(|&&id| self.people[id].trade == t)
+                    .count();
                 room[m][t.index()] = expected - holders as f64;
             }
         }
@@ -927,15 +930,13 @@ impl Populace {
                         .iter()
                         .copied()
                         .filter(|&id| {
-                            self.people[id].trade != t
-                                && outcomes.get(&id) == Some(&Day::Looked)
+                            self.people[id].trade != t && outcomes.get(&id) == Some(&Day::Looked)
                         })
                         .collect();
                     (Heard::Notice, readers, None, None)
                 } else {
-                    let teller =
-                        tellers[(mix(&[day, m as u64, t.index() as u64]) % tellers.len() as u64)
-                            as usize];
+                    let teller = tellers
+                        [(mix(&[day, m as u64, t.index() as u64]) % tellers.len() as u64) as usize];
                     let listeners: Vec<Id<Person>> = in_town[m]
                         .iter()
                         .copied()
@@ -1161,7 +1162,10 @@ impl Populace {
             // years at it after the trade is known — settling the years
             // first put them against a trade the person then did not end
             // up in, which `seed` already records going wrong.
-            let here = posts.get(market).copied().unwrap_or([0.0; crate::occupation::N_OCCUPATIONS]);
+            let here = posts
+                .get(market)
+                .copied()
+                .unwrap_or([0.0; crate::occupation::N_OCCUPATIONS]);
             p.trade = draw_work(&mut self.rng, p.qualification, &here);
             // A replacement is a cross-section of the living, not a
             // school leaver, so they bring their years with them.
@@ -1289,7 +1293,11 @@ fn draw_household(rng: &mut Rng) -> Household {
 /// Supervising is never drawn: it is what a floor hand is promoted to. A
 /// town with no posts to read — a hand-built fixture with no works in it —
 /// falls back on national shares, still gated by qualification.
-fn draw_work(rng: &mut Rng, qualification: Qualification, posts: &[f64; crate::occupation::N_OCCUPATIONS]) -> Trade {
+fn draw_work(
+    rng: &mut Rng,
+    qualification: Qualification,
+    posts: &[f64; crate::occupation::N_OCCUPATIONS],
+) -> Trade {
     let open = |t: Trade| t != Trade::Supervisor && qualification >= qualification_for(t);
     let total: f64 = Trade::ALL
         .iter()
@@ -1333,4 +1341,3 @@ fn draw_from(
     }
     last
 }
-

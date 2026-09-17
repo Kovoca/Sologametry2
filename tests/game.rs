@@ -550,7 +550,11 @@ fn a_decision_is_taken_on_the_morning_position() {
                 .iter()
                 .map(|&s| e.ledger.sites[s].stock[c as usize])
                 .sum();
-            let share = if held > 0.0 { (placeable / held).min(1.0) } else { 0.0 };
+            let share = if held > 0.0 {
+                (placeable / held).min(1.0)
+            } else {
+                0.0
+            };
             let mut pot = 0.0;
             for s in donors {
                 let give = e.ledger.sites[s].stock[c as usize] * share;

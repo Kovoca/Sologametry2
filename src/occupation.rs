@@ -505,8 +505,12 @@ pub fn wages() -> &'static BTreeMap<String, NationalWage> {
     static CELL: OnceLock<BTreeMap<String, NationalWage>> = OnceLock::new();
     CELL.get_or_init(|| {
         let money = |w: Option<&str>| {
-            w.filter(|t| t.starts_with('$'))
-                .and_then(|t| t.trim_start_matches('$').replace(',', "").parse::<f64>().ok())
+            w.filter(|t| t.starts_with('$')).and_then(|t| {
+                t.trim_start_matches('$')
+                    .replace(',', "")
+                    .parse::<f64>()
+                    .ok()
+            })
         };
         let mut out = BTreeMap::new();
         let mut in_national = false;
@@ -811,9 +815,8 @@ pub fn published() -> &'static BTreeMap<String, BTreeMap<String, f64>> {
 fn from_counts(c: &BTreeMap<String, f64>) -> [f64; N_OCCUPATIONS] {
     use Occupation::*;
     let g = |code: &str| c.get(code).copied().unwrap_or(0.0);
-    let less = |group: &str, parts: &[&str]| {
-        (g(group) - parts.iter().map(|p| g(p)).sum::<f64>()).max(0.0)
-    };
+    let less =
+        |group: &str, parts: &[&str]| (g(group) - parts.iter().map(|p| g(p)).sum::<f64>()).max(0.0);
     let mut s = [0.0f64; N_OCCUPATIONS];
     s[Farmer.index()] = g("11-9013");
     s[Manager.index()] = less("11-0000", &["11-9013"]);
@@ -975,7 +978,8 @@ pub fn jobs_by_industry(econ: &crate::econ::Economy) -> Vec<[f64; N_INDUSTRIES]>
             SiteKind::PowerPlant => grid,
             _ => site.throughput,
         };
-        out[site.market][industry] += crate::labour::rated_headcount(rated, crate::econ::RECIPES[r].labour);
+        out[site.market][industry] +=
+            crate::labour::rated_headcount(rated, crate::econ::RECIPES[r].labour);
     }
     if let Some(svc) = econ.services.as_ref() {
         for m in 0..n {
@@ -991,6 +995,10 @@ pub fn jobs_by_industry(econ: &crate::econ::Economy) -> Vec<[f64; N_INDUSTRIES]>
     for m in 0..n {
         if let Some(gov) = econ.government(m) {
             for service in crate::state::Service::ALL {
+                // Counted at the hospital, with the works.
+                if service.staffed_at_its_sites() {
+                    continue;
+                }
                 out[m][industry_of_service(service).index()] += gov.posts_for(econ, m, service);
             }
         }

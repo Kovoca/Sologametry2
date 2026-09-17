@@ -79,7 +79,13 @@ fn a_week_without_work_is_a_reason_to_think_again() {
         pl.observe(day, Trade::Sales, 0, Outcome::Looked, 60);
         assert_eq!(pl.pending, None, "gave up on day {day}");
     }
-    pl.observe(A_WEEK_OF_LOOKING as u64 - 1, Trade::Sales, 0, Outcome::Looked, 60);
+    pl.observe(
+        A_WEEK_OF_LOOKING as u64 - 1,
+        Trade::Sales,
+        0,
+        Outcome::Looked,
+        60,
+    );
     assert_eq!(pl.pending, Some(Trigger::PlanFailed));
     assert!(
         pl.expectation() < 0.5,
@@ -119,7 +125,11 @@ fn a_new_trade_must_clearly_beat_the_old_one() {
         let per = worth_to(&who, &e, Trade::ProductionWorker, 1.0);
         let chance = factor * now / per;
         assert!(chance <= 1.0, "the fixture cannot express {factor}x");
-        pl.hear(lead(Trade::ProductionWorker, 0, chance, 21), factor * now, now);
+        pl.hear(
+            lead(Trade::ProductionWorker, 0, chance, 21),
+            factor * now,
+            now,
+        );
         pl.reconsider(&who, &e, 21, |_, _| true)
     };
 
@@ -203,16 +213,44 @@ fn an_opening_is_held_for_one_person_at_a_time() {
 
     let mut holds = Vec::new();
     // A post and a half going: room for one.
-    assert!(hold_an_opening(&mut holds, a, 0, Trade::ProductionWorker, 1.5, 10));
+    assert!(hold_an_opening(
+        &mut holds,
+        a,
+        0,
+        Trade::ProductionWorker,
+        1.5,
+        10
+    ));
     assert!(
         !hold_an_opening(&mut holds, b, 0, Trade::ProductionWorker, 1.5, 10),
         "two people were sent after one post"
     );
     // A different trade, or a different town, is a different opening.
-    assert!(hold_an_opening(&mut holds, b, 0, Trade::FoodService, 1.5, 10));
-    assert!(hold_an_opening(&mut holds, c, 1, Trade::ProductionWorker, 1.5, 10));
+    assert!(hold_an_opening(
+        &mut holds,
+        b,
+        0,
+        Trade::FoodService,
+        1.5,
+        10
+    ));
+    assert!(hold_an_opening(
+        &mut holds,
+        c,
+        1,
+        Trade::ProductionWorker,
+        1.5,
+        10
+    ));
     // Nothing going at all.
-    assert!(!hold_an_opening(&mut holds, c, 0, Trade::BusinessSpecialist, 0.4, 10));
+    assert!(!hold_an_opening(
+        &mut holds,
+        c,
+        0,
+        Trade::BusinessSpecialist,
+        0.4,
+        10
+    ));
     // And a hold lapses with the lead it was taken on.
     assert!(holds.iter().all(|h| h.until == 10 + LEAD_LIFE_DAYS));
 }
@@ -230,7 +268,10 @@ fn a_lead_that_came_to_nothing_is_forgotten() {
     pl.observe(0, who.trade, 0, Outcome::Looked, 60);
     let now = worth_to(&who, &e, who.trade, pl.expectation());
     pl.hear(lead(Trade::ProductionWorker, 0, 1.0, 1), 10.0 * now, now);
-    assert_eq!(pl.reconsider(&who, &e, 1, |_, _| true), Some(Trade::ProductionWorker));
+    assert_eq!(
+        pl.reconsider(&who, &e, 1, |_, _| true),
+        Some(Trade::ProductionWorker)
+    );
 
     // They ask, and nobody takes them on — while they go on hearing that
     // the works are hiring, so the lead itself would outlast the attempt.
@@ -244,11 +285,16 @@ fn a_lead_that_came_to_nothing_is_forgotten() {
         }
         pl.observe(day, Trade::Sales, 0, Outcome::Looked, 60);
     }
-    assert!(day < 5 + LEAD_LIFE_DAYS, "the attempt outlasted the lead it was on");
+    assert!(
+        day < 5 + LEAD_LIFE_DAYS,
+        "the attempt outlasted the lead it was on"
+    );
     assert_eq!(pl.pending, Some(Trigger::PlanFailed), "never gave up on it");
     assert_eq!(pl.failures, 1);
     assert!(
-        pl.leads().iter().all(|l| l.trade != Trade::ProductionWorker),
+        pl.leads()
+            .iter()
+            .all(|l| l.trade != Trade::ProductionWorker),
         "still believes in the post that was not there"
     );
     assert!(
@@ -275,7 +321,10 @@ fn the_think_budget_is_a_cap_and_everybody_gets_a_turn() {
         assert!(turn.len() <= allowed, "{} thought on one day", turn.len());
         waiting.retain(|w| !turn.contains(w));
         day += 1;
-        assert!(day < 60, "somebody has been waiting to think for two months");
+        assert!(
+            day < 60,
+            "somebody has been waiting to think for two months"
+        );
     }
 }
 
@@ -296,7 +345,10 @@ fn a_plan_to_take_up_a_trade_is_carried_out() {
     pl.observe(30, told.trade, 0, Outcome::Looked, 60);
     let now = worth_to(&told, &e, told.trade, pl.expectation());
     pl.hear(lead(Trade::ProductionWorker, 0, 0.9, 30), 10.0 * now, now);
-    assert_eq!(pl.reconsider(&told, &e, 30, |_, _| true), Some(Trade::ProductionWorker));
+    assert_eq!(
+        pl.reconsider(&told, &e, 30, |_, _| true),
+        Some(Trade::ProductionWorker)
+    );
     told.planner = pl;
 
     for day in 31..(31 + LEAD_LIFE_DAYS) {
@@ -333,8 +385,8 @@ fn a_plan_to_take_up_a_trade_is_carried_out() {
 #[test]
 fn nobody_is_sent_after_work_the_town_does_not_have() {
     use scale_sim::game::GameState;
-    use scale_sim::occupation::jobs_by_occupation;
     use scale_sim::network::Network;
+    use scale_sim::occupation::jobs_by_occupation;
     use scale_sim::polity::Polities;
     use scale_sim::populace::Populace;
     use scale_sim::region::Nations;
@@ -345,7 +397,15 @@ fn nobody_is_sent_after_work_the_town_does_not_have() {
     let polities = Polities::partition(&world, 24);
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
-    let n = Nations::build(&world, &polities, &settlements, &network, 2, 4, Doctrine::Prudent);
+    let n = Nations::build(
+        &world,
+        &polities,
+        &settlements,
+        &network,
+        2,
+        4,
+        Doctrine::Prudent,
+    );
     let folk = Populace::seed(&n.economy, 40, 7);
     let mut g = GameState::new(7).with_economy(n.economy).with_folk(folk);
     g.advance(240);

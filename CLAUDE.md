@@ -4738,6 +4738,143 @@ because pushing one past it made the delivery physically impossible; and
 nurses against doctors is read off the country's jobs, not five and three
 sampled people.
 
+## Every flow of goods has a payment beside it (`src/econ.rs`, `src/state.rs`)
+
+The drain section above put the unemployment statistic down to **firms
+selling below cost**, and asked why prices settle under cost. That was the
+explanation reached for, not one established: food still sells at about 0.78
+of its cost figure and unemployment is now inside its band. **The idle jobs
+were firms that were never paid** — goods and services moved with nobody
+paying for them, so whoever made them met their payroll out of nothing and
+laid people off. `bin/soak` now says where, and it found seven breaks in the
+circuit, each measured on its own across worlds 7, 11 and 23.
+
+| five years, workforce unemployment | world 7 | world 11 | world 23 |
+|---|---|---|---|
+| committed | 25.3% | 12.9% | 32.7% |
+| + works and households pay for power | 17.7% | 12.8% | 32.3% |
+| + builders charge for the materials they use | 16.4% | 12.6% | 24.7% |
+| + trade between towns pays the seller | 18.9% | 12.2% | 28.6% |
+| + meat can be bought | 19.5% | 15.6% | 26.7% |
+| + health staff counted once * | 20.2% | 19.3% | 21.6% |
+| + tax on incomes, not tills * | 13.3% | 11.5% | 14.9% |
+| + hospitals paid for their supplies * | 14.6% | 12.7% | 12.9% |
+| **as shipped** | **11.1%** | **10.4%** | **14.4%** |
+
+\* *measured with a rule for where traders deliver that was then reverted
+(below); the last row is the shipped code.*
+
+**As shipped, every banded figure ends inside its band in all three
+worlds.** World 23's unemployment was outside it for 28 of 61 months,
+reaching 17.5%, and came back; weighted by hands the three worlds end at
+10.2%, 11.1% and 13.5%. Households end with more money than they started in worlds 11 and 23;
+world 7's lose 7.5e9 of 4.4e10, for the reason under meat below. Builders
+still meet only 46-63% of their payroll, and that is the next thing the
+soak points at.
+
+**Each step moves a statistic these worlds move by a few points on their
+own**, which is why the table is not read as a ranking: these are faults
+because something changed hands with nobody paid, not because a number fell.
+What the soak shows beside each is the kind of works that had been idle:
+
+- **Power was generated for works and households and paid for by nobody.**
+  A station burnt coal it bought and sold nothing, and met 24% of its
+  payroll. Both now pay the station at the market price. The first attempt
+  paid at the wholesale discount and the stations still could not cover
+  their coal: electricity is sold by the generator, not through a merchant.
+- **A builder could not pay for cement until it had been paid for cement.**
+  Households paid it wages and the supply bills it had managed to settle, so
+  a builder with no money never settled one and was never paid for one.
+  Every cement works in world 23 met none of its payroll. Builders now
+  charge for the materials the work used, at the price a firm pays.
+- **Trade between towns paid the haulier and not the seller.**
+- **Meat had nowhere to be sold.** Households buy at the market and the
+  market held tins and goods, so every pasture and butcher in the world ran
+  at a sixth of its rating and met none of its payroll. Every market has a
+  meat counter now, holding days of it as the butcher does, and both run
+  flat out with their payroll met.
+
+  **It took away an export that had never been real.** Pastures are sized to
+  feed a country's own people with a sixth over, and they only had cattle to
+  spare because nobody could eat the meat: world 7 earned 1.07e10 in two
+  years shipping live cattle abroad, and 1.2e9 once its markets sold meat —
+  measured by switching the meat counters off and nothing else. It still
+  imports two fifths of its grain and three fifths of its oil, so its
+  currency fell from 1.08 to 1.33 and its households lost money for a year
+  and recovered from the second on.
+- **The health service was on the state's payroll twice.** Every town's
+  hospital is staffed at one post per 45 people, and the state also paid one
+  health post per 45 people as ordinary public work. It could afford a
+  little over half its bill, and the hospitals — paid on what it afforded —
+  were 39-54% of all the idle jobs in each world. Health's staff are the
+  hospitals' now (`Service::staffed_at_its_sites`); the posts paid directly,
+  the jobs offered to people and the occupational count all skip it.
+- **The state taxed the tills of shops and builders**, out of whatever was
+  left after they had paid their suppliers — and a builder charges wages
+  and materials and nothing over, so any tax put it under. Owed 1.84e10 a
+  year in world 23, the states collected 61%. They now take their share of
+  the wages and dividends paid to their own people each day, which is where
+  real states raise most of it: taxes on income, profits and social
+  contributions are about three fifths of OECD revenue. Consumption taxes
+  come out of the same pockets and are folded in. Every state now collects
+  what it is owed, and hospitals meet all their payroll in every world.
+- **A hospital bought its medicine out of its wage bill**, because the state
+  paid it for hands and nothing else. Medicine works met 34-80% of their
+  payroll and chemical works 32-79%; paid for the supplies the wards used,
+  96-98% and 90-100%.
+
+  **And it showed a calibration gap rather than closing one.** A hospital's
+  supplies now cost 0.7-1.4 times its payroll, against about a third in real
+  US hospitals (labour a little over half of costs, supplies and drugs about
+  a fifth). Part of that is the payroll side: every hand at a works is paid
+  the production worker's rate, where a hospital's are mostly nurses,
+  technicians and doctors paid far more. It raised world 7's tax take by
+  half. It belongs with the pay calibration that is next on the list.
+
+### A rule for where traders deliver, tried and rejected
+
+A trader delivers to whoever in the dear town has most room, which puts coal
+in a colliery's yard and canned food in a cannery's store. Restricting it to
+somebody who uses the goods or sells them over a counter looked right, and
+in the three worlds it moved unemployment three points worse in two and two
+better in one. **The suite found what it did.** In the two-town fixture the
+food went straight onto a shop's shelves, which hold twenty days against a
+target of five, and the price sat on its floor. Selling the shop only what
+it aims to hold fixed that — and an island nation living on imported grain
+went 1.35% short of food over two years against a bar of a tenth of a per
+cent. Letting the grain terminals and stockholders buy too changed nothing:
+the difference is that a cargo left in the dear town's cannery store is
+shipped on from there to its neighbours, and a cargo left on a shop shelf
+is not. Found by reversing each piece of the change in turn on a clean copy
+of the commit. Reverted; a works holding goods it did not make is recorded
+as how this model's distribution relays them, not as a fault.
+
+It left one real thing behind. **The gates that no haul pays between the
+fixture's towns were balanced on nought**: the town that makes no food pays
+the other's cost plus the haul, so the gap settles at the freight exactly,
+and the committed code passed 0.07 under while the rejected rule failed 0.05
+over, on a price of 946. They now use the hundredth of a per cent the
+allocation already treats as a tie. Switching trade off altogether leaves
+them green, so they never depended on it: what holds the gap is the spatial
+price rule. A transformer failure still opens a gap far wider.
+
+### The unemployment figure was checked before it was trusted
+
+It is a plain average over towns, and a village at 60% counts as much as a
+city. Weighted by hands it read within three points either way — 23.2%
+against 22.5% in world 7, 22.0% against 24.9% in world 23 — so the level was
+real, and both are in `bin/soak` now. It was concentrated: in world 23 one
+nation's hospitals, works and machine works held most of it, three of its
+towns at 54-56%, which is what led to the state.
+
+`bin/soak` also gained each town's hands and the three kinds of works
+furthest short of their staff, the states' books for the final year, and
+what went unpaid by what for.
+
+**Tests corrected to their claims:** the gate that every country's taxes pay
+its own teachers counts tax out of a town's pay packets as well as a till's
+duty.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

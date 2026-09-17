@@ -143,14 +143,25 @@ fn main() {
 
     {
         let total: f64 = paid_for.iter().sum();
-        println!("what the country buys abroad, by good ({days} days):
-");
+        println!(
+            "what the country buys abroad, by good ({days} days):
+"
+        );
         println!(
             "  {:<12} {:>12} {:>12} {:>9} {:>11} {:>7} {:>12} {:>11}",
-            "", "made (t)", "landed (t)", "imported", "paid abroad", "share", "shipped (t)", "earned"
+            "",
+            "made (t)",
+            "landed (t)",
+            "imported",
+            "paid abroad",
+            "share",
+            "shipped (t)",
+            "earned"
         );
         let mut order: Vec<usize> = (0..n_c).collect();
-        order.sort_by(|&a, &b| (paid_for[b] + earned_for[b]).total_cmp(&(paid_for[a] + earned_for[a])));
+        order.sort_by(|&a, &b| {
+            (paid_for[b] + earned_for[b]).total_cmp(&(paid_for[a] + earned_for[a]))
+        });
         for c in order {
             if made[c] + landed[c] <= 0.0 && paid_for[c] <= 0.0 {
                 continue;

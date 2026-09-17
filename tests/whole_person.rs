@@ -130,7 +130,10 @@ fn a_town_holds_a_spread_of_opinion() {
 
     // Truth is the one the social skills will gate on: DF will not let a
     // dwarf train as a liar unless they hold truth cheaply.
-    let truths: Vec<i8> = folk.iter().map(|p| p.mind.conviction(Value::Truth)).collect();
+    let truths: Vec<i8> = folk
+        .iter()
+        .map(|p| p.mind.conviction(Value::Truth))
+        .collect();
     let low = truths.iter().filter(|&&t| t < -10).count();
     let high = truths.iter().filter(|&&t| t > 10).count();
     assert!(
