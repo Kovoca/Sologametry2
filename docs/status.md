@@ -467,12 +467,21 @@ real occupations to train for.
    real 26%**, everybody housed, owners paid 15.4 days of food against 9.2
    (real owner households earn about 1.9x renters), and a house costs 6.1
    years of a production worker's pay against a real 7.1.
-   **And the readout found a money printer older than the change:** a
-   driver holds **29-203 million days of food** in every soak world,
-   baseline included, against a production worker's seven thousand. No gate
-   fails, because a person's pocket is outside the economy's ledger and his
-   own books balance; the suspect is a venture bought at one market's price
-   and sold at another's, compounding with nothing to stop it. Next.
+   **And the readout found a money printer older than the change, now
+   diagnosed:** a driver holds **29-203 million days of food** in every soak
+   world, baseline included, against a production worker's seven thousand.
+   His log says exactly what he does — buy 24.1 t of medicine in Ashcombe
+   for 88,512, sell it in Caldleigh for 177,546, **every day for 1,095
+   days** at about a 100% margin. Two faults, and only the second is his:
+   **the gap never closes**, because medicine is made in one town and wanted
+   in all of them and neither bulk mechanism reaches it (`trade` is pairwise
+   and priced, a haulier decides on days of cover) — which this file already
+   exempts by name from the no-arbitrage gate; and **his pocket is outside
+   the ledger**, so what he gains nobody pays, which is the known
+   reification gap made visible rather than a new leak. Fixing the first is
+   an end-to-end merchant for a commodity no shop sells, and it is the same
+   instruction as item 9: the economy works on supply and demand, so a gap
+   that wide has to be closed by somebody entering the trade. Next.
    **Still open:** missing one rent payment puts somebody out the same day —
    there is no arrears or notice for a tenancy where `utility.rs` has the
    lot for a power bill — which is what world 7's 4.8% homeless month is;
