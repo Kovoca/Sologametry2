@@ -1034,6 +1034,11 @@ pub fn industries_of_sector(sector: crate::services::Sector) -> &'static [(Indus
             (Industry::Information, 3_039_950.0),
             (Industry::HeadOffices, 2_771_010.0),
         ],
+        // **An insurer is a finance house**, and the people in it are the
+        // ones the survey counts there: adjusters and underwriters
+        // (business specialists), the clerks who process what they decide,
+        // the agents who sell it, and whoever runs the place.
+        Insurance => &[(Industry::Finance, 1.0)],
     }
 }
 

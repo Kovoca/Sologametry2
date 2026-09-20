@@ -110,6 +110,12 @@ pub enum Why {
     Rent,
     /// **What a firm made and did not need**, paid out to whoever owns it.
     Profit,
+    /// **A premium paid for cover**, and the claim that comes back the
+    /// other way. Kept apart from an ordinary purchase because that is
+    /// what an insurer *is*: money in against a promise, money out when
+    /// the promise is called, and the difference is its wage bill.
+    Premium,
+    Claim,
     /// Bought from or sold to the rest of the world.
     Trade,
     /// **The other side of a trade balance**: the outside world acquiring a
@@ -362,6 +368,8 @@ fn reason_name(why: Why) -> &'static str {
         Why::PublicSpending => "public spending",
         Why::Rent => "rent",
         Why::Profit => "profit",
+        Why::Premium => "premiums",
+        Why::Claim => "claims",
         Why::Trade => "trade",
         Why::Lending => "lending",
         Why::Repayment => "repayment",
@@ -430,6 +438,10 @@ impl crate::save::Store for Why {
             Why::Repayment => 11,
             Why::Interest => 12,
             Why::Capital => 13,
+            // **Appended, never inserted.** A code is a name on disk and
+            // moving one reinterprets every save ever written.
+            Why::Premium => 14,
+            Why::Claim => 15,
         });
     }
     fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
@@ -448,6 +460,8 @@ impl crate::save::Store for Why {
             11 => Why::Repayment,
             12 => Why::Interest,
             13 => Why::Capital,
+            14 => Why::Premium,
+            15 => Why::Claim,
             n => return Err(SaveError::UnknownCode("why money moved", n as u32)),
         })
     }

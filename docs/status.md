@@ -679,10 +679,56 @@ real occupations to train for.
    paid by nobody. The owner's point — an insurance company is a firm with
    premiums in, claims out and staff who process them, and `services.rs`
    already carries finance and insurance at 3.4% of employment.
-   **Next: the insurer as a firm, then the mortgage** (monthly, with the biweekly option that pays a
+   **The insurer as a firm — done, 2026-09-20**, the owner's note that an
+   insurance company handles all this and so there is another workflow and
+   claims to process. Insurance is its own service sector now: households
+   pay premiums (`Why::Premium`), the insurer pays claims back
+   (`Why::Claim`) at the derived loss ratio, and it employs people —
+   **sized by the claims there are to settle rather than by a share of
+   population**. The chain is all real: 0.87 vehicles a head (FHWA 2024),
+   11.41 claims per hundred vehicles a year (ISO), one adjuster per 110
+   claims with two clerks to every three adjusters, and an agent or
+   underwriter per 735 policies (OEWS May 2025). It comes out at **0.64% of
+   everybody in work against a real 0.72%**, 47% of them settling claims,
+   and nothing at the end of that chain is typed in.
+   **Still open:** a claim is settled the day it happens — there is no
+   queue, so an understaffed insurer never takes three weeks to pay, which
+   is the workflow half of the owner's point; and the person layer's
+   premiums and claims are still its own money rather than the insurer's,
+   which is the old reification gap.
+   **Next: the mortgage** (monthly, with the biweekly option that pays a
    loan down faster — the owner's note, 2026-09-20 — since 26 half-payments
    is 13 monthly ones and the extra one comes off the principal), then
    revolving credit and its penalties.
+11. *Everything has a workflow* — **owner's instruction, 2026-09-20: any
+   and everything has a workflow; factories have different inputs and
+   workflows to reach their end products, with or without human
+   interaction, and which it is depends on the product.** This names a seam
+   that has been open since the crafting layer was built. **The model has
+   two production models and they have never met.** `craft.rs`, `wip.rs`
+   and `schedule.rs` hold real workflows: named operations, three kinds of
+   time (labour, machine occupancy, and unattended transformation that
+   needs nobody), tools chosen by capability, what an interruption does to
+   each kind of step, batch setup, and first-pass yield. `econ.rs` holds a
+   recipe: inputs to output at a rated throughput with **one labour-hours
+   figure**. So today:
+   - **automation cannot be expressed in the economy.** A works run by
+     robots and a works run by hands are the same recipe with a different
+     number typed in, and nothing can say a step needs nobody;
+   - **a blackout stops a whole site**, where the workflow layer already
+     knows that the cure carries on, the handsaw still cuts and only the
+     powered step stops;
+   - **services have no workflow at all** — an insurance claim, a hospital
+     admission, a checkout — except a shop, whose staff come off fixtures
+     with real throughputs, which is the proto-version and the one that
+     works (a till serves 25 customers an hour, so a till is 1.4 people).
+   Order to build it in: a works' labour comes from its workflow rather
+   than a single figure; then which steps need power and which need hands;
+   then service workflows, starting with claims, because that sector now
+   has a real claims volume to process and a queue is the thing that makes
+   an understaffed insurer take three weeks to pay; then automation as a
+   property of the workflow, so a factory can be built with hands or
+   without and the difference shows in both the payroll and the output.
 11. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
    Kloos's *Terms of Enlistment* (Frontlines, 2013): most of an
    overpopulated Earth is warehoused in vast **public residence

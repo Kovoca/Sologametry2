@@ -5368,6 +5368,60 @@ a firm with premiums coming in, claims going out, and **people whose job is
 to process them**. `services.rs` already carries finance and insurance at
 3.4% of employment, so the posts exist and the money does not.
 
+### An insurer is a firm, and settling claims is what it employs people for
+
+The owner's point, and the half the shocks above were missing: **a premium
+left a pocket and reached nobody, and a claim was a bill that shrank rather
+than a payment out of somebody's reserves.** An insurance company takes the
+one and pays the other, and between them it employs a great many people
+whose whole job is processing what is claimed.
+
+Insurance is its own service sector now — split out of the office block, so
+it is counted once — and **what it employs is derived from what there is to
+settle**, which is this project's rule that jobs are made through need:
+
+```text
+0.87 vehicles a head                     FHWA 2024: 297,525,836 registered
+x 11.41 claims a hundred vehicles a year ISO 2024: 4.16 collision, 3.95
+                                         comprehensive, 2.50 property, 0.80 injury
+/ 110 claims an adjuster gets through    OEWS May 2025: 324,230 adjusters
+x 1.66, for the clerks behind them       214,260 processing clerks
++ policies / 735, for selling it         479,100 agents, 105,420 underwriters
+= 0.64% of everybody in work             real: 1.12M of 155.5M, 0.72%
+```
+
+**Nothing at the end of that chain is typed in**, which is the test: the
+share falls out of the frequencies and the productivity, and it lands
+within a tenth of the real one. Make an adjuster ten times as productive
+and the industry shrinks to 0.37% and the gate says so.
+
+The money now has both ends. Households pay premiums (`Why::Premium`), the
+insurer pays claims back (`Why::Claim`) at the loss ratio derived from the
+same frequencies and severities, and what is left is what pays the people
+settling them. Measured across three worlds: **1.2-2.2e7 of premiums a
+day, 56% of it straight back out as claims, 47% of the posts on the claims
+side.**
+
+- **A gate on the book rather than on a number**: what is left after claims
+  must cover the wage bill, or the sector is being run at a loss somebody
+  else is funding — and must not exceed it sixfold, which is a toll rather
+  than an insurance market.
+- **One premium, two scales.** What a town pays per vehicle has to be what
+  a man with a van pays, or the aggregate and the sampled people are
+  insuring different worlds. Asserted within a third.
+- **And the codec stopped writing a row of numbers.** Service posts went
+  down positionally, so adding a sector would have reinterpreted every save
+  ever written — offices becoming insurance, with the file intact and the
+  checksum right. That is the defect this format already fixed once for
+  commodities; posts go down as `(code, value)` pairs now, an unknown code
+  is dropped rather than fatal, and a sector an old save has never heard of
+  loads as nought rather than as somebody else's.
+
+**Still open, and it is the owner's other point**: a claim is settled the
+day it happens. There is no queue, so an understaffed insurer never takes
+three weeks to pay and a claims backlog cannot exist — which is the
+workflow half, and `docs/status.md` item 11 is where that goes.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

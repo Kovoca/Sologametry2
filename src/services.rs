@@ -58,14 +58,21 @@ pub enum Sector {
     /// once its parts are added together, and the one the design doc
     /// warns is hardest to make feel like anything.
     Office,
+    /// **Insurance** — the people who write the cover and, mostly, the
+    /// people who settle what is claimed on it. Split out of the office
+    /// block because it is the one service whose work can be *counted*
+    /// rather than assumed: what an insurer employs follows the claims it
+    /// has to process, which follows how much there is to go wrong.
+    Insurance,
 }
 
 impl Sector {
-    pub const ALL: [Sector; 4] = [
+    pub const ALL: [Sector; 5] = [
         Sector::Construction,
         Sector::Hospitality,
         Sector::Recreation,
         Sector::Office,
+        Sector::Insurance,
     ];
 
     pub fn name(self) -> &'static str {
@@ -74,6 +81,7 @@ impl Sector {
             Sector::Hospitality => "hospitality",
             Sector::Recreation => "recreation",
             Sector::Office => "offices",
+            Sector::Insurance => "insurance",
         }
     }
 
@@ -85,8 +93,10 @@ impl Sector {
             Sector::Recreation => 0.025,
             // Professional and technical 8.9%, administrative and support
             // 8.7%, information 4.5%, finance 3.4%, real estate 1.6% —
-            // offices, all of it.
-            Sector::Office => 0.211,
+            // offices, all of it, **less the insurance people**, who are
+            // counted once and counted below.
+            Sector::Office => 0.211 - INSURANCE_SHARE_OF_EMPLOYMENT,
+            Sector::Insurance => INSURANCE_SHARE_OF_EMPLOYMENT,
         }
     }
 
@@ -101,9 +111,48 @@ impl Sector {
     }
 }
 
+/// **How many vehicles there are to a head** *(FHWA, Highway Statistics
+/// 2024, Table MV-1: 297,525,836 registered against 341.8M people)*. The
+/// exposure an insurer is actually covering.
+pub const VEHICLES_A_HEAD: f64 = 0.87;
+
+/// **How often one of them is claimed on in a year**: collision 4.16,
+/// comprehensive 3.95, property-damage liability 2.50 and bodily-injury
+/// 0.80 per hundred vehicles *(ISO, 2024)*.
+pub const CLAIMS_A_VEHICLE_A_YEAR: f64 = 0.1141;
+
+/// **How many claims one adjuster gets through in a year.** Derived, not
+/// chosen: 324,230 claims adjusters, examiners and investigators *(OEWS
+/// May 2025, 13-1031)* against something like 34 million vehicle claims
+/// and 4.5 million on homes.
+pub const CLAIMS_AN_ADJUSTER_A_YEAR: f64 = 110.0;
+
+/// **And the clerks behind them**: 214,260 claims and policy processing
+/// clerks against those adjusters *(OEWS May 2025, 43-9041)*.
+pub const CLERKS_TO_AN_ADJUSTER: f64 = 0.66;
+
+/// **Selling and underwriting it** is the other half of the industry:
+/// 479,100 insurance sales agents and 105,420 underwriters *(OEWS May
+/// 2025)* against roughly 430 million policies in force.
+pub const POLICIES_TO_A_SELLER: f64 = 735.0;
+
+/// What all of that comes to as a share of employment — **derived from the
+/// chain above and not typed in**, which is the test: it lands at 0.64%
+/// against a real 0.72% (1.12 million people in the four insurance
+/// occupations against 155.5 million in work).
+pub const INSURANCE_SHARE_OF_EMPLOYMENT: f64 = {
+    let claims = VEHICLES_A_HEAD * CLAIMS_A_VEHICLE_A_YEAR;
+    let adjusters = claims / CLAIMS_AN_ADJUSTER_A_YEAR;
+    let claims_side = adjusters * (1.0 + CLERKS_TO_AN_ADJUSTER);
+    // A policy on every vehicle and one on every household.
+    let policies = VEHICLES_A_HEAD + 1.0 / 2.53;
+    let selling_side = policies / POLICIES_TO_A_SELLER;
+    (claims_side + selling_side) / 0.5
+};
+
 /// Private service posts in each market.
 pub struct Services {
-    pub posts: Vec<[f64; 4]>,
+    pub posts: Vec<[f64; 5]>,
 }
 
 impl Services {
@@ -125,7 +174,7 @@ impl Services {
             .markets
             .iter()
             .map(|m| {
-                let mut out = [0.0f64; 4];
+                let mut out = [0.0f64; 5];
                 for (i, s) in Sector::ALL.iter().enumerate() {
                     let mut share = s.share_of_employment();
                     if s.concentrates_in_cities() {

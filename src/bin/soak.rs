@@ -504,6 +504,46 @@ fn by_trade(
             manager_room += here * town[Trade::Manager.index()] / total;
         }
     }
+    // **The insurance book**: what the towns paid in, what came back as
+    // claims, and how many people it takes to settle them. Real: 1.12
+    // million Americans work in the four insurance occupations, 0.72% of
+    // everybody in work (OEWS May 2025).
+    if let Some(e) = g.economy.as_ref() {
+        let premiums: f64 = (0..e.markets.len()).map(|m| e.premiums_a_day(m)).sum();
+        let posts: f64 = e
+            .services
+            .as_ref()
+            .map(|s| {
+                (0..e.markets.len())
+                    .map(|m| s.posts_in(m, scale_sim::services::Sector::Insurance))
+                    .sum()
+            })
+            .unwrap_or(0.0);
+        let people: f64 = e.markets.iter().map(|m| m.population).sum();
+        let claims = premiums * scale_sim::person::CLAIMS_SHARE_OF_PREMIUM;
+        // How much of the industry is settling claims rather than selling
+        // cover: adjusters and their clerks against agents and
+        // underwriters, from the same chain the posts come from.
+        let adjusters = scale_sim::services::VEHICLES_A_HEAD
+            * scale_sim::services::CLAIMS_A_VEHICLE_A_YEAR
+            / scale_sim::services::CLAIMS_AN_ADJUSTER_A_YEAR;
+        let settling = adjusters * (1.0 + scale_sim::services::CLERKS_TO_AN_ADJUSTER);
+        let selling = (scale_sim::services::VEHICLES_A_HEAD + 1.0 / 2.53)
+            / scale_sim::services::POLICIES_TO_A_SELLER;
+        let share_settling = settling / (settling + selling);
+        println!(
+            "
+  insurance: {:.2e} of premiums a day and {:.2e} back as claims; {:.0} posts,          {:.2}% of everybody in work (real 0.72%), {:.0}% of them settling {:.2e} claims a year",
+            premiums,
+            claims,
+            posts,
+            posts / (people * 0.5) * 100.0,
+            share_settling * 100.0,
+            people * scale_sim::services::VEHICLES_A_HEAD
+                * scale_sim::services::CLAIMS_A_VEHICLE_A_YEAR
+        );
+    }
+
     // **What went wrong, and who was covered for it.** Real: 4.16% of
     // insured vehicles have a collision claim in a year and 3.3% damage
     // somebody else (ISO, 2024), and about 14% of American drivers carry

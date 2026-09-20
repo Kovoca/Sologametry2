@@ -5413,9 +5413,51 @@ impl Economy {
             return;
         };
         let day = self.ledger.day;
-        let posts: Vec<f64> = (0..self.markets.len()).map(|m| svc.total_in(m)).collect();
+        // **Insurance is not bought the way a haircut is.** Its income is
+        // a premium fixed in advance and its outgo is a claim that
+        // arrives when it arrives, so it is paid for separately and
+        // what it pays out is a claim rather than a wage.
+        let posts: Vec<f64> = (0..self.markets.len())
+            .map(|m| svc.total_in(m) - svc.posts_in(m, crate::services::Sector::Insurance))
+            .collect();
+        let cover: Vec<f64> = (0..self.markets.len())
+            .map(|m| svc.posts_in(m, crate::services::Sector::Insurance))
+            .collect();
 
         for m in 0..self.markets.len() {
+            // --- The insurance book ---------------------------------------
+            let premiums = self.premiums_a_day(m);
+            if premiums > 0.0 {
+                self.treasury.pay(
+                    day,
+                    Account::Households(m),
+                    Account::ServiceSector(m),
+                    premiums,
+                    Why::Premium,
+                );
+                // **And what it is for goes back out.** The share of a
+                // premium that returns as claims is the loss ratio, and
+                // ours is derived from the frequencies and severities
+                // rather than chosen.
+                self.treasury.pay(
+                    day,
+                    Account::ServiceSector(m),
+                    Account::Households(m),
+                    premiums * crate::person::CLAIMS_SHARE_OF_PREMIUM,
+                    Why::Claim,
+                );
+            }
+            if cover[m] > 0.0 {
+                let wages = cover[m] * self.day_rate_here(m);
+                self.treasury.pay(
+                    day,
+                    Account::ServiceSector(m),
+                    Account::Households(m),
+                    wages,
+                    Why::Payroll,
+                );
+            }
+
             if posts[m] <= 0.0 {
                 continue;
             }
@@ -5684,9 +5726,36 @@ impl Economy {
             .unwrap_or(0.0)
     }
 
+    /// **What a town pays for cover in a day.**
+    ///
+    /// Derived from the same real figures a person's own premium is: what
+    /// a year of that town's vehicles is expected to cost in claims, over
+    /// the share of a premium that comes back as claims. The exposure is
+    /// the town's own — **0.87 vehicles a head** *(FHWA, 2024:
+    /// 297,525,836 registered against 341.8M people)*.
+    pub fn premiums_a_day(&self, m: usize) -> f64 {
+        use crate::person::{
+            CLAIMS_SHARE_OF_PREMIUM, CRASH_A_YEAR, CRASH_COSTS, HARM_COSTS, HARM_TO_OTHERS_A_YEAR,
+        };
+        let Some(market) = self.markets.get(m) else {
+            return 0.0;
+        };
+        let wage = self.day_rate_here(m);
+        if wage <= 0.0 {
+            return 0.0;
+        }
+        let value = crate::travel::Conveyance::Van.price_in_wage_days() * wage;
+        let pay = wage * 260.0;
+        let a_vehicle = (CRASH_A_YEAR * CRASH_COSTS * value
+            + HARM_TO_OTHERS_A_YEAR * HARM_COSTS * pay)
+            / CLAIMS_SHARE_OF_PREMIUM;
+        let vehicles = market.population * crate::services::VEHICLES_A_HEAD;
+        vehicles * a_vehicle / DAYS_PER_YEAR as f64
+    }
+
     /// What a day's work fetches in this market, against the settled cost
     /// of living rather than today's price.
-    fn day_rate_here(&self, m: usize) -> f64 {
+    pub fn day_rate_here(&self, m: usize) -> f64 {
         /// Real low-wage work buys 6-10 days of food for a day's labour.
         const DAYS_OF_FOOD: f64 = 6.0;
         let (anchor, index) = match self.workforce.get(m) {

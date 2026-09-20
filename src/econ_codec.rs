@@ -1001,12 +1001,32 @@ impl Store for crate::state::Government {
     }
 }
 
+/// **A sector's name on disk**, frozen. A row of numbers in sector order
+/// is the defect this format already fixed once for commodities: the day
+/// a sector is added, every save ever written is reinterpreted — offices
+/// becoming insurance, with the file intact and the checksum right. So a
+/// market's posts go down as `(code, posts)` pairs, a code this build does
+/// not know is dropped rather than fatal, and a sector missing from an old
+/// file loads as nought posts rather than as somebody else's.
+fn sector_code(s: crate::services::Sector) -> u8 {
+    use crate::services::Sector::*;
+    match s {
+        Construction => 1,
+        Hospitality => 2,
+        Recreation => 3,
+        Office => 4,
+        Insurance => 5,
+    }
+}
+
 impl Store for crate::services::Services {
     fn store(&self, w: &mut Writer) {
         w.len(self.posts.len());
         for p in self.posts.iter() {
-            for v in p.iter() {
-                w.f64(*v);
+            w.len(p.len());
+            for (i, s) in crate::services::Sector::ALL.iter().enumerate() {
+                w.u8(sector_code(*s));
+                w.f64(p[i]);
             }
         }
     }
@@ -1014,11 +1034,19 @@ impl Store for crate::services::Services {
         let n = r.count()?;
         let mut posts = Vec::with_capacity(n);
         for _ in 0..n {
-            let mut row = [0.0f64; 4];
-            for v in row.iter_mut() {
-                *v = r.finite_f64()?;
-                if *v < 0.0 {
+            let mut row = [0.0f64; 5];
+            let cols = r.count()?;
+            for _ in 0..cols {
+                let code = r.u8()?;
+                let v = r.finite_f64()?;
+                if v < 0.0 {
                     return Err(SaveError::Impossible("a negative number of service posts"));
+                }
+                if let Some(i) = crate::services::Sector::ALL
+                    .iter()
+                    .position(|s| sector_code(*s) == code)
+                {
+                    row[i] = v;
                 }
             }
             posts.push(row);
