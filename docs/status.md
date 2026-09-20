@@ -32,11 +32,11 @@ writing this file.
 
 | | | measured |
 |---|---|---|
-| Commit | `61463d5` + memory and relations | 2026-09-15 |
-| Source | 66 modules, 17 diagnostic binaries | 2026-09-15 |
-| Lines | ~109,000 including tests | 2026-09-15 |
-| Tests | 86 binaries, **886 passed, 0 failed, 0 ignored** | 2026-09-15 |
-| Build | clean | 2026-09-15 |
+| Commit | `744f18d` who pays for medicine | 2026-09-20 |
+| Source | 68 modules, 18 diagnostic binaries, 70 test files | 2026-09-20 |
+| Lines | ~117,000 including tests | 2026-09-20 |
+| Tests | 91 binaries, **918 passed, 0 failed, 0 ignored** | 2026-09-20 |
+| Build | clean; `cargo clippy --all-targets` clean | 2026-09-20 |
 
 **The full release suite takes over ten minutes**, which is worth knowing
 before planning a change that touches every module — and the travel-time
