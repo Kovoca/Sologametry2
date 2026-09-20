@@ -595,6 +595,54 @@ pub enum Housing {
     Homeless,
 }
 
+/// **Where somebody stands with whoever they rent from**, which is a
+/// ladder rather than a switch.
+///
+/// Missing one payment does not put anybody out. What it does is start a
+/// clock: a late fee, then a notice, then — if it is still not paid and
+/// nothing is agreed — the end of the tenancy. Real American practice, and
+/// the figures say the ladder matters far more than the last rung:
+/// **6.1% of renter households were filed on in 2016 and 2.3% were put
+/// out**, so about **38% of filings end in an eviction** *(Eviction Lab,
+/// national estimates: 2,350,042 filings and 898,479 evictions against
+/// 38.4M renter households)*. A model with no ladder cannot produce those
+/// two numbers at once, because it only has the second one.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Tenancy {
+    /// Paid up, or near enough that nobody has said anything.
+    Current,
+    /// Behind, and told so — the notice to pay or quit. `by` is the day
+    /// the landlord expects to be paid by.
+    UnderNotice { served: u64, by: u64 },
+    /// The landlord agreed to wait, because they asked and had a record
+    /// worth waiting for. `until` is what was agreed.
+    Indulged { until: u64 },
+    /// **Working it off.** The landlord took the work instead of the
+    /// money, which is what a tenant who can actually do the job offers —
+    /// and it has a legal form worth copying: **repair and deduct**, where
+    /// a tenant puts right what the landlord will not and takes it off the
+    /// rent, capped in most states at about a month's rent.
+    WorkingItOff { until: u64 },
+}
+
+/// **What a month behind costs before anybody is put out**: five per cent
+/// of a month's rent, which is the cap most American states put on a late
+/// fee.
+pub const LATE_FEE: f64 = 0.05;
+
+/// **How long a month is**, for a bill that falls due once a month.
+pub const A_MONTH: u64 = 30;
+
+/// **How long a notice to pay or quit runs.** Real notices are three to
+/// fourteen days and the court adds weeks on top; fourteen stands for
+/// both, because what this model needs is that a notice is not an
+/// eviction.
+pub const NOTICE_DAYS: u64 = 14;
+
+/// **How long a landlord waits when they agree to wait**, and how long a
+/// stretch of work in lieu runs before it is settled up.
+pub const INDULGENCE_DAYS: u64 = 30;
+
 impl Housing {
     pub fn name(self) -> &'static str {
         match self {
@@ -649,6 +697,23 @@ pub struct Person {
     pub conveyance: Conveyance,
     /// Where he sleeps, and what it costs him.
     pub housing: Housing,
+    /// **What they are behind on the rent**, in money. Nobody is put out
+    /// the day they come up short: it goes on the slate, and what happens
+    /// next is [`Tenancy`].
+    pub rent_owed: f64,
+    /// **Where they stand with whoever they rent from.**
+    pub tenancy: Tenancy,
+    /// **The day the next month's rent falls due.** Rent is a monthly
+    /// bill, the way the power is: it is not a daily drip, and the
+    /// difference decides what being behind even means.
+    pub rent_due_on: u64,
+    /// **How many times they have been served notice, put out, and had a
+    /// landlord take the work instead.** Counted so the ladder can be held
+    /// against the real one: 6.1% of American renter households were filed
+    /// on in 2016 and 2.3% put out *(Eviction Lab)*.
+    pub notices: u32,
+    pub evictions: u32,
+    pub worked_off: u32,
     /// **What hold they have on their work.** Most people have a contract
     /// with guaranteed hours; this model gave everybody casual work.
     pub employment: Employment,
@@ -906,6 +971,12 @@ impl Person {
             // Everybody starts in a rented room. Nobody arrives owning
             // anything, and this is the cheapest roof there is.
             housing: Housing::Lodging,
+            rent_owed: 0.0,
+            tenancy: Tenancy::Current,
+            rent_due_on: 0,
+            notices: 0,
+            evictions: 0,
+            worked_off: 0,
             // Nobody arrives with a contract. One is something you get.
             employment: Employment::None,
             // Alone until somebody says otherwise.
@@ -1018,6 +1089,173 @@ pub fn other_outgoings_a_day(econ: &Economy, market: usize, household_share: f64
 /// room; a plate of meat and a bottle of aspirin are somebody's.
 fn shared_by_a_household(c: Commodity) -> bool {
     matches!(c, Commodity::Electricity | Commodity::RetailGoods)
+}
+
+/// **The rent, and what happens when it is not paid.**
+///
+/// Public so a gate can put somebody a month behind and watch what the
+/// landlord does, rather than waiting for a world to produce one.
+pub fn settle_the_rent(person: &mut Person, econ: &Economy, day: u64) {
+    // **Rent is a household's, not a person's**, and a household is
+    // cheaper per head than living alone.
+    let rent =
+        rent_per_day(econ, person.market) * person.housing.share_of_rent() * person.household_share;
+
+    if rent > 0.0 {
+        let month = rent * A_MONTH as f64;
+        // **The rent falls due once a month**, the way the power bill
+        // does — which is what makes "a missed payment" a thing that
+        // can be counted at all. A daily drip has no missed payments
+        // in it, only a running total.
+        if person.rent_due_on == 0 {
+            person.rent_due_on = day + A_MONTH;
+        }
+        if day >= person.rent_due_on {
+            person.rent_owed += month;
+            person.rent_due_on = day + A_MONTH;
+        }
+
+        // **A day of the work is a day's pay off the arrears.** The
+        // landlord took the work instead of the money, so it settles at
+        // what the work is worth and leaves nobody better off than being
+        // paid in money and handing it straight back.
+        if let Tenancy::WorkingItOff { until } = person.tenancy {
+            if day < until && person.rent_owed > 0.0 {
+                let worth = day_rate_for(econ, person.market, person);
+                person.rent_owed = (person.rent_owed - worth).max(0.0);
+                if person.rent_owed <= 0.0 {
+                    person.tenancy = Tenancy::Current;
+                    person.note(day, "worked the arrears off");
+                }
+            }
+        }
+
+        // Whatever can be paid is paid, on the day and on any day
+        // after it, which is how arrears are actually cleared.
+        let paid = person.rent_owed.min(person.money);
+        person.money -= paid;
+        person.spent += paid;
+        person.rent_owed -= paid;
+
+        // A month's rent still owing is a missed payment; two is the
+        // end of it if nothing has been agreed.
+        let missed = person.rent_owed / month;
+        match person.tenancy {
+            Tenancy::Current if missed >= 1.0 => {
+                person.rent_owed += month * LATE_FEE;
+                person.tenancy = Tenancy::UnderNotice {
+                    served: day,
+                    by: day + NOTICE_DAYS,
+                };
+                person.notices += 1;
+                person.note(day, "served notice — a month's rent missed");
+            }
+            Tenancy::Current => {}
+            // Caught up, and it is over.
+            Tenancy::UnderNotice { .. } | Tenancy::Indulged { .. } if missed < 1.0 => {
+                person.tenancy = Tenancy::Current;
+                person.note(day, "square with the landlord again");
+            }
+            // **The notice runs out, or a second month is missed**,
+            // and then there is somewhere to go but out.
+            Tenancy::UnderNotice { by, .. } if day >= by || missed >= 2.0 => {
+                settle_or_go(person, econ, day, month)
+            }
+            Tenancy::Indulged { until } if day >= until || missed >= 3.0 => {
+                settle_or_go(person, econ, day, month)
+            }
+            Tenancy::WorkingItOff { until } if day >= until => {
+                settle_or_go(person, econ, day, month)
+            }
+            _ => {}
+        }
+    }
+}
+
+/// **What a landlord does when the notice runs out**, which is the part
+/// with room in it. Three answers, and being put out is the last.
+///
+/// - **Work in lieu**, where the tenant can actually do the job. A
+///   builder, an electrician, a plumber, a mechanic or a cleaner is worth
+///   having about the place, and the legal form of it — repair and deduct
+///   — caps what may come off the rent at about a month's worth.
+/// - **Time**, where they asked and are worth waiting for. A landlord
+///   with a tenant who works and is thought well of takes the payment plan
+///   over the vacancy, the filing fee and the month it takes to relet.
+/// - **Out**, when neither holds.
+///
+/// The record it is aimed at is that **a notice is common and an eviction
+/// is not**: 6.1% of renter households filed on against 2.3% put out
+/// *(Eviction Lab, 2016)*, so roughly three filings in five end some other
+/// way than on the pavement.
+fn settle_or_go(person: &mut Person, econ: &Economy, day: u64, month: f64) {
+    if can_do_the_work(person.trade) && person.rent_owed <= month * 2.0 {
+        person.tenancy = Tenancy::WorkingItOff {
+            until: day + INDULGENCE_DAYS,
+        };
+        person.worked_off += 1;
+        person.note(
+            day,
+            format!(
+                "offered to work it off — {} for the landlord",
+                person.trade.name()
+            ),
+        );
+        return;
+    }
+    // **Whether they are worth waiting for.** Somebody in work with a good
+    // name is a payment plan; somebody with neither is a vacancy the
+    // landlord would rather have. Designed, and the figure it is aimed at
+    // is the share of notices that end in an eviction.
+    let worth_waiting_for = person.standing * 0.7
+        + if person.employment != Employment::None {
+            0.3
+        } else {
+            0.0
+        };
+    let already_waited = matches!(person.tenancy, Tenancy::Indulged { .. });
+    if worth_waiting_for >= 0.55 && !already_waited {
+        person.tenancy = Tenancy::Indulged {
+            until: day + INDULGENCE_DAYS,
+        };
+        person.note(day, "the landlord agreed to wait");
+        return;
+    }
+    // Out. The deposit goes against the arrears and the rest is written
+    // off, which is **not** what really happens — a judgment follows
+    // somebody for years — and is a named gap rather than an answer.
+    let deposit = rent_per_day(econ, person.market) * A_MONTH as f64;
+    person.rent_owed = (person.rent_owed - deposit).max(0.0);
+    person.tenancy = Tenancy::Current;
+    if person.housing != Housing::Homeless {
+        person.evictions += 1;
+        person.note(
+            day,
+            "put out — the notice ran out and the rent was not found",
+        );
+    }
+    person.housing = Housing::Homeless;
+    person.rent_owed = 0.0;
+    person.rent_due_on = 0;
+    // An eviction is on the record, and it is what makes the next tenancy
+    // hard to get. Standing is this model's nearest thing to a record.
+    person.standing = (person.standing - 0.1).max(0.0);
+}
+
+/// **Whose trade is worth having about the place.** What a landlord wants
+/// doing is repairs, decorating and clearing up, so it is the building
+/// trades, the fitters and the cleaners — not a clerk and not a nurse.
+fn can_do_the_work(trade: Trade) -> bool {
+    matches!(
+        trade,
+        Trade::Builder
+            | Trade::Electrician
+            | Trade::Pipefitter
+            | Trade::Mechanic
+            | Trade::Cleaner
+            | Trade::ProductionWorker
+            | Trade::FarmWorker
+    )
 }
 
 /// **What a tenancy costs here, per day.**
@@ -2217,31 +2455,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
         }
     }
 
-    // --- Pay the rent ---
-    //
-    // **Due whether or not he was on the rota this week.** That is the
-    // whole difficulty of it: food can be gone without for a day and rent
-    // cannot be gone without at all, so a bad fortnight puts somebody out
-    // of a home that a bad fortnight of hunger would not have killed.
-    {
-        // **Rent is a household's, not a person's**, and a household is
-        // cheaper per head than living alone.
-        let rent = rent_per_day(econ, person.market)
-            * person.housing.share_of_rent()
-            * person.household_share;
-
-        if rent > 0.0 {
-            if person.money >= rent {
-                person.money -= rent;
-                person.spent += rent;
-            } else {
-                if person.housing != Housing::Homeless {
-                    person.note(day, "put out — could not find the rent");
-                }
-                person.housing = Housing::Homeless;
-            }
-        }
-    }
+    settle_the_rent(person, econ, day);
 
     // --- Everything else a head buys ---
     //
@@ -2549,6 +2763,20 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
 
     match person.state {
         State::Working { .. } => {}
+        // **Working the rent off is a day's work**, so it is not also a
+        // day looking for paid work. What it earns is the same day's pay,
+        // taken in rent rather than in money — which is why it settles the
+        // arrears at the rate it does and leaves nobody better off than
+        // working for wages.
+        State::Idle
+            if matches!(person.tenancy, Tenancy::WorkingItOff { until } if day < until)
+                && person.rent_owed > 0.0 =>
+        {
+            // The day is the landlord's, and `settle_the_rent` has already
+            // credited what it was worth. What this arm does is stop him
+            // taking a paid shift with the same hands.
+            person.days_worked += 1;
+        }
         State::Idle if the_week_is_done => {}
         State::Idle => {
             // **A month of everything, not a month of groceries.**

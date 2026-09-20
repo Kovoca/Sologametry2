@@ -504,6 +504,28 @@ fn by_trade(
             manager_room += here * town[Trade::Manager.index()] / total;
         }
     }
+    // **What the rent ladder did**, against the real one: 6.1% of American
+    // renter households were filed on in 2016 and 2.3% were put out, so
+    // about three notices in five end some other way (Eviction Lab).
+    {
+        let renting = folk
+            .people
+            .values()
+            .filter(|p| p.housing != Housing::Owned)
+            .count()
+            .max(1) as f64;
+        let a_year = years.max(1) as f64;
+        let sum = |f: fn(&scale_sim::person::Person) -> u32| {
+            folk.people.values().map(|p| f(p) as f64).sum::<f64>() / renting / a_year * 100.0
+        };
+        println!(
+            "\n  the rent, a year: {:.1}% served notice, {:.1}% put out, {:.1}% worked it off          (real 6.1% filed on, 2.3% evicted)",
+            sum(|p| p.notices),
+            sum(|p| p.evictions),
+            sum(|p| p.worked_off)
+        );
+    }
+
     // **Where people live, and what a house costs against pay.**
     let tenure =
         |h: Housing| folk.people.values().filter(|p| p.housing == h).count() as f64 / n * 100.0;

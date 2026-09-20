@@ -199,3 +199,104 @@ fn without_credit_ownership_stays_out_of_reach() {
         "nobody in the whole cohort ever got a tenancy of their own"
     );
 }
+
+/// **Missing the rent is a ladder, not a trapdoor.** A month behind is a
+/// late fee and a notice; the notice running out is when somebody is
+/// actually put out; and in between a landlord may take the work instead
+/// or agree to wait. The real shape is that a notice is common and an
+/// eviction is not — 6.1% of American renter households were filed on in
+/// 2016 against 2.3% put out *(Eviction Lab)* — so a model that goes
+/// straight to the pavement cannot produce both numbers.
+#[test]
+fn a_missed_rent_payment_is_a_notice_and_a_second_one_is_the_door() {
+    use scale_sim::person::{Employment, Tenancy};
+
+    let r = a_nation();
+    // A clerk: no trade a landlord wants about the place, so the only
+    // ways out are paying or being waited for.
+    let mut broke = Person::new("Nell", Trade::OfficeClerk, 0, 0.0);
+    broke.housing = Housing::Rented;
+    broke.employment = Employment::None;
+    broke.standing = 0.0;
+    broke.larder = 1e6; // this is about the rent, so never about the food
+
+    // **Driven on exact inputs**, because the ladder's rungs are narrower
+    // than the noise a working life puts on somebody's balance: a person
+    // who earns a little and catches up is a different question from what
+    // a landlord does about a month that was missed.
+    let mut served = None;
+    let mut put_out = None;
+    for day in 1..120u64 {
+        person::settle_the_rent(&mut broke, &r.economy, day);
+        if served.is_none() && matches!(broke.tenancy, Tenancy::UnderNotice { .. }) {
+            served = Some(day);
+        }
+        if put_out.is_none() && broke.housing == Housing::Homeless {
+            put_out = Some(day);
+        }
+    }
+
+    let served = served.expect("never served notice, though the rent was never paid");
+    let put_out = put_out.expect("never put out, though the notice ran out and nothing was paid");
+
+    // **A month is what starts it.** The rent is a monthly bill, so a
+    // notice before the first one has even fallen due would mean the
+    // ladder is not there at all.
+    assert!(
+        served >= scale_sim::person::A_MONTH,
+        "served notice on day {served} — before a month's rent had fallen due"
+    );
+    // **And the notice is not the eviction.** Real notices run three to
+    // fourteen days and a court adds weeks; what must not happen is both
+    // on the same day, which is what this model used to do.
+    // **Against a real figure, not against the model's own constant.**
+    // Asserting `served + NOTICE_DAYS` asks the very thing whose being
+    // wrong is the defect: set the notice to nought and the gate stays
+    // green while somebody is served and evicted on the same morning.
+    // Real notices to pay or quit run three to fourteen days and a court
+    // adds weeks, so a week is a floor nothing honest goes under.
+    assert!(
+        put_out >= served + 7,
+        "served on {served} and out on {put_out} — the notice bought nothing"
+    );
+    assert!(
+        put_out < 120,
+        "never actually put out in four months of paying nothing"
+    );
+}
+
+/// **A landlord takes the work when the tenant can do it**, which is what
+/// repair and deduct is in law and what a small landlord does in practice.
+/// A builder a month behind ends up working, not homeless.
+#[test]
+fn a_tradesman_works_the_arrears_off() {
+    use scale_sim::person::{Employment, Tenancy};
+
+    let r = a_nation();
+    let mut chippy = Person::new("Ade", Trade::Builder, 0, 0.0);
+    chippy.housing = Housing::Rented;
+    chippy.employment = Employment::None;
+    chippy.standing = 0.0; // nobody is waiting for him on his good name
+    chippy.larder = 1e6;
+
+    let mut worked_off = false;
+    for day in 1..90u64 {
+        person::settle_the_rent(&mut chippy, &r.economy, day);
+        if matches!(chippy.tenancy, Tenancy::WorkingItOff { .. }) {
+            worked_off = true;
+        }
+    }
+    assert!(
+        worked_off,
+        "a builder a month behind was never offered the chance to work it off"
+    );
+    assert_ne!(
+        chippy.housing,
+        Housing::Homeless,
+        "he was put out while the landlord had a builder in front of him"
+    );
+    assert!(
+        chippy.worked_off >= 1,
+        "the work was agreed and never counted"
+    );
+}

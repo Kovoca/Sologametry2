@@ -5214,6 +5214,87 @@ raising it moves money out of profit into payroll, and a state sizes its tax
 take on the wage bill it has to meet. Its own change, with its own
 measurement.
 
+## Missing the rent is a ladder, not a trapdoor (`src/person.rs`)
+
+The defect the pay work left open, and the owner's instruction that names
+it: **missing a payment should carry penalties like real life, more than
+one missed payment should put somebody out, and there is room to negotiate
+with a landlord** — extra time, or work in lieu given somebody's trade.
+
+What was there put somebody on the street the evening they came up short,
+while `utility.rs` gives a *power* bill a month of usage, three weeks to
+pay, a formal notice and a winter rule. The figures say the ladder is most
+of the phenomenon: **2,350,042 eviction filings against 38.4 million renter
+households in 2016, and 898,479 evictions** — 6.1% filed on, 2.3% put out,
+so **about three filings in five end some way other than the pavement**
+*(Eviction Lab, national estimates)*. Filing rates today run 2-12% a year
+by state and 24% in Atlanta *(Eviction Lab tracker, 2026)*. A model with
+one rung cannot produce both numbers, because it only has the second.
+
+**And rent is a monthly bill, which the owner had to point out.** It was
+charged as a daily drip, and a drip has no missed payments in it — only a
+running total, so "a month behind" meant nothing. It falls due once a
+month now, the way the power does, and *that* is what makes a missed
+payment a thing that can be counted.
+
+```text
+a month falls due and is not paid   late fee, and a notice to pay or quit
+the notice runs out, or a second    the landlord decides: work, time, or out
+month is missed
+```
+
+- **The late fee is five per cent of a month's rent**, which is the cap
+  most American states put on one.
+- **The notice is fourteen days**, the long end of a real pay-or-quit
+  notice, standing in for the weeks a court adds after it.
+- **Work in lieu is a real mechanism, not a kindness.** Its legal form is
+  **repair and deduct** — a tenant puts right what the landlord will not
+  and takes it off the rent, capped in most states at about a month's
+  worth — and its informal form is every small landlord who would rather
+  have a builder in the building than a vacancy. `Person::trade` already
+  says who can do it: the building trades, the fitters, the cleaners. A
+  day of it settles a day's pay off the arrears, so nobody comes out ahead
+  of being paid in money and handing it straight back, and **the day is
+  the landlord's** — he cannot also take a paid shift with the same hands.
+- **Time is what a landlord gives somebody worth waiting for**: in work,
+  and well enough thought of. A vacancy costs a filing fee and a month to
+  relet, which is why a payment plan beats an eviction for both of them.
+- **Being put out costs the deposit and leaves a mark.** The deposit goes
+  against the arrears and the rest is written off, which is **not** what
+  happens in life — a judgment follows somebody for years — and is a named
+  gap rather than an answer.
+
+| five years, three worlds (7 / 11 / 23) | before | after |
+|---|---|---|
+| homeless, worst month | 3.8 / 0.3 / 2.8% | **0.9 / 0.0 / 0.5%** |
+| homeless at the end | 0.0 / 0.2 / 0.0% | 0.0 / 0.0 / 0.0% |
+| served notice, a year | — | 0.8 / 0.0 / 0.3% |
+| put out, a year | — | 0.2 / 0.0 / 0.1% |
+
+**The spikes are gone and the rate is an order of magnitude light**, which
+is the honest reading: 0.0-0.8% of renters are served notice a year against
+a real 6.1%, and 0.0-0.2% are put out against 2.3%. The ladder is not what
+is short — **the shocks are**. A household here meets nothing but a thin
+week: no medical bill, no car off the road, no debt to service, and a
+reserve rule that keeps a month of everything before it buys anything. Two
+of the three things real households are knocked over by are the next items
+on the owner's list, credit and a mortgage, so the rate is expected to
+climb toward the real one as they arrive rather than to be tuned toward it.
+
+**Gates, each checked by breaking what it names.** A tenant who never has
+it when it falls due is served notice a month in and put out a fortnight
+after that, never on the same day; a builder in the same position is
+working rather than homeless. Making the work-in-lieu route refuse
+everybody turns the second red.
+
+**And the first version of the first gate had no teeth** — the eighth time
+this file records it. It asserted the eviction came at least `NOTICE_DAYS`
+after the notice, which asks the very constant whose being wrong is the
+defect: set the notice to nought and the gate stays green while somebody is
+served and evicted on the same morning. It asserts a **week** now, which is
+a real figure — notices run three to fourteen days — and the sabotage goes
+red.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,
@@ -6860,8 +6941,9 @@ lorry.
 
 Lodging, a tenancy, ownership, or nowhere. Rent is due **whether or not he
 was on the rota**, which is the whole difficulty: food can be gone without
-for a day and rent cannot, so a bad fortnight puts somebody out that a bad
-fortnight of hunger would not have killed.
+for a day and rent cannot. *(What a missed month does is now a ladder —
+late fee, notice, and the landlord's answer — rather than the street that
+evening; see "Missing the rent is a ladder, not a trapdoor".)*
 
 - **No address, no job.** Hiring chance halves on the street, which is what
   makes homelessness self-sustaining rather than a bad month.

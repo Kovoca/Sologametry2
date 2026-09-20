@@ -618,7 +618,57 @@ real occupations to train for.
    rent $1,413 (Census, 2020-24), and the long-run finding that housing
    supply is inelastic where land and permission are scarce, which is why
    the same house costs three times as much in one city as another.
-10. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
+10. *Missing a payment has consequences, and there is room to negotiate* —
+   **owner's instruction, 2026-09-20: mortgages; missing rent should carry
+   penalties like real life, and so should missing a credit card payment;
+   more than one missed payment should put somebody out; and there is room
+   for negotiation with a landlord — extra time, or work in lieu given
+   somebody's trade.** Today a tenancy has no arrears at all: miss one
+   day's rent and you are on the street that evening, where `utility.rs`
+   has the whole apparatus for a *power* bill — a month of usage, three
+   weeks to pay, a notice, and a winter rule. Verified anchors to build on:
+   - **Rent.** 2.35M eviction filings against 38.4M renter households and
+     898,479 evictions in 2016 — **6.1% filed on, 2.3% put out, and about
+     38% of filings end in an eviction** *(Eviction Lab, national
+     estimates)*; filing rates by state today run 2-12% a year, and 24% in
+     Atlanta *(Eviction Lab tracker, 2026)*. So a notice is common and
+     being put out is not, which is exactly the ladder that is missing.
+   - **Mortgage.** Foreclosure **cannot legally begin until 120 days
+     behind** *(CFPB, Reg X)*, servicers must offer loss mitigation — which
+     is the negotiation, formalised — and the grace period before a late
+     fee is about **15 days** *(CFPB; the statutory figure for high-cost
+     mortgages)*. Delinquency on residential mortgages at commercial banks
+     is **1.86%** *(Federal Reserve, 2026 Q2)*.
+   - **Credit cards.** Delinquency **2.85%** *(same release)*. The CFPB's
+     $8 late-fee cap was **vacated in April 2025**, so the safe harbours
+     stand at **$30 for a first late payment and $41 after**, with a
+     typical fee around $32 *(CFPB)*. A penalty rate and a charge-off at
+     180 days are the rest of that ladder.
+   - **Work in lieu** has a legal form worth copying: **repair and deduct**,
+     where a tenant fixes what the landlord will not and takes it off the
+     rent, capped in most states at about a month's rent. `Person::trade`
+     already says whether somebody can do the work, and `building.rs`
+     already prices it.
+   Built in that order: arrears and eviction first, because it is the open
+   defect; then negotiation; then a mortgage, which `bank.rs` already has
+   the credit tiers and refusals for; then revolving credit.
+   **Arrears, notice, negotiation and eviction — done, 2026-09-20.** Rent
+   falls due once a month (the owner's correction: it is a bill, not a
+   daily drip); a missed month is a late fee of 5% and a notice of 14 days;
+   the notice running out or a second missed month is when the landlord
+   decides — **work in lieu** where the tenant's trade can do it (repair
+   and deduct, capped at a month), **time** for somebody in work and well
+   thought of, and out for the rest. Homelessness in the soak falls from
+   peaks of 3.8/0.3/2.8% to 0.9/0.0/0.5% and ends at nought in all three.
+   **Still light by an order of magnitude:** 0.0-0.8% of renters are served
+   notice a year against a real 6.1% and 0.0-0.2% put out against 2.3%,
+   because a household here meets no shocks — no medical bill, no car off
+   the road, no debt to service — which the next two items supply.
+   **Next: the mortgage** (monthly, with the biweekly option that pays a
+   loan down faster — the owner's note, 2026-09-20 — since 26 half-payments
+   is 13 monthly ones and the extra one comes off the principal), then
+   revolving credit and its penalties.
+11. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
    Kloos's *Terms of Enlistment* (Frontlines, 2013): most of an
    overpopulated Earth is warehoused in vast **public residence
    clusters** — welfare housing on subsistence rations, violent and
