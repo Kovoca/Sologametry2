@@ -345,7 +345,7 @@ fn cover_costs_more_than_an_ordinary_year_and_less_than_a_bad_one() {
         let mut hits = 0u32;
         let mut lost = 0u32;
         for who in 0..200 {
-            let mut p = Person::new(&format!("Driver {who}"), Trade::Driver, 0, 0.0);
+            let mut p = Person::new(format!("Driver {who}"), Trade::Driver, 0, 0.0);
             p.conveyance = Conveyance::Van;
             for day in 1..(year * 5) {
                 // Solvent, and not deciding about cover: the only thing
