@@ -2542,7 +2542,10 @@ fn hash_seed(name: &str, salt: u64) -> u64 {
     h ^ (h >> 33)
 }
 
-fn hash_unit(name: &str, salt: u64) -> f64 {
+/// **One keyed draw, in one place.** Anything in the model that wants a
+/// stable unit draw from a name and a salt uses this, so a reload cannot
+/// reroll it and two callers cannot disagree about what the draw was.
+pub(crate) fn hash_unit(name: &str, salt: u64) -> f64 {
     let mut h = salt ^ 0xA076_1D64_78BD_642F;
     for b in name.as_bytes() {
         h = (h ^ *b as u64).wrapping_mul(0x1000_0000_01B3);

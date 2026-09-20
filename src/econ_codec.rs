@@ -963,9 +963,36 @@ impl Store for crate::labour::Workforce {
     }
 }
 
+/// **A health system's name on disk**, frozen. An enum written by
+/// position is the defect this format has already had to fix twice — a
+/// commodity and a service sector — so it goes down as a code and an
+/// unknown one is refused rather than resolved to whichever variant
+/// happens to sit there.
+impl Store for crate::state::HealthSystem {
+    fn store(&self, w: &mut Writer) {
+        w.u8(match self {
+            crate::state::HealthSystem::TaxFunded => 1,
+            crate::state::HealthSystem::SocialInsurance => 2,
+            crate::state::HealthSystem::PrivateInsurance => 3,
+            crate::state::HealthSystem::PaidAtTheDoor => 4,
+        });
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let code = r.u8()?;
+        Ok(match code {
+            1 => crate::state::HealthSystem::TaxFunded,
+            2 => crate::state::HealthSystem::SocialInsurance,
+            3 => crate::state::HealthSystem::PrivateInsurance,
+            4 => crate::state::HealthSystem::PaidAtTheDoor,
+            _ => return Err(SaveError::UnknownCode("health system", code as u32)),
+        })
+    }
+}
+
 impl Store for crate::state::Government {
     fn store(&self, w: &mut Writer) {
         self.capacity.store(w);
+        self.health.store(w);
         w.f64(self.revenue);
         for v in self.funded.iter() {
             w.f64(*v);
@@ -975,9 +1002,11 @@ impl Store for crate::state::Government {
             w.f64(*p);
         }
         w.f64(self.supplied);
+        w.f64(self.health_paid);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let capacity = crate::state::Capacity::load(r)?;
+        let health = crate::state::HealthSystem::load(r)?;
         let revenue = r.finite_f64()?;
         let mut funded = [0.0f64; 6];
         for v in funded.iter_mut() {
@@ -993,10 +1022,12 @@ impl Store for crate::state::Government {
         }
         Ok(crate::state::Government {
             capacity,
+            health,
             revenue,
             funded,
             posts,
             supplied: r.finite_f64()?,
+            health_paid: r.finite_f64()?,
         })
     }
 }

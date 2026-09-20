@@ -5422,6 +5422,144 @@ day it happens. There is no queue, so an understaffed insurer never takes
 three weeks to pay and a claims backlog cannot exist — which is the
 workflow half, and `docs/status.md` item 11 is where that goes.
 
+### Who pays for medicine (`src/state.rs`, `src/econ.rs`)
+
+The owner's instruction: **medical care depends on the government too, and
+there are variants** — the United States, the EU and Canada where it is
+subsidised, and countries like Russia, China and North Korea.
+
+Until this, every nation on every planet ran the British arrangement. The
+state paid the hospitals in full and nobody else paid anything, so **an
+illness could not cost a household a penny** and a country could not
+contain an uninsured man.
+
+Real health financing is a three-way split and the shares differ
+enormously *(WHO Global Health Expenditure Database, 2022, read through
+the World Bank's API)*, as a share of current health expenditure:
+
+| | government | insurers and other private | out of pocket | of GDP | OOP a head |
+|---|---|---|---|---|---|
+| United Kingdom | **82.1%** | 3.5% | 14.4% | 11.1% | $735 |
+| Germany | 80.5% | 9.1% | 10.4% | 12.4% | $650 |
+| France | 75.3% | 15.5% | 9.3% | 11.8% | $449 |
+| Canada | 71.0% | 14.0% | 15.0% | 11.1% | $935 |
+| Russia | 70.8% | 1.6% | 27.6% | 6.9% | $299 |
+| China | 57.7% | 10.7% | 31.6% | 5.9% | $239 |
+| **United States** | **55.2%** | **33.8%** | **11.0%** | **16.5%** | **$1,381** |
+| India | 40.4% | 15.1% | 44.5% | 3.4% | $36 |
+
+**The American out-of-pocket *share* is among the lowest in the world**,
+which is the opposite of what everybody expects and is the first thing the
+figures corrected. What distinguishes that system is not what the average
+household pays but that **a third of the bill goes through private
+insurers**, so what happens to somebody turns on whether they have any.
+Per person it is still the dearest of all of them, because the total is
+half again as large.
+
+**And two figures come out the same by coincidence.** Health is 16.5% of
+the American economy and 11.1% of the British, of which the government
+pays 55.2% and 82.1% — which is **9.1% of GDP in both cases**. The
+American state spends as much of its economy on health as the British one
+does, and buys a service for the old and the poor with it rather than a
+service for everybody.
+
+So `state::HealthSystem` is four archetypes, and three things follow:
+
+- **A hospital's bill is split three ways** — the exchequer, the insurers
+  and the patient at the door — instead of being met in full out of tax.
+  The insurers' share is a `Why::Claim` out of premiums the same
+  households have been paying, so the money has both ends; the patient's
+  share comes straight out of `Account::Households`.
+- **A state that does not pay for medicine does not tax for it.** It
+  raised the whole of the hospital bill and paid only its own share, so
+  the exchequer hoarded — a state's balance went 2.36e9 to 4.09e9 over a
+  year, thirty-three days of its own wage bill piling up with nothing to
+  spend it on, and `tests/money.rs` caught it within a run. The real
+  difference is the same one: total government revenue is about **27% of
+  GDP in the United States against 39% in the United Kingdom** *(OECD)*,
+  and a large part of that gap is who buys the medicine.
+- **What a health service delivers is what somebody paid for.** It read
+  `funded[Health]` — the state's own budget cover — which is the whole
+  answer only where the state pays the whole bill, and which in practice
+  never moved at all. Where insurers and patients settle nearly half of
+  it, a broke exchequer does not close the wards; it leaves the money to
+  be found somewhere else, and the ward closes only if nobody finds it.
+
+**Which one a country holds is a policy, not a fact about its ground**, so
+it is keyed off the nation rather than derived — with capacity fixing the
+range, because every country in that table paying a third of its own
+medicine in cash is a lower-capacity state, and all three of the rich
+arrangements exist among high-capacity ones. A later politics layer is
+what ought to be choosing it.
+
+**The health premium has a real regulated anchor** and it is not the
+vehicle book's: the American **medical loss ratio** rule obliges an
+insurer to spend 80% of premiums on care in the individual and small-group
+markets and **85%** in the large-group market, and to rebate the
+difference — so the premium is the claims over 0.85, and the fifteenth
+left over pays the people who process them. Property and casualty and
+health are different industries and are kept apart.
+
+**Measured across three worlds, five years**, and the moves are small and
+in one direction, which is what a change about *who pays* rather than how
+much there is should do:
+
+| five years, three worlds (7 / 11 / 23) | before | after |
+|---|---|---|
+| unemployment at the end | 12.5 / 9.7 / 14.8% | **11.6 / 9.1 / 14.4%** |
+| hungry, worst month | 4.1 / 0.2 / 3.8% | 3.4 / 0.2 / 3.8% |
+| homeless, worst month | 0.6 / 0.0 / 0.3% | 0.6 / 0.0 / 0.3% |
+| households' money over the run | -6.10e9 / +0.75e9 / +14.8e9 | -7.07e9 / +1.86e9 / +15.4e9 |
+
+**And one world runs three arrangements side by side**, which is the thing
+that was impossible before: seed 7 has a social-insurance nation, two
+tax-funded ones and a privately insured one, delivering 94, 95, 93 and
+**89%** with the exchequer affording everything throughout.
+
+**The shortfall is the patient at the door, every time**, and the soak
+prints it: against a policy of 78/12/10, 77/9/14 and 55/34/11, what was
+actually settled came to **83/13/4, 81/10/9 and 62/36/2**. The state pays
+its share in full and the insurers pay theirs; households do not, because
+what they owe the hospital competes with everything else they owe, and
+this model's domestic money circuit does not close — 1.4e11 of household
+purchases already go unpaid. So **the more of a country's medicine is
+found at the door, the less of it gets paid for**, which is the right
+consequence arriving for a reason that is itself a known defect rather
+than a new one.
+
+**Gates, each checked by breaking what it names.** Who settles the bill is
+asserted on what actually moved between accounts over forty days, the same
+world four times over with one thing varying — give every system the same
+shares and it names the arrangement whose money did not follow it. A
+hospital must be paid the same whoever pays for it, or the split has
+become a discount. The exchequer's pile must not *grow*, which is the
+trend rather than the level, because a state opens with an issued balance
+like everybody else. And delivery is tested on the discriminating case:
+**break the exchequer and a tax-funded service loses 77% of its money
+while a privately insured one loses 55%**, so the wards must come out
+differently — which is also the real feedback loop, and exactly why poor
+countries end up paying at the door. Sabotaged back to the budget line,
+the two read identically.
+
+**What is deliberately not modelled, and for the American case it is the
+important half.** The split is an aggregate: every household in a town
+pays the same share of the same bill. The distinguishing feature of a
+private system is the **distribution** — about 8% of Americans have no
+cover, medical debt runs to some $220bn — and the hardship measure says
+so: the share of the population facing out-of-pocket costs over a tenth of
+the household budget is **6.8% in the United States against 7.5% in
+Britain**, the same number, while China is 33.6% and India 30.9%. Among
+rich countries it is not the mean that differs but who carries it. That
+wants a household's own cover and an illness that happens to a person.
+
+**And the level is not modelled either.** A US-archetype country here
+spends what a British one does, where really it spends half again as much
+— and the reason is **prices rather than more care**, since real physician
+and nurse densities are broadly similar and the US has *fewer* doctors per
+head. A price level per system is its own change. North Korea is named in
+the instruction and appears in none of these sources; nothing is claimed
+about it.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

@@ -729,7 +729,65 @@ real occupations to train for.
    an understaffed insurer take three weeks to pay; then automation as a
    property of the workflow, so a factory can be built with hands or
    without and the difference shows in both the payroll and the output.
-11. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
+12. *Who pays for medicine* — **owner's instruction, 2026-09-20: medical
+   care depends on the government too; there are variants — the United
+   States, then the EU and Canada where it is subsidised, then countries
+   like Russia, China and North Korea.** **Built, for who pays.**
+   Every nation on every planet ran the British arrangement: the state
+   paid the hospitals in full and nobody else paid anything, so an illness
+   could not cost a household a penny and a country could not contain an
+   uninsured man.
+
+   Read from the World Bank's API over the WHO Global Health Expenditure
+   Database, 2022, as a share of current health expenditure — government /
+   other private / out of pocket: **United Kingdom 82.1 / 3.5 / 14.4**,
+   Germany 80.5 / 9.1 / 10.4, France 75.3 / 15.5 / 9.3, Canada 71.0 / 14.0
+   / 15.0, Russia 70.8 / 1.6 / 27.6, China 57.7 / 10.7 / 31.6, **United
+   States 55.2 / 33.8 / 11.0**, India 40.4 / 15.1 / 44.5. Health as a
+   share of GDP: US 16.5%, Germany 12.4, France 11.8, UK 11.1, Canada
+   11.1, Russia 6.9, China 5.9, India 3.4. Out of pocket per person:
+   US $1,381, Canada $935, UK $735, Germany $650, France $449, Russia
+   $299, China $239, India $36.
+
+   `state::HealthSystem` is four archetypes off those figures, chosen per
+   nation — capacity fixes the range and politics picks inside it, which
+   is honest because every country in the table paying a third of its own
+   medicine in cash is a lower-capacity state. A hospital's bill is split
+   three ways; the state taxes only for the share it carries; and what a
+   health service delivers is what somebody paid for rather than what was
+   budgeted.
+
+   **Measured, and the finding points at an older defect.** `bin/soak`
+   prints the policy against what was actually settled, and the shortfall
+   is the patient at the door every time: against policies of 78/12/10,
+   77/9/14 and 55/34/11, the money came to **83/13/4, 81/10/9 and
+   62/36/2**. The state pays its share in full and so do the insurers;
+   households cannot, because what they owe a hospital competes with
+   everything else they owe and item 3's circuit does not close. So the
+   more of a country's medicine is found at the door, the less of it gets
+   paid for — right in direction, and resting on a known defect.
+
+   **What it does not model, and the American case is the one it matters
+   most for.** The split is an *aggregate*: every household in a town pays
+   the same share of the same bill. The whole distinguishing feature of a
+   private system is the **distribution** — 8% of Americans have no cover
+   at all, medical debt runs to roughly $220bn, and about two thirds of
+   personal bankruptcies cite medical causes — and the hardship measure
+   says so plainly: the share of the population facing out-of-pocket costs
+   over a tenth of the household budget is **6.8% in the United States
+   against 7.5% in Britain**, which are the same number, while China is
+   33.6% and India 30.9%. So the mean is not what differs among rich
+   countries; who carries it is. That wants a household's own cover and an
+   illness that happens to a person, which is the next piece.
+   Also not modelled: **the level**. A US-archetype country spends the
+   same on health as a British one here, where really it spends half again
+   as much — and the reason is prices rather than more care, since real
+   physician and nurse densities are broadly similar and the US has
+   *fewer* doctors per head. A price level per system is its own change.
+   North Korea is named in the instruction and is not in any of these
+   sources; nothing is claimed about it.
+
+13. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
    Kloos's *Terms of Enlistment* (Frontlines, 2013): most of an
    overpopulated Earth is warehoused in vast **public residence
    clusters** — welfare housing on subsistence rations, violent and

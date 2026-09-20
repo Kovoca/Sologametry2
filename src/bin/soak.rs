@@ -544,6 +544,68 @@ fn by_trade(
         );
     }
 
+    // **Who pays for medicine**, nation by nation. Real, as a share of
+    // current health expenditure (WHO GHED, 2022): the United Kingdom is
+    // 82 / 4 / 14 government, private and out of pocket; the United
+    // States 55 / 34 / 11; China 58 / 11 / 32.
+    if let Some(e) = g.economy.as_ref() {
+        // **What the policy says against what was actually settled.** A
+        // shortfall in delivery has a payer behind it, and which one is
+        // the whole point of splitting the bill — a state that cannot
+        // collect closes a tax-funded ward, and households that cannot
+        // pay close one where the money is found at the door.
+        let hospitals: std::collections::BTreeSet<usize> = e
+            .ledger
+            .sites
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.kind == scale_sim::econ::SiteKind::Hospital)
+            .map(|(i, _)| i)
+            .collect();
+        let mut paid: std::collections::BTreeMap<u16, (f64, f64, f64)> = Default::default();
+        for t in e.treasury.today.iter() {
+            let scale_sim::money::Account::Firm(site) = t.to else {
+                continue;
+            };
+            if !hospitals.contains(&site) {
+                continue;
+            }
+            let n = e.markets[e.ledger.sites[site].market].nation;
+            let row = paid.entry(n).or_default();
+            match t.from {
+                scale_sim::money::Account::State(_) => row.0 += t.amount,
+                scale_sim::money::Account::ServiceSector(_) => row.1 += t.amount,
+                scale_sim::money::Account::Households(_) => row.2 += t.amount,
+                _ => {}
+            }
+        }
+        println!();
+        for (n, gov) in e.governments.iter() {
+            let (public, insured, pocket) = gov.health.shares();
+            let bill: f64 = (0..e.markets.len())
+                .filter(|&m| e.markets[m].nation == *n)
+                .map(|m| e.health_premiums_a_day(m))
+                .sum();
+            let (ps, is, hs) = paid.get(n).copied().unwrap_or((0.0, 0.0, 0.0));
+            let took = ps + is + hs;
+            let of = |x: f64| if took > 0.0 { x / took * 100.0 } else { 0.0 };
+            println!(
+                "  medicine, nation {n}: {:<17} policy {:.0}/{:.0}/{:.0} the state, insurers, \
+the door; settled {:.0}/{:.0}/{:.0}; delivered {:.0}% (state affords {:.0}%); cover {:.2e} a day",
+                gov.health.name(),
+                public * 100.0,
+                insured * 100.0,
+                pocket * 100.0,
+                of(ps),
+                of(is),
+                of(hs),
+                gov.health_delivered() * 100.0,
+                e.state_affords(*n) * 100.0,
+                bill,
+            );
+        }
+    }
+
     // **What went wrong, and who was covered for it.** Real: 4.16% of
     // insured vehicles have a collision claim in a year and 3.3% damage
     // somebody else (ISO, 2024), and about 14% of American drivers carry

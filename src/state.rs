@@ -51,6 +51,132 @@ impl Capacity {
     }
 }
 
+/// **Who pays for medicine**, which is a policy a country holds rather
+/// than a fact about its ground.
+///
+/// Until this, every nation on every planet had one: the state paid the
+/// hospitals and nobody else paid anything, so a country could not have
+/// an uninsured man in it and an illness could not cost anybody a penny.
+/// Real health financing is a three-way split and the three shares differ
+/// enormously — **WHO Global Health Expenditure Database, 2022**, as a
+/// share of current health expenditure:
+///
+/// | | government | insurers and other private | out of pocket |
+/// |---|---|---|---|
+/// | United Kingdom | 82.1% | 3.5% | 14.4% |
+/// | Germany | 80.5% | 9.1% | 10.4% |
+/// | France | 75.3% | 15.5% | 9.3% |
+/// | Canada | 71.0% | 14.0% | 15.0% |
+/// | Russia | 70.8% | 1.6% | 27.6% |
+/// | China | 57.7% | 10.7% | 31.6% |
+/// | **United States** | **55.2%** | **33.8%** | **11.0%** |
+/// | India | 40.4% | 15.1% | 44.5% |
+///
+/// **The American out-of-pocket *share* is among the lowest in the
+/// world**, which is the opposite of what everybody expects and is worth
+/// stating plainly: what distinguishes that system is not what the
+/// average household pays but that a third of the bill goes through
+/// private insurers, so what happens to you turns on whether you have
+/// any. Per person it is still the dearest of all of them — **$1,381 a
+/// year out of pocket against Britain's $735 and China's $239** — because
+/// the total is half again as large.
+///
+/// Two more figures that come out the same by coincidence and are worth
+/// keeping: health is **16.5% of the American economy and 11.1% of the
+/// British**, of which the government pays 55.2% and 82.1% — which is
+/// **9.1% of GDP in both cases.** The American state spends as much of
+/// its economy on health as the British one does, and buys a service for
+/// the old and the poor with it rather than a service for everybody.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum HealthSystem {
+    /// **General taxation pays and the service is free at the door.**
+    /// Britain and Canada. The bill lands on the exchequer, so what the
+    /// state can collect is what the wards get.
+    TaxFunded,
+    /// **Compulsory contributions through funds**, which the accounts
+    /// count as government because nobody may opt out. Germany and
+    /// France. It behaves like the tax-funded kind and carries a little
+    /// more private cover on top.
+    SocialInsurance,
+    /// **A public floor with private insurance over it.** The United
+    /// States: the state carries the old and the poor, insurers carry a
+    /// third of the bill, and what happens to somebody with neither is
+    /// the whole difference.
+    PrivateInsurance,
+    /// **Nominally universal, thinly funded, and settled in cash at the
+    /// door.** Russia and China, with India the extreme. There is a state
+    /// system and there is a payment, and the second is what decides
+    /// whether you are treated.
+    PaidAtTheDoor,
+}
+
+impl HealthSystem {
+    pub const ALL: [HealthSystem; 4] = [
+        HealthSystem::TaxFunded,
+        HealthSystem::SocialInsurance,
+        HealthSystem::PrivateInsurance,
+        HealthSystem::PaidAtTheDoor,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            HealthSystem::TaxFunded => "tax-funded",
+            HealthSystem::SocialInsurance => "social insurance",
+            HealthSystem::PrivateInsurance => "private insurance",
+            HealthSystem::PaidAtTheDoor => "paid at the door",
+        }
+    }
+
+    /// **Who settles a hospital's bill**: the state, the insurers, and the
+    /// patient. Averaged over the countries of each kind in the table
+    /// above, and summing to one, because every bill is paid by somebody.
+    pub fn shares(self) -> (f64, f64, f64) {
+        match self {
+            // Britain and Canada: 76.5 / 8.8 / 14.7.
+            HealthSystem::TaxFunded => (0.77, 0.09, 0.14),
+            // Germany and France: 77.9 / 12.3 / 9.8.
+            HealthSystem::SocialInsurance => (0.78, 0.12, 0.10),
+            // The United States, on its own.
+            HealthSystem::PrivateInsurance => (0.55, 0.34, 0.11),
+            // Russia and China: 64.2 / 6.2 / 29.6. India is 40 / 15 / 45,
+            // which is the extreme rather than the type.
+            HealthSystem::PaidAtTheDoor => (0.64, 0.06, 0.30),
+        }
+    }
+
+    /// **What a state can hold is bounded by what it can collect.**
+    ///
+    /// Every country in that table paying a third of its own medicine in
+    /// cash is a lower-capacity state, and all three of the rich
+    /// arrangements exist among high-capacity ones — so capacity fixes the
+    /// range and politics picks inside it. Which one is **a policy and not
+    /// a fact about the ground**, so it is keyed off the nation rather
+    /// than derived from anything, and a later politics layer is what
+    /// ought to be choosing it.
+    pub fn chosen(capacity: Capacity, world_seed: u64, nation: u16) -> HealthSystem {
+        let u = crate::person::hash_unit("health system", world_seed ^ nation as u64);
+        match capacity {
+            Capacity::Weak => HealthSystem::PaidAtTheDoor,
+            Capacity::Middling => {
+                if u < 0.5 {
+                    HealthSystem::PaidAtTheDoor
+                } else {
+                    HealthSystem::SocialInsurance
+                }
+            }
+            Capacity::Developed => {
+                if u < 0.45 {
+                    HealthSystem::TaxFunded
+                } else if u < 0.80 {
+                    HealthSystem::SocialInsurance
+                } else {
+                    HealthSystem::PrivateInsurance
+                }
+            }
+        }
+    }
+}
+
 /// A line in the budget, and what it buys in people.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum Service {
@@ -170,6 +296,8 @@ impl Service {
 /// What a nation's state is doing.
 pub struct Government {
     pub capacity: Capacity,
+    /// **Who pays for medicine here.**
+    pub health: HealthSystem,
     /// Revenue a day, in the economy's currency.
     pub revenue: f64,
     /// What each line is funded at, 0 to 1 of what it wants. **Under-fund
@@ -186,6 +314,17 @@ pub struct Government {
     /// this is the number that says so — set every day by what the
     /// pharmacies and machine works could actually deliver.
     pub supplied: f64,
+    /// **What share of the hospitals' bills anybody actually settled**,
+    /// 0 to 1, summed over all three payers and set by the day that has
+    /// just been run.
+    ///
+    /// This is what replaced reading the budget line. A budget line says
+    /// what the *state* could afford, which is the whole answer only
+    /// where the state pays the whole bill — and the moment a country's
+    /// hospitals are half funded by insurers and patients, a broke
+    /// exchequer stops meaning a closed ward and starts meaning a bill
+    /// somebody else has to find.
+    pub health_paid: f64,
 }
 
 impl Government {
@@ -207,6 +346,7 @@ impl Government {
     /// with nothing in the towns that are not its own — so `posts_in`
     /// answers for any market and answers nought where it should.
     pub fn govern(econ: &Economy, capacity: Capacity, nation: u16) -> Government {
+        let health = HealthSystem::chosen(capacity, econ.world_seed, nation);
         // Taxable activity: what the economy is worth in a day. Household
         // spending stands in for it, which understates an economy with a
         // lot of intermediate trade and is the right order of magnitude.
@@ -268,11 +408,13 @@ impl Government {
 
         Government {
             capacity,
+            health,
             revenue,
             funded,
             posts,
             // Assumed until a day has been run and the shelves checked.
             supplied: 1.0,
+            health_paid: 1.0,
         }
     }
 
@@ -302,13 +444,17 @@ impl Government {
     /// of staff who cannot treat anybody. Infant mortality reads this
     /// rather than the budget line alone.
     pub fn health_delivered(&self) -> f64 {
-        let i = Service::ALL
-            .iter()
-            .position(|&s| s == Service::Health)
-            .unwrap_or(0);
         // Staffing and supply are complements, not substitutes: neither
         // covers for the other, so the weaker one binds.
-        (self.funded[i] * self.supplied).clamp(0.0, 1.0)
+        //
+        // **And the staffing half is what was paid for, not what was
+        // budgeted for.** It read `funded[Health]` — the state's own
+        // affordability — which is the right answer only in a country
+        // where the state pays for everything. Where insurers and
+        // patients settle nearly half the bill, a state short of money
+        // does not close the wards; it leaves the money to be found
+        // somewhere else, and the ward closes only if nobody finds it.
+        (self.health_paid * self.supplied).clamp(0.0, 1.0)
     }
 
     /// Public posts in one market.

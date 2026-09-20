@@ -5326,6 +5326,16 @@ impl Economy {
             // anything noticing: the money filtered twice and the
             // establishment not at all.
             let posts: Vec<f64> = (0..self.markets.len()).map(|m| gov.posts_in(m)).collect();
+            // **A state that does not pay for medicine does not tax for
+            // it.** Raising the whole of the hospital bill while paying
+            // only its own share of it made the exchequer hoard: over one
+            // year a state's balance went 2.36e9 to 4.09e9, thirty-three
+            // days of its own wage bill piling up with nothing to spend it
+            // on. Which is the real difference too — total government
+            // revenue is about **27% of GDP in the United States against
+            // 39% in the United Kingdom** *(OECD)*, and most of the gap is
+            // exactly this: who is buying the medicine.
+            let (public_share, _, _) = gov.health.shares();
 
             let mut bill: f64 = mine.iter().map(|&m| posts[m] * self.day_rate_here(m)).sum();
             // Hospitals are the state's payroll too, and it has to raise
@@ -5337,9 +5347,10 @@ impl Economy {
                         continue;
                     }
                     // And what its wards used, which it is paid for too.
-                    bill += self.staff_today.get(site).copied().unwrap_or(0.0)
+                    bill += (self.staff_today.get(site).copied().unwrap_or(0.0)
                         * self.day_rate_here(m)
-                        + self.inputs_used_cost(site);
+                        + self.inputs_used_cost(site))
+                        * public_share;
                 }
             }
             if bill <= 0.0 {
@@ -5425,6 +5436,24 @@ impl Economy {
             .collect();
 
         for m in 0..self.markets.len() {
+            // --- The health book ------------------------------------------
+            //
+            // The claims went out in `pay_for_services`, straight to the
+            // hospitals that did the work; this is the premium that pays
+            // for them. Nothing is netted off — money in and money out are
+            // two flows, and an insurer that only ever recorded the
+            // difference would be a discount rather than a firm.
+            let health = self.health_premiums_a_day(m);
+            if health > 0.0 {
+                self.treasury.pay(
+                    day,
+                    Account::Households(m),
+                    Account::ServiceSector(m),
+                    health,
+                    Why::Premium,
+                );
+            }
+
             // --- The insurance book ---------------------------------------
             let premiums = self.premiums_a_day(m);
             if premiums > 0.0 {
@@ -5512,6 +5541,16 @@ impl Economy {
         // Paid here rather than in `tax_and_spend`, because that runs
         // after wages fall due and a hospital cannot meet today's payroll
         // out of money it will be given this evening.
+        //
+        // **And it is not always the state that pays it.** Who settles a
+        // hospital's bill is a policy the country holds — see
+        // `state::HealthSystem` — and the three payers are the exchequer,
+        // the insurers and the patient at the door. Paying the whole of it
+        // out of tax meant every nation on every planet ran the British
+        // arrangement, so an illness could not cost anybody a penny and a
+        // country could not contain an uninsured man.
+        let mut wanted: std::collections::BTreeMap<u16, f64> = Default::default();
+        let mut settled: std::collections::BTreeMap<u16, f64> = Default::default();
         for site in 0..self.ledger.sites.len() {
             if self.ledger.sites[site].kind != SiteKind::Hospital {
                 continue;
@@ -5525,14 +5564,52 @@ impl Economy {
             // in world 23 met under two thirds of its payroll with the
             // state paying all it could.
             let supplies = self.inputs_used_cost(site);
-            let due = (hands * self.day_rate_here(m) + supplies) * self.state_affords(nation);
-            self.treasury.pay(
+            let bill = hands * self.day_rate_here(m) + supplies;
+            let (public, insured, pocket) = self
+                .governments
+                .get(&nation)
+                .map(|g| g.health.shares())
+                .unwrap_or((1.0, 0.0, 0.0));
+            *wanted.entry(nation).or_default() += bill;
+
+            let mut paid = self.treasury.pay(
                 day,
                 Account::State(nation),
                 Account::Firm(site),
-                due,
+                bill * public * self.state_affords(nation),
                 Why::PublicSpending,
             );
+            // **What the insurers carry**, out of premiums the same
+            // households have been paying all along. A claim rather than
+            // a purchase: the money went in against a promise and this is
+            // the promise being called.
+            paid += self.treasury.pay(
+                day,
+                Account::ServiceSector(m),
+                Account::Firm(site),
+                bill * insured,
+                Why::Claim,
+            );
+            // **And what is settled at the door**, which is the share that
+            // can ruin somebody.
+            paid += self.treasury.pay(
+                day,
+                Account::Households(m),
+                Account::Firm(site),
+                bill * pocket,
+                Why::Purchase,
+            );
+            *settled.entry(nation).or_default() += paid;
+        }
+        // **What a health service delivers is what somebody paid for.**
+        for (n, gov) in self.governments.iter_mut() {
+            let w = wanted.get(n).copied().unwrap_or(0.0);
+            let s = settled.get(n).copied().unwrap_or(0.0);
+            gov.health_paid = if w > 1e-9 {
+                (s / w).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
         }
 
         for site in 0..self.ledger.sites.len() {
@@ -5751,6 +5828,49 @@ impl Economy {
             / CLAIMS_SHARE_OF_PREMIUM;
         let vehicles = market.population * crate::services::VEHICLES_A_HEAD;
         vehicles * a_vehicle / DAYS_PER_YEAR as f64
+    }
+
+    /// **What a town pays for health cover in a day**, where anybody
+    /// insures health at all.
+    ///
+    /// Kept apart from `premiums_a_day`, which is the vehicle book,
+    /// because property and casualty and health are different industries
+    /// with different economics — and, in particular, different loss
+    /// ratios. This one has a real regulated anchor: the American
+    /// **medical loss ratio** rule obliges an insurer to spend **80% of
+    /// premiums on care** in the individual and small-group markets and
+    /// **85%** in the large-group market, and to rebate the difference. So
+    /// the premium is the claims over 0.85, and the fifteenth left is what
+    /// pays the people who process them.
+    ///
+    /// The claim is paid before the day's premium is collected, so an
+    /// insurer is settling today out of what it took last month. That is
+    /// what a reserve is, and it is why a book that stops selling still
+    /// pays claims for a while.
+    pub fn health_premiums_a_day(&self, m: usize) -> f64 {
+        const MEDICAL_LOSS_RATIO: f64 = 0.85;
+        let Some(market) = self.markets.get(m) else {
+            return 0.0;
+        };
+        let Some(gov) = self.governments.get(&market.nation) else {
+            return 0.0;
+        };
+        let (_, insured, _) = gov.health.shares();
+        if insured <= 0.0 {
+            return 0.0;
+        }
+        let bill: f64 = self
+            .ledger
+            .sites
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.kind == SiteKind::Hospital && s.market == m)
+            .map(|(i, _)| {
+                self.staff_today.get(i).copied().unwrap_or(0.0) * self.day_rate_here(m)
+                    + self.inputs_used_cost(i)
+            })
+            .sum();
+        bill * insured / MEDICAL_LOSS_RATIO
     }
 
     /// What a day's work fetches in this market, against the settled cost
