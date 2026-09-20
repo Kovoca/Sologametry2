@@ -504,6 +504,32 @@ fn by_trade(
             manager_room += here * town[Trade::Manager.index()] / total;
         }
     }
+    // **What went wrong, and who was covered for it.** Real: 4.16% of
+    // insured vehicles have a collision claim in a year and 3.3% damage
+    // somebody else (ISO, 2024), and about 14% of American drivers carry
+    // no insurance at all.
+    {
+        let owners: Vec<_> = folk
+            .people
+            .values()
+            .filter(|p| p.conveyance.price_in_wage_days() > 0.0)
+            .collect();
+        let all = folk.people.values().count().max(1) as f64;
+        let n = owners.len().max(1) as f64;
+        let covered = owners.iter().filter(|p| p.insured).count() as f64;
+        let a_year = years.max(1) as f64;
+        let mishaps: f64 = folk.people.values().map(|p| p.mishaps as f64).sum();
+        let ruined: f64 = folk.people.values().map(|p| p.ruined_vehicles as f64).sum();
+        println!(
+            "
+  vehicles: {:.0}% of the sample keep one, {:.1}% of those insured (real ~86%);          {:.1} mishaps a year per hundred owners, {:.0} vehicles lost for want of the repair",
+            n / all * 100.0,
+            covered / n * 100.0,
+            mishaps / n / a_year * 100.0,
+            ruined
+        );
+    }
+
     // **What the rent ladder did**, against the real one: 6.1% of American
     // renter households were filed on in 2016 and 2.3% were put out, so
     // about three notices in five end some other way (Eviction Lab).

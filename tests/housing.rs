@@ -300,3 +300,83 @@ fn a_tradesman_works_the_arrears_off() {
         "the work was agreed and never counted"
     );
 }
+
+/// **Insurance is a bad bet on average and a good one against ruin**, and
+/// a model where nothing ever goes wrong cannot say so. Real: 4.16% of
+/// insured vehicles have a collision claim in a year at an average of
+/// $5,489, 3.3% damage somebody else at an average of $11,984, and the
+/// average premium is $1,282 *(ISO and NAIC, via the Insurance Information
+/// Institute)* — so a premium is dearer than an ordinary year and far
+/// cheaper than a bad one.
+#[test]
+fn cover_costs_more_than_an_ordinary_year_and_less_than_a_bad_one() {
+    use scale_sim::travel::Conveyance;
+
+    let r = a_nation();
+    let e = &r.economy;
+
+    let mut driver = Person::new("Sam", Trade::Driver, 0, 0.0);
+    driver.conveyance = Conveyance::Van;
+
+    // **The premium has to beat the expected loss**, or no insurer exists;
+    // and it has to lose to the loss itself, or nobody would ever buy it.
+    let premium = person::premium_a_year(e, &driver);
+    let pay = person::day_rate_for(e, 0, &driver) * 260.0;
+    let expected = premium * scale_sim::person::CLAIMS_SHARE_OF_PREMIUM;
+    assert!(
+        premium > expected,
+        "a premium of {premium:.0} against expected claims of {expected:.0} — \
+         nobody could write that book"
+    );
+    let bad_year = pay * scale_sim::person::HARM_COSTS;
+    assert!(
+        bad_year > premium * 5.0,
+        "running into somebody costs {bad_year:.0} against a premium of {premium:.0}, \
+         so there is nothing to insure against"
+    );
+
+    // **And what it does over many lives**, because one man's ten years
+    // is 0.75 expected mishaps and a gate on that is a coin toss. Two
+    // hundred drivers, five years, the same names and therefore the same
+    // luck in both runs: what differs is only who carries the loss.
+    let year = scale_sim::econ::DAYS_PER_YEAR;
+    let run = |insured: bool| {
+        let mut spent = 0.0;
+        let mut hits = 0u32;
+        let mut lost = 0u32;
+        for who in 0..200 {
+            let mut p = Person::new(&format!("Driver {who}"), Trade::Driver, 0, 0.0);
+            p.conveyance = Conveyance::Van;
+            for day in 1..(year * 5) {
+                // Solvent, and not deciding about cover: the only thing
+                // being measured is who pays for what goes wrong.
+                p.money = 1e9;
+                p.cover_due_on = u64::MAX;
+                p.insured = insured;
+                p.conveyance = Conveyance::Van;
+                let before = p.money;
+                person::chance_and_cover(&mut p, e, day);
+                spent += before - p.money;
+            }
+            hits += p.mishaps;
+            lost += p.ruined_vehicles;
+        }
+        (spent, hits, lost)
+    };
+    let (cost_insured, hits, _) = run(true);
+    let (cost_bare, hits_bare, _) = run(false);
+
+    // **Against the real frequency**: 4.16 collision claims and 3.3
+    // liability claims per hundred vehicle-years, so about 7.5 between
+    // them. A band, because a thousand vehicle-years is a sample.
+    let per_hundred = hits as f64 / (200.0 * 5.0) * 100.0;
+    assert!(
+        (5.0..10.0).contains(&per_hundred),
+        "{per_hundred:.1} mishaps per hundred vehicle-years against a real 7.5"
+    );
+    assert_eq!(hits, hits_bare, "the luck was not the same in both runs");
+    assert!(
+        cost_bare > cost_insured * 3.0,
+        "five years of going without cost {cost_bare:.0} against {cost_insured:.0} insured,          over {hits} mishaps — the excess is doing all the work"
+    );
+}

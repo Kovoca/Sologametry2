@@ -5295,6 +5295,79 @@ served and evicted on the same morning. It asserts a **week** now, which is
 a real figure — notices run three to fourteen days — and the sabotage goes
 red.
 
+### Nothing ever went wrong, and insurance never paid a claim
+
+The rent ladder above fires at a tenth of the real rate, and the reason is
+not the ladder: **a household in this world met no shocks at all.** Nobody
+was ill, no van broke, nobody ran into anybody. The only thing that could
+go wrong with a life was running out of work.
+
+And insurance was already here, doing nothing: it sat **inside a vehicle's
+standing costs** — "tax, insurance, the yard it sits in", a fifth of the
+fuel bill — charged to everybody who owned anything and settling nothing.
+The same shape as a haulier's revenue that was accumulated and paid to
+nobody.
+
+**The figures make the trade, and nothing is typed in but the real ones**
+*(ISO and NAIC, 2023-24, via the Insurance Information Institute)*:
+
+| | a year | when it happens |
+|---|---|---|
+| collision claim | **4.16%** of insured vehicles | **$5,489** |
+| damage to somebody else | 2.50% property, 0.80% injury | $6,770 and **$28,278** |
+| the premium | **$1,282** | expected claims about $714, so **56% of a premium comes back** |
+| a home | 5.33% | $20,062, against a premium of $1,569 |
+
+So a premium is **derived rather than chosen**: what the year is expected
+to cost, over the share of a premium that comes back as claims. On this
+model's own scale that lands at about 3.4% of a year's pay against a real
+2.7%, without anybody tuning it.
+
+- **The thing worth insuring is not the van.** A crash costs 22% of what
+  the vehicle is worth; running into somebody costs **a quarter of a
+  year's pay** and does not care how cheap your car is. That is why every
+  state makes you carry it, and it is the whole argument for a premium
+  that is a bad bet on average.
+- **A car you cannot mend is a car you do not have.** An uninsured owner
+  who cannot find the repair loses the vehicle, which is how a bad week
+  takes somebody's living as well as their savings.
+- **Cover is what people drop when money is short**, which is exactly when
+  being without it costs most — real, and 14% of American drivers carry
+  none.
+- **Keyed, not rolled**, like every other outcome here: the same person on
+  the same day has the same luck however often anybody looks.
+
+| five years, three worlds (7 / 11 / 23) | |
+|---|---|
+| keep a vehicle | 28 / 38 / 37% of the sample |
+| of those, insured | **100 / 100 / 99%** against a real ~86% |
+| mishaps per hundred owners a year | 5.9 / 5.6 / 5.4 against a real 7.5 |
+| served notice on the rent, a year | 0.8 / 0.1 / 0.3% — **barely moved** |
+
+**And that last row is the finding.** Adding shocks did not move the
+eviction rate, because **the shocks land on the people who can carry
+them**: a vehicle is bought out of savings, so an owner here is one of the
+better-off, and at 3.4% of a year's pay they all buy cover and a mishap
+costs them an excess. The poorest own nothing that can break. What is
+still missing for them is illness — days of work lost rather than a bill,
+since this world has a tax-funded health service and not an American one —
+a cooker that dies, and a rent that goes up. The first two are `basket.rs`,
+which models both and is not wired to a sampled person.
+
+**Gates**: a premium beats its own expected claims (or no insurer could
+write the book) and loses badly to a bad year (or nobody would buy it);
+and over a thousand vehicle-years the same two hundred drivers, with the
+same luck, spend more than three times as much uninsured. The frequency is
+asserted against the real 7.5 per hundred vehicle-years rather than
+against the model's own constant.
+
+**Named and next: there is no insurer.** A premium leaves a pocket and
+reaches nobody; a claim is a bill that shrinks rather than a payment from
+somebody's reserves. Which is the owner's point — an insurance company is
+a firm with premiums coming in, claims going out, and **people whose job is
+to process them**. `services.rs` already carries finance and insurance at
+3.4% of employment, so the posts exist and the money does not.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

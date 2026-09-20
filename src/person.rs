@@ -703,6 +703,16 @@ pub struct Person {
     pub rent_owed: f64,
     /// **Where they stand with whoever they rent from.**
     pub tenancy: Tenancy,
+    /// **Whether they carry insurance on what they drive**, and when the
+    /// next premium falls due. Real: about 14% of American drivers carry
+    /// none, and it is the short of money who drop it.
+    pub insured: bool,
+    pub cover_due_on: u64,
+    /// **What has gone wrong to them**, counted: a crash or somebody
+    /// else's damage, and the times a vehicle was written off because
+    /// there was no money to mend it.
+    pub mishaps: u32,
+    pub ruined_vehicles: u32,
     /// **The day the next month's rent falls due.** Rent is a monthly
     /// bill, the way the power is: it is not a daily drip, and the
     /// difference decides what being behind even means.
@@ -974,6 +984,10 @@ impl Person {
             rent_owed: 0.0,
             tenancy: Tenancy::Current,
             rent_due_on: 0,
+            insured: false,
+            cover_due_on: 0,
+            mishaps: 0,
+            ruined_vehicles: 0,
             notices: 0,
             evictions: 0,
             worked_off: 0,
@@ -1089,6 +1103,172 @@ pub fn other_outgoings_a_day(econ: &Economy, market: usize, household_share: f64
 /// room; a plate of meat and a bottle of aspirin are somebody's.
 fn shared_by_a_household(c: Commodity) -> bool {
     matches!(c, Commodity::Electricity | Commodity::RetailGoods)
+}
+
+// ---------------------------------------------------------------------------
+// What goes wrong, and who carries it
+// ---------------------------------------------------------------------------
+
+/// **How often a vehicle is damaged in a year.** Real collision claims are
+/// filed by **4.16% of policyholders** *(ISO, 2024, via the Insurance
+/// Information Institute)*, which is the frequency of a crash bad enough
+/// to be worth claiming for.
+pub const CRASH_A_YEAR: f64 = 0.0416;
+
+/// **How often somebody damages a third party**: property-damage liability
+/// claims run 2.50 per 100 vehicles and bodily-injury 0.80 *(ISO, 2024)*.
+pub const HARM_TO_OTHERS_A_YEAR: f64 = 0.033;
+
+/// **What a crash costs, as a share of what the vehicle is worth.** The
+/// average collision claim was **$5,489** in 2024 against an average
+/// vehicle worth something like $25,000.
+pub const CRASH_COSTS: f64 = 0.22;
+
+/// **What harming somebody else costs, as a share of a year's pay.**
+/// Weighted over the two liability claim types — 2.50 at $6,770 and 0.80
+/// at $28,278 — the average is about **$11,984**, against a production
+/// worker's $46,987 a year. **This is the figure insurance exists for**:
+/// it has nothing to do with how cheap your car is, which is exactly why
+/// every state makes you carry it.
+pub const HARM_COSTS: f64 = 0.255;
+
+/// **What an insured driver still pays when they claim.** Real deductibles
+/// run $500-1,000 against a vehicle worth about $25,000.
+pub const EXCESS: f64 = 0.03;
+
+/// **What share of a premium comes back as claims.** The real auto book:
+/// expected losses of about $714 a vehicle-year against an average
+/// expenditure of **$1,282** *(NAIC, 2023)* — so a little over half. The
+/// rest is how an insurer stays in business, and it is why insurance is a
+/// bad bet on average and a good one against ruin.
+pub const CLAIMS_SHARE_OF_PREMIUM: f64 = 0.56;
+
+/// **What it costs to be insured for a year**, derived rather than typed
+/// in: what the year is expected to cost, over the share of a premium that
+/// comes back as claims.
+pub fn premium_a_year(econ: &Economy, person: &Person) -> f64 {
+    let Some(value) = vehicle_value(econ, person) else {
+        return 0.0;
+    };
+    let pay = day_rate_for(econ, person.market, person) * 260.0;
+    let expected = CRASH_A_YEAR * CRASH_COSTS * value + HARM_TO_OTHERS_A_YEAR * HARM_COSTS * pay;
+    expected / CLAIMS_SHARE_OF_PREMIUM
+}
+
+/// What the vehicle they own would cost to replace, in money.
+fn vehicle_value(econ: &Economy, person: &Person) -> Option<f64> {
+    let days = person.conveyance.price_in_wage_days();
+    if days <= 0.0 {
+        return None;
+    }
+    Some(days * day_rate(econ, person.market, Trade::Driver))
+}
+
+/// **Whether anything went wrong today, and who pays for it.**
+///
+/// Insurance was already in this model and it never paid a claim: it sat
+/// inside a vehicle's standing costs, a fifth of the fuel bill, charged to
+/// everybody who owned anything and settling nothing — the same shape as a
+/// haulier's revenue that was accumulated and paid to nobody. So there was
+/// no such thing as a bad year: a van never broke, nobody ever ran into
+/// anybody, and the only thing that could go wrong with a life was running
+/// out of work.
+///
+/// **Which is most of why nobody here ever missed the rent.** The ladder
+/// built for that fires at a tenth of the real rate, and the reason is
+/// that a household in this world meets no shocks at all.
+///
+/// Keyed rather than rolled, like every other outcome in this project: the
+/// same person on the same day has the same luck however often anybody
+/// looks, and a reload cannot turn a crash into a quiet Tuesday.
+pub fn chance_and_cover(person: &mut Person, econ: &Economy, day: u64) {
+    // **Cover is a monthly bill and a choice.** Real: about 14% of
+    // American drivers carry none, and they are not a random 14% — it is
+    // what people drop when the money is short, which is exactly when
+    // being uninsured costs the most.
+    let premium = premium_a_year(econ, person) / 12.0;
+    if premium > 0.0 {
+        if person.cover_due_on == 0 {
+            person.cover_due_on = day + A_MONTH;
+        }
+        if day >= person.cover_due_on {
+            person.cover_due_on = day + A_MONTH;
+            let food = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+            let keep = (food + rent_per_day(econ, person.market) * person.housing.share_of_rent())
+                * A_MONTH as f64;
+            if person.money >= premium + keep {
+                person.money -= premium;
+                person.spent += premium;
+                person.insured = true;
+            } else if person.insured {
+                person.insured = false;
+                person.note(day, "let the insurance go — could not find the premium");
+            }
+        }
+    } else {
+        person.insured = false;
+    }
+
+    let Some(value) = vehicle_value(econ, person) else {
+        return;
+    };
+    let daily = |a_year: f64| a_year / crate::econ::DAYS_PER_YEAR as f64;
+
+    // --- The vehicle is damaged -------------------------------------------
+    if hash_unit(&person.name, day ^ 0xC2A5_4E55) < daily(CRASH_A_YEAR) {
+        person.mishaps += 1;
+        let bill = if person.insured {
+            value * EXCESS
+        } else {
+            value * CRASH_COSTS
+        };
+        let paid = bill.min(person.money);
+        person.money -= paid;
+        person.spent += paid;
+        if paid + 1e-9 < bill {
+            // **A car you cannot mend is a car you do not have**, which is
+            // how a bad week takes somebody's living as well as their
+            // savings.
+            person.conveyance = Conveyance::OnFoot;
+            person.ruined_vehicles += 1;
+            person.note(
+                day,
+                "the van is off the road for good — no money to mend it",
+            );
+        } else {
+            person.note(
+                day,
+                format!(
+                    "pranged the {} — {bill:.0} to put right",
+                    person.conveyance.name()
+                ),
+            );
+        }
+    }
+
+    // --- Somebody else's van, somebody else's leg -------------------------
+    if hash_unit(&person.name, day ^ 0x9B17_D00F) < daily(HARM_TO_OTHERS_A_YEAR) {
+        person.mishaps += 1;
+        let pay = day_rate_for(econ, person.market, person) * 260.0;
+        let bill = if person.insured {
+            value * EXCESS
+        } else {
+            pay * HARM_COSTS
+        };
+        let paid = bill.min(person.money);
+        person.money -= paid;
+        person.spent += paid;
+        if paid + 1e-9 < bill {
+            // The rest is a judgment against them, which in life follows
+            // somebody for years. Here it costs them their name and is
+            // otherwise written off — a named gap, the same one an
+            // eviction has.
+            person.standing = (person.standing - 0.1).max(0.0);
+            person.note(day, "ran into somebody and could not pay for it");
+        } else {
+            person.note(day, format!("ran into somebody — {bill:.0} to settle"));
+        }
+    }
 }
 
 /// **The rent, and what happens when it is not paid.**
@@ -2455,6 +2635,7 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
         }
     }
 
+    chance_and_cover(person, econ, day);
     settle_the_rent(person, econ, day);
 
     // --- Everything else a head buys ---

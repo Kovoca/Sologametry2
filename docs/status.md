@@ -664,7 +664,22 @@ real occupations to train for.
    notice a year against a real 6.1% and 0.0-0.2% put out against 2.3%,
    because a household here meets no shocks — no medical bill, no car off
    the road, no debt to service — which the next two items supply.
-   **Next: the mortgage** (monthly, with the biweekly option that pays a
+   **Shocks and insurance — done, 2026-09-20**, the owner's note that
+   insurance is where this comes in. A vehicle is damaged (4.16% a year,
+   22% of its value) or its owner damages somebody else (3.3% a year, a
+   quarter of a year's pay); cover is a monthly premium derived from those
+   —  expected claims over the 56% of a premium that comes back as claims
+   (ISO/NAIC via III) — and an uninsured owner who cannot find the repair
+   loses the vehicle. **It did not move the eviction rate**, and that is
+   the finding: a vehicle is bought out of savings, so shocks here land on
+   the better-off, who all buy cover. What the poorest still meet is
+   nothing at all — illness (lost days, not bills: this world has a
+   tax-funded health service), a cooker that dies, a rent that rises.
+   **And there is no insurer**: a premium reaches nobody and a claim is
+   paid by nobody. The owner's point — an insurance company is a firm with
+   premiums in, claims out and staff who process them, and `services.rs`
+   already carries finance and insurance at 3.4% of employment.
+   **Next: the insurer as a firm, then the mortgage** (monthly, with the biweekly option that pays a
    loan down faster — the owner's note, 2026-09-20 — since 26 half-payments
    is 13 monthly ones and the extra one comes off the principal), then
    revolving credit and its penalties.
