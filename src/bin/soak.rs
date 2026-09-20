@@ -389,9 +389,29 @@ fn by_trade(
 "
     );
     println!(
-        "  {:<16} {:>6} {:>12} {:>9} {:>9}",
-        "", "people", "worked, yr 5", "homeless", "run crews"
+        "  {:<16} {:>6} {:>12} {:>9} {:>9} {:>9} {:>10} {:>10}",
+        "",
+        "people",
+        "worked, yr 5",
+        "homeless",
+        "run crews",
+        "own home",
+        "pay, food",
+        "held, food"
     );
+    // **What a day's pay and what they hold are worth in days of food**,
+    // at the price of food where each person lives: the medians.
+    let food_day = |m: usize| {
+        g.economy
+            .as_ref()
+            .map(|e| e.price(m, Commodity::ProcessedFood) * scale_sim::person::FOOD_PER_DAY)
+            .unwrap_or(1.0)
+            .max(1e-9)
+    };
+    let median = |mut v: Vec<f64>| {
+        v.sort_by(f64::total_cmp);
+        v.get(v.len() / 2).copied().unwrap_or(0.0)
+    };
     let n = folk.people.len().max(1) as f64;
     for t in Trade::ALL {
         let mine: Vec<_> = folk.people.iter().filter(|(_, p)| p.trade == t).collect();
@@ -421,13 +441,38 @@ fn by_trade(
         } else {
             "        -".to_string()
         };
+        let owned = mine
+            .iter()
+            .filter(|(_, p)| p.housing == Housing::Owned)
+            .count() as f64
+            / mine.len() as f64;
+        let (pay, held) = match g.economy.as_ref() {
+            Some(e) => (
+                median(
+                    mine.iter()
+                        .map(|(_, p)| {
+                            scale_sim::person::day_rate_for(e, p.market, p) / food_day(p.market)
+                        })
+                        .collect(),
+                ),
+                median(
+                    mine.iter()
+                        .map(|(_, p)| p.money / food_day(p.market))
+                        .collect(),
+                ),
+            ),
+            None => (0.0, 0.0),
+        };
         println!(
-            "  {:<16} {:>5.1}% {:>11.1}% {:>8.1}% {}",
+            "  {:<16} {:>5.1}% {:>11.1}% {:>8.1}% {} {:>8.1}% {:>10.1} {:>10.0}",
             t.name(),
             mine.len() as f64 / n * 100.0,
             worked.min(1.0) * 100.0,
             homeless * 100.0,
-            crews
+            crews,
+            owned * 100.0,
+            pay,
+            held
         );
     }
     // **The rungs, against what they really are.** First-line supervisors
@@ -458,6 +503,27 @@ fn by_trade(
             }
             manager_room += here * town[Trade::Manager.index()] / total;
         }
+    }
+    // **Where people live, and what a house costs against pay.**
+    let tenure =
+        |h: Housing| folk.people.values().filter(|p| p.housing == h).count() as f64 / n * 100.0;
+    if let Some(e) = g.economy.as_ref() {
+        let (mut weight, mut years_of_pay) = (0.0f64, 0.0f64);
+        for m in 0..e.markets.len() {
+            let pay = scale_sim::person::day_rate(e, m, Trade::ProductionWorker) * 260.0;
+            if pay > 0.0 {
+                weight += e.markets[m].population;
+                years_of_pay += e.markets[m].population * e.house_price(m) / pay;
+            }
+        }
+        println!(
+            "\n  housing: owned {:.1}%, rented {:.1}%, lodging {:.1}%, homeless {:.1}%; a house costs {:.1} years of a production worker's pay",
+            tenure(Housing::Owned),
+            tenure(Housing::Rented),
+            tenure(Housing::Lodging),
+            tenure(Housing::Homeless),
+            years_of_pay / weight.max(1.0)
+        );
     }
     println!(
         "\n  supervisors {:.1}% of the sample; this world's jobs have room for {:.1}% (real 5.1% of jobs)\n  managers {:.1}%; room for {:.1}% (real 6.9%)",

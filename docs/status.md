@@ -443,7 +443,50 @@ real occupations to train for.
    belongs with pay (item 2); world 7 lost live-cattle exports that only
    existed because nobody could buy meat, and its households end 17% down.
    A rule for where traders deliver was tried and rejected (CLAUDE.md).
-2. The lowest pay under the 6-10 days-of-food band.
+2. *The lowest pay under the 6-10 days-of-food band* — **fixed.** The band
+   was right; the anchor sat on its floor. A production worker was pinned at
+   six days of food a day, so every occupation paid less fell under it — food
+   service 4.4, sales 5.1. Measured, a production worker's eight hours buys
+   **nine**: $180.72 (OEWS May 2025, 51-0000) against $20.12 of food a
+   person a day ($2.51tn of US food spending in 2025, USDA ERS, over
+   341,784,857 people, Census V2025). Food service comes out at 6.7 on the
+   same arithmetic and sales 7.4, so the band holds. No cost moved — pay
+   reaches costs as a ratio to the reference — and the rent, which is 30% of
+   a production worker's day against a real 26%, rose with it. In the soak
+   (seeds 7, 11, 23) homelessness and hunger fall in all three worlds,
+   households' money improves in all three, and home ownership goes
+   0.5/4.1/1.6% to 4.5/11.4/6.7% of the sample.
+   **And it found an older defect: a person bought nothing but flour.** No
+   meat, no goods, no power, no chemist — everything `econ` has debited its
+   own households for all along — so honest pay left so much over that 71%
+   of a cohort owned a house outright after 25 years against a real 26%.
+   A person now buys the rest of a head's basket, **after the rent and out
+   of what is left above a month of everything**: charged before the rent it
+   put 11-17% of three worlds on the street, because people shopped their
+   way out of a roof. Over 25 years ownership lands at **25.0% against a
+   real 26%**, everybody housed, owners paid 15.4 days of food against 9.2
+   (real owner households earn about 1.9x renters), and a house costs 6.1
+   years of a production worker's pay against a real 7.1.
+   **And the readout found a money printer older than the change:** a
+   driver holds **29-203 million days of food** in every soak world,
+   baseline included, against a production worker's seven thousand. No gate
+   fails, because a person's pocket is outside the economy's ledger and his
+   own books balance; the suspect is a venture bought at one market's price
+   and sold at another's, compounding with nothing to stop it. Next.
+   **Still open:** missing one rent payment puts somebody out the same day —
+   there is no arrears or notice for a tenancy where `utility.rs` has the
+   lot for a power bill — which is what world 7's 4.8% homeless month is;
+   world 23's unemployment ends 2.5 points worse because **poverty was
+   staffing its mines** — trade changes fall from 82 to 37 over five years
+   as people stop being desperate, and its steelworks and iron mine run at
+   58% and 53% against 101% and 92%, which is item 6 (mobility at 1.2% a
+   year against a real tenth) biting; a house
+   is 10.6-13.7 years of a production worker's pay in a run world and 5.6 in
+   a fresh one against a real 7.1 ($332,700 median home, Census 2020-24),
+   and item 9 is what decides that level; and `econ::day_rate_here` still
+   charges every firm six days of food a hand where the all-occupations
+   median is 9.7 — the next change, and one that moves money from profit
+   into payroll.
 3. *Supervisors* — **fixed.** A supervisor is a rank inside a crew, not an
    occupation; each kind of work carries supervisors at its published crew
    size (OEWS: 7 to a supervisor in construction up to 22 among drivers and
@@ -513,6 +556,83 @@ real occupations to train for.
    of homeowners against 15.5% of renters food insecure (US Census, 2015
    American Housing Survey); full-service dining increasingly kept for
    celebrations as its prices rise (National Restaurant Association, 2025).
+   **And owner's note, same day: a meal has to carry the price of what went
+   into it.** If the primary food is plentiful the ingredients are cheap,
+   and what a fast-food counter and a restaurant charge should follow. The
+   mechanism already exists and wants no new idea: a kitchen is a works
+   with a recipe, and `econ` propagates how far an input has moved from its
+   own reference cost down every stage that uses it, which is how a rich
+   seam already reaches the price of a tin. What has to be right is the
+   *share*: of a 2024 US food dollar, food services took **38.6 cents**
+   and crops and livestock together **5.8** (USDA ERS Food Dollar Series),
+   so halving the price of grain moves a menu price by a few per cent and
+   not by half — which is exactly why eating out did not get cheaper when
+   commodity prices fell, and the model should reproduce that rather than
+   passing the whole fall through. Verify the restaurant cost structure
+   (food, labour, occupancy as shares of a menu price) from a primary
+   source before building.
+   **And the owner's eye caught a calibration gap on the way, 2026-09-17:
+   the farm takes too much of what a household pays for food.** The chain
+   is grain 220 a tonne, flour 340, tinned food 900, so about a **quarter**
+   of a grocery price is the farm — against a real **6.7 cents of the whole
+   US food dollar** (crops 2.5, livestock 3.3, forestry and fishing 0.9)
+   and roughly a tenth of a food-at-home dollar once food service's 38.6
+   cents is taken out; processing takes 16.1 and wholesale and retail 20.1
+   (USDA ERS Food Dollar Series, 2024). The primary end is right — real
+   wheat really is about $220 a tonne — and it is the **processing and
+   retail end that is compressed**, which this file already records as the
+   currency being pinned to the food chain with the dear end squeezed. The
+   consequence is that a world needs more agriculture per mouth than a
+   real one, and it will matter as soon as a kitchen buys ingredients and
+   charges for a meal, because the food share of a menu price is what
+   decides whether cheap grain reaches the counter.
+9. *Housing on supply and demand* — **owner's instruction, 2026-09-17:
+   the economy works on supply and demand, and that goes for everything.
+   A housing shortage means higher prices; somewhere people want to live
+   means higher prices.** Nothing about housing answers demand today. A
+   house costs its bill of materials plus a land term read off the town's
+   population (`econ::house_price`), and a rent is a flat 30% of a
+   production worker's day times how well the town is kept
+   (`person::rent_per_day`) — so no town has a number of dwellings, nobody
+   competes for one, an empty town and a crowded one price alike, and
+   building more changes nothing. What the model already has to build it
+   on: builders are a real sector with a real payroll, `building.rs` knows
+   what a dwelling costs in cement, steel and timber, `townplan` decides
+   how many plots and storeys a place has, and `settlement.rs` knows why
+   anybody wants to be there. What it needs is a **stock** of dwellings a
+   town actually holds, households competing for it, a price that clears,
+   and construction that answers the price — which is also what makes the
+   item below mean anything, because a shortage is what public housing is
+   built for. Anchors to verify before building: the US homeowner vacancy
+   rate 1.2% and rental 7.3% (Census HVS, Q2 2026 — a tight market and a
+   loose one side by side), median home value $332,700 and median gross
+   rent $1,413 (Census, 2020-24), and the long-run finding that housing
+   supply is inelastic where land and permission are scarce, which is why
+   the same house costs three times as much in one city as another.
+10. *Public residence clusters* — **owner's note, 2026-09-17.** From Marko
+   Kloos's *Terms of Enlistment* (Frontlines, 2013): most of an
+   overpopulated Earth is warehoused in vast **public residence
+   clusters** — welfare housing on subsistence rations, violent and
+   hopeless — and the ways out are a colony lottery or **enlisting**,
+   after which the same soldiers are sent back to police the blocks they
+   grew up in. Worth having because it is a coherent answer to a question
+   this model will soon be able to ask: what a state does with people its
+   economy has no work for. The pieces are nearly all here — a state that
+   employs and pays (`state.rs`), a garrison and a soldier's pay, housing
+   that can be owned, rented or nowhere, unemployment that reaches 14% in
+   the soak, and `building.rs`'s tenement at 4-6 storeys — and what is
+   missing is the state *building and letting* dwellings, welfare as
+   **rations in kind rather than money**, and enlistment as a way out of a
+   place rather than a job like any other. Calibrate against the real
+   thing rather than the fiction, and verify each figure from a primary
+   source first: what share of a population lives in public housing
+   (Hong Kong's is the high case, the US projects and the UK's council
+   estates the familiar ones), in-kind welfare (SNAP), and whether
+   soldiers really are recruited from the poorest — the American evidence
+   is that recruits come from the middle of the income distribution rather
+   than the bottom, which is the opposite of the "poverty draft" the
+   fiction assumes, and the model should reproduce whichever the figures
+   say.
 
 **A0.2 Education as places.** Colleges and universities with intakes an
 adult can apply to, so *retrain* is a plan: a place, years at reduced or no

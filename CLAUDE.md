@@ -4599,11 +4599,10 @@ from the occupation:
   | soldier *(RMC, 2026)* | $36.05 | 10.3 |
   | doctor *(mean; median above $115)* | $126.85 | 36.3 |
 
-  **The bottom now sits under the band this file records** for low-wage
-  work, 6-10 days of food, because it was always the labourer who was put at
-  the band's floor and food service really does pay three quarters of what
-  production does. That is the recentring this file has said is unblocked,
-  and it is its own change to measure.
+  *(Those days-of-food figures were taken with a production worker at six,
+  the floor of the band, which put food service and sales under it. The
+  anchor is measured now and the ratios are unchanged — see "A day's work
+  buys nine days of food".)*
 - **The gate is the typical entry-level education**, read onto three
   steps; **the skill is the occupation's own**, eighteen of them new —
   management, accounting, teaching, mining, soldiering and the rest; **the
@@ -5069,6 +5068,151 @@ each turn a gate red.
 and is not here, though `custom::will_bend` already says who would; a
 contract ended is the end of that employer, but the person stays in the
 trade and the town.
+
+### A day's work buys nine days of food, and a person buys more than flour
+
+The second thing on the owner's list of what is wrong, and the fault was in
+the anchor rather than in the band. **A production worker was pinned at six
+days of food a day** — the floor of the 6-10 this file records for real
+low-wage work — so every occupation paid less than one fell under the band:
+food service at 4.4, sales at 5.1.
+
+**Measured, and the band is right.** What an American spends on food in a
+day is **$2.51 trillion in 2025** *(USDA ERS Food Expenditure Series)* over
+**341,784,857** people *(Census, V2025)*, which is $20.12. A production
+worker's eight hours is **$180.72** *(OEWS May 2025, 51-0000, $22.59 an
+hour)*. So:
+
+| | a day's pay | days of food | the model, now |
+|---|---|---|---|
+| food service | $134.80 | **6.7** | 7.1 |
+| sales | $148.16 | 7.4 | 8.2 |
+| **production worker** | $180.72 | **9.0** | 10.0 |
+| office clerk | $182.48 | 9.1 | 10.1 |
+| manager | $486.64 | 24.2 | 25.6 |
+
+The model's column is the sampled people's own medians in world 7 after
+five years, so it carries the skill premium of people who have done the work
+for years, which is why each sits a little over the entry figure. **The
+lowest-paid occupation is now inside the band**, which is what the item
+asked for.
+
+**Which food, and the answer decides the number.** A person here buys every
+meal at a shop, so the comparator is all food, in and out. The series counts
+food furnished by employers and institutions too, so a household's own day
+of food is a little under $20.12 and nine is a little low. The household
+survey says the opposite and is not the anchor: **$10,169 a household over
+2.53 people** *(BLS CE 2024; Census persons per household)* puts a day at
+$11 and a production worker at sixteen — and the CE is known to under-report
+food.
+
+**No cost moved.** Every production cost reads pay as a ratio to
+`person::reference_day_rate` through `econ::Economy::wage_level`, so the
+level cancels; the rent is 30% of a production worker's day — against a real
+**26%**, median gross rent $1,413 a month *(Census, 2020-24)* — and rose
+with it. What does not scale is everything priced in commodities: food,
+goods, and a house.
+
+### And then everybody bought a house
+
+Which is how the pay fix found the older defect. **A sampled person paid for
+processed food and a rent and nothing else** — no meat, no goods, no power,
+no chemist — so once pay was honest, **71% of a cohort owned a house
+outright after twenty-five years** against a real **26%** *(39.4% of owned
+homes carry no mortgage on a 65.2% ownership rate, Census ACS 2020-24)*.
+Production workers owned eleven of eleven, office clerks forty-seven of
+fifty, every one of them bought rather than inherited. It had been hidden
+for as long as pay was too low for anybody to save for anything.
+
+`person::other_outgoings_a_day` charges what `econ::consume_households` has
+debited its households for since the day it had them — `per_capita_annual`
+of everything but the flour, at that market's prices. Per head rather than
+per household, because that is what the figures are.
+
+**And the order is the whole of it.** Charged before the rent it did exactly
+what this file already records of a man who bought a bicycle keeping thirty
+days of *food*: homelessness went to **11-17% of three worlds and stayed
+there**, because people shopped their way onto the street. Real households
+keep the roof and cut the shopping, so it is charged after the rent out of
+whatever is left above a month of everything — and the poorest then buy
+least of it without anybody writing down a share, which is Engel's law
+arriving the same way `basket.rs` gets it.
+
+| five years, three worlds (7 / 11 / 23) | at six | at nine | nine, and the basket |
+|---|---|---|---|
+| homeless, worst month | 1.6 / 0.3 / **2.5%** | **0.2 / 0.2 / 1.7%** | 3.8 / 0.3 / 2.8% |
+| hungry, worst month | 0.9 / 0.2 / 2.2% | 0.2 / 0.2 / 1.7% | 2.7 / 0.2 / 2.7% |
+| unemployment at the end | 10.3 / 10.5 / 12.8% | 10.1 / 11.1 / 14.4% | 10.8 / 11.2 / 15.3% |
+| owned their home | 0.5 / 4.1 / 1.6% | 4.5 / 11.4 / 6.7% | 2.3 / 6.4 / 2.8% |
+| households' money over the run | -7.6 / +1.6 / +13.8e9 | -6.0 / +2.9 / +14.6e9 | -5.8 / +3.1 / +16.0e9 |
+
+And over twenty-five years, which is the horizon ownership needs: **25.0%
+own outright against a real 26%**, everybody is housed, **owners are paid
+15.4 days of food against 9.2** — a 1.7x gap where real owner households
+earn about 1.9 times renter households — and a house costs **6.1 years** of
+a production worker's pay against a real 7.1. None of those three was
+aimed at; they are what the measured wage and the measured basket give.
+
+- **Some of it is a household's and some is a person's**, which the
+  `people_share_a_roof` gate caught within one run: charged per head, the
+  power and the goods made sharing a roof stop paying, because rent was
+  the only thing the equivalence scale reached. Meat and what comes from a
+  chemist are somebody's; the power and the goods serve a house, and carry
+  the scale — which is `basket.rs`'s own measurement, feeding four costing
+  four times and heating the room for four costing barely more.
+- **World 7's homelessness peaks at 3.8% and world 23's at 2.8%.** What
+  that exposes is a mechanism this model does not have:
+  **missing one rent payment puts somebody on the street the same day.**
+  `utility.rs` has the whole apparatus for the other bill — a month of
+  usage, three weeks to pay, a notice, and a winter rule — and a tenancy
+  has none of it, where real eviction takes a notice and weeks to months.
+  Named rather than smoothed, and it belongs with housing.
+- **Unemployment ends 2.5 points worse in world 23**, and the cause is
+  measured rather than guessed. Its steelworks ran at 58% of rating and its
+  iron mine at 53%, against 101% and 92% — production, not money, since its
+  households ended the run with more money than they started. What moved it
+  is **mobility**: at six days of food and the same basket, people were
+  poor enough to be driven into the works — 82 trade changes over five
+  years, eight of them food service into production work — and at nine they
+  are not, so 37. Real occupational mobility is roughly a tenth a year
+  against 1.2% here, which is `docs/status.md` item 6, and this is the
+  first measurement that shows what it costs: **poverty was staffing the
+  mines.**
+- **And at the old pay the basket alone is unaffordable**, which is what
+  makes the two halves one change: six days of food with the same
+  outgoings puts 6-7% of two worlds on the street and keeps them there.
+- **A house is dear against pay in a run world and about right in a fresh
+  one** — 11.5-13.4 years of a production worker's pay in the soak against
+  6.1 in the 25-year fixture, and a real **7.1** ($332,700 median home
+  against $46,987 a year). Pay drifts down against commodity prices over a
+  run, which is why the same model straddles the figure. The housing gate's
+  band was fitted to a production worker paid six days of food; it is a
+  sanity bound now, and what will decide the level is housing answering
+  supply and demand, which is the owner's next instruction and
+  `docs/status.md` item 9.
+
+**And a readout added for this found a money printer that predates it.**
+The soak now prints what each trade holds, in days of food, and **a driver
+holds 29 to 203 million days of it** in every world — including the
+baseline, before any of this — where an office clerk holds five thousand
+and a production worker seven. Nobody starves and no gate fails, because a
+sampled person's pocket is outside the economy's ledger and `Person`'s own
+books balance: he is paid for what he actually delivered. What it is
+cannot be guessed from the figure, and the candidates are the ordinary
+ones this file already records — a venture buying at one market's price
+and selling at another's with nothing to stop it compounding, on a cargo
+dear enough to make the margin enormous. **Measured, named, and next**, and
+the lesson is the older one: a quantity nothing prints is a quantity
+nobody checks.
+
+**What is still six days of food is what a firm pays a hand.**
+`econ::day_rate_here` charges every works the same rate per hand whatever
+occupations it employs, and the all-occupations median is **$24.51 an hour**
+*(OEWS May 2025)*, 9.7 days of food. So a firm's wage bill is about two
+fifths under what the people in it earn — and that level does not cancel:
+raising it moves money out of profit into payroll, and a state sizes its tax
+take on the wage bill it has to meet. Its own change, with its own
+measurement.
 
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 

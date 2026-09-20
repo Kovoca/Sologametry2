@@ -438,12 +438,12 @@ impl Occupation {
 
     /// **Days of food a day's work buys**, the scale this model pays in.
     ///
-    /// Pinned where it always was: a production worker at six, the figure
-    /// the labourer carried — so the rent, which is set off that wage, and
-    /// every cost of production, which reads it as a ratio, do not move.
-    /// Every other occupation is placed against it by the ratio of real
-    /// median pay, so what a doctor earns against a cook is the American
-    /// figure rather than a guess.
+    /// A production worker at [`PRODUCTION_WORKER_DAYS_OF_FOOD`], measured;
+    /// every other occupation placed against it by the ratio of real median
+    /// pay, so what a doctor earns against a cook is the American figure
+    /// rather than a guess. Every cost of production reads pay as a ratio to
+    /// this, so moving the level moves no cost; the rent is set off it and
+    /// moves with it.
     pub fn days_of_food_a_day(self) -> f64 {
         PRODUCTION_WORKER_DAYS_OF_FOOD * self.median_hourly()
             / Occupation::ProductionWorker.median_hourly()
@@ -528,9 +528,37 @@ impl Occupation {
     }
 }
 
-/// What a production worker's day buys, which everything else is placed
-/// against. The labourer's figure, unchanged.
-pub const PRODUCTION_WORKER_DAYS_OF_FOOD: f64 = 6.0;
+/// **What a production worker's day buys, in days of a person's food**,
+/// which everything else is placed against.
+///
+/// Measured rather than chosen: the median production worker's eight hours
+/// *(OEWS May 2025, 51-0000, $22.59 an hour)* over what an American spends
+/// on food in a day — **$2.51 trillion in 2025** *(USDA ERS Food
+/// Expenditure Series)* over **341,784,857** people *(Census, V2025)*,
+/// $20.12 a day. Nine days.
+///
+/// **It was six, and that was four.** Six was the floor of a band this
+/// project has recorded for real low-wage work; the band is right — food
+/// service comes out at 6.7 and sales at 7.4 on the same arithmetic — and a
+/// production worker is not low-wage work. Placed at the floor, every trade
+/// paid less than a production worker fell below it: food service at 4.4.
+///
+/// **Measured against all food, in and out**, because a person here buys
+/// every meal at a shop. The series counts food furnished by employers and
+/// institutions too, so a household's own day of food is a little less
+/// than this and the figure a little low. The household survey says the
+/// opposite — $10,169 a household over 2.53 people *(BLS CE 2024; Census
+/// persons per household)* puts the day at sixteen — and under-reports food,
+/// which is why it is not the anchor.
+pub const PRODUCTION_WORKER_DAYS_OF_FOOD: f64 =
+    PRODUCTION_WORKER_MEDIAN_HOURLY_2025 * 8.0 / FOOD_A_PERSON_A_DAY_2025;
+
+/// OEWS May 2025, production occupations (51-0000): median hourly wage.
+pub const PRODUCTION_WORKER_MEDIAN_HOURLY_2025: f64 = 22.59;
+
+/// What an American spent on food in a day in 2025, in and out, from the
+/// ERS total over the Census population.
+pub const FOOD_A_PERSON_A_DAY_2025: f64 = 2.51e12 / 341_784_857.0 / 365.0;
 
 /// A full-time paid year in hours, which is how OEWS turns an hourly wage
 /// into an annual one.

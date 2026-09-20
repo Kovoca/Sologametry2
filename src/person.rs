@@ -973,6 +973,53 @@ impl Person {
 // Work that exists because the economy wants it done
 // ---------------------------------------------------------------------------
 
+/// **What a head buys besides the flour**, a day's worth at this market's
+/// prices: the meat off the counter, the goods off the shelf, the power a
+/// home draws, what comes from a chemist.
+///
+/// The economy has debited its households for every one of these since the
+/// day it had them (`econ::consume_households`, on
+/// `Commodity::per_capita_annual`), and a **sampled person paid for
+/// processed food and a rent and nothing else** — so pay that buys nine
+/// days of food a day left so much over that 71% of a cohort owned a house
+/// outright after twenty-five years, against a real 26%. It was hidden
+/// while pay sat at six days of food, which is to say while nobody could
+/// save for anything.
+///
+/// **Some of it is a person's and some of it is the house's**, which is
+/// the same asymmetry the rent already has and `basket.rs` measures:
+/// feeding four costs four times feeding one, and heating the room for
+/// four costs barely more. Meat and what comes from a chemist go in a
+/// person; the power and the goods serve a household, so they carry the
+/// equivalence scale — without that, sharing a roof stopped leaving
+/// anybody better off and a gate said so.
+///
+/// **Going without is not modelled here**: somebody short pays what they
+/// can and the rest simply does not happen, where `basket.rs` has the real
+/// answer (mend it, buy it second-hand, do it by hand, go without) and is
+/// not wired to a sampled person yet.
+pub fn other_outgoings_a_day(econ: &Economy, market: usize, household_share: f64) -> f64 {
+    Commodity::ALL
+        .iter()
+        .filter(|&&c| c != Commodity::ProcessedFood)
+        .map(|&c| {
+            let share = if shared_by_a_household(c) {
+                household_share
+            } else {
+                1.0
+            };
+            c.per_capita_annual() / 365.0 * econ.price(market, c) * share
+        })
+        .sum()
+}
+
+/// **Whether a household buys it once or every head buys their own.** A
+/// fridge runs for the house and the light is on for whoever is in the
+/// room; a plate of meat and a bottle of aspirin are somebody's.
+fn shared_by_a_household(c: Commodity) -> bool {
+    matches!(c, Commodity::Electricity | Commodity::RetailGoods)
+}
+
 /// **What a tenancy costs here, per day.**
 ///
 /// Housing is a quarter to a third of a low income *(real: 25-35%, and
@@ -1391,47 +1438,20 @@ fn day_rate_for_food(econ: &Economy, market: usize, trade: Trade) -> f64 {
         .filter(|a| *a > 0.0)
         .unwrap_or_else(|| econ.price(market, Commodity::ProcessedFood) * FOOD_PER_DAY);
     // **Real low-wage work buys six to ten days of food for a day's
-    // labour**, which is the same thing as saying the poorest households
-    // spend something like a tenth to a sixth of their income on eating.
-    // These sat at 2.6 and 3.2 — a third of the real figure, and the note
-    // recording the real one had been in the project file the whole time.
+    // labour**, and a production worker nine: the median wage against what
+    // an American spends on food in a day, both 2025 (see
+    // `occupation::PRODUCTION_WORKER_DAYS_OF_FOOD`).
     //
-    // It is not a cosmetic error. At 2.6 a labourer who gets work three
-    // days in five cannot feed himself working flat out, so nobody ever
-    // saved for anything and every life ended a little poorer than it
-    // began. Being *at* subsistence is the historical condition; being
-    // permanently below it is not, or there would be nobody left.
-    // **These are the bottom of the observed band, and they should be the
-    // middle — but not yet.**
+    // It is not a cosmetic figure. These once sat at 2.6 and 3.2, at which a
+    // labourer who got work three days in five could not feed himself
+    // working flat out, so nobody ever saved for anything. Then the
+    // production worker sat at six, the floor of the band — and since a
+    // day of food here is a person's whole food bill, every trade paid less
+    // than a production worker fell under it, food service to 4.4.
     //
-    // A labourer at 6.0 is the floor of the 6-10 days of food this file
-    // records for real low-wage work, so slack in the labour market puts
-    // the outcome *below* the band the model claims: 5.1 days across most
-    // nations, and 4.5 before the wage curve was corrected.
-    //
-    // Centring them at 8.0 was tried and puts the figure squarely in band
-    // at 6.8-7.5 — and it cannot be shipped, because **a pay rise here
-    // reaches no price anywhere.** Production costs are built on
-    // `econ::VALUE_ADDED_AN_HOUR` — then called the wage an hour, and a
-    // constant on a different scale by a factor of about thirty-five — so
-    // incomes rose a third, rents did not follow,
-    // and homelessness among the worst-paid went to zero. That is not what
-    // happens when everybody gets a rise.
-    //
-    // **Unblocked since**: a pay rise now reaches the cost of whatever
-    // those people make, through `econ::Economy::wage_level`, so a
-    // recentring is a change to be measured rather than a thing that
-    // cannot be shipped. It has not been made here yet.
-    //
-    // A labourer sat at 6.0, which is the bottom of the 6-10 days of food
-    // this file records for real low-wage work — so any slack in the
-    // labour market put the outcome *below* the band the model itself
-    // claims, and it did: 4.5 days across most nations. A central case has
-    // to be central, or the variation around it only ever goes one way.
-    //
-    // Every figure below is the old one times 4/3, so the relativities
-    // between trades — which were separately argued and are the part that
-    // carries meaning — are untouched.
+    // A pay rise reaches the cost of whatever those people make through
+    // `econ::Economy::wage_level`, which reads pay as a ratio to
+    // `reference_day_rate` — so the level can move without moving a cost.
     food * days_of_food_a_day(trade)
 }
 
@@ -2220,6 +2240,32 @@ pub fn live_a_day(person: &mut Person, econ: &mut Economy, day: u64) {
                 }
                 person.housing = Housing::Homeless;
             }
+        }
+    }
+
+    // --- Everything else a head buys ---
+    //
+    // Meat, goods, power and remedies, at this market's prices — and
+    // **after the roof, out of what is left above a month of everything.**
+    // Charged before the rent it did exactly what this file records of a
+    // man who bought a bicycle on thirty days of food: homelessness went
+    // to 11-17% of three soak worlds and stayed there, because people
+    // shopped their way onto the street. Real households keep the roof and
+    // cut the shopping, which is also why the poorest buy least of this
+    // without anybody writing down a share — Engel's law, the same way
+    // `basket.rs` gets it.
+    {
+        let due = other_outgoings_a_day(econ, person.market, person.household_share);
+        let day_of_food = econ.price(person.market, Commodity::ProcessedFood) * FOOD_PER_DAY;
+        let rent = rent_per_day(econ, person.market)
+            * person.housing.share_of_rent()
+            * person.household_share;
+        let keep = (day_of_food + rent) * 30.0;
+        let spare = (person.money - keep).max(0.0);
+        let paid = due.min(spare);
+        if paid > 0.0 {
+            person.money -= paid;
+            person.spent += paid;
         }
     }
 
