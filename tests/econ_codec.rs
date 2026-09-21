@@ -277,6 +277,10 @@ fn a_road_a_market_and_a_works_come_back_whole() {
         cell: Some(4_242),
         port: true,
         berth: scale_sim::world::Berth::Ocean,
+        // Written part way through its range like everything else here —
+        // and the `None` arm is exercised by the hand-built fixtures,
+        // which is what a town nobody surveyed looks like.
+        buildable_km2: Some(1_820.5),
         name: "Bexley".into(),
         nation: 2,
         population: 1_250_000.0,

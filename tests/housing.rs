@@ -23,34 +23,102 @@ fn a_nation() -> Region {
 #[test]
 fn a_house_costs_about_eight_years_of_wages() {
     let e = a_nation().economy;
-    for m in 0..e.markets.len() {
-        let price = e.house_price(m);
-        let wage = person::day_rate(&e, m, Trade::ProductionWorker);
-        // Real UK house prices run about eight times median annual
-        // earnings, up from four in the 1990s. Nothing here was tuned to
-        // produce it: a dwelling is 76 m², its bill of materials comes
-        // from `building.rs`, a wage is six days of food, and the
-        // multiple is what those give.
-        let years = price / (wage * 250.0);
-        assert!(
-            (5.0..14.0).contains(&years),
-            "{} houses cost {years:.1} years of wages",
-            e.markets[m].name
-        );
-    }
 
-    // **And land is why a city is dearer.** The building is the same
-    // building; the ground under it is not.
-    let biggest = (0..e.markets.len())
-        .max_by(|&a, &b| e.markets[a].population.total_cmp(&e.markets[b].population))
-        .unwrap();
-    let smallest = (0..e.markets.len())
-        .min_by(|&a, &b| e.markets[a].population.total_cmp(&e.markets[b].population))
-        .unwrap();
+    // **The aggregate, against an external benchmark.** A house costs
+    // **7.1 years** of an ordinary wage in the United States — $332,700
+    // median home value against $46,987 a year *(Census ACS 2020-24;
+    // OEWS May 2025)* — and the band sits round that figure rather than
+    // round what this model happens to produce.
+    //
+    // **It is the median town, because a national median is a median.**
+    // Asserting every town inside one band is what this gate used to do,
+    // and that is exactly the claim housing-on-supply-and-demand
+    // disproved: when every town priced alike it was trivially true, and
+    // the whole point of the change is that towns differ.
+    let years = house_years(&e);
+    let median = years[years.len() / 2];
     assert!(
-        e.house_price(biggest) > e.house_price(smallest),
-        "a house in the biggest town should not cost the same as in the smallest"
+        (4.0..11.0).contains(&median),
+        "the median town's house costs {median:.1} years of a production worker's pay \
+         against a real 7.1"
     );
+
+    // **Towns differ, and the ground decides it — not how many people
+    // live there.**
+    //
+    // **The first version of this was a tautology and stayed green under
+    // its own sabotage**, which is the ninth time this project records
+    // one. It asserted that the dearest town was the one under most
+    // pressure — and with pressure reading population the dearest town
+    // *is* the most populous, so the comparison held trivially. An
+    // assertion monotone in the very quantity being sabotaged can never
+    // catch it.
+    //
+    // What discriminates is holding the town still and varying only the
+    // ground: **the same people on half the buildable land pay more.**
+    // Nothing about population moves, so a pressure that reads population
+    // cannot produce it.
+    let mut hemmed = a_nation().economy;
+    let m = (0..hemmed.markets.len())
+        .max_by(|&a, &b| {
+            hemmed.markets[a]
+                .population
+                .total_cmp(&hemmed.markets[b].population)
+        })
+        .unwrap();
+    let open_ground = e.house_price(m);
+    let open_rent = person::rent_per_day(&e, m);
+    let was = hemmed.markets[m]
+        .buildable_km2
+        .expect("a town nobody surveyed");
+    hemmed.markets[m].buildable_km2 = Some(was / 2.0);
+    let hemmed_in = hemmed.house_price(m);
+    let hemmed_rent = person::rent_per_day(&hemmed, m);
+    assert!(
+        hemmed_in > open_ground * 1.5,
+        "{}: halving the buildable ground under the same people moved a house from          {open_ground:.3e} to {hemmed_in:.3e} — the ground is not deciding the price",
+        e.markets[m].name,
+    );
+    // **And a rent answers it less hard than a price does**, which is the
+    // real ordering and the reason the two exponents differ at all.
+    assert!(
+        hemmed_rent > open_rent && hemmed_rent / open_rent < hemmed_in / open_ground,
+        "rent went {:.3} to {:.3} ({:.2}x) against the house's {:.2}x — a rent must move          with the ground and by less than a price does",
+        open_rent,
+        hemmed_rent,
+        hemmed_rent / open_rent,
+        hemmed_in / open_ground,
+    );
+
+    // **And the spread is wider than reality, recorded rather than
+    // asserted away.** The two exponents were fitted to two real spreads,
+    // which leaves no degrees of freedom, so the *level* is the only
+    // independent check — and it half fails: the dearest towns reach
+    // 22-26 years of pay where the priciest American metros stop near
+    // 11-12. The cause is named in `Economy::land_value_ratio`: real
+    // expensive cities pay more and these do not. What is asserted here
+    // is only that a spread exists at all, which is what catches a return
+    // to one price everywhere.
+    assert!(
+        years[years.len() - 1] > years[0] * 2.0,
+        "every town costs about the same again: {:.1} to {:.1} years of pay",
+        years[0],
+        years[years.len() - 1],
+    );
+}
+
+/// What a house costs in each town, in years of a production worker's
+/// pay, sorted. One definition because two gates read it and they must
+/// not drift.
+fn house_years(e: &scale_sim::econ::Economy) -> Vec<f64> {
+    let mut years: Vec<f64> = (0..e.markets.len())
+        .map(|m| {
+            let wage = person::day_rate(e, m, Trade::ProductionWorker);
+            e.house_price(m) / (wage * 250.0).max(1e-9)
+        })
+        .collect();
+    years.sort_by(f64::total_cmp);
+    years
 }
 
 /// **Owning stops the rent**, which is the whole reason people want to.
@@ -156,10 +224,18 @@ fn without_credit_ownership_stays_out_of_reach() {
     // production worker paid six days of food a day, which was itself the
     // defect. It is a sanity bound until housing answers supply and demand
     // (`docs/status.md` item 9), which is what will decide the level.
-    let years = e.house_price(0) / (person::day_rate(&e, 0, Trade::ProductionWorker) * 260.0);
+    //
+    // **And it is the median town rather than market 0.** Reading one
+    // town was safe only while every town priced alike; now that the
+    // ground decides, market 0 is whichever town the fixture happened to
+    // build first, and in this world it is one of the tight ones at 18.4
+    // years. A median is what the real 7.1 is.
+    let years = house_years(&e);
+    let median = years[years.len() / 2];
     assert!(
-        (4.0..16.0).contains(&years),
-        "a house costs {years:.1} years of a production worker's pay, which would          mean the price or the wage is wrong"
+        (4.0..16.0).contains(&median),
+        "the median town's house costs {median:.1} years of a production worker's pay, \
+         which would mean the price or the wage is wrong"
     );
     // **Ownership follows pay.**
     let pay = |own: bool| -> f64 {

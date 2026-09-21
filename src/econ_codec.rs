@@ -446,6 +446,17 @@ impl Store for Market {
         }
         w.bool(self.port);
         self.berth.store(w);
+        // **Appended, never inserted.** What the ground offers is a fact
+        // measured when the town was founded; a save written before it
+        // existed loads as a town nobody surveyed, which prices housing
+        // as an ordinary place.
+        match self.buildable_km2 {
+            None => w.u8(0),
+            Some(k) => {
+                w.u8(1);
+                w.f64(k);
+            }
+        }
         w.str(&self.name);
         w.u16(self.nation);
         w.f64(self.population);
@@ -469,6 +480,19 @@ impl Store for Market {
         };
         let port = r.bool()?;
         let berth = crate::world::Berth::load(r)?;
+        let buildable_km2 = match r.u8()? {
+            0 => None,
+            1 => {
+                let k = r.finite_f64()?;
+                if k < 0.0 {
+                    return Err(SaveError::Impossible(
+                        "a town with negative buildable ground",
+                    ));
+                }
+                Some(k)
+            }
+            n => return Err(SaveError::UnknownCode("buildable ground tag", n as u32)),
+        };
         let name = r.str()?;
         let nation = r.u16()?;
         let population = r.finite_f64()?;
@@ -481,6 +505,7 @@ impl Store for Market {
             cell,
             port,
             berth,
+            buildable_km2,
             name,
             nation,
             population,

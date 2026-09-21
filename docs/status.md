@@ -301,6 +301,75 @@ Real defects, each visible in a test or measurable in a binary.
 
 2. **Firm-to-firm supply goes unpaid**, about 2.6e11 over 700 days — the
    largest unpaid category, ahead of households at the till.
+   **And the shape of it is worse than the figure**, on a reviewer's
+   point, 2026-09-20. `Treasury::pay` caps a transfer at the payer's
+   balance, adds the shortfall to a counter, and **the goods have already
+   moved**. So nothing anywhere records a receivable: the supplier is
+   poorer, the buyer holds the stock, and conservation is satisfied
+   throughout — which is exactly how money can conserve while the
+   transactions are wrong. It then propagates, because a supplier that was
+   not paid cannot meet payroll and lays people off, and that is the
+   unemployment the bands are being read against. **Until every delivery
+   has a named commercial outcome — paid, owed, or an internal transfer —
+   matching a calibration band is weak evidence, because a missing payment
+   can be offsetting another error.**
+   **The design, after a reviewer corrected the first one**, 2026-09-20.
+   The first sketch was one edge, `(debtor, creditor) -> amount`, on the
+   argument that a single record cannot disagree with itself. It cannot,
+   and **it also cannot carry terms**: two deliveries of 100 on day 0 net
+   30 and 200 on day 20 net 50 are 100 due on day 30, and collapsing them
+   into "300 owed" destroys that. So the authoritative record is **per
+   invoice** — a durable key, both parties, the delivery it came from, the
+   amount, the invoice date, the due date and what has been settled
+   against it — with both firms' positions *derived* by walking invoices,
+   which keeps the one-record property and adds terms. Obligations merge
+   only where terms and due date are identical.
+
+   - **Credit is agreed before the goods move**, which is the reverse of
+     the first sketch. If goods transfer and an obligation appears
+     whenever payment fails, **every supplier is a compulsory lender**.
+     The purchase decision settles what is payable now, what credit the
+     supplier will extend, whether existing arrears cut that off, and
+     therefore **what quantity actually transfers** — and the inventory
+     move, the cash and the invoice commit together.
+   - **Outstanding and overdue are different states.** A net-30 invoice
+     is an ordinary trade asset before day 30 and arrears after it, and
+     it is arrears that restrict further supply.
+   - **A receivable is not cash**, and this is the part most likely to go
+     wrong. The supplier correctly books a sale and an asset and still
+     cannot make payroll, so working capital, collections, partial
+     payment, restricted credit and firms that do not recover all have to
+     exist — otherwise the unpaid counter simply becomes an unbounded
+     debt stock and the defect has moved rather than closed. A collection
+     reduces the invoice and **is not revenue a second time**; writing a
+     debt down as doubtful is the creditor's loss and **does not forgive
+     the debtor**.
+   - **The transition can manufacture its own crisis.** Delaying receipts
+     against unchanged opening cash is a startup liquidity shock that is
+     an artefact of the change, so whatever opening balance or financing
+     carries it is stated explicitly rather than absorbed.
+   - **It stays at the commercial layer.** `Treasury::pay` carries wages,
+     tax, public spending, premiums and claims; a shortfall there must
+     **not** silently become trade credit. Only a firm-to-firm goods
+     purchase takes the new path.
+   - **Terms and DSO are not interchangeable settings.** Net 30 is
+     contractual and is an input; DSO measures collection performance and
+     depends on customer behaviour, business mix and the calculation
+     method, so it is an **output the run reports** and is compared
+     against — never a dial. Setting invoices to clear at 37 days would
+     reproduce the chosen number and test nothing, and the two figures
+     quoted here (about 37 days domestic, a cross-industry median nearer
+     56) need their country, period, sector coverage and method before
+     they are targets at all.
+
+   **What closes this item is behaviour, not a smaller counter.** A
+   purchase without cash or authorised credit cannot move unsupported
+   goods; two invoices between one pair keep different due dates; a
+   partial payment reduces the right balance exactly once; an insolvent
+   buyer loses further unsecured supply; save and reload preserve
+   invoices, partial settlements and subsequent outcomes; and the soak
+   reports credit sales, collections, outstanding, overdue and losses
+   **separately**.
 3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.
@@ -595,7 +664,31 @@ real occupations to train for.
    real one, and it will matter as soon as a kitchen buys ingredients and
    charges for a meal, because the food share of a menu price is what
    decides whether cheap grain reaches the counter.
-9. *Housing on supply and demand* — **owner's instruction, 2026-09-17:
+9. *Housing on supply and demand* — **half built, 2026-09-20.** What is
+   built: a town's **buildable land** is measured off the world the way
+   Saiz measures it (land, not water, under 15% slope, within 49 km), and
+   the price and the rent answer people against it rather than against
+   population. That replaced a land term which **saturated for every town
+   a generated world contains**, so a house cost 1.543e4 in all sixteen
+   towns of one world. Measured: 1,093-4,821 people per buildable km2, a
+   4.41x spread, giving a 6.35x spread in price and 2.65x in rent.
+   **The calibration is fitted, not validated**, and the first write-up
+   said otherwise: two exponents against two observed spreads is zero
+   degrees of freedom, and the price-to-rent spread is the quotient of
+   the other two by construction. The independent check is the *level*,
+   and it half fails — median 6.5 years of a production worker's pay
+   against a real 7.1, dearest town 25.9 against a real metro ceiling
+   near 11-12, because real expensive cities pay more and here pay is
+   national.
+   **What is still missing is the half the instruction names as a
+   shortage.** There is no stock of dwellings, nobody competes for one,
+   and building more changes nothing — and it cannot be built yet,
+   because a town's population is fixed at world generation, so demand
+   has no way to move. Stock, construction that answers price, and
+   migration are the pieces, in that dependency order.
+
+   *Original instruction, 2026-09-17:*
+   **owner's instruction:
    the economy works on supply and demand, and that goes for everything.
    A housing shortage means higher prices; somewhere people want to live
    means higher prices.** Nothing about housing answers demand today. A
@@ -850,10 +943,34 @@ top of a population that is already living.
 
 ### Later — the player and the clock
 
-### 1. The clock and the player — one job, not two
+### 1. The clock, and the player after it — two jobs, not one
 
-You cannot have a player who acts without deciding what a tick is, and the
-tick decides what everything above it is allowed to assume.
+**This section said "one job, not two" and that was wrong**, on a
+reviewer's correction, 2026-09-20. The reasoning was that a player who
+acts forces the tick decision, which is true and is not the dependency.
+**Autonomous workers already need every piece of it**: a shift that
+starts, a machine reserved, a process that completes, a vehicle loaded,
+an arrival somewhere. `schedule.rs` holds all of those durations in
+minutes today and nothing advances its diary. So the real dependency is a
+**headless scheduler**, and the player is a later consumer of the same
+action rules rather than the reason to build them.
+
+**And it does not mean stepping everything every second.** An oven
+schedules a completion and is interrupted if the power fails; a truck
+schedules an arrival and revises it when something relevant changes. What
+has to be decided is the unit and the event queue, not an update rate for
+the world.
+
+**`scaling.rs` is groundwork and not a transferable guarantee.** Its
+invariance contract was established for one mind under constant pressure,
+split at *that mind's* own discontinuities. Interacting economic
+processes have discontinuities that belong to other agents — a delivery
+landing, a shortage biting, an outage, a cancellation — and nothing here
+establishes that a catch-up stops at those. The contract has to be
+re-established for them rather than reused.
+
+You still cannot have a player who acts without deciding what a tick is,
+and the tick decides what everything above it is allowed to assume.
 
 Deliver: a base tick of about a second; the durations `craft.rs` and
 `schedule.rs` already hold expressed in it; a reality bubble with catch-up

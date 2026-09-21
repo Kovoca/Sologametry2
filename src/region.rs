@@ -608,6 +608,13 @@ impl Region {
             // is a place called Ashford and cannot find it.
             let mut market = Market::in_nation(name.clone(), pop, 0, southern);
             market.cell = Some(s.cell);
+            // **What the ground will let anybody build on.** The supply
+            // side of a housing market, measured once off the world: land
+            // rather than water, and not too steep. A city hemmed in by
+            // mountains and sea has less of it than one on a plain, and
+            // that is why the same house costs several times as much in
+            // one place as another.
+            market.buildable_km2 = Some(world.buildable_km2(s.cell));
             market.port = s.coastal;
             // **What the water will take.** A quay was a flag, so a fishing
             // village could ship a country's whole harvest.

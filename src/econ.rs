@@ -1951,6 +1951,15 @@ pub struct Market {
     /// inshore boat, seven a coaster, twelve a Panamax, eighteen a
     /// capesize bulk carrier. See `world::Berth`.
     pub berth: crate::world::Berth,
+    /// **Square kilometres within reach that can be built on** — land
+    /// rather than water, and not too steep to develop. The supply side of
+    /// this town's housing market, measured off the world when the town
+    /// was founded.
+    ///
+    /// `None` where nobody surveyed the ground, which is the hand-built
+    /// fixtures. Those towns price housing as an ordinary place does,
+    /// which is the honest answer rather than a made-up acreage.
+    pub buildable_km2: Option<f64>,
     pub name: String,
     /// Which nation this market belongs to. Weather is drawn per nation,
     /// and a lane between two nations is a different thing from a road
@@ -2030,6 +2039,8 @@ impl Market {
             cell: None,
             port: false,
             berth: crate::world::Berth::None,
+            // Nobody surveyed the ground of a town nobody put on a map.
+            buildable_km2: None,
             name: name.into(),
             nation,
             population,
@@ -7796,16 +7807,146 @@ impl Economy {
         /// rest is the trades who assemble them.
         const MATERIAL_SHARE: f64 = 0.45;
         let built = materials / MATERIAL_SHARE;
-        // Land, against the size of the place. A plot in a village is a
-        // tenth of the house; in a large city it is worth more than the
-        // building standing on it.
-        let people = self.markets.get(m).map(|x| x.population).unwrap_or(0.0);
-        // Referenced against a large city rather than a million, or every
-        // town in a country whose smallest settlement holds two million
-        // people saturates the curve and they all cost the same.
-        let land = built * (0.1 + 0.85 * (people / 8.0e6).min(1.0).sqrt());
+        // **The structure costs what it costs; the land answers demand.**
         // A worn-out house is a cheap house. The land under it is not.
-        built * (0.4 + 0.6 * self.fabric_condition(m)) + land
+        built * (0.4 + 0.6 * self.fabric_condition(m)) + built * self.land_value_ratio(m)
+    }
+
+    /// **What the land under an ordinary dwelling is worth**, as a
+    /// multiple of what the structure cost to put up.
+    ///
+    /// This replaced a term read off population alone — `0.1 + 0.85 x
+    /// sqrt(people / 8M)`, clamped — and the comment beside it warned of
+    /// exactly what it was doing: *"or every town in a country whose
+    /// smallest settlement holds two million people saturates the curve
+    /// and they all cost the same."* **It did.** Every town in a generated
+    /// world holds more than eight million people, so every one of them
+    /// sat at the clamp, and a house cost 1.543e4 in all sixteen towns of
+    /// one world — in a city of 8.5 million on open ground and in one of
+    /// 22 million hemmed in by mountains alike.
+    ///
+    /// What decides it is **demand against buildable supply**, which is
+    /// the finding the published work rests on: Saiz estimates developable
+    /// land from terrain and water and shows housing supply elasticity
+    /// moving from about **2.45 to 1.25** across the interquartile range
+    /// of land availability. So the measure is people per buildable square
+    /// kilometre within reach, and the response is the ordinary inverse of
+    /// a demand elasticity — the same `1 + shortfall/|elasticity|`
+    /// reasoning the commodity prices already use, in its multiplicative
+    /// form.
+    ///
+    /// **Only the land moves.** Land is **39.9% of American home value**
+    /// in 2022, up from 37.0% in 2012 *(FHFA/AEI land price indicators,
+    /// Oliner et al.)*, so land is 0.664 times the structure at an
+    /// ordinary density and the structure itself does not care how many
+    /// people want to live near it. That decomposition is also why the
+    /// spread comes out near what is really observed rather than running
+    /// away: a pure elasticity applied to the whole price would put six
+    /// times between the loosest town and the tightest, where real metro
+    /// median rents differ by under three.
+    pub fn land_value_ratio(&self, m: usize) -> f64 {
+        /// Land as a multiple of the structure at an ordinary density —
+        /// 0.399 / 0.601.
+        const LAND_OVER_STRUCTURE: f64 = 0.664;
+        Self::built_land_ratio(
+            self.housing_pressure(m),
+            LAND_OVER_STRUCTURE,
+            Self::PRICE_RESPONSE,
+        )
+    }
+
+    /// **How hard people are pressing on the ground here**, as a ratio
+    /// against an ordinary place: people per buildable square kilometre
+    /// within reach, over `ORDINARY_DENSITY`.
+    ///
+    /// One where nobody surveyed the ground, so a hand-built fixture
+    /// prices housing as an ordinary town does and every gate written on
+    /// one is untouched.
+    pub fn housing_pressure(&self, m: usize) -> f64 {
+        /// **People per buildable square kilometre in an ordinary large
+        /// town**, at the 49 km reach `world::HOUSING_REACH_CELLS` sets.
+        ///
+        /// A designed anchor and labelled as one: it is chosen so that an
+        /// ordinary town comes out at the **39.9%** land share the figures
+        /// actually report, and it is the *spread* either side of it that
+        /// is derived rather than fitted. For scale, nineteen million
+        /// people inside 49 km of New York over its buildable ground is
+        /// about 2,500 a square kilometre.
+        const ORDINARY_DENSITY: f64 = 2_000.0;
+        let Some(mk) = self.markets.get(m) else {
+            return 1.0;
+        };
+        let Some(km2) = mk.buildable_km2 else {
+            return 1.0;
+        };
+        if km2 <= 0.0 {
+            return 1.0;
+        }
+        (mk.population / km2 / ORDINARY_DENSITY).clamp(0.05, 20.0)
+    }
+
+    /// **How hard a house price answers the ground**, as an exponent on
+    /// pressure.
+    ///
+    /// **Not derived from the demand elasticity, and that was tried first.**
+    /// Published price elasticities of housing demand run 0.25-0.7 for
+    /// renters and 0.36-0.87 for owners *(Mayo's review, 1981)*, and taking
+    /// the exponent as one over those gives **the ordering backwards**:
+    /// renters are the more inelastic, so the rent came out spreading 4.05x
+    /// across a world's towns against the price's 3.12x. In life it is
+    /// emphatically the other way round — a house price varies far more
+    /// between cities than a rent does, which is exactly what a price-to-rent
+    /// ratio measures and why it is not a constant.
+    ///
+    /// The reason is real and is why the elasticity cannot carry it: **a
+    /// renter can answer a shortage by taking a smaller place or a lodger**,
+    /// which this model already has in its household equivalence scale, while
+    /// a buyer is capitalising the whole future stream and cannot share it
+    /// away.
+    ///
+    /// So the two exponents are calibrated against two real spreads: the
+    /// cross-metro spread in median gross rent, about **2.6x** (San Jose
+    /// ~$3,300 a month against Cleveland's ~$1,250), and the spread in the
+    /// **price-to-rent ratio**, about **2.4x** (San Jose ~35 against
+    /// Cleveland ~14.7, on a national ~16). Those give a price spread near
+    /// 6.4x, which is what the large American metros show.
+    ///
+    /// **That is fitting and not validation, and the first write-up of it
+    /// claimed otherwise.** Price and rent are both monotone in the same
+    /// pressure, so the dearest and the cheapest town are necessarily *the
+    /// same two towns* in both — which makes the price-to-rent spread the
+    /// quotient of the other two **by construction**. Two exponents fitted
+    /// to two observations leaves no degrees of freedom, so nothing there
+    /// was checked; a third figure agreeing was arithmetic, not evidence.
+    ///
+    /// **The check nothing was fitted to is the level**, and it half fails
+    /// — which is worth more than the agreement was. A house costs **6.5
+    /// years** of a production worker's pay at the median town against a
+    /// real **7.1** *($332,700 median home value on $46,987 a year, Census
+    /// ACS 2020-24)*, which is close. But the dearest towns reach **23-26
+    /// years**, where the most expensive American metros stop around
+    /// 11-12.
+    ///
+    /// **And the cause is diagnosable rather than mysterious**: real
+    /// expensive cities pay more, and here they do not. `day_rate` is a
+    /// national pay level with only a small local part — the wage curve's
+    /// tenth off for a doubling of local unemployment — so this model can
+    /// give a town San Jose's house prices on Cleveland's wages. Pay
+    /// following the local cost of living is its own change, and until it
+    /// is made the spread in *prices* is right while the spread in what
+    /// anybody can afford is not.
+    pub const PRICE_RESPONSE: f64 = 2.55;
+
+    /// The same for a rent, and the lower of the two for the reason above.
+    pub const RENT_RESPONSE: f64 = 1.45;
+
+    /// **Land against structure, given how hard people are pressing on it.**
+    ///
+    /// One function because the rent and the price must answer the same
+    /// pressure the same way: a town where houses are dear is a town where
+    /// rooms are dear, and two copies of this would drift.
+    pub fn built_land_ratio(pressure: f64, land_over_structure: f64, response: f64) -> f64 {
+        land_over_structure * pressure.powf(response)
     }
 
     /// Price of `c` in market `m`.

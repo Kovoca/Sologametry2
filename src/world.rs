@@ -798,6 +798,23 @@ impl Biome {
 /// stand on a hillside.
 pub const MAX_LAND_M: f64 = 8_848.0;
 
+/// **The slope above which nobody builds**, as metres of fall per
+/// kilometre.
+///
+/// Saiz takes land steeper than **15%** out of the developable stock
+/// altogether *(Saiz, "The Geographic Determinants of Housing Supply",
+/// QJE 125(3), 2010)*, estimating developable land from satellite terrain
+/// and water bodies and finding residential development effectively
+/// curtailed by steep ground. 15% is 150 m/km.
+pub const UNBUILDABLE_M_PER_KM: f64 = 150.0;
+
+/// **How far out a town's housing market reaches**, in region cells.
+///
+/// Three cells is about 49 km, which is the radius the published work
+/// takes round a metropolitan centre — and about the distance somebody
+/// will commute.
+pub const HOUSING_REACH_CELLS: i64 = 3;
+
 /// **Real units for the climate fields.**
 ///
 /// Temperature and rainfall were bare 0..1 like the elevation was — fine
@@ -1113,6 +1130,71 @@ impl World {
         let wt = self.water_table.data[cell] as f64;
         let span = (1.0 - self.sea_level as f64).max(1e-3);
         ((e - wt) / span * MAX_LAND_M).max(0.0)
+    }
+
+    /// **Local relief at a cell**, in metres of fall per kilometre.
+    ///
+    /// The landform's own, plus the regional gradient. The coarse field is
+    /// smoothed at 16 km, so the difference between neighbours badly
+    /// understates what the ground inside a cell actually does — a town at
+    /// 5,380 m in mountain country came out at 11 m/km that way. These are
+    /// the figures `ground.rs` already builds terrain from: 2-10 m/km on a
+    /// floodplain, 10-20 on plains, 30-60 rolling, 300-600 mountain.
+    pub fn relief_m_per_km(&self, cell: usize) -> f64 {
+        use Biome::*;
+        let (w, h) = (self.width, self.height);
+        let (cx, cy) = ((cell % w) as i64, (cell / w) as i64);
+        let at = |x: i64, y: i64| -> f64 {
+            let xx = x.rem_euclid(w as i64) as usize;
+            let yy = y.clamp(0, h as i64 - 1) as usize;
+            self.elevation.data[yy * w + xx] as f64
+        };
+        let here = at(cx, cy);
+        let sea = self.sea_level as f64;
+        let landform = match self.biomes[cell] {
+            Ocean | Shallows | Swamp | Beach => 4.0,
+            Desert | Savanna | Grassland => 14.0,
+            Tundra => 25.0,
+            Rainforest => 35.0,
+            Forest | Shrubland | Taiga => 45.0,
+            Mountain => 420.0,
+            Snowcap => 650.0,
+        };
+        let mut drop = 0.0f64;
+        for (dx, dy) in [(-1i64, 0i64), (1, 0), (0, -1), (0, 1)] {
+            drop = drop.max((here - at(cx + dx, cy + dy)).abs());
+        }
+        let regional = drop / (1.0 - sea).max(1e-3) * MAX_LAND_M / crate::region::KM_PER_CELL;
+        (landform + regional).clamp(2.0, 900.0)
+    }
+
+    /// **How many square kilometres within reach of a town can be built
+    /// on**: land rather than water, and not too steep.
+    ///
+    /// This is the supply side of a housing market, and it is a fact about
+    /// the ground rather than about anybody's plans. A city hemmed in by
+    /// mountains and sea has less of it than one on a plain, which is why
+    /// the same house costs several times as much in one place as another.
+    pub fn buildable_km2(&self, cell: usize) -> f64 {
+        let (w, h) = (self.width, self.height);
+        let (cx, cy) = ((cell % w) as i64, (cell / w) as i64);
+        let r = HOUSING_REACH_CELLS;
+        let mut good = 0.0f64;
+        for dy in -r..=r {
+            for dx in -r..=r {
+                if dx * dx + dy * dy > r * r {
+                    continue;
+                }
+                let xx = (cx + dx).rem_euclid(w as i64) as usize;
+                let yy = (cy + dy).clamp(0, h as i64 - 1) as usize;
+                let i = yy * w + xx;
+                let wet = self.elevation.data[i] < self.sea_level || self.lake[i];
+                if !wet && self.relief_m_per_km(i) < UNBUILDABLE_M_PER_KM {
+                    good += 1.0;
+                }
+            }
+        }
+        good * crate::region::KM_PER_CELL * crate::region::KM_PER_CELL
     }
 
     /// Mean annual temperature at a cell, in degrees Celsius.

@@ -1450,13 +1450,30 @@ fn can_do_the_work(trade: Trade) -> bool {
 /// not exist yet: where wages are high, so is rent, which is most of what
 /// a land market would tell us anyway.
 pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
+    /// What an ordinary place takes, against a real **26%** — median
+    /// gross rent $1,413 a month *(US Census, 2020-24)*.
     const SHARE_OF_A_WAGE: f64 = 0.30;
     // **Degraded stock is cheap stock.** A town whose fabric has been let
     // go is a town where the rent is lower, which is how under-maintained
     // housing becomes the only housing some people can afford — and why
     // letting it go is a decision somebody makes rather than an accident.
     let kept = 0.55 + 0.45 * econ.fabric_condition(market);
-    day_rate(econ, market, Trade::ProductionWorker) * SHARE_OF_A_WAGE * kept
+    // **And a room answers the same ground a house does.** A flat share of
+    // a wage said an empty town and a crowded one cost the same to live
+    // in, which is the thing the owner's instruction names: a housing
+    // shortage means higher prices, and somewhere people want to live
+    // means higher prices. Only the land moves — the structure costs what
+    // it costs — so the rent carries the same split the price does, and
+    // **answers it less hard than a price does**, which is the real
+    // ordering and the reason `econ::RENT_RESPONSE` records.
+    /// The land's share of what a dwelling is worth, as a multiple of the
+    /// structure — 0.399 / 0.601 *(FHFA/AEI, 2022)*.
+    const LAND_OVER_STRUCTURE: f64 = 0.664;
+    let pressure = econ.housing_pressure(market);
+    let here =
+        1.0 + Economy::built_land_ratio(pressure, LAND_OVER_STRUCTURE, Economy::RENT_RESPONSE);
+    let ordinary = 1.0 + LAND_OVER_STRUCTURE;
+    day_rate(econ, market, Trade::ProductionWorker) * SHARE_OF_A_WAGE * kept * (here / ordinary)
 }
 
 /// **What somebody is actually good at**, as against what they are

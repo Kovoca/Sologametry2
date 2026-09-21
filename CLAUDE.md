@@ -5422,6 +5422,94 @@ day it happens. There is no queue, so an understaffed insurer never takes
 three weeks to pay and a claims backlog cannot exist — which is the
 workflow half, and `docs/status.md` item 11 is where that goes.
 
+### Somewhere people want to live costs more (`src/world.rs`, `src/econ.rs`)
+
+`cargo run --release --bin housing`
+
+The owner's instruction: **the economy works on supply and demand, and
+that goes for everything — a housing shortage means higher prices, and
+somewhere people want to live means higher prices.**
+
+**Nothing about housing answered demand, and the code said so in a
+comment nobody had checked.** A house cost its bill of materials plus a
+land term read off population — `0.1 + 0.85 x sqrt(people / 8M)`, clamped
+— with a note beside it warning *"or every town in a country whose
+smallest settlement holds two million people saturates the curve and they
+all cost the same."* **It did.** Every town in a generated world holds
+more than eight million, so every one sat at the clamp: measured, a house
+cost **1.543e4 in all sixteen towns of one world**, in a city of 8.5
+million on open ground and in one of 22 million hemmed in by mountains
+alike. A rent was a flat 30% of a wage, so it did not vary either.
+
+**Two designs were measured and the first one died on the measurement.**
+`townplan::Plan::housed()` counts the dwellings on the plots and looked
+like the stock — at the size the economy lays a plan out it holds about
+**fourteen thousand people against populations of nine to thirty-seven
+million**. That is 0.1% and it is not a bug: `size` is how much ground is
+generated, not how big the place is, which this file already records. A
+1.28 km patch is not a city.
+
+**So the supply side is measured the way the published work measures
+it.** Saiz estimates developable land from satellite terrain and water,
+finds residential development effectively curtailed by steep ground, and
+puts housing supply elasticity at **2.45 down to 1.25** across the
+interquartile range of land availability *(QJE 125(3), 2010)*. Here the
+same question is asked of the cells a town draws on: land rather than
+water, and under **15% slope**, which is Saiz's own cut. Measured across
+one world's sixteen towns, **1,093 to 4,821 people per buildable square
+kilometre — a 4.41x spread** where the price had been flat.
+
+- **Only the land moves.** Land is **39.9% of American home value** in
+  2022, up from 37.0% in 2012 *(FHFA/AEI land price indicators)*, so land
+  is 0.664 times the structure at an ordinary density — and a structure
+  does not care how many people want to live near it.
+- **A rent answers the same ground and answers it less hard**, which is
+  the real ordering: real house prices vary far more between cities than
+  rents do, and that gap *is* the price-to-rent ratio.
+
+**And the write-up of the calibration was wrong, which a review caught.**
+The two exponents were fitted to two real spreads — the cross-metro rent
+spread (~2.6x) and the price-to-rent spread (~2.4x) — and the resulting
+price spread of 6.35x was reported as a third figure agreeing. **It is
+not.** Price and rent are both monotone in the same pressure, so the
+dearest and cheapest town are necessarily the same two towns in both,
+which makes the price-to-rent spread **the quotient of the other two by
+construction**. Two exponents fitted to two observations leaves no
+degrees of freedom: nothing was validated, and the agreement was
+arithmetic.
+
+**The check nothing was fitted to is the level, and it half fails** —
+which is worth more than the agreement was:
+
+| | model | real |
+|---|---|---|
+| median town, years of a production worker's pay | **6.5** | **7.1** |
+| cheapest town | 4.1 | ~2.5 (Detroit, Pittsburgh) |
+| **dearest town** | **25.9** | **~11-12** (San Jose, LA) |
+
+**And the cause is diagnosable rather than mysterious**: real expensive
+cities pay more, and here they do not. `day_rate` is a national pay level
+with only a small local part, so this model can give a town San Jose's
+house prices on Cleveland's wages. Pay following the local cost of living
+is its own change; until it is made the spread in *prices* is right and
+the spread in what anybody can afford is not.
+
+**The gate was a tautology and stayed green under its own sabotage** —
+the ninth time this file records one. It asserted the dearest town was
+the one under most pressure, and with pressure reading population the
+dearest town *is* the most populous, so it held trivially: **an assertion
+monotone in the quantity being sabotaged can never catch it.** What
+discriminates is holding the town still and varying only the ground —
+the same people on half the buildable land — and that goes red naming
+the town and the two identical prices.
+
+**Still absent, and the instruction is only half answered.** There is no
+*stock* of dwellings a town holds, nobody competes for one, and building
+more still changes nothing — so a shortage cannot open or close. That
+needs demand that can move, and this model's town populations are fixed
+at world generation, which is why the stock and the construction that
+answers it are the next piece rather than this one.
+
 ### Who pays for medicine (`src/state.rs`, `src/econ.rs`)
 
 The owner's instruction: **medical care depends on the government too, and
@@ -5718,16 +5806,25 @@ modelling question, is what stands between this project and a regional
 level: the economy cannot hold enough towns for a region to be more than a
 label.
 
-**And the obvious culprit was not the culprit.** `share_out` computes what
-it costs to reach each buyer by scanning every supplier, once per buyer —
-visibly O(sites squared) per commodity per day. It depends only on the
-*town* the buyer stands in and on which towns hold a supplier, so it
-memoises exactly; memoised, eighty markets went from 116.7 s to **206 s**.
-Worse, twice over: the table costs more than the scans it replaced, because
-only buyers that are actually short ever ask. Reverted, and recorded —
-**a hot loop that looks hot is not evidence**, which is the same rule this
-file already keeps about mechanisms that never bind. The remaining suspect
-is the fill pass, which sorts every supplier afresh for every destination.
+**And an attempted fix made it worse, which is not the same as finding
+it.** `share_out` computes what it costs to reach each buyer by scanning
+every supplier, once per buyer — visibly O(sites squared) per commodity
+per day. It depends only on the *town* the buyer stands in and on which
+towns hold a supplier, so it memoises exactly; memoised, eighty markets
+went from 116.7 s to **206 s**.
+
+**What that establishes is that this optimisation is slower, and no
+more** *(a reviewer's correction)*. The original loop may still be the
+expensive one: building the table, allocating it and walking it can cost
+more than the scans while the scans remain the bottleneck. "The hot loop
+was not the culprit" does not follow from one failed replacement — which
+is the same shape as this file's own rule that a mechanism never binding
+in any test proves nothing, arriving from the other side.
+
+**So the next step is a profile** of the unchanged baseline and of the
+attempted optimisation under the same conditions, rather than another
+guess. The fill pass, which sorts every supplier afresh for every
+destination, is a suspect and not a finding.
 
 
 
