@@ -458,6 +458,20 @@ Real defects, each visible in a test or measurable in a binary.
    middle; recentring at 8 days of food is a change to be measured.
 11. **`GameState` saves four of eight parts**, measured by serialising rather
     than typed in.
+12. **A town with no reachable quay imports at the cheapest possible
+    price.** `inland_leg` returns 0.0 when `nearest_quay` is `None` — and
+    `None` there means *unreachable*, not *free*, so the most cut-off town
+    in the world lands its goods as though the dock were in its own high
+    street. Meanwhile `worth_exporting` requires the town's **own** quay, so
+    the same country can never sell anything: a guaranteed one-way drain.
+    The same shape as the `freight_between` fallback, pointing the other
+    way. Both fixtures are in exactly this state, which is why they cannot
+    pay their way — and fixing the rule without giving them a quay would
+    starve their canneries of tinplate, so it belongs with that decision.
+    *(Appended rather than inserted: item numbers are referenced from
+    `src/` and from `CLAUDE.md`, so inserting one renames every later
+    defect — a position read as a name, which this project has a rule
+    about.)*
 
 ---
 
