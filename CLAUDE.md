@@ -6346,16 +6346,27 @@ is a fortieth of one day's shopping. It is the trade deficit this file
 already documents, and on a generated world `exchange.rs` answers it; on
 this fixture nothing does, so the money simply leaves.
 
+**And the two-town slice is the same story told plainly.** With households
+buying only what they can pay for, `slice::build` settles food at **635
+against a cost of 908** — a demand-deficient glut, because the customers
+have run out of money — and the spec's own acceptance test says an
+undisturbed economy settles at cost. It is not undisturbed; it is a
+country whose people cannot afford the shopping.
+
 **Nothing that reads a purse can be judged in a country with no money in
 it.** That is what blocks `docs/status.md` item 3 — households buying what
 they can pay for — which is otherwise built, gated by six gates and seven
 red sabotages, and measurably good on three generated worlds. In a country
 whose households hold a fortieth of a day's money, purchases are
-purse-proportional and an 11% purse difference between three identical
-towns becomes a **40% difference in days of cover**. The fixture is the
-instrument that caught all three of the defects above; shipping a change
-that puts one of its gates red would be trading the instrument for the
-measurement.
+purse-proportional: an 11% purse difference between three identical towns
+becomes a **40% difference in days of cover**, and five gates across two
+fixtures go red on one root. The fixtures are the instrument that caught
+all three of the defects above; shipping a change that puts them red would
+be trading the instrument for the measurement.
+
+**It is on the `counter-at-the-till` branch**, deliberately not green,
+with the measurement in its commit message. The prerequisite is the
+fixtures' own money circuit, and that is the next thing.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 

@@ -417,9 +417,13 @@ Real defects, each visible in a test or measurable in a binary.
    16.0% -> 13.4%, worlds 7 and 11 unmoved, no famine anywhere, and
    household purchases unpaid down 34% on the 400-day counter measurement.
 
-   **What blocks it is `carriers_have_nothing_to_do_in_a_country_that_is_
-   already_even`**, and the reason is worth more than the change. It runs
-   four hundred days on `slice::symmetric`, and by then that fixture holds
+   **What blocks it is five gates across two fixtures, on one root**, and
+   the reason is worth more than the change. On the two-town slice food
+   settles at **635 against a cost of 908** — a demand-deficient glut,
+   because the customers have run out of money, which fails the spec's own
+   acceptance test that an undisturbed economy settles at cost. And
+   `carriers_have_nothing_to_do_in_a_country_that_is_already_even` runs
+   four hundred days on `slice::symmetric`, which by then holds
    **96.4% of its money abroad** and its households hold 0.0% — a purse of
    2,850 against a daily basket of 108,759, or **a fortieth of one day's
    shopping**. Nothing that reads a purse can be judged in a country with
@@ -429,8 +433,10 @@ Real defects, each visible in a test or measurable in a binary.
    documents, and on a generated world `exchange.rs` answers it; on this
    fixture nothing does.
 
-   So the prerequisite is the fixture's own money circuit, and the order is
-   **item 3 waits on that**. Three real defects were found on the way and
+   So the prerequisite is the fixtures' own money circuit, and the order is
+   **item 3 waits on that**. The work is on the `counter-at-the-till`
+   branch, deliberately not green, with the measurement in its commit
+   message. Three real defects were found on the way and
    two are shipped; the third — nothing crosses the country for less than
    the carriage — is held with this change, because the condition that
    produces one is only reached when a household's purse decides what it
