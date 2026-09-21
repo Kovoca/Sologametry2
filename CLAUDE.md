@@ -6328,6 +6328,49 @@ what the habit is for, and both for reasons this file already records:
   not reached in this fixture. It is held back with the change that makes
   it reachable rather than shipped ungated.
 
+### And the two-town slice had been in a permanent blackout
+
+The one worth having, and it was three steps downstream of where I was
+looking. `slice::build`'s grid was sized by adding up the works' draw by
+hand — a formula that **leaves the households out altogether** — so it
+carried **101.19 against a call of 209.74**: 52% unserved, every day, for
+as long as the fixture has existed.
+
+An unserved grid prices at its administrative cap, so households were
+paying
+
+```text
+electricity   price 6,227   cost 60.0   clearing price 34.2
+```
+
+— **104 times cost** — and the power bill came to **93% of everything they
+spent**. That is the whole of the deficit I had put down to a dormitory
+town with no employment.
+
+This file already records the identical defect in `slice::symmetric`, and
+its own warning about it: *it did not invalidate what had been measured
+here, because it was the same in every case, and it is exactly the kind of
+thing that invalidates the next one.* It invalidated the next one. The fix
+is the same: size the grid off the load it will actually see, with the
+15-20% reserve margin a real system plans.
+
+**And the capacity check came first, which is what ruled out the wrong
+answer.** Before building anything that connects where somebody lives to
+where they work, the question is whether the employer could staff them:
+
+| day 41 | Ashford | Bexley |
+|---|---|---|
+| people | 42,000 | 26,000 |
+| staffed positions | **194.19** | 0.00 |
+| payroll to residents | **1,005** | 0 |
+| profit | 272,841 | 18,511 |
+
+Every job in the fixture is 194 positions paying 1,005 a day, against a
+3,233 a day gap — and **this fixture's households live on dividends**, with
+payroll 0.4% of their income. A commuting link could not have made it
+viable whatever care went into writing it, and building one would have
+buried a 104x power price under a new mechanism.
+
 ### And the fixture has no money in it
 
 The most useful thing `bin/symmetry` printed, and it was not what it was
