@@ -1602,6 +1602,9 @@ impl Store for crate::econ::Economy {
             maintenance_funding,
             unserved_power,
             unmet_demand,
+            // The day's reading, cleared every morning, so there is
+            // nothing here for a save to preserve.
+            went_without: crate::econ::basket(),
             workforce,
             governments,
             services,

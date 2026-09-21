@@ -2133,6 +2133,7 @@ impl Region {
             weather_seed: world.seed ^ (polity as u64).wrapping_mul(0x517C_C1B7_2722_0A95),
             unserved_power: 0.0,
             unmet_demand: basket(),
+            went_without: basket(),
             workforce: vec![crate::labour::Workforce::default(); markets_len],
             governments: Default::default(),
             logistics: None,

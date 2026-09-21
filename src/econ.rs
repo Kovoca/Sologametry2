@@ -374,6 +374,52 @@ impl Commodity {
         }
     }
 
+    /// **What a household cuts first when the money is short**, and
+    /// `None` for anything it does not buy over a counter.
+    ///
+    /// Not a priority list. A strict ordering is a cliff — it would have
+    /// a poor town buying meat and no bread over a sixteen per cent
+    /// difference — and it would be a rule somebody picked. What is
+    /// published is the **income elasticity**, and it falls straight out
+    /// of the Consumer Expenditure Survey by income quintile *(BLS, CE,
+    /// California 2022-23)*: spending at the top quintile against
+    /// spending at the bottom, over the same ratio for total spending.
+    ///
+    /// | | bottom | top | ratio | e |
+    /// |---|---|---|---|---|
+    /// | all spending | 41,965 | 159,085 | 3.79 | — |
+    /// | **drugs** | 412 | 586 | **1.42** | **0.26** |
+    /// | meat, poultry, fish, eggs | 1,028 | 1,763 | 1.71 | 0.40 |
+    /// | food at home, less meat | 3,717 | 7,569 | 2.04 | 0.53 |
+    /// | **household furnishings** | 1,067 | 5,929 | **5.56** | **1.29** |
+    ///
+    /// `e = ln(top/bottom) / ln(3.79)`, which is what an income
+    /// elasticity is. They are the recognisable published figures — food
+    /// about a half, durables above one — and **Engel's law is exactly
+    /// the statement that food's is under one**.
+    ///
+    /// **Medicine is the least income-elastic thing a household buys**,
+    /// which is the opposite of the ordering intuition suggests and is
+    /// the reason this is read off a table. The top fifth spend 42% more
+    /// on drugs than the bottom fifth while spending nearly four times as
+    /// much altogether.
+    ///
+    /// **Over a counter you pay; on a bill you can fall behind.** That is
+    /// what `None` means here rather than "no figure": electricity has a
+    /// household demand and is not on this list, because `utility.rs`
+    /// bills a month in arrears and does not cut anybody off the day they
+    /// come up short — and a hospital sends an invoice. Groceries are not
+    /// like either: you cannot walk out with them unpaid.
+    pub fn till_elasticity(self) -> Option<f64> {
+        match self {
+            Commodity::ProcessedFood => Some(0.53),
+            Commodity::Meat => Some(0.40),
+            Commodity::Remedies => Some(0.26),
+            Commodity::RetailGoods => Some(1.29),
+            _ => None,
+        }
+    }
+
     /// Days of cover a market tries to hold. Retail food really does run
     /// on three to five days, which is why shortages become visible within
     /// a week. Spec A.3.
@@ -3233,6 +3279,19 @@ pub struct Economy {
     /// wanted, and not there. A supply failure, and what the famine
     /// bounds measure.
     pub unmet_demand: Basket,
+    /// **Household demand the money could not meet**, per commodity —
+    /// wanted, on the shelf, and unaffordable. A demand failure.
+    ///
+    /// **Two entirely different facts**, and collapsing them would make
+    /// a famine indistinguishable from a poor town, which is the error
+    /// this project has made in other places and the reason the famine
+    /// gates would stop meaning anything. A country whose shops are full
+    /// and whose people cannot pay is not short of food.
+    ///
+    /// Cleared every morning, so it is **the day's reading and not
+    /// state**, and it is not written to a save — the same standing as
+    /// `Treasury::unpaid_why`, and for the same reason.
+    pub went_without: Basket,
     /// The labour market of each town, in the trades this economy has.
     ///
     /// Kept here rather than on `Market` because it is derived state: it
@@ -3459,6 +3518,7 @@ impl Economy {
         });
         self.unserved_power = 0.0;
         self.unmet_demand = basket();
+        self.went_without = basket();
         // **Open the books at the start of the day, not wipe them at the
         // end.** Clearing on the way out left `today` empty for anything
         // that looked after `step` returned — which is everything.
@@ -5095,6 +5155,24 @@ impl Economy {
                     let from_m = self.ledger.sites[src].market;
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     let freight = self.carriage_for(from_m, market, qty);
+                    // **Nobody sends a lorry for less than it costs to send
+                    // it.** `carriage_for` charges a minimum of a quarter of
+                    // a lorry however little is on board, which is what a
+                    // rate card really does — and with only a nanogram floor
+                    // above it, a shortfall of float-noise size fetched
+                    // **7.46e-7 tonnes** eight hundred kilometres and paid
+                    // **40.50** to do it, in one town and not in its two
+                    // identical neighbours.
+                    //
+                    // The bound is the goods' own worth rather than a
+                    // tonnage, so it is self-calibrating: a small load of
+                    // something dear is still worth fetching and a small
+                    // load of grain is not. It is deliberately weaker than
+                    // the half-the-value rule `logistics` applies to a
+                    // haulier, so it cannot forbid a haul that model allows.
+                    if freight > paid {
+                        continue;
+                    }
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -5128,6 +5206,95 @@ impl Economy {
 
     /// People eat. Demand is a floor: what cannot be met is recorded as
     /// people going without, not quietly reduced.
+    /// **How much of the day's counter basket a town's households can
+    /// actually pay for**, as a fraction of income the cut is equivalent
+    /// to — so `1.0` is the whole basket and `0.6` is a town living like
+    /// one on six tenths of the money.
+    ///
+    /// It is that rather than a share of the basket because what is
+    /// published is an **income** elasticity: a household on 60% of the
+    /// money does not buy 60% of everything, it buys 78% of the food and
+    /// 53% of the furniture. Each commodity is then cut by `k^e`, and
+    /// `k` is what this solves for.
+    ///
+    /// **Not a priority list**, which would be a cliff, and not a flat
+    /// share, which would make Engel's law an input. Engel's law comes
+    /// out of it: the poorest town never reaches the bottom of its list
+    /// and nothing anywhere writes down a share of spending.
+    fn what_the_counter_basket_comes_to(&self, m: usize) -> f64 {
+        let mut cost = [0.0f64; N_COMMODITIES];
+        let mut want = 0.0;
+        for &c in Commodity::ALL.iter() {
+            if c.till_elasticity().is_none() {
+                continue;
+            }
+            // **A thing nobody here sells is not on the shopping list**,
+            // and a thing they do sell is costed at what you came for.
+            //
+            // Costed on the whole want regardless, a commodity the town has
+            // none of still carries a bill — and a commodity nobody sells
+            // is exactly the one whose price has been driven to its
+            // scarcity ceiling, so the bill is enormous. Measured on
+            // `slice::symmetric`, which has no butcher and no chemist: meat
+            // posted at 11,200 a tonne against food's 898 with **nothing on
+            // any shelf**, and meat and remedies together came to 34% of
+            // the notional basket. That phantom third was throttling the
+            // food a town could really buy.
+            //
+            // **And costing it at `min(want, on the shelves)` is worse**,
+            // which is the version this replaces. It makes a well-stocked
+            // town's basket *larger*, so its households buy a smaller
+            // fraction of what they want and it stays well stocked — a
+            // positive feedback that a haulier's ordinary rotation is
+            // enough to seed. Measured: three interchangeable towns settled
+            // at 52, 53 and **73** days of food. What a household plans to
+            // spend does not shrink because the shop happens to be full.
+            let on_the_shelves: f64 = (0..self.ledger.sites.len())
+                .filter(|&s| {
+                    self.ledger.sites[s].market == m && self.ledger.sites[s].kind == SiteKind::Shop
+                })
+                .map(|s| self.ledger.stock(s, c))
+                .sum();
+            if on_the_shelves <= 0.0 {
+                continue;
+            }
+            let v = self.markets[m].daily_household_demand(c) * self.markets[m].price[c as usize];
+            cost[c as usize] = v;
+            want += v;
+        }
+        if want <= 1e-9 {
+            return 1.0;
+        }
+        let purse = self
+            .treasury
+            .balance(crate::money::Account::Households(m))
+            .max(0.0);
+        if purse >= want {
+            return 1.0;
+        }
+        // `sum(k^e * cost)` rises monotonically with `k` from nothing to
+        // the whole basket, so there is exactly one answer and bisection
+        // finds it. Forty steps is the f64's own precision, and the loop
+        // runs once per town per day over four commodities.
+        let spend = |k: f64| -> f64 {
+            Commodity::ALL
+                .iter()
+                .filter_map(|&c| c.till_elasticity().map(|e| (c, e)))
+                .map(|(c, e)| cost[c as usize] * k.powf(e))
+                .sum()
+        };
+        let (mut lo, mut hi) = (0.0f64, 1.0f64);
+        for _ in 0..40 {
+            let mid = 0.5 * (lo + hi);
+            if spend(mid) > purse {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        0.5 * (lo + hi)
+    }
+
     /// **The household's share of the grid**, generated for it every day
     /// and never sold to it — and shed across the whole country at once
     /// when there is not enough of it.
@@ -5166,13 +5333,10 @@ impl Economy {
             .sum();
         let share = (on_the_system / total).min(1.0);
         // **Deliberately not added to `unserved_power`.** That figure has
-        // only ever counted sites `allocate_power` switched off; a
-        // household short of power has never been counted anywhere, and
-        // starting to count it here would change what an existing measure
-        // means inside a change about *who* goes short rather than how
-        // much. `a_redundant_grid_absorbs_the_same_failure` reads it and
-        // went red saying so. A household load-shed figure is worth having
-        // and is its own piece of work.
+        // only ever counted sites `allocate_power` switched off; counting a
+        // household short of power there changes what an existing measure
+        // means, and `a_redundant_grid_absorbs_the_same_failure` went red
+        // saying so.
         for m in 0..self.markets.len() {
             self.draw_power(crate::money::Account::Households(m), wants[m] * share);
         }
@@ -5182,8 +5346,16 @@ impl Economy {
         self.power_the_homes();
         let day = self.ledger.day;
         for m in 0..self.markets.len() {
+            // **What the money runs to**, before a tonne leaves a shelf.
+            //
+            // The defect this replaces took the goods off the shelf
+            // whatever the balance and put the shortfall on a counter, so
+            // a poor town ate like a rich one on credit nobody extended.
+            // A till does not extend credit, so the basket is costed
+            // first and cut to what can be paid for.
+            let afford = self.what_the_counter_basket_comes_to(m);
             for &c in Commodity::ALL.iter() {
-                let want = self.markets[m].daily_household_demand(c);
+                let mut want = self.markets[m].daily_household_demand(c);
                 if want <= 0.0 {
                     continue;
                 }
@@ -5195,6 +5367,14 @@ impl Economy {
                 }
                 if !c.storable() {
                     continue;
+                }
+                if let Some(e) = c.till_elasticity() {
+                    let buying = want * afford.powf(e);
+                    self.went_without[c as usize] += want - buying;
+                    want = buying;
+                    if want <= 1e-12 {
+                        continue;
+                    }
                 }
                 let mut left = want;
                 for site in 0..self.ledger.sites.len() {
@@ -6194,6 +6374,11 @@ impl Economy {
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
                     let freight = self.carriage_for(from_m, to_m, qty);
+                    // And the same rule: nobody sends a lorry for less than
+                    // it costs to send it. See the note in `distribute`.
+                    if freight > paid {
+                        continue;
+                    }
                     sellable -= qty;
                     self.ledger.apply(
                         &mut self.journal,
