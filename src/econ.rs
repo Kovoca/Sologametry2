@@ -4391,7 +4391,19 @@ impl Economy {
     /// dispatched — so taking a quarter off it again left the stations paid
     /// less than their coal cost: 9.89e9 in, 9.89e9 out on fuel and its
     /// carriage, and nothing for anybody's wages.
-    fn draw_power(&mut self, buyer: crate::money::Account, mut qty: f64) {
+    /// **And nobody buys their electricity from a named station.**
+    ///
+    /// This walked the sites in order and emptied each one before moving to
+    /// the next, so whoever drew first took all of the first plant's output
+    /// and whatever the system generated above the call stranded on the
+    /// *last* plant in the vector — the same defect dispatch already had,
+    /// in the selling half rather than the generating half, and invisible
+    /// for the same reason: every station's own books balanced.
+    ///
+    /// It is a pool. You cannot tell whose electrons you got, everybody on
+    /// the system is paid the one clearing price, and the energy therefore
+    /// comes off the fleet in proportion to what each plant holds.
+    fn draw_power(&mut self, buyer: crate::money::Account, qty: f64) {
         use crate::money::{Account, Why};
         let day = self.ledger.day;
         let market = match buyer {
@@ -4400,15 +4412,20 @@ impl Economy {
             _ => return,
         };
         let price = self.markets[market].price[Commodity::Electricity as usize];
-        for site in 0..self.ledger.sites.len() {
-            if qty <= 1e-12 {
-                break;
-            }
-            if self.ledger.sites[site].kind != SiteKind::PowerPlant {
-                continue;
-            }
-            let have = self.ledger.stock(site, Commodity::Electricity);
-            let take = have.min(qty);
+        let holding: Vec<(usize, f64)> = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].kind == SiteKind::PowerPlant)
+            .map(|s| (s, self.ledger.stock(s, Commodity::Electricity)))
+            .filter(|&(_, have)| have > 0.0)
+            .collect();
+        let on_the_system: f64 = holding.iter().map(|&(_, have)| have).sum();
+        if on_the_system <= 1e-12 || qty <= 1e-12 {
+            return;
+        }
+        // Never more than there is, and by construction never more than any
+        // one plant holds.
+        let drawn = qty.min(on_the_system);
+        for (site, have) in holding {
+            let take = drawn * have / on_the_system;
             if take <= 0.0 {
                 continue;
             }
@@ -4427,7 +4444,6 @@ impl Economy {
             );
             self.treasury
                 .pay(day, buyer, Account::Firm(site), take * price, Why::Supply);
-            qty -= take;
         }
     }
 

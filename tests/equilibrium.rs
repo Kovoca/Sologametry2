@@ -623,6 +623,64 @@ fn no_ordering_of_the_markets_changes_the_answer() {
     }
 }
 
+/// **Nobody buys their electricity from a named station.**
+///
+/// A grid is a pool: you cannot tell whose electrons you got, everybody on
+/// the system is paid the one clearing price, and the money therefore has
+/// to come off the fleet in proportion to what each plant put on it.
+///
+/// What this replaces walked the sites in order and emptied each one
+/// before moving to the next, so whoever drew first took all of the first
+/// plant's output and whatever the system generated above the call
+/// stranded on the **last plant in the vector**. It is the same defect
+/// dispatch already had, in the selling half rather than the generating
+/// half, and it was invisible for the same reason every defect of this
+/// shape here is invisible: each station's own books balanced perfectly.
+///
+/// Measured before the fix, on this fixture: Gamma's station earned 766.46
+/// less than Alpha's and Beta's on the first morning, and every morning
+/// after, which compounded into a household purse 2.5 times its
+/// neighbours' inside four months.
+#[test]
+fn a_station_is_paid_for_what_it_put_on_the_grid() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    let stations: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant)
+        .collect();
+    assert_eq!(
+        stations.len(),
+        3,
+        "the fixture no longer has three stations"
+    );
+
+    // One day is enough: the defect is on the first morning and every
+    // morning, and a longer run only compounds it.
+    e.step();
+    let earned: Vec<f64> = stations
+        .iter()
+        .map(|&s| {
+            e.treasury
+                .today
+                .iter()
+                .filter(|t| t.to == scale_sim::money::Account::Firm(s))
+                .map(|t| t.amount)
+                .sum()
+        })
+        .collect();
+    let lo = earned.iter().cloned().fold(f64::INFINITY, f64::min);
+    let hi = earned.iter().cloned().fold(0.0f64, f64::max);
+    assert!(
+        hi > 0.0,
+        "no station was paid at all, so this proves nothing"
+    );
+    assert!(
+        hi - lo < 1e-6 * hi,
+        "three interchangeable stations were paid {earned:?} — which one          earns least depends on where it sits in a list"
+    );
+    e.treasury.assert_conserved();
+    e.ledger.assert_conserved();
+}
+
 /// **The cheap plant runs and the dear one waits.**
 ///
 /// The other half of dispatch, and it needs saying separately because the
