@@ -252,7 +252,25 @@ pub fn build(doctrine: Doctrine) -> Economy {
     // the top of every day, but a freshly built world is read before it
     // has had one.
     economy.resurvey();
-
+    // **And this slice had been in a permanent blackout too.**
+    //
+    // `peak` above is the works' draw added up by hand and it leaves the
+    // households out altogether, so the grid carried **101.19 against a
+    // call of 209.74** — 52% unserved, every day, for as long as this
+    // fixture has existed. It is the same defect `symmetric` had and the
+    // same fix: size it off the load it will actually see, with the 15-20%
+    // reserve margin a real system plans.
+    //
+    // It did not invalidate what had been measured here, because it was
+    // the same in every case — and this file's own note about that says
+    // *it is exactly the kind of thing that invalidates the next one*,
+    // which is what happened. Households were paying **6,227 a megawatt-
+    // hour against a cost of 60 and a clearing price of 34.2**, because an
+    // unserved grid prices at its administrative cap; the power bill was
+    // 93% of everything they spent, and Bexley's whole deficit was its
+    // share of it.
+    let peak = economy.power_demand() * 1.20;
+    economy.grid = Grid::for_doctrine(doctrine, peak);
     economy
 }
 

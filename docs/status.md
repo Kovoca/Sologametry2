@@ -445,10 +445,37 @@ Real defects, each visible in a test or measurable in a binary.
    country that imports all its manufactured goods cannot pay for them by
    exporting grain**, and this one exports nothing at all.
 
-   So the prerequisite is the fixtures' own money circuit, and the order is
-   **item 3 waits on that**. The work is on the `counter-at-the-till`
-   branch, deliberately not green, with the measurement in its commit
-   message. Three real defects were found on the way and
+   **Five blocking gates are now one**, 2026-09-21, and the fixtures were
+   the whole of it. Both had a goods depot and no goods industry — they
+   landed retail goods every day with nothing to sell — and the symmetric
+   one also had a power station with no colliery. With both repaired,
+   `tests/equilibrium.rs`, `tests/exchange.rs` and `tests/shipment.rs` are
+   green under the counter change and `tests/economy.rs` is down to one.
+
+   **The one that is left is a dormitory town with no income.** Bexley has
+   twenty-six thousand people and one shop with 0.00 staff: over forty days
+   it takes **no payroll at all**, earns 1.8M of profit from that shop and
+   pays out 5.7M, so its households hold **21,744 against Ashford's
+   15,000,000**. With households buying only what they can pay for its shop
+   cannot sell, its food prices at 677 against a cost of 900, and the gap
+   to Ashford's 903 is 226 against a freight of 45.
+
+   The ownership rule is not at fault: only the farm, at 169 staff, is a
+   company whose profit is spread nationally, and the mill at 1.3, the
+   cannery at 23, the station at 0.41 and both shops are sole traders or
+   partnerships whose profit stays where they stand — which is what this
+   project already establishes about who owns a business. Founding a
+   service sector was tried, since `region.rs` does it over every economy
+   it builds and these fixtures never did: Bexley's payroll went from
+   nothing to 1.07M over forty days, it bought the services too, and its
+   purse ended at 215 rather than 21,744. Reverted with the measurement
+   kept.
+
+   **The structural fact is that Bexley eats food made in Ashford and has
+   nothing whatever to sell**, and how a dormitory town earns is a
+   modelling question rather than a defect with an obvious fix. The work is
+   on the `counter-at-the-till` branch, one gate from green, with the
+   measurements in its commit messages. Three real defects were found on the way and
    two are shipped; the third — nothing crosses the country for less than
    the carriage — is held with this change, because the condition that
    produces one is only reached when a household's purse decides what it
