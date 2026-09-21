@@ -11,8 +11,26 @@ use scale_sim::save::{Reader, Store, Writer};
 use scale_sim::shipment::{days_on_the_road, Leg, Loss, Shipment, KM_PER_DAY};
 use scale_sim::slice;
 
-const ASHFORD_STORE: usize = 6; // the market hall
-const BEXLEY_STORE: usize = 7; // the general store
+/// **A site is found by its name, not by where it sits in a `Vec`.**
+///
+/// These were `6` and `7`, and they stopped meaning the market hall and
+/// the general store the day the fixture lost a site — the same defect
+/// this project keeps a rule about for wire codes on disk and for road
+/// identity, arriving in a test. Thirteen gates here indexed past the end
+/// of the site list and said nothing about shipping at all.
+fn site(e: &Economy, name: &str) -> usize {
+    (0..e.ledger.sites.len())
+        .find(|&s| e.ledger.sites[s].name == name)
+        .unwrap_or_else(|| panic!("the fixture has no site called {name:?}"))
+}
+
+fn ashford_store(e: &Economy) -> usize {
+    site(e, "Ashford market hall")
+}
+
+fn bexley_store(e: &Economy) -> usize {
+    site(e, "Bexley general store")
+}
 
 fn world() -> Economy {
     let mut e = slice::build(Doctrine::Prudent);
@@ -34,8 +52,8 @@ fn world() -> Economy {
 /// baseline.
 fn a_load(e: &mut Economy) -> (usize, usize, Commodity, f64) {
     let c = Commodity::ProcessedFood;
-    let from = ASHFORD_STORE;
-    let to = BEXLEY_STORE;
+    let from = ashford_store(e);
+    let to = bexley_store(e);
     e.ledger.sites[from].capacity[c as usize] = 4_000.0;
     e.ledger.sites[to].capacity[c as usize] = 2_000.0;
     stock_up(e, from, c, 200.0);
@@ -311,16 +329,18 @@ fn meat_rots_on_the_road_unless_the_lorry_is_cold() {
     let mut warm = world();
     let mut cold = world();
     for e in [&mut warm, &mut cold] {
-        e.ledger.sites[ASHFORD_STORE].capacity[c as usize] = 200.0;
-        e.ledger.sites[BEXLEY_STORE].capacity[c as usize] = 500.0;
-        stock_up(e, ASHFORD_STORE, c, 100.0);
+        let (a, b) = (ashford_store(e), bexley_store(e));
+        e.ledger.sites[a].capacity[c as usize] = 200.0;
+        e.ledger.sites[b].capacity[c as usize] = 500.0;
+        stock_up(e, a, c, 100.0);
     }
+    let (from, to) = (ashford_store(&warm), bexley_store(&warm));
     let a = warm
-        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 3, false)
+        .consign(from, to, 0, c, 80.0, 3, false)
         .map(|(id, _)| id)
         .expect("nothing set off");
     let b = cold
-        .consign(ASHFORD_STORE, BEXLEY_STORE, 0, c, 80.0, 3, true)
+        .consign(from, to, 0, c, 80.0, 3, true)
         .map(|(id, _)| id)
         .expect("nothing set off");
 
