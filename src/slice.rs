@@ -303,7 +303,6 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     let cannery_rate = food_per_day * 1.15;
     let mill_rate = cannery_rate * 0.9;
     let farm_rate = mill_rate * 1.35 * 1.12;
-    let goods_per_day = POP * RetailGoods.per_capita_annual() / 365.0;
     let tinplate = cannery_rate * 0.035;
     // What one town calls on the grid, and therefore what its station
     // burns: the same terms `peak` is built from below, plus the
@@ -415,20 +414,22 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             fitted: None,
             cost_factor: 1.0,
         });
-        sites.push(Site {
-            address: None,
-            name: format!("{town} depot"),
-            kind: SiteKind::Depot,
-            market: m,
-            stock: cap(&[(RetailGoods, 400.0)]),
-            capacity: cap(&[(RetailGoods, 4000.0)]),
-            recipe: Some(4),
-            throughput: goods_per_day * 1.1,
-            powered: true,
-            ran: 0.0,
-            fitted: None,
-            cost_factor: 1.0,
-        });
+        // **No goods depot.** A fixture that imports something it has no
+        // industry for and no means to pay for is the same defect as a
+        // power station with no colliery, and it is what emptied this
+        // country: one town wants 82.2 t of retail goods a day, which
+        // lands at about 75,200, and the most grain an export-agriculture
+        // nation is *built* to sell -- three times its own milling need,
+        // `region.rs`'s own ceiling -- earns about 27,500. A country that
+        // imports all of its manufactured goods cannot pay for them by
+        // exporting grain, and this one exports nothing whatever, so it
+        // sent 96.4% of its money abroad inside four hundred days and
+        // every gate that runs that long was reading a destitute country.
+        //
+        // What this fixture is for is allocation symmetry in a food
+        // economy. Households still *want* retail goods and the want is
+        // recorded as unmet, which is honest: there is no industry here
+        // that could make them.
         sites.push(Site {
             address: None,
             name: format!("{town} market hall"),

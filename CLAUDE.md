@@ -6439,6 +6439,20 @@ what this fixture is for is allocation symmetry in a **food** economy.
 Households still want retail goods; there is no industry here that could
 make them, and saying so is honest.
 
+**Measured, and it is the whole of the drain.** Same fixture, four hundred
+days, with the goods depot gone:
+
+| | before | after |
+|---|---|---|
+| households' money | 1.924e7 -> **7.59e3** | 2.045e7 -> **1.714e7** |
+| share of the country's money they hold | 0.0% | **6.4%** |
+| paid abroad over the run | 2.481e4 | **1.96e3** |
+
+A sixteen per cent fall over four hundred days rather than a collapse by a
+factor of two and a half thousand — and `bin/symmetry` still reports
+nothing diverging beyond float noise, because what was removed was removed
+from all three towns alike.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting
