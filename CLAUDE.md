@@ -6220,6 +6220,67 @@ weighted average also satisfies, so it passed with the mechanism deleted.
 What separates a clearing price from an average is that it is set by the
 *worst* unit running, so it must sit strictly **above** the average.
 
+### Nobody buys their electricity from a named station (`bin/symmetry`)
+
+`draw_power` walked the sites in order and **emptied each one before moving
+to the next**, so whoever drew first took all of the first plant's output
+and whatever the system generated above the call stranded on the **last
+plant in the vector**. That is the same defect dispatch already had — this
+file records `generate_power` handing the first station in the list the
+whole day's call — in the *selling* half rather than the generating half,
+and it was invisible for the same reason every defect of this shape here is
+invisible: **each station's own books balanced perfectly.**
+
+**A grid is a pool.** You cannot tell whose electrons you got, everybody on
+the system is paid the one clearing price, and the energy therefore comes
+off the fleet in proportion to what each plant holds.
+
+Measured on `slice::symmetric`, where three towns are identical in every
+respect: Gamma's station earned **766.46 less** than Alpha's and Beta's on
+the first morning, and every morning after, which compounded into
+
+```text
+household purses after four months: [178,422  175,483  437,509]
+```
+
+— one town holding two and a half times its neighbours. The gate is **one
+day**, because the defect is there on the first one and a longer run only
+compounds it; sabotaged back to taking the residue in vector order it goes
+red naming the three figures.
+
+**And the instrument is the find.** `bin/symmetry` walks the symmetric
+fixture and names the first per-town reading to diverge beyond float noise
+and the day it did — purse, price, cost, cover, and what every kind of
+works ran and holds. It exists because **the thing a gate reports at day
+200 is nearly always three steps downstream of the thing that broke**:
+`three_identical_towns_end_up_in_the_same_place` reports grain cover, and
+grain is not bought by households at all. Walking back from a grain reading
+to a power station is the work the diagnostic removes.
+
+**And it moves a real world by very little**, which is what a change to
+*who gets paid* rather than to how much there is should do. Five years,
+three worlds, against the same runs without it:
+
+| | world 7 | world 11 | world 23 |
+|---|---|---|---|
+| unemployment at the end | 10.5 -> 11.0% | 10.3 -> **9.7%** | 16.0 -> **14.6%** |
+| homeless at the end | 0.0 / 0.0 | 0.0 / 0.0 | 5.8 -> **4.5%** |
+| households' money over the run | -6.7 -> -6.7e9 | +2.7 -> +1.6e9 | +15.7 -> +13.4e9 |
+
+Not one banded figure changes which side of its band it is on.
+
+Two things it settled that reasoning had got wrong:
+
+- **The first guess was float noise being amplified**, and quoting the
+  answer to a hundredth of a per cent — the tolerance the allocation
+  already treats as a tie — made the spread **worse**, 1.7 days to 9.9.
+  Measured, the purses differed on **day zero** by 766, growing linearly:
+  structural, not compounded.
+- **The second guess was the household side**, because that was what had
+  just changed. The food prices were bit-identical throughout the run and
+  only the money moved, which is what pointed at a payment rather than at
+  a quantity.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting

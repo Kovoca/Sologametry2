@@ -50,6 +50,23 @@ fn readings(e: &Economy) -> Vec<(String, Vec<f64>)> {
             .map(|m| e.treasury.balance(Account::Households(m)))
             .collect(),
     ));
+    // What each town's households paid out today and took in today, by what
+    // for. A purse that diverges is the *stock*; these are the flows that
+    // moved it, and one of them is the cause.
+    let mut flows: std::collections::BTreeMap<String, Vec<f64>> = Default::default();
+    for t in e.treasury.today.iter() {
+        if let Account::Households(m) = t.from {
+            flows
+                .entry(format!("households paid {:?}", t.why))
+                .or_insert_with(|| vec![0.0; towns])[m] += t.amount;
+        }
+        if let Account::Households(m) = t.to {
+            flows
+                .entry(format!("households got {:?}", t.why))
+                .or_insert_with(|| vec![0.0; towns])[m] += t.amount;
+        }
+    }
+    out.extend(flows);
     for &c in Commodity::ALL.iter() {
         let price: Vec<f64> = (0..towns).map(|m| e.markets[m].price[c as usize]).collect();
         if price.iter().any(|&p| p > 0.0) {
