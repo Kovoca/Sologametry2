@@ -189,8 +189,24 @@ fn main() {
 
     let mut reported: std::collections::BTreeSet<String> = Default::default();
     let mut first: Option<u64> = None;
+    println!(
+        "  day     rate   paid out    taken in   imbalance  funded   owed abroad   households"
+    );
     for d in 0..days {
         e.step();
+        if d % 50 == 0 || d + 1 == days {
+            let (out, into) = e.exchange.flows();
+            let hh: f64 = (0..e.markets.len())
+                .map(|m| e.treasury.balance(Account::Households(m)))
+                .sum();
+            println!(
+                "{d:>5}  {:>7.3}  {out:>10.3e}  {into:>10.3e}  {:>10.3}  {:>6.2}  {:>11.3e}  {hh:>11.3e}",
+                e.exchange.foreign_money(),
+                e.exchange.imbalance(),
+                e.exchange.funded_share(),
+                e.exchange.owed_abroad(),
+            );
+        }
         for (name, v) in readings(&e) {
             if noise(&v) || reported.contains(&name) {
                 continue;
@@ -200,6 +216,69 @@ fn main() {
             println!("day {d:>4}  {name:<26} {v:?}");
         }
     }
+    // **And what it buys abroad and what it sells**, because a country
+    // that imports and never exports has to drain and no exchange rate can
+    // answer it.
+    println!();
+    println!("what crossed the border on the last day:");
+    for &c in Commodity::ALL.iter() {
+        let landed: f64 = (0..e.ledger.sites.len())
+            .filter(|&i| e.buys_abroad(i))
+            .map(|i| {
+                e.journal
+                    .recent(e.ledger.day, 1)
+                    .filter_map(|en| match en.event {
+                        scale_sim::econ::Event::Produced {
+                            site,
+                            commodity,
+                            qty,
+                        } if site == i && commodity == c => Some(qty),
+                        _ => None,
+                    })
+                    .sum::<f64>()
+            })
+            .sum();
+        let sold: f64 = e
+            .exported_today
+            .iter()
+            .filter(|&&(ec, _, _)| ec == c)
+            .map(|&(_, qty, _)| qty)
+            .sum();
+        if landed > 1e-9 || sold > 1e-9 {
+            println!(
+                "  {:<16} landed {landed:>12.3}  sold {sold:>12.3}",
+                format!("{c:?}")
+            );
+        }
+    }
+
+    // **And where every commodity stands against its own band**, which is
+    // what decides whether this country can sell anything at all.
+    println!();
+    println!("town 0 against its band:");
+    for &c in Commodity::ALL.iter() {
+        let p = e.markets[0].price[c as usize];
+        if p <= 0.0 {
+            continue;
+        }
+        let imp = e.import_parity(0, c);
+        let exp = e.export_parity(0, c);
+        let verdict = if p > imp {
+            "imports"
+        } else if p < exp {
+            "EXPORTS"
+        } else {
+            "neither"
+        };
+        let surplus = e.surplus(0, c);
+        let cushion = e.daily_draw(0, c) * e.stock_days(0, c) * 0.5;
+        println!(
+            "  {:<16} price {p:>9.1}  imp {imp:>9.1}  exp {exp:>9.1}               {verdict:<8}  worth_exporting {:<5}  surplus {surplus:>11.1}               cushion {cushion:>11.1}",
+            format!("{c:?}"),
+            e.worth_exporting(0, c)
+        );
+    }
+
     // **And where the country's money actually is.** A purse holding a
     // fortieth of one day's shopping is not a spread, it is a fixture with
     // no money in it, and that has to be established before anything that

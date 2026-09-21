@@ -6365,8 +6365,50 @@ all three of the defects above; shipping a change that puts them red would
 be trading the instrument for the measurement.
 
 **It is on the `counter-at-the-till` branch**, deliberately not green,
-with the measurement in its commit message. The prerequisite is the
-fixtures' own money circuit, and that is the next thing.
+with the measurement in its commit message.
+
+### Why the fixture cannot pay its way
+
+The prerequisite, run down to a single sentence: **`slice::symmetric`
+imports all of its retail goods and has nothing it is allowed to sell.**
+
+```text
+day    rate   paid out   taken in  imbalance  funded   households
+  0   1.000    0.000e0    0.000e0      0.000    1.00      1.924e7
+ 50   1.079    3.513e4    0.000e0      1.000    0.15      8.863e6
+100   1.165    5.851e4    0.000e0      1.000    0.15      7.311e4
+399   1.840    2.481e4    0.000e0      1.000    0.15      7.592e3
+```
+
+**`taken in` is exactly nought for four hundred days.** The exchange rate
+is engaged and responds — 1.000 to 1.840, an 84% depreciation — and no
+rate can balance a country that sells nothing; it only makes the same
+imports dearer. Households fall by a factor of 2,500.
+
+Three things compound, and each is worth knowing on its own:
+
+- **It has no quay**, so `worth_exporting` refuses everything by
+  definition — while `inland_leg` returns **0.0** when no quay is
+  reachable, so it imports at the cheapest possible price. `None` there
+  means *unreachable*, and it is being read as *free*. The same shape as
+  the `freight_between` fallback this file already records, pointing the
+  other way.
+- **Given a quay it still barely exports**, because the only thing it is
+  long of is grain and the export cushion is ten times the surplus:
+  **320 t spare against a cushion of 3,445 t**. That cushion is
+  deliberate — it was added when a coast shipped out its own food
+  security — so the rule is right and the fixture simply has nothing else.
+- **And its food misses export parity by a tenth of a per cent** — 1327.1
+  against 1325.6 — because the depreciation raises the cost of the steel
+  in its cans as fast as it raises what the world would pay. A country
+  whose costs depreciate with its currency cannot export its way out.
+
+Adding a quay is *correct* — goods have to land somewhere — and it is not
+shippable on its own: it turns the drain from 2,500x to 420x and puts
+`carriers_have_nothing_to_do_in_a_country_that_is_already_even` red. What
+the fixture needs is to be able to pay its way, and that is a design
+decision about the fixture rather than a defect to fix, because it moves
+every number in seventeen gates.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
