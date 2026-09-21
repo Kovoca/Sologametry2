@@ -5648,6 +5648,88 @@ head. A price level per system is its own change. North Korea is named in
 the instruction and appears in none of these sources; nothing is claimed
 about it.
 
+### An invoice, because a balance cannot carry terms (`src/credit.rs`)
+
+**Goods moved and nobody was billed.** `Treasury::pay` caps a transfer at
+what the payer holds, puts the shortfall on a counter, and the goods have
+**already moved** — so nothing anywhere records a receivable. The supplier
+is simply poorer, the buyer holds the stock, and **the conservation
+assertion is satisfied throughout**, which is exactly how money can
+conserve while the transactions are wrong. One year of one world: 1.53e11
+against firm-to-firm supply, the largest category there is.
+
+**The first design was one edge**, `(debtor, creditor) -> amount`, on the
+argument that a single record cannot disagree with itself. It cannot, and
+**it also cannot carry terms**: 100 on day 0 net 30 and 200 on day 20 net
+50 are *one hundred* due on day 30, and "300 owed" cannot say so. The
+record is per invoice, and both firms' positions are derived by walking
+invoices — which keeps the property that a receivable and a payable cannot
+drift apart, and adds what a balance has no room for.
+
+- **Credit is agreed before the goods move.** If an obligation appears
+  *whenever payment fails*, every supplier is a **compulsory lender**,
+  which is the same defect with a ledger entry on it.
+- **Outstanding is not overdue.** A net-30 invoice is an ordinary trade
+  asset before day 30 and arrears after it, and only the second restricts
+  anything.
+- **Net 30 is an input; days sales outstanding is an output.** Setting
+  invoices to clear at 37 days would reproduce the chosen figure and test
+  nothing — DSO measures collection performance and moves with customer
+  behaviour, business mix and the method of calculation.
+- **A collection is not a second sale**, and **writing a debt down is the
+  creditor's loss, not the debtor's release** — a model where it is has
+  invented a way to settle a bill by being unreliable enough.
+
+### And wiring it in starved the country, three times
+
+Not connected to `distribute`, and **the reason is a measurement rather
+than an omission**. Seed 7, two years, against a baseline of 6.4%
+unemployment and five days of food cover:
+
+| | unemployment | food cover | households |
+|---|---|---|---|
+| before | 6.4% | 5.00 | 4.40e10 |
+| credit cut one day overdue | **82.6%** | 0.04 | 5.4e8 |
+| on stop at 60 days instead | 47.9% | 0.35 | 7.3e8 |
+| + a working-capital floor | 59.2% | 3.72 | 3.23e11, debt 9.7e12 |
+
+- **Cutting credit the day after a bill falls due is not what trade
+  does.** Net-30 terms against a DSO nearer 37-56 days means the *ordinary*
+  invoice is paid late and the supplier goes on supplying; a supplier puts
+  an account on stop at 60-90 days. The first rule refused 2.25e14 against
+  7.6e10 extended. **`ON_STOP_AFTER` is kept**, because it is right
+  whatever happens to the rest.
+- **The refusals were not the cause**, and only an experiment could say
+  so. With the limit made infinite — nothing refused at all — unemployment
+  still reached **51.0%**. What drained the economy was **collections**:
+  firms paying due bills down to an empty till and then unable to buy
+  tomorrow's inputs.
+- **A working-capital floor moved the failure rather than fixing it.**
+  Keeping a week of a firm's own outgoings makes the floor a function of
+  what it just spent — the collections included — so a free spender keeps
+  everything, nothing is collected, and the debt stock reaches 9.7e12.
+
+**The finding underneath all three is the one worth having: the unpaid
+counter is load-bearing.** This economy only functions because firms take
+goods they cannot pay for, and the moment a delivery requires cash or
+agreed credit the circuit that was being papered over fails in the open.
+So the prerequisite is not a better credit rule — it is **closing the
+money circuit**, which is households buying what they can pay for rather
+than on credit nobody extended, and the two wage scales that leave them
+short. What is kept is the record, the terms, the decision and the gates,
+because every one of them is right and none of them is what failed.
+
+**And a lower unpaid counter would not have established success**, which
+is why it is not the measure. What the gates ask is whether a delivery has
+a valid commercial outcome at all: nothing moves that is neither paid for
+nor lent; two invoices between one pair keep their own due dates; a
+partial payment reduces the right balance exactly once; ordinary lateness
+does not stop supply and serious lateness does; a limit is between two
+firms rather than a global allowance; the oldest bill is paid first; and
+the book grows with what is owed rather than with history. Nine sabotages,
+all red — including **both directions** of the on-stop rule, so neither
+deleting it nor reverting to the rule the measurement disproved passes.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

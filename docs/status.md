@@ -370,6 +370,33 @@ Real defects, each visible in a test or measurable in a binary.
    invoices, partial settlements and subsequent outcomes; and the soak
    reports credit sales, collections, outstanding, overdue and losses
    **separately**.
+
+   **Built, measured, and deliberately not wired in**, 2026-09-20.
+   `src/credit.rs` is the record — invoices with terms, due dates, partial
+   settlement, doubtful debts, per-pair limits, oldest-due-first
+   collection, and a purchase decision that refuses what is neither paid
+   for nor lent — with eight gates in `tests/credit.rs` and nine sabotages
+   all red. What it is not is connected to `distribute`, and the reason is
+   a measurement. Seed 7 over two years, against 6.4% unemployment and
+   five days of food cover: cutting credit one day past due gave **82.6%**
+   unemployment and 0.04 days of cover; on stop at sixty days, 47.9%; with
+   a working-capital floor, 59.2% and a debt stock of 9.7e12. **With the
+   limit made infinite — nothing refused at all — it still reached 51.0%**,
+   which is what rules the refusals out as the cause and names collections
+   instead.
+
+   **So the unpaid counter is load-bearing**, and that is the finding. This
+   economy functions because firms take goods they cannot pay for; the day
+   a delivery requires cash or agreed credit, the circuit that was being
+   papered over fails in the open. **Item 3 is therefore the prerequisite
+   and not a neighbour of this one** — a household buying on credit nobody
+   extended is the same defect one layer down, and until it is closed
+   there is nothing for a supplier to be paid out of. One correction was
+   kept from the attempt because it is right regardless: **ordinary
+   lateness does not stop supply.** Net-30 terms against a DSO of 37-56
+   days means the average invoice is settled after its due date and the
+   supplier goes on supplying; what stops an account is serious arrears,
+   60-90 days in real practice.
 3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.

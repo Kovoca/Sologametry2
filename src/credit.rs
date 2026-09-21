@@ -54,6 +54,52 @@
 //! reported and compared against, **never set**. Setting invoices to
 //! clear at a chosen number of days would reproduce that number and test
 //! nothing.
+//!
+//! ## And wiring it in starved the country, three times over
+//!
+//! **This is not yet connected to `distribute`, and the reason is a
+//! measurement rather than an omission.** Three attempts, each on seed 7
+//! over two years against a baseline of 6.4% unemployment and five days
+//! of food cover:
+//!
+//! | | unemployment | food cover | households |
+//! |---|---|---|---|
+//! | before | 6.4% | 5.00 | 4.40e10 |
+//! | credit off one day overdue | **82.6%** | 0.04 | 5.4e8 |
+//! | on stop at 60 days instead | 47.9% | 0.35 | 7.3e8 |
+//! | + a working-capital floor | 59.2% | 3.72 | 3.23e11, debt 9.7e12 |
+//!
+//! Each failure taught something and the third is where it stopped:
+//!
+//! - **Cutting credit the day after an invoice falls due is not what
+//!   trade does.** Net-30 terms against a DSO nearer 37-56 days means the
+//!   *ordinary* invoice is paid late and the supplier goes on supplying.
+//!   That rule refused 2.25e14 against 7.6e10 extended. `ON_STOP_AFTER`
+//!   is the correction and it is kept, because it is right whatever
+//!   happens to the rest.
+//! - **The refusals were not the cause**, which only an experiment could
+//!   say. With the credit limit made infinite — nothing refused at all —
+//!   unemployment still reached 51.0%. What drained the economy was
+//!   **collections**: firms paying due bills down to an empty till and
+//!   then being unable to buy tomorrow's inputs.
+//! - **A working-capital floor moved the failure rather than fixing
+//!   it.** Keeping a week of a firm's own outgoings made the floor a
+//!   function of what it had just spent — including the collections —
+//!   so a firm that spent freely kept everything, nothing was collected,
+//!   and the debt stock went to 9.7e12 with refusals at 4.24e18.
+//!
+//! **The finding underneath all three is the one worth having: the
+//! unpaid counter is load-bearing.** This economy only functions because
+//! firms take goods they cannot pay for — 1.53e11 of supply a year on
+//! seed 7 — and the moment a delivery requires cash or agreed credit,
+//! the circuit that was being papered over fails in the open. So the
+//! prerequisite is not a better credit rule. It is **closing the money
+//! circuit**: households buying what they can pay for rather than on
+//! credit nobody extended, and the two wage scales that leave them short
+//! (`docs/status.md` items 3 and 10).
+//!
+//! What is kept is the record, the terms, the decision and the gates,
+//! because every one of them is right and none of them is what failed.
 
 use crate::money::{Account, Why};
 use crate::registry::{Key, Registry};
@@ -290,8 +336,33 @@ impl Book {
             .sum()
     }
 
-    /// What this account owes **past its due date**, which is the figure
-    /// that stops further supply.
+    /// **Days past due before a supplier puts an account on stop.**
+    ///
+    /// Not zero, which is what "overdue" alone would mean: net-30 terms
+    /// against a DSO nearer 37-56 days says the ordinary invoice is paid
+    /// late and trade carries on. Sixty days is the early end of real
+    /// on-stop practice.
+    pub const ON_STOP_AFTER: u64 = 60;
+
+    /// What this account owes so far past due that a supplier stops
+    /// trading with it. **This is the figure that restricts supply** —
+    /// `overdue_by` is the ordinary lateness that does not.
+    pub fn seriously_overdue(&self, who: Account, day: u64) -> f64 {
+        self.invoices
+            .iter()
+            .filter(|(_, i)| i.debtor == who)
+            .map(|(_, i)| {
+                if day > i.due + Self::ON_STOP_AFTER {
+                    i.outstanding()
+                } else {
+                    0.0
+                }
+            })
+            .sum()
+    }
+
+    /// What this account owes **past its due date**, which is ordinary
+    /// lateness and is reported rather than acted on.
     pub fn overdue_by(&self, who: Account, day: u64) -> f64 {
         self.invoices
             .iter()
@@ -381,10 +452,24 @@ impl Book {
             };
         }
 
-        // **Arrears stop supply before a limit does.** A customer who has
-        // not paid last month's bill is not offered this month's goods,
-        // whatever headroom the limit would otherwise allow.
-        if self.overdue_by(buyer, day) > 1e-9 {
+        // **Arrears stop supply before a limit does** — but not on the
+        // first day one, and the first version of this deadlocked a whole
+        // economy by getting that wrong.
+        //
+        // **Paying late is the norm in business-to-business trade, not a
+        // failure.** Terms are net 30 and domestic days-sales-outstanding
+        // runs nearer 37, with a cross-industry median nearer 56, so the
+        // *average* invoice is settled after its due date and the
+        // supplier goes on supplying. A rule that cut off credit the day
+        // after an invoice fell due refused essentially every delivery in
+        // the world: 2.25e14 refused against 7.6e10 extended, unemployment
+        // 6.4% to 82.6% and food cover to a twenty-fifth of a day.
+        //
+        // What a supplier actually does is put an account **on stop**
+        // when it is *seriously* overdue — trade practice is 60 to 90
+        // days past due, which is also where a receivable starts being
+        // written down.
+        if self.seriously_overdue(buyer, day) > 1e-9 {
             return Purchase {
                 paid_now,
                 on_credit: 0.0,

@@ -177,43 +177,57 @@ fn giving_up_on_a_debt_does_not_forgive_it() {
     assert_eq!(book.lost, 400.0);
 }
 
-/// **A buyer in arrears loses access to further unsecured supply.**
+/// **Ordinary lateness does not stop supply; serious lateness does.**
 ///
-/// The consequence that makes failing to pay cost something. Without it
-/// an insolvent firm buys for ever on a book that only grows, which is
-/// the same unbounded state as the counter this replaces — moved rather
-/// than fixed.
+/// The consequence that makes failing to pay cost something — and the
+/// first version of it deadlocked an economy by cutting credit the day
+/// after an invoice fell due. **Paying late is the norm in
+/// business-to-business trade**: terms are net 30 and days-sales-
+/// outstanding runs nearer 37, with a cross-industry median nearer 56,
+/// so the average invoice is settled *after* its due date and the
+/// supplier goes on supplying. What a supplier actually does is put an
+/// account on stop when it is seriously overdue, which is 60-90 days in
+/// real practice.
 #[test]
 fn an_insolvent_buyer_stops_being_supplied() {
     let mut book = Book::new();
     let terms = Terms::net_30(1_000.0);
     book.raise(0, BUYER, SELLER, 200.0, terms, Why::Supply);
 
-    // Day 20: still within terms, so credit is still offered.
+    // Day 20: within terms, so credit is offered.
     let within = book.what_can_be_bought(20, BUYER, SELLER, 300.0, 0.0, terms);
     assert_eq!(
         within.on_credit, 300.0,
         "an invoice not yet due stopped supply"
     );
-    assert_eq!(within.why, Refusal::None);
 
-    // Day 40: the invoice is past its due date and nothing further is
-    // supplied on credit — whatever headroom the limit would allow.
-    let after = book.what_can_be_bought(40, BUYER, SELLER, 300.0, 0.0, terms);
-    assert_eq!(after.on_credit, 0.0);
-    assert_eq!(after.refused, 300.0);
-    assert_eq!(after.why, Refusal::InArrears);
+    // **Day 40: overdue, and still supplied.** This is the half the first
+    // version got wrong, and it is the one that matters — a rule that
+    // stops here refuses essentially every delivery in a world where
+    // firms are chronically short.
+    assert!(book.overdue_by(BUYER, 40) > 0.0, "the bill is not yet late");
+    let late = book.what_can_be_bought(40, BUYER, SELLER, 300.0, 0.0, terms);
+    assert_eq!(
+        late.on_credit, 300.0,
+        "an ordinarily late customer was cut off, which is not what trade does"
+    );
 
-    // **And cash still buys.** Being in arrears is not being cut off from
-    // the market; it is being cut off from *credit*.
-    let cash = book.what_can_be_bought(40, BUYER, SELLER, 300.0, 300.0, terms);
+    // **Day 95: sixty days past due, and the account goes on stop.**
+    let stopped = book.what_can_be_bought(95, BUYER, SELLER, 300.0, 0.0, terms);
+    assert_eq!(stopped.on_credit, 0.0);
+    assert_eq!(stopped.refused, 300.0);
+    assert_eq!(stopped.why, Refusal::InArrears);
+
+    // **And cash still buys.** Being on stop is being cut off from
+    // credit, not from the market.
+    let cash = book.what_can_be_bought(95, BUYER, SELLER, 300.0, 300.0, terms);
     assert_eq!(cash.paid_now, 300.0);
     assert_eq!(cash.refused, 0.0);
 
-    // Pay the overdue bill and the credit comes back.
+    // Pay the bill and the credit comes back.
     let owed: Vec<_> = book.due_from(BUYER);
     book.settle(owed[0], 200.0);
-    let mended = book.what_can_be_bought(40, BUYER, SELLER, 300.0, 0.0, terms);
+    let mended = book.what_can_be_bought(95, BUYER, SELLER, 300.0, 0.0, terms);
     assert_eq!(mended.on_credit, 300.0, "paying up did not restore supply");
 }
 
