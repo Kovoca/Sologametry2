@@ -123,6 +123,26 @@ fn a_full_shop_and_an_empty_pocket_is_not_a_shortage() {
 #[test]
 fn the_furniture_goes_before_the_dinner() {
     let mut e = settled();
+    // **Put the furniture on the shelf.** Neither fixture stocks retail
+    // goods any more — both lost the import merchant they could not pay
+    // for — and this gate is about the *order* things are given up in, so
+    // it needs both on sale. Stocking it here says so rather than leaning
+    // on a fixture that happens to have a depot.
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind != SiteKind::Shop {
+            continue;
+        }
+        let want = e.markets[e.ledger.sites[site].market].daily_household_demand(GOODS);
+        e.ledger.sites[site].capacity[GOODS as usize] = want * 20.0;
+        e.ledger.apply(
+            &mut e.journal,
+            scale_sim::econ::Event::Produced {
+                site,
+                commodity: GOODS,
+                qty: want * 10.0,
+            },
+        );
+    }
     empty_the_pockets(&mut e);
     // Hand back half a basket, so the money binds without being hopeless.
     let day = e.ledger.day;

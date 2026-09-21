@@ -252,6 +252,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     // the top of every day, but a freshly built world is read before it
     // has had one.
     economy.resurvey();
+
     economy
 }
 
@@ -526,5 +527,6 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     // is what keeps the lights on when a unit trips or the weather turns.
     let peak = economy.power_demand() * 1.20;
     economy.grid = Grid::for_doctrine(doctrine, peak);
+
     economy
 }
