@@ -15,6 +15,7 @@ pub mod consequence;
 pub mod converse;
 pub mod coping;
 pub mod craft;
+pub mod credit;
 pub mod custom;
 pub mod econ;
 pub mod econ_codec;
