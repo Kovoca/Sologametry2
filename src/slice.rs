@@ -58,7 +58,6 @@ pub fn build(doctrine: Doctrine) -> Economy {
     let cannery_rate = food_per_day * 1.15; // a working margin
     let mill_rate = cannery_rate * 0.9; // cannery takes 0.9 t flour per t
     let farm_rate = mill_rate * 1.35 * 1.12; // mill ratio, plus slack for lean years
-    let goods_per_day = (ASHFORD_POP + BEXLEY_POP) * RetailGoods.per_capita_annual() / 365.0;
 
     let sites = vec![
         Site {
@@ -145,20 +144,11 @@ pub fn build(doctrine: Doctrine) -> Economy {
             fitted: None,
             cost_factor: 1.0,
         },
-        Site {
-            address: None,
-            name: "Ashford depot".into(),
-            kind: SiteKind::Depot,
-            market: ASHFORD,
-            stock: cap(&[(RetailGoods, 400.0)]),
-            capacity: cap(&[(RetailGoods, 4000.0)]),
-            recipe: Some(4),
-            throughput: goods_per_day * 1.1,
-            powered: true,
-            ran: 0.0,
-            fitted: None,
-            cost_factor: 1.0,
-        },
+        // **No goods depot here either.** The same unfunded dependency
+        // the symmetric fixture had: it landed retail goods every day and
+        // had nothing to sell, and a country that imports all of its
+        // manufactured goods cannot pay for them out of grain. This slice
+        // is the food chain end to end, which is what its gates are about.
         Site {
             address: None,
             name: "Ashford market hall".into(),

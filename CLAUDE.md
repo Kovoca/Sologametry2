@@ -6448,6 +6448,16 @@ days, with the goods depot gone:
 | share of the country's money they hold | 0.0% | **6.4%** |
 | paid abroad over the run | 2.481e4 | **1.96e3** |
 
+**And the two-town slice had it too**, so it lost its goods depot on the
+same argument. That turned up one more instance of a rule this project
+already keeps: `tests/shipment.rs` held its two shops as
+`ASHFORD_STORE = 6` and `BEXLEY_STORE = 7`, which are **positions**, and
+they stopped meaning the market hall and the general store the moment the
+fixture lost a site. Thirteen gates indexed past the end of the site list
+and said nothing whatever about shipping. They are looked up by name now —
+*a position is not a name*, the same rule as an enum's wire code and a
+road's identity, arriving in a test.
+
 A sixteen per cent fall over four hundred days rather than a collapse by a
 factor of two and a half thousand — and `bin/symmetry` still reports
 nothing diverging beyond float noise, because what was removed was removed
