@@ -6281,6 +6281,82 @@ Two things it settled that reasoning had got wrong:
   only the money moved, which is what pointed at a payment rather than at
   a quantity.
 
+### And the same defect twice more, one level up and once in the money
+
+`bin/symmetry` found the station bug in a morning and then found two more
+of exactly the same shape, which is what a diagnostic is for.
+
+- **A grid too small to meet the call was shed down a list.** The household
+  draw was made town by town inside the shopping loop, each town took its
+  whole want in turn, and **whichever came last in the vector went short**.
+  `allocate_power`'s own comment names the priority order as critical, then
+  industrial, then household — so households really are lowest and really
+  do get the residue. What was wrong is that the residue fell on one town.
+  It is shared out across the country now, in `power_the_homes`.
+- **And pooling the tonnage did not pool the money.** `Treasury::pay` pays
+  what the payer holds and records the rest as unpaid, so settling with the
+  fleet one station at a time hands the **whole shortfall to whichever is
+  last in the loop** — the defect moving from the goods to the payment
+  rather than being removed. A short buyer now shorts every station
+  equally, and what nobody could pay is still presented once so the
+  country's unpaid total still sees it. Sabotaged, the gate names the
+  staircase: **[3143.73, 1878.80, 613.87]**.
+
+**And a fix about *who* must not quietly redefine *how much*.** The first
+version counted the household shortfall into `unserved_power`, which reads
+naturally enough — it is load that was not supplied — except that the
+figure has only ever counted sites `allocate_power` switched off. A
+household short of power has never been counted anywhere, and
+`a_redundant_grid_absorbs_the_same_failure` went red saying so: 107.17
+where it had always read nought, on a grid behaving perfectly. The sharing
+stays and the counter does not move; a household load-shed figure is worth
+having and is its own piece of work.
+
+**Two of the three gates stayed green on their first sabotage**, which is
+what the habit is for, and both for reasons this file already records:
+
+- **A buyer with nothing pays nobody.** Draining the households to zero
+  made all three stations equal and the gate passed *on an absence* —
+  a test that never enters the branch it names. Leaving a fiftieth of the
+  purse was no better, because a power bill is small against a town's
+  money and was still met in full. What discriminates is leaving each town
+  **half its power bill and no more**.
+- **And a whole-run invariant only holds if the run reaches the case.**
+  The third gate — nothing crosses the country for less than the carriage
+  — measured 5,958 hauls over four hundred days and found no offender even
+  with its mechanism deleted, because the condition that produces one is
+  not reached in this fixture. It is held back with the change that makes
+  it reachable rather than shipped ungated.
+
+### And the fixture has no money in it
+
+The most useful thing `bin/symmetry` printed, and it was not what it was
+built to look for. After four hundred days `slice::symmetric` holds
+
+```text
+abroad      2.60e8   96.4%
+firms       6.37e6    2.4%
+the state   2.45e6    0.9%
+services    9.18e5    0.3%
+households  8.23e3    0.0%
+```
+
+— a household purse of **2,850 against a daily basket of 108,759**, which
+is a fortieth of one day's shopping. It is the trade deficit this file
+already documents, and on a generated world `exchange.rs` answers it; on
+this fixture nothing does, so the money simply leaves.
+
+**Nothing that reads a purse can be judged in a country with no money in
+it.** That is what blocks `docs/status.md` item 3 — households buying what
+they can pay for — which is otherwise built, gated by six gates and seven
+red sabotages, and measurably good on three generated worlds. In a country
+whose households hold a fortieth of a day's money, purchases are
+purse-proportional and an 11% purse difference between three identical
+towns becomes a **40% difference in days of cover**. The fixture is the
+instrument that caught all three of the defects above; shipping a change
+that puts one of its gates red would be trading the instrument for the
+measurement.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting

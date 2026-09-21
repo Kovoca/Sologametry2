@@ -3229,8 +3229,9 @@ pub struct Economy {
     pub maintenance_funding: Vec<f64>,
     /// Electricity that could not be supplied today — the load shed.
     pub unserved_power: f64,
-    /// Household demand that could not be met, per commodity. This is
-    /// people going without, and it feeds C1's grievance conditions.
+    /// **Household demand the shelves could not meet**, per commodity —
+    /// wanted, and not there. A supply failure, and what the famine
+    /// bounds measure.
     pub unmet_demand: Basket,
     /// The labour market of each town, in the trades this economy has.
     ///
@@ -4393,16 +4394,20 @@ impl Economy {
     /// carriage, and nothing for anybody's wages.
     /// **And nobody buys their electricity from a named station.**
     ///
-    /// This walked the sites in order and emptied each one before moving to
-    /// the next, so whoever drew first took all of the first plant's output
-    /// and whatever the system generated above the call stranded on the
-    /// *last* plant in the vector — the same defect dispatch already had,
-    /// in the selling half rather than the generating half, and invisible
-    /// for the same reason: every station's own books balanced.
+    /// This walked the sites in order and emptied each one before moving
+    /// to the next, so whoever drew first took all of the first plant's
+    /// output and whatever the system generated above the call stranded on
+    /// the *last* plant in the vector — the same defect dispatch already
+    /// had, in the selling half rather than the generating half, and
+    /// invisible for the same reason: every station's books balanced on
+    /// its own.
     ///
     /// It is a pool. You cannot tell whose electrons you got, everybody on
     /// the system is paid the one clearing price, and the energy therefore
-    /// comes off the fleet in proportion to what each plant holds.
+    /// comes off the fleet in proportion to what each plant holds. Found by
+    /// `slice::symmetric`: three interchangeable towns, and Gamma's station
+    /// earned 766.46 less than Alpha's and Beta's on the first morning,
+    /// every day, for ever.
     fn draw_power(&mut self, buyer: crate::money::Account, qty: f64) {
         use crate::money::{Account, Why};
         let day = self.ledger.day;
@@ -4421,9 +4426,26 @@ impl Economy {
         if on_the_system <= 1e-12 || qty <= 1e-12 {
             return;
         }
-        // Never more than there is, and by construction never more than any
-        // one plant holds.
+        // Never more than there is, and never more than one plant holds:
+        // the share is by construction at most `have`.
         let drawn = qty.min(on_the_system);
+        // **And a buyer who is short shorts every station equally.**
+        //
+        // `Treasury::pay` pays what the payer holds and records the rest as
+        // unpaid, so settling with the fleet one station at a time hands
+        // the whole shortfall to whichever is last in the loop — the same
+        // defect this function was rewritten to remove, arriving through
+        // the money rather than through the tonnage. Measured on
+        // `slice::symmetric` after the tonnage was pooled: three stations
+        // with identical fuel, identical output and identical stock, and
+        // Gamma took **2,619.86 against Alpha's and Beta's 3,226.43**.
+        let bill = drawn * price;
+        let first = holding[0].0;
+        let rate = match buyer {
+            Account::Abroad | Account::State(_) => 1.0,
+            _ if bill > 1e-12 => (self.treasury.balance(buyer).max(0.0) / bill).min(1.0),
+            _ => 1.0,
+        };
         for (site, have) in holding {
             let take = drawn * have / on_the_system;
             if take <= 0.0 {
@@ -4442,8 +4464,27 @@ impl Economy {
                     reason,
                 },
             );
-            self.treasury
-                .pay(day, buyer, Account::Firm(site), take * price, Why::Supply);
+            self.treasury.pay(
+                day,
+                buyer,
+                Account::Firm(site),
+                take * price * rate,
+                Why::Supply,
+            );
+        }
+        // **And what could not be paid is still a bill that went unpaid.**
+        // Scaling the shares keeps the shortfall off any one station's
+        // books; it must not keep it off the country's. Presented once,
+        // to a payer now known to be empty, which is what `pay` records
+        // when it can settle nothing.
+        if rate < 1.0 {
+            self.treasury.pay(
+                day,
+                buyer,
+                Account::Firm(first),
+                bill * (1.0 - rate),
+                Why::Supply,
+            );
         }
     }
 
@@ -5087,7 +5128,58 @@ impl Economy {
 
     /// People eat. Demand is a floor: what cannot be met is recorded as
     /// people going without, not quietly reduced.
+    /// **The household's share of the grid**, generated for it every day
+    /// and never sold to it — and shed across the whole country at once
+    /// when there is not enough of it.
+    ///
+    /// This was drawn town by town inside the shopping loop, so each town
+    /// took its whole want in turn and **whichever town came last in the
+    /// vector went short**. `allocate_power` names the priority order as
+    /// critical, then industrial, then household, so households really are
+    /// lowest and really do get the residue; what was wrong is that the
+    /// residue fell on one town rather than on all of them.
+    ///
+    /// It is the same defect `draw_power` had between *stations*, one
+    /// level up — between *buyers* — and it was invisible for the same
+    /// reason, until the counter made a household's purse decide what it
+    /// bought. Measured on `slice::symmetric` with the mills throttled:
+    /// Gamma paid 2,510.64 for its power against Alpha's and Beta's
+    /// 2,535.65, kept the difference, and was 25.01 richer than towns
+    /// identical to it in every respect.
+    ///
+    /// **Whether households should be shed last at all is a separate
+    /// question**, and a real one: actual grids shed interruptible
+    /// industry long before they black out homes, and this file already
+    /// says so. Changing that changes what a shortage does to a country,
+    /// so it is named rather than folded in here.
+    fn power_the_homes(&mut self) {
+        let wants: Vec<f64> = (0..self.markets.len())
+            .map(|m| self.markets[m].daily_household_demand(Commodity::Electricity))
+            .collect();
+        let total: f64 = wants.iter().sum();
+        if total <= 0.0 {
+            return;
+        }
+        let on_the_system: f64 = (0..self.ledger.sites.len())
+            .filter(|&s| self.ledger.sites[s].kind == SiteKind::PowerPlant)
+            .map(|s| self.ledger.stock(s, Commodity::Electricity))
+            .sum();
+        let share = (on_the_system / total).min(1.0);
+        // **Deliberately not added to `unserved_power`.** That figure has
+        // only ever counted sites `allocate_power` switched off; a
+        // household short of power has never been counted anywhere, and
+        // starting to count it here would change what an existing measure
+        // means inside a change about *who* goes short rather than how
+        // much. `a_redundant_grid_absorbs_the_same_failure` reads it and
+        // went red saying so. A household load-shed figure is worth having
+        // and is its own piece of work.
+        for m in 0..self.markets.len() {
+            self.draw_power(crate::money::Account::Households(m), wants[m] * share);
+        }
+    }
+
     fn consume_households(&mut self) {
+        self.power_the_homes();
         let day = self.ledger.day;
         for m in 0..self.markets.len() {
             for &c in Commodity::ALL.iter() {
@@ -5095,10 +5187,10 @@ impl Economy {
                 if want <= 0.0 {
                     continue;
                 }
-                // **The household's share of the grid**, generated for it
-                // every day and never sold to it.
+                // The household's share of the grid is drawn before any of
+                // this, by `power_the_homes`, because it has to be shared
+                // out across the whole country rather than town by town.
                 if c == Commodity::Electricity {
-                    self.draw_power(crate::money::Account::Households(m), want);
                     continue;
                 }
                 if !c.storable() {

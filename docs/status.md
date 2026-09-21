@@ -400,6 +400,41 @@ Real defects, each visible in a test or measurable in a binary.
 3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.
+
+   **Built, measured, and not in the tree**, 2026-09-21 — the same standing
+   as the shutdown rule and the other changes this project has tried and
+   reverted with the measurement kept. The rule
+   is *over a counter you pay; on a bill you can fall behind* — groceries
+   are paid for or not taken, while the power (`utility.rs` bills a month in
+   arrears) and the hospital send an invoice. What a household gives up
+   when it is short comes from the published **income elasticity** of each
+   thing, read off the Consumer Expenditure Survey by income quintile
+   (drugs 0.26, meat 0.40, food at home 0.53, household durables 1.29), so
+   **Engel's law is an output** and the surprise is the real one: medicine
+   is the least income-elastic thing a household buys. Six gates in
+   `tests/counter.rs`, seven sabotages all red. Measured over five years on
+   three worlds: world 23's unemployment peak 18.6% -> 15.4% and its end
+   16.0% -> 13.4%, worlds 7 and 11 unmoved, no famine anywhere, and
+   household purchases unpaid down 34% on the 400-day counter measurement.
+
+   **What blocks it is `carriers_have_nothing_to_do_in_a_country_that_is_
+   already_even`**, and the reason is worth more than the change. It runs
+   four hundred days on `slice::symmetric`, and by then that fixture holds
+   **96.4% of its money abroad** and its households hold 0.0% — a purse of
+   2,850 against a daily basket of 108,759, or **a fortieth of one day's
+   shopping**. Nothing that reads a purse can be judged in a country with
+   no money in it: an 11% purse difference between the towns becomes a 40%
+   difference in days of cover, because purchases are purse-proportional by
+   construction. The drain is the trade deficit this project already
+   documents, and on a generated world `exchange.rs` answers it; on this
+   fixture nothing does.
+
+   So the prerequisite is the fixture's own money circuit, and the order is
+   **item 3 waits on that**. Three real defects were found on the way and
+   two are shipped; the third — nothing crosses the country for less than
+   the carriage — is held with this change, because the condition that
+   produces one is only reached when a household's purse decides what it
+   buys.
 4. **A sampled person's pocket is not the household pool.** Promoting
    somebody to detail creates their savings. The reification problem, not an
    accounting one.

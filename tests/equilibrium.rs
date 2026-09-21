@@ -623,6 +623,130 @@ fn no_ordering_of_the_markets_changes_the_answer() {
     }
 }
 
+/// **A grid too small to meet the call is shed across the country.**
+///
+/// `allocate_power` names the priority order as critical, then industrial,
+/// then household, so households really are lowest and really do get the
+/// residue. What was wrong is that the residue fell on **one town**: the
+/// draw was made town by town inside the shopping loop, each took its whole
+/// want in turn, and whichever came last in the vector went short.
+///
+/// The same defect `draw_power` had between stations, one level up ---
+/// between buyers --- and invisible for the same reason, because each
+/// town's own books balanced.
+#[test]
+fn a_tight_grid_is_shed_across_the_country_and_not_down_a_list() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    for _ in 0..40 {
+        e.step();
+    }
+    // A hundred times the people is a call no fleet on this fixture can
+    // meet, so the grid genuinely has to shed something.
+    for m in 0..e.markets.len() {
+        e.markets[m].population *= 100.0;
+    }
+    e.step();
+
+    let paid: Vec<f64> = (0..e.markets.len())
+        .map(|m| {
+            e.treasury
+                .today
+                .iter()
+                .filter(|t| t.from == scale_sim::money::Account::Households(m))
+                .filter(|t| matches!(t.why, scale_sim::money::Why::Supply))
+                .map(|t| t.amount)
+                .sum()
+        })
+        .collect();
+    let lo = paid.iter().cloned().fold(f64::INFINITY, f64::min);
+    let hi = paid.iter().cloned().fold(0.0f64, f64::max);
+    assert!(
+        hi > 0.0,
+        "nobody paid for any power, so this proves nothing: {paid:?}"
+    );
+    // **And the grid really did fall short**, or there is nothing to share
+    // out and the gate would pass on an absence.
+    let billed: f64 = (0..e.markets.len())
+        .map(|m| {
+            e.markets[m].daily_household_demand(Commodity::Electricity)
+                * e.markets[m].price[Commodity::Electricity as usize]
+        })
+        .sum();
+    assert!(
+        paid.iter().sum::<f64>() < billed * 0.99,
+        "the grid met the whole call, so nothing was shed: paid {:.2} of {billed:.2}",
+        paid.iter().sum::<f64>()
+    );
+    assert!(
+        hi - lo < 1e-6 * hi,
+        "three interchangeable towns were shed unequally: {paid:?} --- \
+         which town goes dark depends on where it sits in a list"
+    );
+}
+
+/// **A buyer who cannot pay the whole bill shorts every station equally.**
+///
+/// `Treasury::pay` pays what the payer holds and records the rest as
+/// unpaid, so settling with the fleet one station at a time hands the whole
+/// shortfall to whichever is last in the loop. Pooling the *tonnage* does
+/// not fix that on its own: the money has to be shared out too, or the
+/// defect simply moves from the goods to the payment.
+#[test]
+fn a_short_buyer_shorts_every_station_equally() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    for _ in 0..40 {
+        e.step();
+    }
+    // **Leave each town half its power bill and no more.**
+    //
+    // A buyer with nothing pays nobody, so all three stations come out
+    // equal and the gate passes on an absence -- this file's own rule
+    // about a test that never enters the branch it names, and the first
+    // version of this one did exactly that. Leaving a fiftieth of the
+    // purse was no better: the power bill is small against a town's money,
+    // so the bill was still met in full and nothing was ever short.
+    let day = e.ledger.day;
+    for m in 0..e.markets.len() {
+        let bill = e.markets[m].daily_household_demand(Commodity::Electricity)
+            * e.markets[m].price[Commodity::Electricity as usize];
+        let had = e
+            .treasury
+            .balance(scale_sim::money::Account::Households(m))
+            .max(0.0);
+        e.treasury.pay(
+            day,
+            scale_sim::money::Account::Households(m),
+            scale_sim::money::Account::Abroad,
+            (had - bill * 0.5).max(0.0),
+            scale_sim::money::Why::Trade,
+        );
+    }
+    e.step();
+
+    let stations: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant)
+        .collect();
+    let earned: Vec<f64> = stations
+        .iter()
+        .map(|&s| {
+            e.treasury
+                .today
+                .iter()
+                .filter(|t| t.to == scale_sim::money::Account::Firm(s))
+                .map(|t| t.amount)
+                .sum()
+        })
+        .collect();
+    let lo = earned.iter().cloned().fold(f64::INFINITY, f64::min);
+    let hi = earned.iter().cloned().fold(0.0f64, f64::max);
+    assert!(hi > 0.0, "no station was paid at all: {earned:?}");
+    assert!(
+        hi - lo < 1e-6 * hi,
+        "a short buyer shorted one station and paid the others: {earned:?}"
+    );
+    e.treasury.assert_conserved();
+}
+
 /// **Nobody buys their electricity from a named station.**
 ///
 /// A grid is a pool: you cannot tell whose electrons you got, everybody on
