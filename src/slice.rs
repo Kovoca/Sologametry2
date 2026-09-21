@@ -305,6 +305,15 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     let farm_rate = mill_rate * 1.35 * 1.12;
     let goods_per_day = POP * RetailGoods.per_capita_annual() / 365.0;
     let tinplate = cannery_rate * 0.035;
+    // What one town calls on the grid, and therefore what its station
+    // burns: the same terms `peak` is built from below, plus the
+    // households, times the 0.38 t of coal a megawatt-hour costs.
+    let town_load = cannery_rate * 0.35
+        + mill_rate * 0.08
+        + farm_rate * 0.05
+        + 2.0
+        + POP * Electricity.per_capita_annual() / 365.0;
+    let coal_per_day = town_load * 0.38;
 
     let mut sites = Vec::new();
     for m in 0..TOWNS {
@@ -354,6 +363,25 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
             ]),
             recipe: Some(2),
             throughput: cannery_rate,
+            powered: true,
+            ran: 0.0,
+            fitted: None,
+            cost_factor: 1.0,
+        });
+        // **A power station with no colliery is living on an endowment.**
+        // It opened on twenty thousand tonnes of coal with nothing to
+        // refill it, so this fixture was never a steady state: the four
+        // hundred days the gates run burn most of that pile. Sized on what
+        // the station actually draws.
+        sites.push(Site {
+            address: None,
+            name: format!("{town} colliery"),
+            kind: SiteKind::Mine,
+            market: m,
+            stock: cap(&[(Coal, coal_per_day * 30.0)]),
+            capacity: cap(&[(Coal, coal_per_day * 120.0)]),
+            recipe: Some(5),
+            throughput: coal_per_day * 1.15,
             powered: true,
             ran: 0.0,
             fitted: None,

@@ -6403,12 +6403,41 @@ Three things compound, and each is worth knowing on its own:
   in its cans as fast as it raises what the world would pay. A country
   whose costs depreciate with its currency cannot export its way out.
 
+**And it was burning an endowment.** The power station opened on twenty
+thousand tonnes of coal with **nothing to refill it**, so the fixture was
+never a steady state at all: the four hundred days the gates run on it get
+through most of that pile. It has a colliery now, sized on what the station
+actually draws, and the symmetry is untouched — `bin/symmetry` reports
+nothing diverging beyond float noise, which is what a change that adds the
+same works to all three towns should do.
+
+Two gates had to be corrected to their claims rather than the fixture
+reverted, and both were encoding a fixture detail:
+
+- **A site count typed into a test goes out of date silently.** The
+  permutation gate asserted twenty-one sites; it reads the number off the
+  fixture now.
+- **A grid that can generate nothing has to have nothing to generate
+  from.** `unserved_load_prices_at_the_cap_and_not_beyond_it` emptied the
+  stations' coal — and the collieries refilled them by morning, so the gate
+  would have been measuring an ordinary day and saying nothing. It stops
+  the mines too.
+
 Adding a quay is *correct* — goods have to land somewhere — and it is not
 shippable on its own: it turns the drain from 2,500x to 420x and puts
-`carriers_have_nothing_to_do_in_a_country_that_is_already_even` red. What
-the fixture needs is to be able to pay its way, and that is a design
-decision about the fixture rather than a defect to fix, because it moves
-every number in seventeen gates.
+`carriers_have_nothing_to_do_in_a_country_that_is_already_even` red.
+
+**And the arithmetic settles what it needs instead.** One town wants
+82.2 t of retail goods a day, landing at about **75,200**; the most grain
+an export-agriculture nation is *built* to sell — three times its own
+milling need, which is `region.rs`'s own ceiling — earns about **27,500**.
+A country that imports all of its manufactured goods **cannot** pay for
+them by exporting grain, which is not a defect in the model but a fact
+about agricultural economies. So the goods depot is the same unfunded
+dependency as the coal endowment, in money rather than in tonnes, and
+what this fixture is for is allocation symmetry in a **food** economy.
+Households still want retail goods; there is no industry here that could
+make them, and saying so is honest.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 

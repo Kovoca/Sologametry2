@@ -433,6 +433,18 @@ Real defects, each visible in a test or measurable in a binary.
    documents, and on a generated world `exchange.rs` answers it; on this
    fixture nothing does.
 
+   **And the fixture's own defects are being cleared one at a time.** Its
+   power station opened on twenty thousand tonnes of coal with nothing to
+   refill it — a four-hundred-day run burns most of that pile — so it has a
+   colliery now, sized on what the station actually draws, and `bin/
+   symmetry` reports nothing diverging beyond float noise. The goods depot
+   is the same defect in money rather than in coal: one town wants 82.2 t
+   of retail goods a day, which lands at about 75,200, while the most grain
+   an export-agriculture nation is *built* to sell — three times its own
+   milling need, `region.rs`'s own ceiling — earns about 27,500. **A
+   country that imports all its manufactured goods cannot pay for them by
+   exporting grain**, and this one exports nothing at all.
+
    So the prerequisite is the fixtures' own money circuit, and the order is
    **item 3 waits on that**. The work is on the `counter-at-the-till`
    branch, deliberately not green, with the measurement in its commit
