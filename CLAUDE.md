@@ -6346,16 +6346,112 @@ is a fortieth of one day's shopping. It is the trade deficit this file
 already documents, and on a generated world `exchange.rs` answers it; on
 this fixture nothing does, so the money simply leaves.
 
+**And the two-town slice is the same story told plainly.** With households
+buying only what they can pay for, `slice::build` settles food at **635
+against a cost of 908** — a demand-deficient glut, because the customers
+have run out of money — and the spec's own acceptance test says an
+undisturbed economy settles at cost. It is not undisturbed; it is a
+country whose people cannot afford the shopping.
+
 **Nothing that reads a purse can be judged in a country with no money in
 it.** That is what blocks `docs/status.md` item 3 — households buying what
 they can pay for — which is otherwise built, gated by six gates and seven
 red sabotages, and measurably good on three generated worlds. In a country
 whose households hold a fortieth of a day's money, purchases are
-purse-proportional and an 11% purse difference between three identical
-towns becomes a **40% difference in days of cover**. The fixture is the
-instrument that caught all three of the defects above; shipping a change
-that puts one of its gates red would be trading the instrument for the
-measurement.
+purse-proportional: an 11% purse difference between three identical towns
+becomes a **40% difference in days of cover**, and five gates across two
+fixtures go red on one root. The fixtures are the instrument that caught
+all three of the defects above; shipping a change that puts them red would
+be trading the instrument for the measurement.
+
+**It is on the `counter-at-the-till` branch**, deliberately not green,
+with the measurement in its commit message.
+
+### Why the fixture cannot pay its way
+
+The prerequisite, run down to a single sentence: **`slice::symmetric`
+imports all of its retail goods and has nothing it is allowed to sell.**
+
+```text
+day    rate   paid out   taken in  imbalance  funded   households
+  0   1.000    0.000e0    0.000e0      0.000    1.00      1.924e7
+ 50   1.079    3.513e4    0.000e0      1.000    0.15      8.863e6
+100   1.165    5.851e4    0.000e0      1.000    0.15      7.311e4
+399   1.840    2.481e4    0.000e0      1.000    0.15      7.592e3
+```
+
+**`taken in` is exactly nought for four hundred days.** The exchange rate
+is engaged and responds — 1.000 to 1.840, an 84% depreciation — and no
+rate can balance a country that sells nothing; it only makes the same
+imports dearer. Households fall by a factor of 2,500.
+
+Three things compound, and each is worth knowing on its own:
+
+- **It has no quay**, so `worth_exporting` refuses everything by
+  definition — while `inland_leg` returns **0.0** when no quay is
+  reachable, so it imports at the cheapest possible price. `None` there
+  means *unreachable*, and it is being read as *free*. The same shape as
+  the `freight_between` fallback this file already records, pointing the
+  other way.
+- **Given a quay it still barely exports**, because the only thing it is
+  long of is grain and the export cushion is ten times the surplus:
+  **320 t spare against a cushion of 3,445 t**. That cushion is
+  deliberate — it was added when a coast shipped out its own food
+  security — so the rule is right and the fixture simply has nothing else.
+- **And its food misses export parity by a tenth of a per cent** — 1327.1
+  against 1325.6 — because the depreciation raises the cost of the steel
+  in its cans as fast as it raises what the world would pay. A country
+  whose costs depreciate with its currency cannot export its way out.
+
+**And it was burning an endowment.** The power station opened on twenty
+thousand tonnes of coal with **nothing to refill it**, so the fixture was
+never a steady state at all: the four hundred days the gates run on it get
+through most of that pile. It has a colliery now, sized on what the station
+actually draws, and the symmetry is untouched — `bin/symmetry` reports
+nothing diverging beyond float noise, which is what a change that adds the
+same works to all three towns should do.
+
+Two gates had to be corrected to their claims rather than the fixture
+reverted, and both were encoding a fixture detail:
+
+- **A site count typed into a test goes out of date silently.** The
+  permutation gate asserted twenty-one sites; it reads the number off the
+  fixture now.
+- **A grid that can generate nothing has to have nothing to generate
+  from.** `unserved_load_prices_at_the_cap_and_not_beyond_it` emptied the
+  stations' coal — and the collieries refilled them by morning, so the gate
+  would have been measuring an ordinary day and saying nothing. It stops
+  the mines too.
+
+Adding a quay is *correct* — goods have to land somewhere — and it is not
+shippable on its own: it turns the drain from 2,500x to 420x and puts
+`carriers_have_nothing_to_do_in_a_country_that_is_already_even` red.
+
+**And the arithmetic settles what it needs instead.** One town wants
+82.2 t of retail goods a day, landing at about **75,200**; the most grain
+an export-agriculture nation is *built* to sell — three times its own
+milling need, which is `region.rs`'s own ceiling — earns about **27,500**.
+A country that imports all of its manufactured goods **cannot** pay for
+them by exporting grain, which is not a defect in the model but a fact
+about agricultural economies. So the goods depot is the same unfunded
+dependency as the coal endowment, in money rather than in tonnes, and
+what this fixture is for is allocation symmetry in a **food** economy.
+Households still want retail goods; there is no industry here that could
+make them, and saying so is honest.
+
+**Measured, and it is the whole of the drain.** Same fixture, four hundred
+days, with the goods depot gone:
+
+| | before | after |
+|---|---|---|
+| households' money | 1.924e7 -> **7.59e3** | 2.045e7 -> **1.714e7** |
+| share of the country's money they hold | 0.0% | **6.4%** |
+| paid abroad over the run | 2.481e4 | **1.96e3** |
+
+A sixteen per cent fall over four hundred days rather than a collapse by a
+factor of two and a half thousand — and `bin/symmetry` still reports
+nothing diverging beyond float noise, because what was removed was removed
+from all three towns alike.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 

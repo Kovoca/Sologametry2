@@ -417,9 +417,13 @@ Real defects, each visible in a test or measurable in a binary.
    16.0% -> 13.4%, worlds 7 and 11 unmoved, no famine anywhere, and
    household purchases unpaid down 34% on the 400-day counter measurement.
 
-   **What blocks it is `carriers_have_nothing_to_do_in_a_country_that_is_
-   already_even`**, and the reason is worth more than the change. It runs
-   four hundred days on `slice::symmetric`, and by then that fixture holds
+   **What blocks it is five gates across two fixtures, on one root**, and
+   the reason is worth more than the change. On the two-town slice food
+   settles at **635 against a cost of 908** — a demand-deficient glut,
+   because the customers have run out of money, which fails the spec's own
+   acceptance test that an undisturbed economy settles at cost. And
+   `carriers_have_nothing_to_do_in_a_country_that_is_already_even` runs
+   four hundred days on `slice::symmetric`, which by then holds
    **96.4% of its money abroad** and its households hold 0.0% — a purse of
    2,850 against a daily basket of 108,759, or **a fortieth of one day's
    shopping**. Nothing that reads a purse can be judged in a country with
@@ -429,8 +433,22 @@ Real defects, each visible in a test or measurable in a binary.
    documents, and on a generated world `exchange.rs` answers it; on this
    fixture nothing does.
 
-   So the prerequisite is the fixture's own money circuit, and the order is
-   **item 3 waits on that**. Three real defects were found on the way and
+   **And the fixture's own defects are being cleared one at a time.** Its
+   power station opened on twenty thousand tonnes of coal with nothing to
+   refill it — a four-hundred-day run burns most of that pile — so it has a
+   colliery now, sized on what the station actually draws, and `bin/
+   symmetry` reports nothing diverging beyond float noise. The goods depot
+   is the same defect in money rather than in coal: one town wants 82.2 t
+   of retail goods a day, which lands at about 75,200, while the most grain
+   an export-agriculture nation is *built* to sell — three times its own
+   milling need, `region.rs`'s own ceiling — earns about 27,500. **A
+   country that imports all its manufactured goods cannot pay for them by
+   exporting grain**, and this one exports nothing at all.
+
+   So the prerequisite is the fixtures' own money circuit, and the order is
+   **item 3 waits on that**. The work is on the `counter-at-the-till`
+   branch, deliberately not green, with the measurement in its commit
+   message. Three real defects were found on the way and
    two are shipped; the third — nothing crosses the country for less than
    the carriage — is held with this change, because the condition that
    produces one is only reached when a household's purse decides what it
@@ -452,6 +470,20 @@ Real defects, each visible in a test or measurable in a binary.
    middle; recentring at 8 days of food is a change to be measured.
 11. **`GameState` saves four of eight parts**, measured by serialising rather
     than typed in.
+12. **A town with no reachable quay imports at the cheapest possible
+    price.** `inland_leg` returns 0.0 when `nearest_quay` is `None` — and
+    `None` there means *unreachable*, not *free*, so the most cut-off town
+    in the world lands its goods as though the dock were in its own high
+    street. Meanwhile `worth_exporting` requires the town's **own** quay, so
+    the same country can never sell anything: a guaranteed one-way drain.
+    The same shape as the `freight_between` fallback, pointing the other
+    way. Both fixtures are in exactly this state, which is why they cannot
+    pay their way — and fixing the rule without giving them a quay would
+    starve their canneries of tinplate, so it belongs with that decision.
+    *(Appended rather than inserted: item numbers are referenced from
+    `src/` and from `CLAUDE.md`, so inserting one renames every later
+    defect — a position read as a name, which this project has a rule
+    about.)*
 
 ---
 

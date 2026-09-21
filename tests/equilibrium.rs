@@ -515,7 +515,11 @@ fn shufflings(n: usize) -> Vec<Vec<usize>> {
 #[test]
 fn no_ordering_of_the_sites_changes_the_answer() {
     let mut expected: Option<std::collections::BTreeMap<String, (f64, f64)>> = None;
-    for (which, order) in shufflings(21).into_iter().enumerate() {
+    // **Read off the fixture rather than typed in.** A count somebody
+    // writes down goes out of date silently the day the fixture gains a
+    // works, which is what happened when it got its collieries.
+    let n = slice::symmetric(Doctrine::Prudent).ledger.sites.len();
+    for (which, order) in shufflings(n).into_iter().enumerate() {
         let mut e = slice::symmetric(Doctrine::Prudent);
         assert_eq!(
             e.ledger.sites.len(),
@@ -942,8 +946,21 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
     // power station that field is a sentinel meaning "whatever the grid
     // can carry", so dispatch is limited by fuel and never reads it. That
     // sentinel has now bitten four separate times.
+    //
+    // **And the collieries have to stop too.** The fixture digs its own
+    // coal now, so emptying the stations alone leaves them refilled by the
+    // next morning and the grid never actually goes short — the gate would
+    // then be measuring an ordinary day and saying nothing.
     for site in 0..e.ledger.sites.len() {
-        if e.ledger.sites[site].kind != scale_sim::econ::SiteKind::PowerPlant {
+        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::Mine {
+            e.ledger.sites[site].throughput = 0.0;
+        }
+    }
+    for site in 0..e.ledger.sites.len() {
+        if !matches!(
+            e.ledger.sites[site].kind,
+            scale_sim::econ::SiteKind::PowerPlant | scale_sim::econ::SiteKind::Mine
+        ) {
             continue;
         }
         let qty = e.ledger.stock(site, Commodity::Coal);
