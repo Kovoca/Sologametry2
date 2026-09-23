@@ -5111,6 +5111,44 @@ impl Economy {
                 if owed <= 1e-9 {
                     continue;
                 }
+                // **A guard against a haul nobody was making, which stopped
+                // the cement reaching three towns of five.**
+                //
+                // `if freight > paid { continue; }` stood here, refusing a
+                // delivery whose carriage came to more than the goods were
+                // worth, and its comment claimed that was weaker than the
+                // half-the-value rule `logistics` applies to a haulier and
+                // so could forbid nothing that model allows. **It is not
+                // weaker in combination with the consignment floor**:
+                // `carriage_for` charges a minimum of a quarter of a lorry
+                // however little is on board, so for an order under that the
+                // freight is floored while the value still scales with the
+                // tonnage. What it actually refused was a works topping up
+                // its daily ration down a long road.
+                //
+                // And a refusal on day zero is permanent, which is what made
+                // it fatal rather than merely wrong: a works that bought
+                // nothing had no outgoings, so `distribute_profits` sized its
+                // reserve on a bare thirty days of one wage and swept its
+                // whole opening balance to households, after which it could
+                // never buy again. Measured on one nation: three of five
+                // cement works bankrupt on day one with about two hundred in
+                // the till, cement's cost halved from 190.24 to 102.86
+                // because only the near kilns were left contributing, those
+                // towns' builders' yards dry inside a month, and the fabric
+                // at 0.3-0.4 after twenty years with the building trade
+                // fully funded.
+                //
+                // **It was written against a haul that no longer happens.**
+                // The case recorded was a float-noise shortfall fetching
+                // 7.46e-7 t eight hundred kilometres for 40.50, breaking
+                // `slice::symmetric`. With the guard gone that fixture
+                // reports nothing diverging beyond float noise and raises
+                // no inter-town consignment under one tonne at all over four
+                // hundred days — the goods depot coming out and the grid
+                // being sized off its real load had already removed it. A
+                // floor at a thousandth of the order was tried in its place
+                // and is deliberately not shipped: nothing fails without it.
                 let market = self.ledger.sites[dst].market;
                 // **Cheapest carriage first**, which is where locality lives:
                 // a supplier in the same town is free to reach, so a town with
@@ -5155,24 +5193,6 @@ impl Economy {
                     let from_m = self.ledger.sites[src].market;
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     let freight = self.carriage_for(from_m, market, qty);
-                    // **Nobody sends a lorry for less than it costs to send
-                    // it.** `carriage_for` charges a minimum of a quarter of
-                    // a lorry however little is on board, which is what a
-                    // rate card really does — and with only a nanogram floor
-                    // above it, a shortfall of float-noise size fetched
-                    // **7.46e-7 tonnes** eight hundred kilometres and paid
-                    // **40.50** to do it, in one town and not in its two
-                    // identical neighbours.
-                    //
-                    // The bound is the goods' own worth rather than a
-                    // tonnage, so it is self-calibrating: a small load of
-                    // something dear is still worth fetching and a small
-                    // load of grain is not. It is deliberately weaker than
-                    // the half-the-value rule `logistics` applies to a
-                    // haulier, so it cannot forbid a haul that model allows.
-                    if freight > paid {
-                        continue;
-                    }
                     self.ledger.apply(
                         &mut self.journal,
                         Event::Shipped {
@@ -6374,11 +6394,6 @@ impl Economy {
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
                     let freight = self.carriage_for(from_m, to_m, qty);
-                    // And the same rule: nobody sends a lorry for less than
-                    // it costs to send it. See the note in `distribute`.
-                    if freight > paid {
-                        continue;
-                    }
                     sellable -= qty;
                     self.ledger.apply(
                         &mut self.journal,
