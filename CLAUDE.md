@@ -6470,17 +6470,32 @@ Adding a quay is *correct* — goods have to land somewhere — and it is not
 shippable on its own: it turns the drain from 2,500x to 420x and puts
 `carriers_have_nothing_to_do_in_a_country_that_is_already_even` red.
 
-**And the arithmetic settles what it needs instead.** One town wants
-82.2 t of retail goods a day, landing at about **75,200**; the most grain
-an export-agriculture nation is *built* to sell — three times its own
-milling need, which is `region.rs`'s own ceiling — earns about **27,500**.
-A country that imports all of its manufactured goods **cannot** pay for
-them by exporting grain, which is not a defect in the model but a fact
-about agricultural economies. So the goods depot is the same unfunded
-dependency as the coal endowment, in money rather than in tonnes, and
-what this fixture is for is allocation symmetry in a **food** economy.
-Households still want retail goods; there is no industry here that could
-make them, and saying so is honest.
+**And the arithmetic settles what it needs instead — for this fixture,
+and that is all it establishes.** One town wants 82.2 t of retail goods a
+day, landing at about **75,200**; the most grain this nation is *permitted*
+to sell — three times its own milling need, which is `region.rs`'s own
+ceiling — earns about **27,500**. So **this fixture's allowed merchandise
+exports cannot finance its specified imports at those quantities and
+prices**, which is the whole of the claim.
+
+**The general version of it was wrong and is withdrawn.** It read that a
+country importing all its manufactured goods cannot pay for them by
+exporting grain, "a fact about agricultural economies". It is not one.
+Merchandise exports need not match imports at all, let alone every day: a
+country can be paid for services, receive transfers and remittances, earn
+investment income, or borrow — and `exchange.rs` in this very model runs a
+persistent deficit funded by a capital account, on the measured grounds
+that the United States has done exactly that every year since 1976. What
+this fixture has is **none of those channels**, which is why the gap has
+nowhere to go.
+
+And that is the honest form of the finding: the absence of a financing
+channel should show up as **constrained purchasing or a recorded
+financing problem**, not as a country quietly losing its money. So the
+goods depot is the same unfunded dependency as the coal endowment, in
+money rather than in tonnes, and what this fixture is for is allocation
+symmetry in a **food** economy. Households still want retail goods; there
+is no industry here that could make them, and saying so is honest.
 
 **Measured, and it is the whole of the drain.** Same fixture, four hundred
 days, with the goods depot gone:
@@ -6505,6 +6520,94 @@ A sixteen per cent fall over four hundred days rather than a collapse by a
 factor of two and a half thousand — and `bin/symmetry` still reports
 nothing diverging beyond float noise, because what was removed was removed
 from all three towns alike.
+
+### A gate three steps downstream of the thing that broke
+
+`a_worn_out_town_is_a_cheap_town` went red and said *"a town left to rot
+costs the same to buy into as one kept up"*, which is a sentence about
+house prices. What was wrong was **a freight guard in `distribute`**, and
+between the two lay a bankrupt kiln, a dry builders' yard and twenty years
+of decay. The first three things I did were all attempts to correct the
+gate, and every one of them would have been wrong.
+
+The guard was `if freight > paid { continue; }` — refuse a delivery whose
+carriage comes to more than the goods are worth — and its own comment said
+it was **"deliberately weaker than the half-the-value rule `logistics`
+applies to a haulier, so it cannot forbid a haul that model allows."**
+That is true of the comparison in isolation and false in combination with
+the consignment floor: `carriage_for` charges a minimum of a quarter of a
+lorry however little is on board, so for an order under that the freight
+is floored while the value still scales with the tonnage. **What it
+refused was a works topping up its daily ration down a long road.**
+
+**And a refusal on day zero is permanent**, which is what made it fatal
+rather than merely wrong. A works that bought nothing had no outgoings,
+and `distribute_profits` sizes a firm's reserve as
+
+```text
+max(outgoings x 45, cargoes x 45, staff x wage x 45, wage x 30)
+```
+
+— so a works that did not run had no staff either, the first three terms
+were nought, and the whole of its opening balance went to households as
+profit against a floor of thirty days of a single wage. Ottton's cement
+works ended day one holding **175.9**.
+
+| the same nation, twenty years | with the guard | without |
+|---|---|---|
+| cement works running | 2 of 5 | **5 of 5** |
+| a far kiln's balance on day 1 | **1.76e2** | 7.145e7 |
+| cement's production cost, day 0 | **102.86** | 190.24 |
+| builders' yards still working | 2 of 5 | 5 of 5 |
+| fabric in the three far towns | **0.31-0.39** | 1.00 |
+
+Cement's *cost* halving is the tell, and it is what finally located it:
+coal, electricity, food and the national pay level were identical to the
+digit on both sides, so it was not the cost chain — **only the kilns that
+actually put something in contribute to a cost**, and with three of them
+bankrupt the near ones were all that was left.
+
+**And the guard was written against a haul that no longer happens.** The
+case recorded beside it was a float-noise shortfall fetching 7.46e-7 t
+eight hundred kilometres and paying 40.50 to do it, breaking
+`slice::symmetric`. With the guard gone that fixture reports nothing
+diverging beyond float noise, and instrumented over four hundred days it
+raises **no inter-town consignment under one tonne at all** — the goods
+depot coming out and the grid being sized off its real load had already
+removed the case. A replacement floor at a thousandth of the order was
+written, measured, and **deliberately not shipped**: both its sabotages
+stayed green, so nothing fails without it, and this file's own rule is
+that a mechanism which never binds in any test is not evidence of
+anything.
+
+Four things worth keeping from it:
+
+- **A gate reporting a wrong number is not a gate that needs correcting.**
+  Three of my first attempts were at the gate: hold the materials still by
+  neglecting one town rather than the country (the timber moved *more*,
+  71.38 to 107.66); read the structure term rather than the whole price;
+  assert the fabric's grip on the price instead of the price. All three
+  were reasonable and all three were premature, and the measurement that
+  ended it was **running the same diagnostic on master** and finding the
+  fabric at 1.00 in all five towns where the branch had three at 0.3-0.4.
+- **The confound I diagnosed was real and was not the cause.** The land
+  term is 5.16x the structure in the town the gate reads, so the fabric can
+  only move that price by 6.8%, and the materials drift between two runs
+  was about 7% — genuinely a knife edge, and genuinely not what turned the
+  gate over.
+- **The reserve rule is fragile on its own account**, and it is on master.
+  Sizing working capital on *today's* outgoings means any one-day
+  interruption to a firm's buying strips it permanently. This file already
+  records the same shape as a **rejected** fix — *"keeping a week of a
+  firm's own outgoings makes the floor a function of what it just spent"* —
+  and the shipped version has it too. Nothing currently fires it now the
+  guard is gone; it is named rather than fixed, because fixing it is its
+  own change with its own measurement.
+- **Two changes on one branch cost a day.** The guard was bundled with the
+  counter change and was not what the branch was for. The counter change
+  is innocent of all of this: with the guard removed and the counter left
+  in, cement's cost, the kiln's balance and the fabric all match master to
+  the digit.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 

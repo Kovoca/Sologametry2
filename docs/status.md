@@ -440,10 +440,17 @@ Real defects, each visible in a test or measurable in a binary.
    symmetry` reports nothing diverging beyond float noise. The goods depot
    is the same defect in money rather than in coal: one town wants 82.2 t
    of retail goods a day, which lands at about 75,200, while the most grain
-   an export-agriculture nation is *built* to sell — three times its own
-   milling need, `region.rs`'s own ceiling — earns about 27,500. **A
-   country that imports all its manufactured goods cannot pay for them by
-   exporting grain**, and this one exports nothing at all.
+   this nation is *permitted* to sell — three times its own milling need,
+   `region.rs`'s own ceiling — earns about 27,500. **This fixture's allowed
+   merchandise exports cannot finance its specified imports at those
+   quantities and prices**, and it exports nothing at all. Stated more
+   generally than that it was wrong: merchandise exports need not match
+   imports, and a real country closes the gap with services, transfers,
+   investment income or borrowing — which `exchange.rs` already models as a
+   funded deficit. This fixture has none of those channels, so the gap has
+   nowhere to go, and the honest consequence of that absence is constrained
+   purchasing or a recorded financing problem rather than a country quietly
+   losing its money.
 
    **Five blocking gates are now one**, 2026-09-21, and the fixtures were
    the whole of it. Both had a goods depot and no goods industry — they
@@ -474,12 +481,40 @@ Real defects, each visible in a test or measurable in a binary.
    **The structural fact is that Bexley eats food made in Ashford and has
    nothing whatever to sell**, and how a dormitory town earns is a
    modelling question rather than a defect with an obvious fix. The work is
-   on the `counter-at-the-till` branch, one gate from green, with the
-   measurements in its commit messages. Three real defects were found on the way and
-   two are shipped; the third — nothing crosses the country for less than
-   the carriage — is held with this change, because the condition that
-   produces one is only reached when a household's purse decides what it
-   buys.
+   on the `counter-at-the-till` branch with the measurements in its commit
+   messages.
+
+   **And the last blocking gate was not the counter change at all**,
+   2026-09-22. `tests/durability.rs::a_worn_out_town_is_a_cheap_town` went
+   red, and the cause was the third defect this branch carried — *nothing
+   crosses the country for less than the carriage*, `if freight > paid {
+   continue; }` in `distribute`. It was already recorded here as ungated
+   and unreachable: "measured 5,958 hauls over four hundred days and found
+   no offender even with its mechanism deleted". That was the whole of the
+   warning and it was read as harmless rather than as what it was.
+
+   It is not weaker than the half-the-value rule it claimed to be weaker
+   than, because `carriage_for` floors a consignment at a quarter-lorry, so
+   for a small order the freight is fixed while the value scales — and what
+   it refused was a works topping up its daily ration down a long road. A
+   refusal on day zero is then permanent: a works that bought nothing had
+   no outgoings and no staff, so `distribute_profits` sized its reserve on
+   thirty days of one wage and swept its opening balance to households.
+   Measured on one nation, three of five cement works were bankrupt on day
+   one holding about two hundred each, cement's cost halved from 190.24 to
+   102.86 because only the near kilns still contributed, three towns'
+   builders' yards were dry inside a month, and their fabric sat at
+   0.31-0.39 after twenty years with the building trade fully funded.
+
+   Removed, and the fixture it was written for reports nothing diverging
+   beyond float noise and raises no inter-town consignment under one tonne
+   over four hundred days. A replacement floor at a thousandth of the order
+   was measured and **not** shipped: both its sabotages stayed green.
+
+   **What it leaves open, and it is on master:** `distribute_profits` sizes
+   working capital on *today's* outgoings, so any one-day interruption to a
+   firm's buying strips it permanently. Nothing fires it now the guard is
+   gone. Its own change, with its own measurement.
 4. **A sampled person's pocket is not the household pool.** Promoting
    somebody to detail creates their savings. The reification problem, not an
    accounting one.
