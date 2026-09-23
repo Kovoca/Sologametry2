@@ -937,6 +937,15 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
         e.step();
     }
     let ordinary = e.price(0, Commodity::Electricity);
+    // What the mills were getting through before the lights went out, so
+    // the consequence is read against it rather than against nought.
+    let milling = |e: &Economy| -> f64 {
+        (0..e.ledger.sites.len())
+            .filter(|&s| e.ledger.sites[s].name.contains("mill"))
+            .map(|s| e.ledger.sites[s].ran)
+            .sum()
+    };
+    let milling_before = milling(&e);
 
     // **Take the coal away**, through the journal like every other change
     // to a stockpile. The plants stand, the load does not go away, and
@@ -980,6 +989,7 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
         e.step();
     }
     let short = e.price(0, Commodity::Electricity);
+    let milling_short = milling(&e);
 
     assert!(
         short > ordinary * 5.0,
@@ -990,6 +1000,80 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
         short <= Commodity::Electricity.base_cost() * 201.0,
         "the price ran to {short:.1}, past the administrative cap that \
          every real market has"
+    );
+
+    // **A price is not a shortage, and this was asserting only the price.**
+    // Three things have to hold for it to be the case it names rather than
+    // an expensive Tuesday: load actually went unserved, something stopped
+    // because of it, and both come back when the fuel does. Without the
+    // last, a gate cannot tell a shortage from a permanently wrecked
+    // country.
+    assert!(
+        e.unserved_power > 0.0,
+        "electricity priced at {short:.1} with no unserved load at all, so          the premium is not coming from a shortage"
+    );
+    assert!(
+        milling_short < milling_before * 0.5,
+        "the mills got through {milling_short:.0} against {milling_before:.0}          with the whole grid dark, which is not a consequence"
+    );
+
+    // **And it does not recover on its own, which is a real thing and
+    // not a defect.** The collieries dig again — nothing else is put back
+    // by hand — and eighty days later the country is still dark: a mine
+    // needs power to work and a station needs coal to make it, so with
+    // literally none of either nothing can start. That is the **black
+    // start** problem, and a grid with no generation running really does
+    // need an outside source to come back; a model that bootstrapped
+    // itself out of nothing would be hiding it.
+    let fresh = slice::symmetric(Doctrine::Prudent);
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::Mine {
+            e.ledger.sites[site].throughput = fresh.ledger.sites[site].throughput;
+        }
+    }
+    for _ in 0..80 {
+        e.step();
+    }
+    assert!(
+        e.price(0, Commodity::Electricity) > ordinary * 5.0,
+        "the country restarted itself from no coal and no power at all,          which is a black start out of nothing"
+    );
+
+    // **Given a start, it recovers completely.** Twenty tonnes to each
+    // station is a fraction of a day's burn, and it is enough: inside ten
+    // days the price is ordinary again, no load goes unserved and the mills
+    // are back at what they were milling before. Without this half the gate
+    // could not tell a shortage from a permanently wrecked country.
+    const BLACK_START_T: f64 = 20.0;
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::PowerPlant {
+            e.ledger.apply(
+                &mut e.journal,
+                scale_sim::econ::Event::Produced {
+                    site,
+                    commodity: Commodity::Coal,
+                    qty: BLACK_START_T,
+                },
+            );
+        }
+    }
+    for _ in 0..10 {
+        e.step();
+    }
+    let after = e.price(0, Commodity::Electricity);
+    assert!(
+        after < ordinary * 2.0,
+        "ten days after a black start electricity is still {after:.1}          against an ordinary {ordinary:.1}"
+    );
+    assert!(
+        e.unserved_power == 0.0,
+        "{:.1} of load still unserved after a black start",
+        e.unserved_power
+    );
+    let milling_after = milling(&e);
+    assert!(
+        milling_after > milling_before * 0.5,
+        "the mills are still stopped at {milling_after:.0} against          {milling_before:.0} with the grid restored"
     );
     e.ledger.assert_conserved();
 }
