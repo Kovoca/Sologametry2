@@ -50,6 +50,67 @@ fn cap(pairs: &[(Commodity, f64)]) -> [f64; N_COMMODITIES] {
     b
 }
 
+/// **What a part of this fixture is for**, as against where it happens to
+/// sit in the site vector.
+///
+/// `tests/shipment.rs` held its two shops as `ASHFORD_STORE = 6` and
+/// `BEXLEY_STORE = 7`, which are **positions** — and they stopped meaning
+/// the market hall and the general store the moment the fixture lost its
+/// goods depot. Thirteen gates indexed past the end of the site list and
+/// said nothing whatever about shipping.
+///
+/// Looking them up by name in the test was the first fix and is not
+/// enough: a name can be duplicated or changed, and a `find` takes
+/// whichever matched first. A role is an enum, so a typo cannot compile;
+/// [`Slice::site`] asserts **exactly one** site answers to it; and the
+/// table lives beside the constructor that authored the names, so renaming
+/// a site moves the role with it rather than silently unhooking a test.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    AshfordFarm,
+    AshfordMill,
+    AshfordCannery,
+    AshfordStockholder,
+    /// Where Ashford's households shop.
+    AshfordStore,
+    /// Where Bexley's households shop — the only works in the town.
+    BexleyStore,
+    PowerStation,
+}
+
+impl Role {
+    /// The authored name of the site holding this role.
+    pub fn name(self) -> &'static str {
+        match self {
+            Role::AshfordFarm => "Ashford farm",
+            Role::AshfordMill => "Ashford mill",
+            Role::AshfordCannery => "Ashford cannery",
+            Role::AshfordStockholder => "Ashford steel stockholder",
+            Role::AshfordStore => "Ashford market hall",
+            Role::BexleyStore => "Bexley general store",
+            Role::PowerStation => "Kelling power station",
+        }
+    }
+}
+
+/// **Which site fills a role in the two-town fixture.**
+///
+/// Panics if none does or if more than one does. The second half is the
+/// point: a duplicated name is not a near miss, it is two different things
+/// answering to one handle, and a test that took the first would be
+/// measuring whichever the constructor happened to push earlier.
+pub fn site(e: &Economy, role: Role) -> usize {
+    let want = role.name();
+    let found: Vec<usize> = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].name == want)
+        .collect();
+    match found.as_slice() {
+        [one] => *one,
+        [] => panic!("the fixture has no site filling {role:?} ({want:?})"),
+        many => panic!("{} sites answer to {role:?} ({want:?})", many.len()),
+    }
+}
+
 pub fn build(doctrine: Doctrine) -> Economy {
     use Commodity::*;
 

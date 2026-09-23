@@ -18,18 +18,15 @@ use scale_sim::slice;
 /// this project keeps a rule about for wire codes on disk and for road
 /// identity, arriving in a test. Thirteen gates here indexed past the end
 /// of the site list and said nothing about shipping at all.
-fn site(e: &Economy, name: &str) -> usize {
-    (0..e.ledger.sites.len())
-        .find(|&s| e.ledger.sites[s].name == name)
-        .unwrap_or_else(|| panic!("the fixture has no site called {name:?}"))
-}
-
+// **A role, not a position and not a bare name.** `slice::site` asserts
+// exactly one site fills the role, and the table lives beside the
+// constructor that authored the name — see `slice::Role`.
 fn ashford_store(e: &Economy) -> usize {
-    site(e, "Ashford market hall")
+    slice::site(e, slice::Role::AshfordStore)
 }
 
 fn bexley_store(e: &Economy) -> usize {
-    site(e, "Bexley general store")
+    slice::site(e, slice::Role::BexleyStore)
 }
 
 fn world() -> Economy {
@@ -1187,4 +1184,30 @@ fn the_seller_is_paid_for_what_arrived() {
 
     e.treasury.assert_conserved();
     e.ledger.assert_conserved();
+}
+
+/// **Two sites answering to one role is not a near miss.**
+///
+/// It is two different things behind one handle, and a lookup that took
+/// the first would be measuring whichever the constructor happened to
+/// push earlier — which is the positional defect this replaced, wearing a
+/// name. `slice::site` refuses rather than choosing.
+#[test]
+#[should_panic(expected = "sites answer to")]
+fn a_role_that_two_sites_answer_to_is_refused() {
+    let mut e = world();
+    let other = slice::site(&e, slice::Role::AshfordCannery);
+    e.ledger.sites[other].name = slice::Role::AshfordStore.name().to_string();
+    let _ = slice::site(&e, slice::Role::AshfordStore);
+}
+
+/// And a role nothing fills is refused too, rather than resolving to
+/// whatever sits at that position.
+#[test]
+#[should_panic(expected = "no site filling")]
+fn a_role_nothing_fills_is_refused() {
+    let mut e = world();
+    let store = slice::site(&e, slice::Role::BexleyStore);
+    e.ledger.sites[store].name = "something else entirely".to_string();
+    let _ = slice::site(&e, slice::Role::BexleyStore);
 }
