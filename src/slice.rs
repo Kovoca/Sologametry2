@@ -26,16 +26,6 @@ use crate::econ::{
     N_COMMODITIES,
 };
 
-pub mod site {
-    pub const FARM: usize = 0;
-    pub const MILL: usize = 1;
-    pub const CANNERY: usize = 2;
-    pub const POWER_PLANT: usize = 3;
-    pub const DEPOT: usize = 4;
-    pub const ASHFORD_SHOP: usize = 5;
-    pub const BEXLEY_SHOP: usize = 6;
-}
-
 pub const ASHFORD: usize = 0;
 pub const BEXLEY: usize = 1;
 
@@ -120,7 +110,7 @@ pub fn build(doctrine: Doctrine) -> Economy {
     let mill_rate = cannery_rate * 0.9; // cannery takes 0.9 t flour per t
     let farm_rate = mill_rate * 1.35 * 1.12; // mill ratio, plus slack for lean years
 
-    let sites = vec![
+    let mut sites = vec![
         Site {
             address: None,
             name: "Ashford farm".into(),
@@ -239,6 +229,35 @@ pub fn build(doctrine: Doctrine) -> Economy {
             cost_factor: 1.0,
         },
     ];
+
+    // **A power station with no colliery is living on an endowment**, and
+    // this one ran out on day 253. Twenty thousand tonnes at about eighty a
+    // day, and from then on the country was dark for good: electricity at
+    // the 12,000 cap, the cannery stopped, and Bexley's income and spending
+    // both nought — which read as a distressed town when it was the whole
+    // fixture. `slice::symmetric` lost the same endowment earlier; this one
+    // never did. Sized the same way, on what the station actually draws,
+    // and appended so no site already here changes position.
+    let load = cannery_rate * 0.35
+        + mill_rate * 0.08
+        + farm_rate * 0.05
+        + 2.0
+        + (ASHFORD_POP + BEXLEY_POP) * Electricity.per_capita_annual() / 365.0;
+    let coal_per_day = load * 0.38;
+    sites.push(Site {
+        address: None,
+        name: "Kelling colliery".into(),
+        kind: SiteKind::Mine,
+        market: ASHFORD,
+        stock: cap(&[(Coal, coal_per_day * 30.0)]),
+        capacity: cap(&[(Coal, coal_per_day * 120.0)]),
+        recipe: Some(5),
+        throughput: coal_per_day * 1.15,
+        powered: true,
+        ran: 0.0,
+        fitted: None,
+        cost_factor: 1.0,
+    });
 
     let markets = vec![
         Market::new("Ashford", ASHFORD_POP),

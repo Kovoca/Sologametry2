@@ -467,6 +467,39 @@ Real defects, each visible in a test or measurable in a binary.
    cannot sell, its food prices at 677 against a cost of 900, and the gap
    to Ashford's 903 is 226 against a freight of 45.
 
+   **Those figures were measured on a fixture in a 52% blackout, and two
+   gap figures quoted from them measured different things** —
+   reconciled 2026-09-23 with `cargo run --release --bin bexley`:
+
+   | | "97,500 a day" | "3,233 a day" | master now, days 0-39 |
+   |---|---|---|---|
+   | code | counter branch, grid undersized | the same | grid sized off its load |
+   | window | days 0-39, averaged | **day 41 alone** | days 0-39, averaged |
+   | spending means | cash actually paid | cash actually paid, **capped by an empty purse** | wanted and paid, apart |
+   | income | 46k profit | 18.5k profit | 42.8k profit |
+   | paid out | 27.6k purchases + **115k power at the price cap** | 0 purchases + 21,744.7 power | 34.6k purchases + 2.2k power |
+   | net | -97k: an opening purse of 3.9M spent down | -3.2k | **+6.0k** |
+
+   - **Neither was desired spending.** A transfer records what moved,
+     which `Treasury::pay` caps at the balance; the day-41 power line
+     equals the purse the night before to the penny.
+   - **The 97,500 was a rate of spending down an endowment**, and nearly
+     all of it was electricity at 104 times cost.
+   - **The 3,233 was one cash-constrained day**, and single days are noisy
+     on their own account: day 40 on master shows a deficit of 19,459
+     against a 40-day surplus of 6,000, because profit arrives in lumps.
+   - **What Bexley wants and does not get is not money.** Of 132.6k a day
+     wanted, 95.8k is meat, remedies and retail goods that no site in the
+     fixture supplies — recorded as not on any shelf — and **nothing** is
+     on a shelf and unaffordable. Food is bought in full.
+
+   **And the fixture goes dark on day 253.** Its station opened on twenty
+   thousand tonnes of coal with no colliery — the endowment already
+   removed from `slice::symmetric`, never removed from `slice::build` — so
+   from then on electricity sits at the 12,000 cap, the cannery stops, and
+   Bexley's income and spending are both nought. That is the whole country
+   dark rather than one town declining.
+
    The ownership rule is not at fault: only the farm, at 169 staff, is a
    company whose profit is spread nationally, and the mill at 1.3, the
    cannery at 23, the station at 0.41 and both shops are sole traders or

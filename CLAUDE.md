@@ -6371,6 +6371,25 @@ payroll 0.4% of their income. A commuting link could not have made it
 viable whatever care went into writing it, and building one would have
 buried a 104x power price under a new mechanism.
 
+**And the 3,233 was not Bexley's gap.** It was one day, day 41, measured
+in cash actually paid — and a transfer records what `Treasury::pay`
+could move, capped at the balance, so on a day the purse was empty the
+power line came to **21,744.7, the purse to the penny**. The 97,500 quoted
+beside it was a forty-day average of the same kind, dominated by power at
+104 times cost and paid out of an opening purse of 3.9M. Measured apart
+with the grid sized (`cargo run --release --bin bexley`), Bexley's first
+forty days are a **surplus** of 6,000 a day, and of 132,600 a day wanted
+at its shop, 95,800 is meat, remedies and goods that no site in the
+fixture supplies and **nothing** is on a shelf and unaffordable. Two
+figures for one gap is how that surfaced: *a single day's cash flow is
+not a rate, and cash paid is not demand.*
+
+**Nor was the fixture a steady state.** Its station had no colliery and
+went dark on day 253 for good, so every reading past that was a dark
+country. It has one now, and Bexley — kept as the distressed town — runs
+its savings down on its own account while Ashford's cannery works, which
+`tests/fixtures.rs` holds as two separate claims.
+
 ### And the fixture has no money in it
 
 The most useful thing `bin/symmetry` printed, and it was not what it was
