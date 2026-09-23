@@ -6407,8 +6407,9 @@ fixtures go red on one root. The fixtures are the instrument that caught
 all three of the defects above; shipping a change that puts them red would
 be trading the instrument for the measurement.
 
-**It is on the `counter-at-the-till` branch**, deliberately not green,
-with the measurement in its commit message.
+*(Shipped since, 2026-09-23, once the fixtures were repaired and the last
+red gate turned out to be a freight guard rather than the counter — see
+"A gate three steps downstream of the thing that broke".)*
 
 ### Why the fixture cannot pay its way
 

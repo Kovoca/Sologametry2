@@ -480,9 +480,16 @@ Real defects, each visible in a test or measurable in a binary.
 
    **The structural fact is that Bexley eats food made in Ashford and has
    nothing whatever to sell**, and how a dormitory town earns is a
-   modelling question rather than a defect with an obvious fix. The work is
-   on the `counter-at-the-till` branch with the measurements in its commit
-   messages.
+   modelling question rather than a defect with an obvious fix.
+
+   **Shipped, 2026-09-23**, with every gate green: 937 tests across 97
+   files, plus the strengthened cap gate and the two fixture-role gates.
+   Five years on three worlds against master, the change moves
+   homelessness at the end by +0.3, 0.0 and +0.8 points (worlds 7, 11,
+   23) and leaves what a house costs unchanged. World 23's house at
+   **526 years of a production worker's pay is not this change** — master
+   reads 529.4 on the same world — and is recorded below as its own
+   defect.
 
    **And the last blocking gate was not the counter change at all**,
    2026-09-22. `tests/durability.rs::a_worn_out_town_is_a_cheap_town` went
@@ -546,6 +553,17 @@ Real defects, each visible in a test or measurable in a binary.
     `src/` and from `CLAUDE.md`, so inserting one renames every later
     defect — a position read as a name, which this project has a rule
     about.)*
+13. **World 23 prices a house at about 527 years of a production
+    worker's pay.** Measured by `cargo run --release --bin soak -- --seed
+    23 --nations 4 --years 5 --each 40`: **529.4 on master before the
+    counter change and 526.5 after it**, against 21.3 and 15.0 on worlds 7
+    and 11 and a real 7.1. The same world ends with 4-5% of its sample
+    homeless where the other two end at nought. Pay in its trade table is
+    ordinary — 7-47 days of food a day — so it is the price that has run,
+    not the wage that has collapsed. **What runs it is not established**:
+    a house is its bill of materials at the local price of cement, steel
+    and timber, times the land term, so one of those four is the place to
+    look, and none has been read. Named rather than diagnosed.
 
 ---
 
