@@ -66,6 +66,16 @@ pub enum Role {
     /// Where Bexley's households shop — the only works in the town.
     BexleyStore,
     PowerStation,
+    /// The viable fixture's cannery, at the port.
+    SeatonCannery,
+    /// The viable fixture's mill, beside the farm.
+    HarwickMill,
+    /// Where Harwick's households shop.
+    HarwickHall,
+    /// Where Seaton's households shop.
+    SeatonHall,
+    /// Lands the cannery's tinplate at Seaton's quay.
+    SeatonStockholder,
 }
 
 impl Role {
@@ -79,6 +89,11 @@ impl Role {
             Role::AshfordStore => "Ashford market hall",
             Role::BexleyStore => "Bexley general store",
             Role::PowerStation => "Kelling power station",
+            Role::SeatonCannery => "Seaton cannery",
+            Role::HarwickMill => "Harwick mill",
+            Role::HarwickHall => "Harwick market hall",
+            Role::SeatonHall => "Seaton market hall",
+            Role::SeatonStockholder => "Seaton steel stockholder",
         }
     }
 }
@@ -626,5 +641,299 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
     let peak = economy.power_demand() * 1.20;
     economy.grid = Grid::for_doctrine(doctrine, peak);
 
+    economy
+}
+
+/// The viable fixture's inland works town.
+pub const HARWICK: usize = 0;
+/// The viable fixture's port.
+pub const SEATON: usize = 1;
+
+pub const HARWICK_POP: f64 = 40_000.0;
+pub const SEATON_POP: f64 = 60_000.0;
+
+/// **A small country that pays its way.**
+///
+/// `build`'s Bexley is kept as a distressed town on purpose — twenty-six
+/// thousand people, one shop and no works, living on that shop's profit —
+/// and a world has to be able to contain one. But a test that needs a
+/// *functioning* economy cannot run on a fixture whose households live on
+/// dividends: there payroll was 0.4% of household income, so whether a
+/// change settled anything could not be told from whether the fixture
+/// happened to be solvent.
+///
+/// So this one earns its living the way a country does. Its households
+/// are paid wages — by the works, by the halls, and by a state and a
+/// private service sector founded exactly as `region.rs` founds them over
+/// a generated nation — and they spend them on what the works make.
+///
+/// - **Harwick** grows the grain, digs the coal and cans the food, and has
+///   a market hall.
+/// - **Seaton** is the port: it mills the grain and burns the coal, and
+///   has an ocean quay and a market hall. The
+///   cannery's tinplate is landed by a stockholder in Harwick whose import
+///   parity carries the voyage, Seaton's dockers and the 120 km road up
+///   from the quay — so an import pays for the road it comes up, though the
+///   cargo itself still appears at the stockholder rather than riding the
+///   road, which is a named gap in `region.rs` too.
+pub fn viable(doctrine: Doctrine) -> Economy {
+    use Commodity::*;
+
+    let people = HARWICK_POP + SEATON_POP;
+    let food_per_day = people * ProcessedFood.per_capita_annual() / 365.0;
+    let cannery_rate = food_per_day * 1.15;
+    // **A tenth of headroom over the cannery's whole rating**, because a
+    // mill sized at exactly the draw it serves runs flat out and never
+    // builds its customer a stock — a commodity settles at cost only if
+    // somebody can build stock in it. A quarter was too much the other way:
+    // flour sat in glut below the cost of the grain in it and the mill ran
+    // out of cash.
+    let mill_rate = cannery_rate * 0.9 * 1.1;
+    // The farm is sized on what is milled, not on the mill's headroom, or
+    // it grows more grain than anybody wants for ever.
+    let farm_rate = cannery_rate * 0.9 * 1.35 * 1.12;
+    let tinplate = cannery_rate * 0.035;
+    let load = cannery_rate * 0.35
+        + mill_rate * 0.08
+        + farm_rate * 0.05
+        + 2.0
+        + people * Electricity.per_capita_annual() / 365.0;
+    let coal_per_day = load * 0.38;
+
+    let works = |name: &str,
+                 kind: SiteKind,
+                 market: usize,
+                 stock: [f64; N_COMMODITIES],
+                 capacity: [f64; N_COMMODITIES],
+                 recipe: Option<usize>,
+                 throughput: f64| Site {
+        address: None,
+        name: name.into(),
+        kind,
+        market,
+        stock,
+        capacity,
+        recipe,
+        throughput,
+        powered: true,
+        ran: 0.0,
+        fitted: None,
+        cost_factor: 1.0,
+    };
+    // **Each town sells the other something**, and the grain never has to
+    // travel. Harwick grows it and mills it, digs the coal and burns it;
+    // Seaton cans the flour and lands the tinplate at its own quay. So
+    // Harwick pays Seaton for food, and Seaton pays Harwick for flour and
+    // power.
+    //
+    // Two earlier layouts are why. With every works in Harwick, Seaton was a
+    // second Bexley: its households went from 3.4M to 53,000 in four hundred
+    // days. With the mill in Seaton and the farm in Harwick, grain had to
+    // reach a mill whose yard holds twenty days in a town whose target is a
+    // harvest year, so Seaton read grain as scarce at 913 against a cost of
+    // 220 — and flour in Harwick sat at 2.7 times Seaton's price, because a
+    // mill sized at exactly the cannery's draw has no headroom to build
+    // anybody a stock. The cannery bought at the scarce price and sold at the
+    // ordinary one.
+    //
+    // **The farms open the year holding most of last year's harvest.** Day
+    // nought is the first of January and the crop peaks about day 226
+    // (`harvest_curve`), with barely a trickle before day 180 — so a granary
+    // holding four months, which is what `build` opens with, runs the mill
+    // dry in June. That is `build`'s annual flour famine, and it is a fact
+    // about the opening stock rather than the economy.
+    //
+    // **A farming district is many farms, not one.** Who owns a works
+    // follows its headcount (`building::Ownership::for_size`), and a single
+    // site standing for all of Harwick's farmland came to about 250 hands —
+    // a corporation, whose profit is spread across the country by
+    // population. So sixty per cent of what Harwick's fields earned was paid
+    // to households in Seaton, while every Seaton firm kept its profit at
+    // home, and Harwick's households ran dry in about four and a half years.
+    // Six farms of forty-odd hands are partnerships, owned by the people who
+    // work them.
+    const FARMS: usize = 6;
+    let mut sites: Vec<Site> = (1..=FARMS)
+        .map(|n| {
+            let share = farm_rate / FARMS as f64;
+            works(
+                &format!("Harwick farm {n}"),
+                SiteKind::Farm,
+                HARWICK,
+                cap(&[(Grain, share * 220.0)]),
+                cap(&[(Grain, share * 480.0)]),
+                Some(0),
+                share,
+            )
+        })
+        .collect();
+    sites.extend([
+        works(
+            "Harwick mill",
+            SiteKind::Mill,
+            HARWICK,
+            cap(&[(Grain, mill_rate * 4.0), (Flour, mill_rate * 2.0)]),
+            cap(&[(Grain, mill_rate * 20.0), (Flour, mill_rate * 15.0)]),
+            Some(1),
+            mill_rate,
+        ),
+        works(
+            "Harwick colliery",
+            SiteKind::Mine,
+            HARWICK,
+            cap(&[(Coal, coal_per_day * 30.0)]),
+            cap(&[(Coal, coal_per_day * 120.0)]),
+            Some(5),
+            coal_per_day * 1.15,
+        ),
+        works(
+            "Seaton cannery",
+            SiteKind::Factory,
+            SEATON,
+            cap(&[
+                (Flour, cannery_rate * 3.0),
+                (ProcessedFood, cannery_rate * 2.0),
+                (Steel, tinplate * 20.0),
+            ]),
+            cap(&[
+                (Flour, cannery_rate * 15.0),
+                (ProcessedFood, cannery_rate * 15.0),
+                (Steel, tinplate * 60.0),
+            ]),
+            Some(2),
+            cannery_rate,
+        ),
+        // **A pithead station**, the way coal-fired power was usually
+        // built: next to the colliery, so the coal does not travel and the
+        // electricity does. With the station at the port, the port took the
+        // whole country's power bills as well as the cannery's margin, and
+        // its households ended holding twenty-eight times Harwick's.
+        works(
+            "Harwick power station",
+            SiteKind::PowerPlant,
+            HARWICK,
+            cap(&[(Coal, coal_per_day * 30.0)]),
+            cap(&[(Coal, coal_per_day * 120.0), (Electricity, 1e9)]),
+            Some(3),
+            crate::econ::UNBOUNDED_THROUGHPUT,
+        ),
+        // **The tinplate comes ashore where it is used.** A stockholder at
+        // a quay decides whether to land on its own town's price, so one at
+        // a port with no steel demand of its own never lands a tonne however
+        // short the works up-country are — a real defect
+        // (`docs/status.md`, defect 14), which this layout does not reach.
+        works(
+            "Seaton steel stockholder",
+            SiteKind::Depot,
+            SEATON,
+            cap(&[(Steel, tinplate * 30.0)]),
+            cap(&[(Steel, tinplate * 90.0)]),
+            Some(crate::econ::recipe::STEEL_IMPORTS),
+            tinplate * 1.2,
+        ),
+        works(
+            "Harwick market hall",
+            SiteKind::Shop,
+            HARWICK,
+            cap(&[(ProcessedFood, food_per_day * 0.4 * 5.0)]),
+            cap(&[(ProcessedFood, food_per_day * 0.4 * 25.0)]),
+            None,
+            0.0,
+        ),
+        works(
+            "Seaton market hall",
+            SiteKind::Shop,
+            SEATON,
+            cap(&[(ProcessedFood, food_per_day * 0.6 * 5.0)]),
+            cap(&[(ProcessedFood, food_per_day * 0.6 * 25.0)]),
+            None,
+            0.0,
+        ),
+    ]);
+
+    let mut seaton = Market::new("Seaton", SEATON_POP);
+    seaton.port = true;
+    seaton.berth = crate::world::Berth::Ocean;
+    let markets = vec![Market::new("Harwick", HARWICK_POP), seaton];
+
+    // **Road capacity follows the people it serves**: about twenty-four
+    // tonnes a head a year moves by road *(UK: ~1.6bn t across 67M)*, and
+    // carriage runs about 0.26 a tonne-kilometre here.
+    let km = 120.0;
+    let routes = vec![Route {
+        id: crate::quote::RouteId(1),
+        name: "Harwick–Seaton road".into(),
+        a: HARWICK,
+        b: SEATON,
+        freight_cost: km * 0.26,
+        sound_cost: km * 0.26,
+        km,
+        surface: crate::econ::Surface::Road,
+        crossing: crate::econ::Crossing::Level,
+        snowed_in: false,
+        capacity: people * 24.0 / 365.0,
+        moved: None,
+        open: true,
+    }];
+
+    let markets_len = markets.len();
+    let named_roads = routes.len() as u64 + 1;
+    let mut economy = Economy {
+        ledger: Ledger::new(sites),
+        journal: Journal::new(),
+        markets,
+        routes,
+        grid: Grid::for_doctrine(doctrine, load * 1.2),
+        response: Response::for_doctrine(doctrine),
+        road_condition: vec![1.0],
+        maintenance_funding: vec![doctrine.maintenance_funding()],
+        weather_seed: 0x5EED_C0FF_EE15_600D,
+        unserved_power: 0.0,
+        unmet_demand: basket(),
+        went_without: basket(),
+        workforce: vec![crate::labour::Workforce::default(); markets_len],
+        governments: Default::default(),
+        logistics: None,
+        treasury: crate::money::Treasury::new(),
+        told_the_day: None,
+        opening: None,
+        shipments: crate::registry::Registry::new(),
+        power_clearing: None,
+        experiments: Default::default(),
+        world_seed: 0,
+        next_route_id: named_roads,
+        routing: crate::quote::Routing::default(),
+        hands: Default::default(),
+        exported_today: Vec::new(),
+        reservations: crate::quote::Reservations::new(),
+        import_duty: Default::default(),
+        exchange: crate::exchange::Exchange::at_par(),
+        arrivals: Vec::new(),
+        staff_today: Vec::new(),
+        payroll_met: Vec::new(),
+        state_afford: Default::default(),
+        building_stock: Vec::new(),
+        building_condition: Vec::new(),
+        services: None,
+    };
+    // **A state and a private service sector**, founded exactly as
+    // `region.rs` founds them over a generated nation: between them they
+    // are most of the jobs in a developed country, and without them a
+    // model of farms, mills and shops leaves nearly everybody with nowhere
+    // to work.
+    let capacity = match doctrine {
+        Doctrine::Prudent => crate::state::Capacity::Developed,
+        Doctrine::Negligent => crate::state::Capacity::Middling,
+    };
+    for n in economy.nations() {
+        economy
+            .governments
+            .insert(n, crate::state::Government::govern(&economy, capacity, n));
+    }
+    economy.services = Some(crate::services::Services::provide(&economy));
+    economy.issue_currency();
+    economy.resurvey();
+    let peak = economy.power_demand() * 1.20;
+    economy.grid = Grid::for_doctrine(doctrine, peak);
     economy
 }

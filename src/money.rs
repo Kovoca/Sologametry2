@@ -188,6 +188,12 @@ pub struct Treasury {
     /// inputs on a promise, and those are different failures with
     /// different cures.
     pub unpaid_why: BTreeMap<&'static str, f64>,
+    /// **And by who failed to pay whom.** A reason says what kind of
+    /// failure it was; the payer and payee say where it happened — which
+    /// firm, which town's households, owing which supplier — which is what
+    /// a fix has to be aimed at. The day's figure, cleared and not saved,
+    /// like the reason.
+    pub unpaid_by: BTreeMap<(Account, Account, &'static str), f64>,
     /// **Money brought into existence by lending**, and the amount taken
     /// back out of it by repayment. Conservation is measured against the
     /// opening stock *plus these*, because a banking system genuinely does
@@ -207,6 +213,7 @@ impl Treasury {
             flows: BTreeMap::new(),
             unpaid: 0.0,
             unpaid_why: BTreeMap::new(),
+            unpaid_by: BTreeMap::new(),
             created: 0.0,
             destroyed: 0.0,
         }
@@ -256,11 +263,19 @@ impl Treasury {
         if capped <= 1e-9 {
             self.unpaid += amount;
             *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount;
+            *self
+                .unpaid_by
+                .entry((from, to, reason_name(why)))
+                .or_insert(0.0) += amount;
             return 0.0;
         }
         if capped < amount {
             self.unpaid += amount - capped;
             *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount - capped;
+            *self
+                .unpaid_by
+                .entry((from, to, reason_name(why)))
+                .or_insert(0.0) += amount - capped;
         }
         *self.balances.entry(from).or_insert(0.0) -= capped;
         *self.balances.entry(to).or_insert(0.0) += capped;
@@ -331,6 +346,7 @@ impl Treasury {
         self.today.clear();
         self.unpaid = 0.0;
         self.unpaid_why.clear();
+        self.unpaid_by.clear();
     }
 
     /// **Nothing appears or vanishes except through a named door.**
@@ -591,6 +607,7 @@ impl crate::save::Store for Treasury {
             flows: std::collections::BTreeMap::new(),
             unpaid,
             unpaid_why: BTreeMap::new(),
+            unpaid_by: BTreeMap::new(),
             created,
             destroyed,
         };

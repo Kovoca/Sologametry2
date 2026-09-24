@@ -252,8 +252,11 @@ fn main() {
     // **Each kind of works' books over the final year**: what came in and
     // what went out, by reason.
     let mut books: std::collections::BTreeMap<(String, bool, String), f64> = Default::default();
-    // **And what went unpaid, by what it was for**, over the same year.
-    let mut unpaid_year: std::collections::BTreeMap<&'static str, f64> = Default::default();
+    // **And what went unpaid, by what it was for and who owed it**, over
+    // the same year: a firm short for its supplies and a household short
+    // at the till are different failures with different cures.
+    let mut unpaid_year: std::collections::BTreeMap<(&'static str, &'static str), f64> =
+        Default::default();
 
     for d in 1..=days {
         g.a_day();
@@ -270,8 +273,15 @@ fn main() {
         if d > final_year_from {
             if let Some(e) = g.economy.as_ref() {
                 use scale_sim::money::Account;
-                for (why, v) in e.treasury.unpaid_why.iter() {
-                    *unpaid_year.entry(why).or_default() += v;
+                for ((from, _, why), v) in e.treasury.unpaid_by.iter() {
+                    let who = match from {
+                        Account::Firm(_) => "firms",
+                        Account::Households(_) => "households",
+                        Account::ServiceSector(_) => "service sector",
+                        Account::State(_) => "the state",
+                        _ => "other",
+                    };
+                    *unpaid_year.entry((why, who)).or_default() += v;
                 }
                 for t in e.treasury.today.iter() {
                     if let Account::State(_) = t.to {
@@ -342,11 +352,11 @@ fn main() {
     firm_books(&books);
     println!(
         "
-  owed and not paid over the final year, by what for:
+  owed and not paid over the final year, by what for and who owed it:
 "
     );
-    for (why, v) in unpaid_year.iter() {
-        println!("  {:<24} {:>10.2e}", why, v);
+    for ((why, who), v) in unpaid_year.iter() {
+        println!("  {:<14} {:<16} {:>10.2e}", why, who, v);
     }
     by_trade(
         &g,
@@ -674,6 +684,48 @@ the door; settled {:.0}/{:.0}/{:.0}; delivered {:.0}% (state affords {:.0}%); co
             tenure(Housing::Homeless),
             years_of_pay / weight.max(1.0)
         );
+        // **The figure taken apart, town by town**, because a
+        // population-weighted mean of a ratio can be one town. What a house
+        // is valued at (`Economy::house_price`: the dwelling's bill of
+        // materials at local prices, over the 45% materials are of a build,
+        // worn by condition, plus land) against a year of the production
+        // worker's day rate at 260 days — the same arithmetic as the line
+        // above, with every term printed.
+        use scale_sim::econ::Commodity;
+        let bill = scale_sim::building::Use::Dwelling.materials(0.0);
+        println!(
+            "  a dwelling takes {:.1} t of cement, {:.2} t of steel and {:.2} t of timber\n",
+            bill.cement, bill.steel, bill.timber
+        );
+        println!(
+            "  {:<14} {:>10} {:>9} {:>9} {:>9} {:>6} {:>6} {:>11} {:>9} {:>7}",
+            "town",
+            "people",
+            "cement",
+            "steel",
+            "timber",
+            "cond",
+            "land",
+            "house",
+            "pay/yr",
+            "years"
+        );
+        for m in 0..e.markets.len() {
+            let pay = scale_sim::person::day_rate(e, m, Trade::ProductionWorker) * 260.0;
+            println!(
+                "  {:<14} {:>10.3e} {:>9.1} {:>9.1} {:>9.1} {:>6.2} {:>6.2} {:>11.3e} {:>9.0} {:>7.1}",
+                e.markets[m].name,
+                e.markets[m].population,
+                e.price(m, Commodity::Cement),
+                e.price(m, Commodity::Steel),
+                e.price(m, Commodity::Timber),
+                e.fabric_condition(m),
+                e.land_value_ratio(m),
+                e.house_price(m),
+                pay,
+                e.house_price(m) / pay.max(1e-9)
+            );
+        }
     }
     println!(
         "\n  supervisors {:.1}% of the sample; this world's jobs have room for {:.1}% (real 5.1% of jobs)\n  managers {:.1}%; room for {:.1}% (real 6.9%)",

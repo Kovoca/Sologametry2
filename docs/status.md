@@ -397,6 +397,38 @@ Real defects, each visible in a test or measurable in a binary.
    days means the average invoice is settled after its due date and the
    supplier goes on supplying; what stops an account is serious arrears,
    60-90 days in real practice.
+
+   **Cash on delivery, built and measured, 2026-09-24**, with the profit
+   sweep fixed so a firm keeps its capital. A delivery between firms moves
+   only as much as the buyer can pay for, goods and carriage, in
+   `distribute`, `trade` and `consign`, and a works draws only the power
+   its till covers (`Economy::payable_on_delivery`). On the viable fixture
+   it does exactly what it should: every hand-off between firms paid for
+   five years, and a works emptied of cash receiving nothing on a promise.
+   **Across the suite it turns 17 gates red, and on three worlds it
+   collapses them**: unemployment at the end 92%, 34% and 78% (worlds 7,
+   11, 23) against 10.6, 10.4 and 11.1 on master; households' money in
+   world 7 from 3.5e10 to 3.4e8; hunger up to 13% and hospital supply to
+   nought in a working nation. Firm-to-firm supply unpaid goes to about
+   1e-7 — the counter closes and the economy behind it stops.
+
+   **Why, measured on the durability nation**, and it is not the rule:
+   hospitals and builders are paid at cost **for what they used**, after
+   the day's deliveries. Once any shortfall from their payers drains one
+   to nought it cannot buy supplies, so it uses none, so it is paid for
+   none — the loop with no way in that builders already fell into once.
+   And their payers are short, because the household bills raised after
+   the counter are outside the counter's budget (item 3, below): in that
+   nation households take in about 267M a day, the counter takes 166M,
+   and a 91.8M service bill is paid 58.6M. Every builder's yard ended
+   holding nought of a 74.5M capital with the cement works sitting full.
+
+   **So it is on the `pay-on-delivery` branch, not shipped**, with a gate
+   (`a_works_receives_only_what_it_can_pay_for`) that is green there and
+   red here — on master the drained cannery takes 124.8 t and leaves
+   36,852 unpaid. What it waits for: providers paid for what they are
+   commissioned to do rather than at cost for what they happened to use,
+   and the household bills brought inside the household's budget.
 3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.
@@ -558,6 +590,18 @@ Real defects, each visible in a test or measurable in a binary.
    after its flour was cut. A firm now keeps the larger of its paid-in
    capital and forty-five days of its **rated** operation; see CLAUDE.md,
    "What a firm was given is not profit".
+
+   **What the counter does not reach, found 2026-09-24.** It costs the
+   basket over the counter against the purse, and nothing else — so the
+   bills raised after it are still taken whatever the balance: the
+   private service sector's (`run_the_service_sector`), the builders'
+   and the hospital door's (`pay_for_services`), and insurance premiums.
+   Measured on the nation `tests/durability.rs` builds, over its second
+   year: households took in 267M a day and paid out 266M; the counter took
+   166M first, leaving 58.6M against a service bill of 91.8M (33.2M
+   unpaid), and 8.18M of the builders' 8.60M. It is the same defect as the
+   counter's, one bill later, and it is why cash on delivery cannot ship
+   (item 2).
 4. **A sampled person's pocket is not the household pool.** Promoting
    somebody to detail creates their savings. The reification problem, not an
    accounting one.
@@ -600,6 +644,17 @@ Real defects, each visible in a test or measurable in a binary.
     a house is its bill of materials at the local price of cement, steel
     and timber, times the land term, so one of those four is the place to
     look, and none has been read. Named rather than diagnosed.
+14. **A merchant at a quay cannot see the demand inland.** An importer
+    decides whether to land on its **own town's** price against import
+    parity. A steel stockholder at a port with no steel demand of its own
+    therefore never lands a tonne, however short the works up the road are:
+    measured on the first layout of `slice::viable`, with the stockholder
+    at Seaton's quay and the cannery in Harwick, the cannery ran on its
+    opening tinplate and stopped on day 50. Real import merchants land
+    against their customers' orders wherever the customers are. The
+    fixture puts its cannery at the port instead, so it does not reach
+    this; the generated worlds give every town its own stockholder, which
+    hides it the same way.
 
 ---
 

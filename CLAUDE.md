@@ -6694,6 +6694,83 @@ that is negative, each provoked separately.
 - **World 7's worst hunger month went 2.5% to 4.5%**, inside its 5% band
   and not explained here.
 
+### A fixture that earns its living (`slice::viable`)
+
+`cargo run --release --bin viable -- --days 400`
+
+`build`'s Bexley stays what it is: twenty-six thousand people, one shop,
+no works, living on that shop's profit — a distressed town, and a world has
+to be able to contain one. But a test that needs a *working* economy cannot
+run on a fixture whose households live on dividends, so there is a second
+one. Harwick (40,000) grows and mills the grain, digs the coal and burns it
+at a pithead station; Seaton (60,000) is the port, lands tinplate at its
+own quay and cans the flour. Each town sells the other something. Over
+five years both towns' households hold their money and wages are 35-37% of
+what they receive.
+
+**Four layouts failed first, and each taught something about the model
+rather than the fixture:**
+
+- **Every works in one town makes the other Bexley.** Seaton's households
+  went 3.4M to 53,000 in four hundred days.
+- **Grain carried to a mill in another town is priced as scarce there.**
+  The mill's yard holds twenty days in a town whose target is a harvest
+  year, so Seaton read grain at 913 against a cost of 220 — and a mill
+  sized at exactly the cannery's draw had no headroom to build anybody a
+  stock, so flour in the cannery's town sat at 2.7 times the mill's. The
+  cannery bought at the scarce price and sold at the ordinary one.
+- **A farm opening the year on four months of grain runs the mill dry in
+  June.** Day nought is the first of January and the crop peaks about day
+  226 — which is also `build`'s annual flour famine.
+- **One farm of 250 hands is a corporation**, and a corporation's profit
+  is spread across the country by population. So 60% of what Harwick's
+  fields earned went to Seaton while every Seaton firm kept its own, and
+  Harwick's households ran dry in about four and a half years. Six farms
+  are partnerships; a farming district is many farms, not one.
+
+### Cash on delivery, and why it is on a branch
+
+The original unpaid-supply defect is goods moving between firms with
+nobody paying: `distribute` delivers and `Treasury::pay` settles what the
+buyer holds. `Treasury::unpaid_by` now says **who failed to pay whom**, and
+the soak reports the final year by reason and payer — which is how it could
+be seen that even the viable fixture leaves 3% of its firm-to-firm goods
+unpaid, all of it the mill's grain in the months before harvest, when grain
+is dear and flour is not and the mill mills at a loss.
+
+**Requiring payment on delivery was built, and it is right on its own
+terms**: a delivery moves only as much as the buyer can pay for, goods and
+carriage, and a works draws only the power its till covers. On the viable
+fixture every hand-off between firms was paid for five years. **On three
+generated worlds it took unemployment to 92%, 34% and 78%**, and the reason
+is the finding this file already records — *the unpaid counter is
+load-bearing* — one layer further down than last time:
+
+- **A provider paid at cost for what it used has no way back in.**
+  Hospitals and builders are billed for the day's wages and the supplies
+  the day consumed, after the deliveries. Drained to nought by any
+  shortfall, they cannot buy supplies, so they use none, so they are paid
+  for none. Every builder's yard in the durability nation ended on nought
+  of a 74.5M capital with the cement works full.
+- **And their payers are short because the counter is not the whole
+  budget.** The counter costs the basket against the purse; the service
+  bill, the builders' bill, the hospital door and the premiums are raised
+  afterwards and taken whatever is left. That nation's households took in
+  267M a day, spent 166M at the counter, and paid 58.6M of a 91.8M service
+  bill.
+
+**A hold-back was tried and made it worse**, which is worth recording
+because it looked like prudence: keeping a day's payroll and power out of
+what a works may spend on stock cleared a unit or two a day of the mill's
+wages and stopped every hospital in a nation buying medicine, since a
+hospital's day's payroll is its whole till until the state pays it in the
+evening.
+
+The gate `a_works_receives_only_what_it_can_pay_for` is on the branch,
+green there and red on master — the drained cannery takes 124.8 t of flour
+and leaves 36,852 unpaid. `docs/status.md`, tracked gap 2, says what it
+waits for.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting
