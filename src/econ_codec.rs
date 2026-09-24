@@ -1345,6 +1345,10 @@ impl Store for crate::econ::Economy {
         w.f64(out);
         w.f64(into);
         w.f64(self.exchange.owed_abroad());
+        // **What is owed and not yet paid.** Not a reading of any one day:
+        // a bill left unpaid last month is still owed after a reload, and a
+        // save that forgot it would forgive every debt in the world.
+        self.obligations.store(w);
     }
 
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
@@ -1501,6 +1505,7 @@ impl Store for crate::econ::Economy {
             }
             crate::exchange::Exchange::restore(rate, out, into, owed)
         };
+        let obligations = crate::credit::Book::load(r)?;
 
         // -------------------------------------------------------------
         // every reference has to point at something that is there
@@ -1565,6 +1570,25 @@ impl Store for crate::econ::Economy {
             if s.from_market >= n_markets || s.to_market >= n_markets {
                 return Err(SaveError::Impossible(
                     "a consignment between towns that are not there",
+                ));
+            }
+        }
+        // **An obligation between parties that are not there** is money
+        // owed to nobody, or by nobody — and a collection would walk it
+        // into an account the conservation check has never heard of.
+        let there = |a: crate::money::Account| -> bool {
+            use crate::money::Account;
+            match a {
+                Account::Firm(s) => s < n_sites,
+                Account::Households(m) | Account::ServiceSector(m) => m < n_markets,
+                Account::State(n) => markets.iter().any(|x| x.nation == n),
+                Account::Bank(_) | Account::Abroad => true,
+            }
+        };
+        for (_, inv) in obligations.iter() {
+            if !there(inv.debtor) || !there(inv.creditor) {
+                return Err(SaveError::Impossible(
+                    "an obligation between parties that are not there",
                 ));
             }
         }
@@ -1633,6 +1657,9 @@ impl Store for crate::econ::Economy {
             arrivals,
             staff_today,
             hospital_billed: Default::default(),
+            obligations,
+            bills_today: Default::default(),
+            held_back_today: 0.0,
             payroll_met,
             state_afford,
             building_stock,

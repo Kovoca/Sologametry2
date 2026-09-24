@@ -262,6 +262,17 @@ fn main() {
     // grain or a hospital short for its medicine.
     let mut unpaid_works: std::collections::BTreeMap<(&'static str, String, String), f64> =
         Default::default();
+    // **What is owed, as against what failed**: the obligations book at the
+    // start of the final year, so the year's billing, collection and
+    // charge-offs can be read as differences, and what households held back
+    // from their shopping to meet bills they knew were coming.
+    let mut book_at_year: Option<(
+        f64,
+        f64,
+        f64,
+        std::collections::BTreeMap<scale_sim::credit::Origin, f64>,
+    )> = None;
+    let mut held_back_year = 0.0;
 
     for d in 1..=days {
         g.a_day();
@@ -276,6 +287,9 @@ fn main() {
         }
 
         if d > final_year_from {
+            if let Some(e) = g.economy.as_ref() {
+                held_back_year += e.held_back_today;
+            }
             if let Some(e) = g.economy.as_ref() {
                 use scale_sim::money::Account;
                 for ((from, to, why), v) in e.treasury.unpaid_by.iter() {
@@ -335,6 +349,15 @@ fn main() {
             }
         }
         if d == final_year_from {
+            if let Some(e) = g.economy.as_ref() {
+                let b = &e.obligations;
+                book_at_year = Some((
+                    b.billed,
+                    b.collected,
+                    b.charged_off,
+                    b.charged_off_by.clone(),
+                ));
+            }
             if let Some(folk) = g.folk.as_ref() {
                 for (id, p) in folk.people.iter() {
                     worked_final_year.insert(id, p.days_worked);
@@ -374,9 +397,8 @@ fn main() {
     idle_jobs(&g);
     firm_books(&books);
     println!(
-        "
-  owed and not paid over the final year, by what for and who owed it:
-"
+        "\n  failed and forgotten over the final year — shortfalls on the day's tally,
+  owed by nobody the next morning — by what for and who failed:\n"
     );
     for ((why, who), v) in unpaid_year.iter() {
         println!("  {:<14} {:<16} {:>10.2e}", why, who, v);
@@ -387,6 +409,7 @@ fn main() {
     for ((why, payer, payee), v) in works.into_iter().take(10) {
         println!("  {:<10} {:<16} -> {:<18} {:>10.2e}", why, payer, payee, v);
     }
+    obligations(&g, book_at_year, held_back_year);
     by_trade(
         &g,
         &worked_final_year,
@@ -395,6 +418,69 @@ fn main() {
         final_year_from,
         days,
     );
+}
+
+/// **What is owed, and what became of what was owed**: the year's billing
+/// on the book, what was collected and what was charged off by kind, and
+/// what stands at the end by who owes it and what for.
+fn obligations(
+    g: &GameState,
+    at_year: Option<(
+        f64,
+        f64,
+        f64,
+        std::collections::BTreeMap<scale_sim::credit::Origin, f64>,
+    )>,
+    held_back: f64,
+) {
+    let Some(e) = g.economy.as_ref() else {
+        return;
+    };
+    let b = &e.obligations;
+    let (billed0, collected0, off0, by0) = at_year.unwrap_or_default();
+    println!("\n  obligations over the final year:\n");
+    println!(
+        "  left owing on bills {:>10.2e}   collected {:>10.2e}   charged off {:>10.2e}",
+        b.billed - billed0,
+        b.collected - collected0,
+        b.charged_off - off0
+    );
+    for (o, v) in b.charged_off_by.iter() {
+        let was = by0.get(o).copied().unwrap_or(0.0);
+        if v - was > 0.0 {
+            println!("    charged off, {:<16} {:>10.2e}", o.name(), v - was);
+        }
+    }
+    println!(
+        "  held back from discretionary shopping for known bills {:>10.2e}",
+        held_back
+    );
+    let day = e.ledger.day;
+    let mut standing: std::collections::BTreeMap<(&'static str, &'static str), (f64, f64)> =
+        Default::default();
+    for (_, i) in b.iter() {
+        let who = match i.debtor {
+            Account::Firm(_) => "firms",
+            Account::Households(_) => "households",
+            Account::ServiceSector(_) => "insurers",
+            Account::State(_) => "the state",
+            _ => "other",
+        };
+        let row = standing.entry((who, i.origin.name())).or_default();
+        row.0 += i.outstanding();
+        row.1 += i.overdue_on(day);
+    }
+    println!(
+        "\n  owed at the end, by who owes it and for what ({} live):\n",
+        b.len()
+    );
+    println!("  {:<12} {:<16} {:>10} {:>10}", "", "", "owed", "overdue");
+    for ((who, what), (owed, overdue)) in standing.iter() {
+        println!(
+            "  {:<12} {:<16} {:>10.2e} {:>10.2e}",
+            who, what, owed, overdue
+        );
+    }
 }
 
 /// Changes of trade over the run, counted monthly.

@@ -139,6 +139,11 @@ pub enum Why {
     Repayment,
     /// Interest, which is an ordinary transfer and creates nothing.
     Interest,
+    /// **Paying off something already owed.** Kept apart from the sale or
+    /// the bill it settles, because a collection is not a second sale: a
+    /// day book that counted yesterday's hospital bill, paid today, as
+    /// today's would allocate one invoice twice. See `credit::Book`.
+    Settlement,
 }
 
 /// One movement of money. Conserving by construction: it always has a
@@ -415,6 +420,7 @@ fn reason_name(why: Why) -> &'static str {
         Why::Repayment => "repayment",
         Why::Interest => "interest",
         Why::Capital => "capital",
+        Why::Settlement => "settlements",
     }
 }
 
@@ -482,6 +488,7 @@ impl crate::save::Store for Why {
             // moving one reinterprets every save ever written.
             Why::Premium => 14,
             Why::Claim => 15,
+            Why::Settlement => 16,
         });
     }
     fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
@@ -502,6 +509,7 @@ impl crate::save::Store for Why {
             13 => Why::Capital,
             14 => Why::Premium,
             15 => Why::Claim,
+            16 => Why::Settlement,
             n => return Err(SaveError::UnknownCode("why money moved", n as u32)),
         })
     }

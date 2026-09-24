@@ -500,6 +500,9 @@ Real defects, each visible in a test or measurable in a binary.
      balanced-budget rule kept as its own gate; a third allocates each
      hospital bill once across state, insurer and patient, with the share a
      state does not fund now recorded as owed rather than vanishing.
+     *(Overstated, and corrected on the next review: "recorded" meant a
+     shortfall on the day's tally, gone the next morning — not a debt. It
+     is a persistent obligation since the budgeting change, below.)*
      Five years, worlds 7 / 11 / 23, operating margins over every cost
      against the gross-margin version: mean unemployment 8.65 / 7.21 / 8.58%
      -> 8.71 / 7.23 / 8.51%; household purchases unpaid 8.93 / 5.29 / 4.18e10
@@ -982,6 +985,34 @@ player below move behind this phase accordingly.
    builder's bill, and an insured patient does not pay the insurer's part.
    Forecast wages may inform the plan and are never spendable before they
    are paid or lent against.
+   **Done in part, 2026-09-24.** Every bill a household, a state or an
+   insurer is presented with pays what cash covers and **owes the rest** —
+   a persistent obligation (`credit::Book` on `Economy::obligations`) with a
+   named debtor, creditor and bill, net-30 terms, paid down oldest first by
+   later payments against that same obligation, saved and reloaded, and
+   ended only by payment or an explicit, dated charge-off (households, 180
+   days past due; a designed policy anchored on FFIEC's open-end rule). A
+   retried bill is not a second debt. The counter reads the day's known
+   bills and makes room for them out of the goods whose spending rises
+   faster than income, never out of food, meat or remedies. A state cannot
+   borrow and can owe: it pays hospitals only from cash it holds, funds its
+   staff before its arrears, and a weak state's arrears grow on the book.
+   Unmet demand (`went_without`), obligations (the book) and charge-offs
+   (`charged_off_by`) are separate records. **Not done**: deferral —
+   builders' work and a day's services are done before the bill, so a town
+   that cannot afford them owes rather than goes without; a policy does not
+   lapse unpaid; the landlord/tenant split; rent, which lives only on a
+   sampled person. Gates in `tests/obligations.rs`, each red under its
+   sabotage. Five years on worlds 7 / 11 / 23: no household, state or
+   insurer shortfall is forgotten any more (it was 9.3 / 4.9 / 4.3e10 a
+   year); households held back 3.9 / 3.2 / 3.1e10 of goods for known bills
+   and ended owing 2.9e9 / 7.3e8 / 3.4e9; **and unemployment rose** — mean
+   11.8 / 9.8 / 11.6% to 14.7 / 11.6 / 13.8%, outside its band by head
+   29 / 26 / 39 months of 61 against 11 / 2 / 10 — because the money now
+   paying for services came out of goods, and the works that make them ran
+   65 / 47 / 42% of rating against 83 / 74 / 81%. That is the circuit not
+   closing, now visible as idle factories rather than unpaid services; it
+   is not fixed by this change and is not to be tuned away.
 3. **Bounded trade credit.** The invoices in `credit.rs`, connected through
    agreed limits, due dates, collection and default, authorised before the
    goods move — not bookkeeping on unlimited compulsory lending.

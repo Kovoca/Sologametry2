@@ -5797,6 +5797,122 @@ the book grows with what is owed rather than with history. Nine sabotages,
 all red — including **both directions** of the on-stop rule, so neither
 deleting it nor reverting to the rule the measurement disproved passes.
 
+### A bill that is not paid is owed (`src/credit.rs`, `src/econ.rs`)
+
+**`Treasury::pay` paid what a payer held and counted the rest on a tally
+wiped every morning.** A town that could not pay its builders had had the
+work done for nothing by the next day; a state that did not fund its share
+of a hospital bill simply did not owe it; and money conserved throughout —
+which is how books can balance while the transactions are wrong. "Recorded
+as owed" meant a shortfall seen for a day.
+
+Every bill a household, a state or an insurer is presented with now goes
+through one door, `Economy::charge`: what the debtor's cash covers is paid
+there and then, and **the rest is an obligation on the book** — a named
+debtor, a named creditor, the bill it arose from (`credit::Origin`: care,
+building work, services, a premium, tax, power, a claim), the amount and
+the day it falls due. Nothing takes one off the book except paying it or
+charging it off: not a new day, not a new bill, not a reload.
+
+- **A retry is not a second bill.** A bill's identity is who owes, who is
+  owed, what for and the day; presented again the same day it pays nothing
+  and owes nothing more. A later payment settles *that* obligation, by its
+  key, as a `Why::Settlement` — a collection is not a second sale, and a
+  day book that counted yesterday's bill paid today as today's would
+  allocate one invoice twice.
+- **Paid includes paid late.** A hospital's reading of what it was paid is
+  taken at the close, arrears included, because a state that could not pay
+  in the morning pays in the evening out of the day's tax.
+- **A charge-off is an event.** A household's debt more than 180 days past
+  due is charged off, dated, recorded by kind, and the book's identity —
+  *billed = collected + owed + charged off* — is asserted every day in debug
+  builds and refused at the door of a save. 180 is **designed, anchored on
+  the nearest regulatory rule and not derived from it**: US bank regulators
+  charge off open-end retail credit at 180 days past due and closed-end at
+  120 *(FFIEC Uniform Retail Credit Classification, Federal Register, 12
+  June 2000)*; a hospital's or builder's bad-debt policy is its own. What a
+  charged-off debt becomes after — sold, pursued, still owed at law — is not
+  modelled.
+- **Net 30 everywhere** is the book's ordinary term applied to every bill,
+  a designed default: a hospital statement, a builder's invoice and a
+  missed premium each have their own practice, none of it read yet.
+
+### No borrowing facility is not no debt
+
+**A state here cannot borrow — nobody lends to one — and it can owe.** It
+pays a hospital only out of cash it holds: paying on yesterday's rate out
+of tonight's tax let a state that had run through its reserves end the day
+overdrawn whenever today's tax came in lower. What it cannot pay it owes,
+and it raises for its arrears with its other spending, up to what it can
+reach.
+
+**Its staff come before its arrears**, which is what states short of
+revenue actually do — pay wages and fall behind with suppliers. The first
+version read affordability against the arrears too, and a weak state that
+had run through its reserves serviced old hospital bills first and funded
+**three per cent of its own posts**. Read against today's spending, it pays
+its staff at what it can afford and its arrears out of what is left.
+
+So the deliberately weak state stays distressed and **shows it**: cash
+never below nought, arrears to its hospitals growing every day (1.3e9 after
+a year in the fixture, about ninety days of their bills). Flat cash beside
+growing arrears is not a balanced budget, and a gate says so.
+
+### A budget is drawn up before the shopping
+
+**A household knows the premium, the builders and what has fallen due are
+coming.** It spent its purse at the counter first and found it gone when
+the bills arrived. Now the counter reads what the town is committed to
+today — the book's dues, the premiums, the services its posts deliver, the
+builders' and the hospital's work already done — and **the room for it is
+made out of the discretionary goods, not the necessities**. A good whose
+spending rises less than income does — an income elasticity under one,
+which is what a necessity is — is bought as before; food, meat and remedies
+are never cut for a bill. Where the goods are not enough, the household
+eats and the rest of the bills are owed, which is the order real budgets
+run in. **Wages not yet paid are not counted**: money not received is not
+money to spend.
+
+Named, not done: **deferral**. A builder's work and a day's services are
+done before the bill, so a town that cannot afford them owes rather than
+goes without — the posts are sized against population, not against what
+people can pay, and nothing authorises the work first. A real policy lapses
+when its premium goes unpaid; here the town stays insured and in arrears.
+And the bill goes to the town's households pooled, where a real one splits
+between landlord and tenant.
+
+**And firms are not yet held to it**: goods between works, carriage, wages
+and a works' own power still fall on the day's tally when a buyer cannot
+pay. That is bounded trade credit, the next piece.
+
+### What it cost, measured, and it is not neutral
+
+Five years, worlds 7 / 11 / 23, against the previous commit:
+
+| | before | after |
+|---|---|---|
+| household bills counted and forgotten, final year | 9.3 / 4.9 / 4.3e10 | **none** |
+| held back from goods for known bills, final year | — | 3.9 / 3.2 / 3.1e10 |
+| owed by households at the end | — | 2.9e9 / 7.3e8 / 3.4e9 |
+| of it overdue | — | 13% / 4% / 48% |
+| charged off | — | none reached the horizon |
+| steel-into-things works, share of rating | 83 / 74 / 81% | **65 / 47 / 42%** |
+| machine works | 73 / 75 / 67% | 59 / 63 / 41% |
+| mean unemployment, monthly readings | 11.8 / 9.8 / 11.6% | **14.7 / 11.6 / 13.8%** |
+| months outside its band, by head | 11 / 2 / 10 of 61 | **29 / 26 / 39** |
+| worst hunger month | 3.3 / 0.2 / 3.0% | 3.4 / 0.2 / 3.1% |
+
+**The money came out of the goods chain**, and that is what the tally had
+been hiding. Households were being given the services, the building work
+and the cover they did not pay for and spending the money on goods; paying
+for them leaves less for goods, the works that make them run under their
+rating, and their hands are idle. What it shows is the circuit this file
+already records as not closing: at these prices on these incomes the
+households cannot buy both what the service posts deliver and what the
+works are rated to make. It showed before as unpaid waiters and shows now
+as idle factories. The states' arrears were nought in all three worlds;
+only the deliberately weak fixture carries any.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

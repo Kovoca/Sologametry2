@@ -276,6 +276,10 @@ fn a_state_on_a_balanced_budget_raises_what_it_spends() {
 /// door.
 ///
 /// Sabotaged back to the budget line, the two read identically.
+///
+/// **Paid includes paid late.** What a state could not pay in the morning it
+/// owes and pays in the evening out of the day's tax, so the reading is what
+/// the hospitals received by the close, arrears included.
 #[test]
 fn what_a_health_service_delivers_is_what_somebody_paid_for() {
     let mut delivered = Vec::new();
@@ -288,10 +292,24 @@ fn what_a_health_service_delivers_is_what_somebody_paid_for() {
             // 35-50% in a developed state.
             gov.capacity = scale_sim::state::Capacity::Weak;
         }
+        // **And has nothing put by.** A state that cannot collect but holds
+        // reserves pays its hospitals out of them — which it now does,
+        // where before the share it had not raised simply vanished — so an
+        // exchequer that is broken has to be empty as well. Its reserves go
+        // to its own people, so no money leaves the country.
+        let n = e.nations()[0];
+        let held = e.treasury.balance(Account::State(n));
+        let day = e.ledger.day;
+        e.treasury.pay(
+            day,
+            Account::State(n),
+            Account::Households(0),
+            held,
+            scale_sim::money::Why::PublicSpending,
+        );
         for _ in 0..60 {
             e.step();
         }
-        let n = e.nations()[0];
         delivered.push((system, e.governments[&n].health_delivered()));
     }
     let tax_funded = delivered[0].1;
@@ -397,11 +415,15 @@ fn a_state_finances_nothing_it_has_not_recorded() {
 
 /// **A hospital's bill is allocated once.** The state, the insurers and the
 /// patient each owe a share of the one invoice, and what each paid plus
-/// what each was recorded as owing must come to the bill — no more, so an
+/// what each now owes on the book must come to the bill — no more, so an
 /// insured patient is not charged the insurer's part again, and no less, so
 /// a share the state did not fund does not quietly vanish. It did vanish:
 /// the state paid on what it could afford and recorded nothing for the
-/// rest.
+/// rest; and then it was recorded on a tally wiped the next morning.
+///
+/// **Owed means on the obligations book**, found by the bill it arose from,
+/// and paid means money that moved today *for today's bill* — a settlement
+/// of an earlier one is not counted against it.
 #[test]
 fn a_hospital_bill_is_allocated_once() {
     use scale_sim::money::Why;
@@ -446,22 +468,25 @@ fn a_hospital_bill_is_allocated_once() {
                     })
                     .map(|t| t.amount)
                     .sum();
-                let owed: f64 = e
-                    .treasury
-                    .unpaid_by
-                    .iter()
-                    .filter(|((from, to, why), _)| {
-                        *to == hospital
-                            && payer(from)
-                            && matches!(*why, "public spending" | "claims" | "purchases")
-                    })
-                    .map(|(_, v)| v)
-                    .sum();
-                unfunded += owed;
+                let today = e.ledger.day;
+                let nation = e.markets[e.ledger.sites[site].market].nation;
+                let town = e.ledger.sites[site].market;
+                let on_the_book = |debtor: Account| -> f64 {
+                    e.obligations
+                        .find(debtor, hospital, scale_sim::credit::Origin::Care, today)
+                        .and_then(|key| e.obligations.get(key))
+                        .map(|inv| inv.amount)
+                        .unwrap_or(0.0)
+                };
+                let by_the_state = on_the_book(Account::State(nation));
+                let owed = by_the_state
+                    + on_the_book(Account::ServiceSector(town))
+                    + on_the_book(Account::Households(town));
+                unfunded += by_the_state;
                 assert!(
                     (paid + owed - bill).abs() <= 1e-6 * bill.max(1.0),
                     "{}, day {day}: a hospital billed {bill:.6e} and was paid {paid:.6e} with \
-                     {owed:.6e} recorded as owed — the shares do not allocate the bill once",
+                     {owed:.6e} owed on the book — the shares do not allocate the bill once",
                     system.name()
                 );
                 checked += 1;

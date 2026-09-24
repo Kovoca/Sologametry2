@@ -3472,6 +3472,27 @@ pub struct Economy {
     /// afresh each day and never saved: it is a record of today's invoice,
     /// not state.
     pub hospital_billed: std::collections::BTreeMap<usize, f64>,
+    /// **Every obligation in the economy that has not been paid or charged
+    /// off.** A bill that could not be paid in full leaves its remainder
+    /// here, owed by a named debtor to a named creditor for a named bill,
+    /// until it is settled or charged off — and it is written to a save,
+    /// because yesterday's debt is not a reading of yesterday.
+    pub obligations: crate::credit::Book,
+    /// **Every bill presented today and what became of it**: paid, owed, or
+    /// both. Transient, cleared each morning — it is what makes a bill
+    /// presented twice in one day a retry rather than a second bill, and
+    /// what the gates read to show every bill has a funding path.
+    pub bills_today: std::collections::BTreeMap<
+        (
+            crate::money::Account,
+            crate::money::Account,
+            crate::credit::Origin,
+        ),
+        crate::credit::Billed,
+    >,
+    /// **What households held back from discretionary shopping today to meet
+    /// bills they knew were coming.** A reading, cleared each morning.
+    pub held_back_today: f64,
     /// **What share of its wage bill each firm has been able to meet**,
     /// smoothed over weeks.
     ///
@@ -3575,6 +3596,22 @@ impl Economy {
         // that looked after `step` returned — which is everything.
         self.treasury.open_the_books();
         self.hospital_billed.clear();
+        self.bills_today.clear();
+        self.held_back_today = 0.0;
+        // **The book is kept before anybody pays anything.** What a
+        // household has owed for more than half a year past its due date is
+        // charged off — an explicit event, dated and recorded by kind, and
+        // not a debt that lapses because a day went by. A state's and an
+        // insurer's obligations are never charged off here: a state in
+        // arrears to its hospitals stays in arrears until it pays.
+        {
+            let day = self.ledger.day;
+            self.obligations
+                .charge_off_overdue(day, |a| matches!(a, crate::money::Account::Households(_)));
+            self.obligations.roll_the_book(day, Self::KEEP_SETTLED_FOR);
+            self.obligations
+                .forget_ended_before(day.saturating_sub(DAYS_PER_YEAR));
+        }
 
         for site in self.ledger.sites.iter_mut() {
             site.ran = 0.0;
@@ -3651,6 +3688,10 @@ impl Economy {
         // The same guarantee the commodity ledger gives for tonnage.
         #[cfg(debug_assertions)]
         self.treasury.assert_conserved();
+        // And for what is owed: every penny billed is collected, still owed,
+        // or charged off.
+        #[cfg(debug_assertions)]
+        self.obligations.assert_conserved();
 
         // **Advanced by whoever owns the clock**, which is the root when
         // there is one. Left here for a standalone economy, because most of
@@ -4593,6 +4634,21 @@ impl Economy {
                     reason,
                 },
             );
+            // **A household's power bill is owed, not forgotten.** Each
+            // station is paid the same share of its bill in cash and is
+            // owed the rest, so the shortfall falls on no one station and
+            // survives the night.
+            if let Account::Households(_) = buyer {
+                self.charge_paying(
+                    buyer,
+                    Account::Firm(site),
+                    take * price,
+                    take * price * rate,
+                    Why::Supply,
+                    crate::credit::Origin::Power,
+                );
+                continue;
+            }
             self.treasury.pay(
                 day,
                 buyer,
@@ -4605,8 +4661,10 @@ impl Economy {
         // Scaling the shares keeps the shortfall off any one station's
         // books; it must not keep it off the country's. Presented once,
         // to a payer now known to be empty, which is what `pay` records
-        // when it can settle nothing.
-        if rate < 1.0 {
+        // when it can settle nothing. A household's is already owed above;
+        // a works' is still a shortfall on the day's tally until firms
+        // settle on terms of their own.
+        if rate < 1.0 && !matches!(buyer, Account::Households(_)) {
             self.treasury.pay(
                 day,
                 buyer,
@@ -5311,8 +5369,51 @@ impl Economy {
     /// out of it: the poorest town never reaches the bottom of its list
     /// and nothing anywhere writes down a share of spending.
     fn what_the_counter_basket_comes_to(&self, m: usize) -> f64 {
+        let cost = self.counter_costs(m);
+        let want: f64 = cost.iter().sum();
+        if want <= 1e-9 {
+            return 1.0;
+        }
+        let purse = self
+            .treasury
+            .balance(crate::money::Account::Households(m))
+            .max(0.0);
+        if purse >= want {
+            return 1.0;
+        }
+        // `sum(k^e * cost)` rises monotonically with `k` from nothing to
+        // the whole basket, so there is exactly one answer and bisection
+        // finds it. Forty steps is the f64's own precision, and the loop
+        // runs once per town per day over four commodities.
+        let spend = |k: f64| -> f64 {
+            Commodity::ALL
+                .iter()
+                .filter_map(|&c| c.till_elasticity().map(|e| (c, e)))
+                .map(|(c, e)| cost[c as usize] * k.powf(e))
+                .sum()
+        };
+        let (mut lo, mut hi) = (0.0f64, 1.0f64);
+        for _ in 0..40 {
+            let mid = 0.5 * (lo + hi);
+            if spend(mid) > purse {
+                hi = mid;
+            } else {
+                lo = mid;
+            }
+        }
+        // **The end of the bracket known to be affordable**, not its middle.
+        // The middle can be over the purse, and with a purse of nothing it is
+        // 2^-41 rather than nought — which an elasticity of a quarter turns
+        // into buying a thousandth of the town's remedies with no money at
+        // all, paid for by nobody.
+        lo
+    }
+
+    /// **What the day's counter basket would cost in full**, commodity by
+    /// commodity: what the town wants at today's price, for everything on
+    /// sale here.
+    fn counter_costs(&self, m: usize) -> [f64; N_COMMODITIES] {
         let mut cost = [0.0f64; N_COMMODITIES];
-        let mut want = 0.0;
         for &c in Commodity::ALL.iter() {
             if c.till_elasticity().is_none() {
                 continue;
@@ -5349,39 +5450,8 @@ impl Economy {
             }
             let v = self.markets[m].daily_household_demand(c) * self.markets[m].price[c as usize];
             cost[c as usize] = v;
-            want += v;
         }
-        if want <= 1e-9 {
-            return 1.0;
-        }
-        let purse = self
-            .treasury
-            .balance(crate::money::Account::Households(m))
-            .max(0.0);
-        if purse >= want {
-            return 1.0;
-        }
-        // `sum(k^e * cost)` rises monotonically with `k` from nothing to
-        // the whole basket, so there is exactly one answer and bisection
-        // finds it. Forty steps is the f64's own precision, and the loop
-        // runs once per town per day over four commodities.
-        let spend = |k: f64| -> f64 {
-            Commodity::ALL
-                .iter()
-                .filter_map(|&c| c.till_elasticity().map(|e| (c, e)))
-                .map(|(c, e)| cost[c as usize] * k.powf(e))
-                .sum()
-        };
-        let (mut lo, mut hi) = (0.0f64, 1.0f64);
-        for _ in 0..40 {
-            let mid = 0.5 * (lo + hi);
-            if spend(mid) > purse {
-                hi = mid;
-            } else {
-                lo = mid;
-            }
-        }
-        0.5 * (lo + hi)
+        cost
     }
 
     /// **The household's share of the grid**, generated for it every day
@@ -5434,6 +5504,9 @@ impl Economy {
     fn consume_households(&mut self) {
         self.power_the_homes();
         let day = self.ledger.day;
+        // **What each town already knows it will be asked for today.** Read
+        // once, before anybody shops, from what the day has already done.
+        let commitments = self.commitments_today();
         for m in 0..self.markets.len() {
             // **What the money runs to**, before a tonne leaves a shelf.
             //
@@ -5443,6 +5516,44 @@ impl Economy {
             // A till does not extend credit, so the basket is costed
             // first and cut to what can be paid for.
             let afford = self.what_the_counter_basket_comes_to(m);
+            // **Known bills come before the discretionary shopping.** A
+            // household that knows the premium, the builders and what has
+            // fallen due are coming today does not spend the money on
+            // goods first and find it gone when the bills arrive — which is
+            // what this did, and every one of those bills then went unpaid.
+            //
+            // **The necessities are not cut for it.** A good whose spending
+            // rises less than income does — an income elasticity under one,
+            // which is what a necessity *is* — is bought as before; the
+            // room for the bills is made out of the goods whose spending
+            // rises faster than income. Where even that is not enough the
+            // household eats and the rest of the bills are owed, which is
+            // the order real budgets run in.
+            let goods_scale = {
+                let costs = self.counter_costs(m);
+                let (mut necessary, mut discretionary) = (0.0, 0.0);
+                for &c in Commodity::ALL.iter() {
+                    if let Some(e) = c.till_elasticity() {
+                        let v = costs[c as usize] * afford.powf(e);
+                        if e < 1.0 {
+                            necessary += v;
+                        } else {
+                            discretionary += v;
+                        }
+                    }
+                }
+                let purse = self
+                    .treasury
+                    .balance(crate::money::Account::Households(m))
+                    .max(0.0);
+                let room = (purse - necessary - commitments[m]).max(0.0);
+                if discretionary > room + 1e-12 {
+                    self.held_back_today += discretionary - room;
+                    room / discretionary
+                } else {
+                    1.0
+                }
+            };
             for &c in Commodity::ALL.iter() {
                 let mut want = self.markets[m].daily_household_demand(c);
                 if want <= 0.0 {
@@ -5458,7 +5569,10 @@ impl Economy {
                     continue;
                 }
                 if let Some(e) = c.till_elasticity() {
-                    let buying = want * afford.powf(e);
+                    let mut buying = want * afford.powf(e);
+                    if e >= 1.0 {
+                        buying *= goods_scale;
+                    }
                     self.went_without[c as usize] += want - buying;
                     want = buying;
                     if want <= 1e-12 {
@@ -5474,7 +5588,20 @@ impl Economy {
                     if s.market != m || s.kind != SiteKind::Shop {
                         continue;
                     }
-                    let take = self.ledger.stock(site, c).min(left);
+                    let mut take = self.ledger.stock(site, c).min(left);
+                    // **A till takes cash, to the penny.** The basket was
+                    // costed to fit the purse; rounding across several
+                    // shelves can still leave it a hair over, and whatever
+                    // the purse cannot cover stays on the shelf rather than
+                    // leaving the shop unpaid.
+                    let price = self.markets[m].price[c as usize];
+                    if price > 0.0 {
+                        let cash = self
+                            .treasury
+                            .balance(crate::money::Account::Households(m))
+                            .max(0.0);
+                        take = take.min(cash / price);
+                    }
                     if take <= 0.0 {
                         continue;
                     }
@@ -5743,7 +5870,23 @@ impl Economy {
                     bill += self.hospital_bill(site) * public_share;
                 }
             }
-            if bill <= 0.0 {
+            // **And what it already owes.** A state in arrears to its
+            // hospitals raises for them too, up to what it can reach. No
+            // state here can borrow — nobody lends to one — so arrears are
+            // the only debt a state can have, and they are a debt: on the
+            // book until paid.
+            //
+            // **Earlier days' arrears, not today's twice.** The share of
+            // today's hospital bills it did not fund is already on the book
+            // and already inside the hospital line above.
+            let owed_today: f64 = self
+                .bills_today
+                .iter()
+                .filter(|((debtor, _, _), _)| *debtor == Account::State(nation))
+                .map(|(_, b)| b.owed)
+                .sum();
+            let arrears = (self.obligations.owed_by(Account::State(nation)) - owed_today).max(0.0);
+            if bill + arrears <= 0.0 {
                 continue;
             }
 
@@ -5756,23 +5899,38 @@ impl Economy {
             }
 
             // What it needs, or what it can reach, whichever is less.
-            let wanted = bill.min(earned * ceiling);
+            let wanted = (bill + arrears).min(earned * ceiling);
             let rate = wanted / earned;
             let mut collected = 0.0;
             for &m in mine.iter() {
-                collected += self.treasury.pay(
-                    day,
-                    Account::Households(m),
-                    Account::State(nation),
-                    earned_in[m] * rate,
-                    Why::Tax,
-                );
+                collected += self
+                    .charge(
+                        Account::Households(m),
+                        Account::State(nation),
+                        earned_in[m] * rate,
+                        Why::Tax,
+                        crate::credit::Origin::Tax,
+                    )
+                    .paid;
             }
 
             // And pay its own people out of it. A teacher is a job somebody
             // holds, and a state that could not collect enough employs
             // fewer of them rather than paying them less.
-            let afford = (collected / bill).min(1.0);
+            //
+            // **Its staff and today's bills come before its arrears.** What
+            // a state short of revenue actually does is pay its wages and
+            // fall behind with its suppliers — domestic expenditure arrears
+            // are how weak states finance themselves — so what it affords
+            // is read against today's spending, and the arrears are paid
+            // out of whatever is left. Read against the arrears as well, a
+            // state that had run through its reserves serviced old hospital
+            // bills first and funded three per cent of its own posts.
+            let afford = if bill > 0.0 {
+                (collected / bill).min(1.0)
+            } else {
+                1.0
+            };
             // Remembered for tomorrow, when the hospitals are paid before
             // any of this has happened.
             self.state_afford.insert(nation, afford);
@@ -5786,6 +5944,60 @@ impl Economy {
                     Why::PublicSpending,
                 );
             }
+            // **Then its creditors, oldest first, out of what is left above
+            // nought** — which is its own share of the day's tax, since the
+            // arrears were part of what it raised for. A state that could
+            // reach all it needed clears them; one at the edge of what it
+            // can reach pays them down at the same rate it pays its staff,
+            // and the rest stays owed and visible.
+            self.settle_what_is_due(Account::State(nation), f64::INFINITY, true);
+        }
+        self.reckon_what_health_was_paid();
+    }
+
+    /// **What a health service delivers is what somebody paid for** — the
+    /// money its hospitals actually received today for care, against what
+    /// they billed today. Read at the close, because a state that could not
+    /// pay this morning pays this evening out of the day's tax: counting
+    /// only the morning would say a state in arrears paid nothing when it
+    /// paid a day late, and counting the bill would say it paid what it
+    /// owes.
+    fn reckon_what_health_was_paid(&mut self) {
+        use crate::money::{Account, Why};
+        let mut billed: std::collections::BTreeMap<u16, f64> = Default::default();
+        for (&site, &bill) in self.hospital_billed.iter() {
+            let nation = self.markets[self.ledger.sites[site].market].nation;
+            *billed.entry(nation).or_default() += bill;
+        }
+        let mut received: std::collections::BTreeMap<u16, f64> = Default::default();
+        for t in self.treasury.today.iter() {
+            let Account::Firm(site) = t.to else {
+                continue;
+            };
+            if self.ledger.sites[site].kind != SiteKind::Hospital {
+                continue;
+            }
+            let payer = matches!(
+                t.from,
+                Account::State(_) | Account::ServiceSector(_) | Account::Households(_)
+            );
+            let for_care = matches!(
+                t.why,
+                Why::PublicSpending | Why::Claim | Why::Purchase | Why::Settlement
+            );
+            if payer && for_care {
+                let nation = self.markets[self.ledger.sites[site].market].nation;
+                *received.entry(nation).or_default() += t.amount;
+            }
+        }
+        for (n, gov) in self.governments.iter_mut() {
+            let w = billed.get(n).copied().unwrap_or(0.0);
+            let s = received.get(n).copied().unwrap_or(0.0);
+            gov.health_paid = if w > 1e-9 {
+                (s / w).clamp(0.0, 1.0)
+            } else {
+                1.0
+            };
         }
     }
 
@@ -5804,11 +6016,6 @@ impl Economy {
     /// sector pooled per town because it has no premises here.
     fn run_the_service_sector(&mut self) {
         use crate::money::{Account, Why};
-        /// A service business keeps a margin over its wage bill: rent,
-        /// equipment, and the owner's living. Real service-sector gross
-        /// margins run 15-40%; hospitality is at the bottom of that and
-        /// professional work at the top.
-        const MARGIN: f64 = 1.25;
 
         let Some(svc) = self.services.as_ref() else {
             return;
@@ -5833,37 +6040,42 @@ impl Economy {
             // for them. Nothing is netted off — money in and money out are
             // two flows, and an insurer that only ever recorded the
             // difference would be a discount rather than a firm.
+            // **A premium not paid is owed**, for the cover already given.
+            // What is not modelled is the cover lapsing: a real policy that
+            // goes unpaid past its grace period ends, and here the town
+            // stays insured and in arrears. Named.
             let health = self.health_premiums_a_day(m);
             if health > 0.0 {
-                self.treasury.pay(
-                    day,
+                self.charge(
                     Account::Households(m),
                     Account::ServiceSector(m),
                     health,
                     Why::Premium,
+                    crate::credit::Origin::HealthPremium,
                 );
             }
 
             // --- The insurance book ---------------------------------------
             let premiums = self.premiums_a_day(m);
             if premiums > 0.0 {
-                self.treasury.pay(
-                    day,
+                self.charge(
                     Account::Households(m),
                     Account::ServiceSector(m),
                     premiums,
                     Why::Premium,
+                    crate::credit::Origin::VehiclePremium,
                 );
                 // **And what it is for goes back out.** The share of a
                 // premium that returns as claims is the loss ratio, and
                 // ours is derived from the frequencies and severities
-                // rather than chosen.
-                self.treasury.pay(
-                    day,
+                // rather than chosen. A claim the insurer cannot meet today
+                // is owed to the people who made it.
+                self.charge(
                     Account::ServiceSector(m),
                     Account::Households(m),
                     premiums * crate::person::CLAIMS_SHARE_OF_PREMIUM,
                     Why::Claim,
+                    crate::credit::Origin::Claim,
                 );
             }
             if cover[m] > 0.0 {
@@ -5881,13 +6093,21 @@ impl Economy {
                 continue;
             }
             let wages = posts[m] * self.day_rate_here(m);
-            // Bought by the households of the town it stands in.
-            self.treasury.pay(
-                day,
+            // **Bought by the households of the town it stands in**, and
+            // owed where it is not paid: the posts did the day's work.
+            //
+            // **What is not modelled is buying less.** The posts are sized
+            // against population, so the sector delivers the same day's
+            // services whatever the town can pay, and a town short of money
+            // owes for them rather than going without. Demand for services
+            // that follows what people can afford needs service employment
+            // that follows its revenue — deferred service, named.
+            self.charge(
                 Account::Households(m),
                 Account::ServiceSector(m),
-                wages * MARGIN,
+                wages * Self::SERVICES_MARGIN,
                 Why::Purchase,
+                crate::credit::Origin::Services,
             );
             // Paid to the people who did the work.
             self.treasury.pay(
@@ -5910,6 +6130,12 @@ impl Economy {
             }
         }
     }
+
+    /// **What the service sector charges over its wage bill**: rent,
+    /// equipment, and the owner's living. Real service-sector gross margins
+    /// run 15-40%; hospitality is at the bottom of that and professional
+    /// work at the top.
+    pub const SERVICES_MARGIN: f64 = 1.25;
 
     /// **What a builder keeps of what it charges**: the operating margin
     /// of US engineering and construction firms, **6.49%** of revenue
@@ -6010,6 +6236,179 @@ impl Economy {
         )
     }
 
+    /// **Days a bill left unpaid has before it falls due**: net 30, the
+    /// ordinary term the credit book already uses between firms, applied to
+    /// every bill here. A designed default rather than a measured one — a
+    /// hospital statement, a builder's invoice and a missed premium each
+    /// have their own real practice, and none of them is read yet.
+    pub const DAYS_TO_PAY: u64 = crate::credit::Terms::NET_30;
+
+    /// **How long a paid-off obligation stays on the book** before it is
+    /// rolled away, so a late payment can still be traced to its bill. The
+    /// same ninety days a delivered consignment's record is kept.
+    pub const KEEP_SETTLED_FOR: u64 = 90;
+
+    /// **Present a bill**: what the debtor's cash covers is paid there and
+    /// then, and whatever it does not cover is owed — an obligation on the
+    /// book, due in `DAYS_TO_PAY`, that stays there until it is paid or
+    /// charged off.
+    ///
+    /// This is what `Treasury::pay` could not do. It pays what the payer
+    /// holds and counts the rest on a tally that is wiped the next morning,
+    /// so a household that could not pay its builder had simply had the
+    /// work done for nothing by the following day.
+    ///
+    /// **Presented twice in one day, a bill is a retry and does nothing the
+    /// second time** — no second payment and no second debt.
+    pub fn charge(
+        &mut self,
+        debtor: crate::money::Account,
+        creditor: crate::money::Account,
+        amount: f64,
+        why: crate::money::Why,
+        origin: crate::credit::Origin,
+    ) -> crate::credit::Billed {
+        let cash = self.treasury.balance(debtor).max(0.0);
+        self.charge_paying(debtor, creditor, amount, cash, why, origin)
+    }
+
+    /// **Present a bill, paying no more than `pay_now` of it now.** For a
+    /// payer that decides what share it funds today — a state paying a
+    /// hospital on what it could raise — rather than paying whatever its
+    /// balance happens to hold. The rest is owed exactly as in `charge`.
+    pub fn charge_paying(
+        &mut self,
+        debtor: crate::money::Account,
+        creditor: crate::money::Account,
+        amount: f64,
+        pay_now: f64,
+        why: crate::money::Why,
+        origin: crate::credit::Origin,
+    ) -> crate::credit::Billed {
+        if amount <= 1e-12 || debtor == creditor {
+            return crate::credit::Billed::default();
+        }
+        let id = (debtor, creditor, origin);
+        if let Some(&done) = self.bills_today.get(&id) {
+            // A retry presents the *same* bill. One of a different amount
+            // under the same name is two bills that were given one
+            // identity, and ignoring it would lose a bill silently.
+            debug_assert!(
+                (done.amount - amount).abs() <= 1e-9 * amount.max(1.0),
+                "two different bills for {} from {:?} to {:?} on one day: {} and {}",
+                origin.name(),
+                debtor,
+                creditor,
+                done.amount,
+                amount
+            );
+            return done;
+        }
+        let day = self.ledger.day;
+        let paid = self
+            .treasury
+            .pay(day, debtor, creditor, pay_now.clamp(0.0, amount), why);
+        let owed = (amount - paid).max(0.0);
+        if owed > 1e-9 {
+            self.obligations
+                .bill(day, debtor, creditor, owed, Self::DAYS_TO_PAY, why, origin);
+        }
+        let billed = crate::credit::Billed { amount, paid, owed };
+        self.bills_today.insert(id, billed);
+        billed
+    }
+
+    /// **Pay off what has fallen due**, oldest due date first, out of cash
+    /// above nought and never more than `budget`. With `early`, obligations
+    /// not yet due are paid too, once the due ones are clear. Returns what
+    /// was paid.
+    ///
+    /// Each payment reduces the obligation it is for — **the same one**,
+    /// by its key — and is recorded as a settlement rather than as a sale,
+    /// so a collection is never mistaken for a second bill.
+    pub fn settle_what_is_due(
+        &mut self,
+        debtor: crate::money::Account,
+        budget: f64,
+        early: bool,
+    ) -> f64 {
+        let day = self.ledger.day;
+        let mut left = budget.min(self.treasury.balance(debtor).max(0.0));
+        let mut paid = 0.0;
+        for key in self.obligations.due_from(debtor) {
+            if left <= 1e-12 {
+                break;
+            }
+            let Some(inv) = self.obligations.get(key) else {
+                continue;
+            };
+            if !early && inv.due > day {
+                break;
+            }
+            let creditor = inv.creditor;
+            let x = inv.outstanding().min(left);
+            let moved = self
+                .treasury
+                .pay(day, debtor, creditor, x, crate::money::Why::Settlement);
+            self.obligations.settle(key, moved);
+            left -= moved;
+            paid += moved;
+        }
+        paid
+    }
+
+    /// **What each town's households know they will be asked for today**,
+    /// before they go to the shops: what has fallen due on the book, the
+    /// premiums, the services the town's posts deliver, the builders' work
+    /// and the patient's share at the hospital door.
+    ///
+    /// Forecast from what the day has already told them. The builders and
+    /// the hospital have done today's work by the time anybody shops, so
+    /// their bills are read off what that work used — everything but the
+    /// carriage, which is not known until the lorries have been. **What
+    /// the day's pay will bring is not counted**: wages arrive in the
+    /// evening, and money not yet received is not money to spend.
+    pub fn commitments_today(&self) -> Vec<f64> {
+        use crate::money::Account;
+        let day = self.ledger.day;
+        let mut due: Vec<f64> = (0..self.markets.len())
+            .map(|m| {
+                let mut c = self.obligations.due_by(Account::Households(m), day);
+                c += self.health_premiums_a_day(m) + self.premiums_a_day(m);
+                if let Some(svc) = self.services.as_ref() {
+                    let posts =
+                        svc.total_in(m) - svc.posts_in(m, crate::services::Sector::Insurance);
+                    if posts > 0.0 {
+                        c += posts * self.day_rate_here(m) * Self::SERVICES_MARGIN;
+                    }
+                }
+                c
+            })
+            .collect();
+        for site in 0..self.ledger.sites.len() {
+            let s = &self.ledger.sites[site];
+            let m = s.market;
+            match s.kind {
+                SiteKind::Builders => {
+                    due[m] += Self::priced_over(
+                        self.operating_costs_today(site),
+                        Self::BUILDERS_OPERATING_MARGIN,
+                    );
+                }
+                SiteKind::Hospital => {
+                    let pocket = self
+                        .governments
+                        .get(&self.markets[m].nation)
+                        .map(|g| g.health.shares().2)
+                        .unwrap_or(0.0);
+                    due[m] += self.hospital_bill(site) * pocket;
+                }
+                _ => {}
+            }
+        }
+        due
+    }
+
     /// **Somebody pays the builders.**
     ///
     /// The building trade consumes cement, steel and timber and produces
@@ -6021,7 +6420,6 @@ impl Economy {
     /// somebody's premises and construction is bought out of income.
     fn pay_for_services(&mut self) {
         use crate::money::{Account, Why};
-        let day = self.ledger.day;
         // **A hospital is a firm the state pays.** It produces nothing
         // that can be shipped and sells to nobody, which is exactly what
         // makes it a service — and it left the one site in the country
@@ -6038,8 +6436,14 @@ impl Economy {
         // out of tax meant every nation on every planet ran the British
         // arrangement, so an illness could not cost anybody a penny and a
         // country could not contain an uninsured man.
-        let mut wanted: std::collections::BTreeMap<u16, f64> = Default::default();
-        let mut settled: std::collections::BTreeMap<u16, f64> = Default::default();
+        // **What has fallen due is paid before anything new is billed**,
+        // oldest first: a town's households and its insurers settle what
+        // they owe out of what they hold. A state settles in the evening,
+        // out of the day's tax, in `tax_and_spend`.
+        for m in 0..self.markets.len() {
+            self.settle_what_is_due(Account::Households(m), f64::INFINITY, false);
+            self.settle_what_is_due(Account::ServiceSector(m), f64::INFINITY, false);
+        }
         for site in 0..self.ledger.sites.len() {
             if self.ledger.sites[site].kind != SiteKind::Hospital {
                 continue;
@@ -6058,58 +6462,52 @@ impl Economy {
                 .get(&nation)
                 .map(|g| g.health.shares())
                 .unwrap_or((1.0, 0.0, 0.0));
-            *wanted.entry(nation).or_default() += bill;
 
             let funded = self.state_affords(nation);
-            let mut paid = self.treasury.pay(
-                day,
+            // **The state pays the share it funded, and owes the rest.** It
+            // pays the hospital on what it could raise yesterday; the rest of
+            // its share was once neither paid nor recorded anywhere, then a
+            // shortfall on a tally wiped the next morning. It is a liability
+            // now — owed to that hospital until the state pays it — so a
+            // state in arrears shows it, and flat cash beside growing arrears
+            // cannot pass for a balanced budget.
+            //
+            // **Out of what it holds, and no more.** Paying on what it raised
+            // yesterday out of money it would raise tonight let a state that
+            // had run through its reserves end the day overdrawn whenever
+            // today's tax came in under yesterday's — spending money nobody
+            // lent it. What it cannot pay this morning it owes, and pays
+            // this evening out of the day's tax, after its staff.
+            let holds = self.treasury.balance(Account::State(nation)).max(0.0);
+            self.charge_paying(
                 Account::State(nation),
                 Account::Firm(site),
-                bill * public * funded,
+                bill * public,
+                (bill * public * funded).min(holds),
                 Why::PublicSpending,
-            );
-            // **What the state did not fund is still owed on the bill.** It
-            // pays the hospital on what it could afford yesterday, and the
-            // rest of its share was neither paid nor recorded anywhere — so
-            // the three payers' portions did not add up to the invoice they
-            // were allocating. It is a shortfall, recorded as one.
-            self.treasury.record_unpaid(
-                Account::State(nation),
-                Account::Firm(site),
-                bill * public * (1.0 - funded).max(0.0),
-                Why::PublicSpending,
+                crate::credit::Origin::Care,
             );
             // **What the insurers carry**, out of premiums the same
             // households have been paying all along. A claim rather than
             // a purchase: the money went in against a promise and this is
             // the promise being called.
-            paid += self.treasury.pay(
-                day,
+            self.charge(
                 Account::ServiceSector(m),
                 Account::Firm(site),
                 bill * insured,
                 Why::Claim,
+                crate::credit::Origin::Care,
             );
             // **And what is settled at the door**, which is the share that
-            // can ruin somebody.
-            paid += self.treasury.pay(
-                day,
+            // can ruin somebody — and when it cannot be paid it is medical
+            // debt, not care that was quietly free.
+            self.charge(
                 Account::Households(m),
                 Account::Firm(site),
                 bill * pocket,
                 Why::Purchase,
+                crate::credit::Origin::Care,
             );
-            *settled.entry(nation).or_default() += paid;
-        }
-        // **What a health service delivers is what somebody paid for.**
-        for (n, gov) in self.governments.iter_mut() {
-            let w = wanted.get(n).copied().unwrap_or(0.0);
-            let s = settled.get(n).copied().unwrap_or(0.0);
-            gov.health_paid = if w > 1e-9 {
-                (s / w).clamp(0.0, 1.0)
-            } else {
-                1.0
-            };
         }
 
         for site in 0..self.ledger.sites.len() {
@@ -6132,12 +6530,22 @@ impl Economy {
                 self.operating_costs_today(site),
                 Self::BUILDERS_OPERATING_MARGIN,
             );
-            self.treasury.pay(
-                day,
+            // **Work done is owed if it is not paid for.** The builders have
+            // already laid the cement; a town that cannot pay the bill today
+            // owes it, rather than having had the work for nothing.
+            //
+            // **What is not modelled is deferral**: a town that cannot
+            // afford the work does not yet put it off, because the work is
+            // done before the bill and nothing authorises it first. And the
+            // bill goes to the town's households pooled, where a real one
+            // would split between landlords and tenants and between repair
+            // and new building. Both are named, not implied.
+            self.charge(
                 Account::Households(m),
                 Account::Firm(site),
                 due,
                 Why::Purchase,
+                crate::credit::Origin::Upkeep,
             );
         }
     }

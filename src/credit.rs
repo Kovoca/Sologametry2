@@ -100,9 +100,22 @@
 //!
 //! What is kept is the record, the terms, the decision and the gates,
 //! because every one of them is right and none of them is what failed.
+//!
+//! ## Bills are on the book; trade between firms is not yet
+//!
+//! **The book now carries every bill a household, a state or an insurer
+//! could not pay** — `Economy::charge` pays what cash covers and owes the
+//! rest, under a bill's own identity (`Origin` and the day), so a retry is
+//! not a second debt, a later payment settles *that* obligation, a save
+//! brings it back, and nothing ends it but paying it or charging it off.
+//! Firm-to-firm goods, carriage, wages and a works' own power still fall on
+//! the treasury's day tally when a buyer cannot pay: connecting them is
+//! bounded trade credit, authorised before the goods move, which is the next
+//! piece and not this one.
 
 use crate::money::{Account, Why};
 use crate::registry::{Key, Registry};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// **What a supplier will let a customer owe, and for how long.**
 ///
@@ -138,6 +151,99 @@ impl Terms {
     }
 }
 
+/// **What an obligation is for**: the kind of bill it arose from.
+///
+/// The same debtor can owe the same creditor for different things on the
+/// same day — a town owes its service sector a health premium, a motor
+/// premium and the day's services — and they are different bills, due
+/// separately and collected separately, so the kind is part of a bill's
+/// identity rather than a label on it.
+///
+/// **The codes are frozen.** A code is a name on disk; moving one
+/// reinterprets every saved obligation. Appended, never inserted.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Origin {
+    /// Goods from one firm to another.
+    Supply,
+    /// A hospital's bill, to whichever of the state, the insurers and the
+    /// patient carries each share of it.
+    Care,
+    /// A builder's bill for the work done on a town's buildings.
+    Upkeep,
+    /// The private services a town's people bought: the kitchens, the
+    /// offices, the recreation.
+    Services,
+    /// A health insurance premium.
+    HealthPremium,
+    /// A motor insurance premium.
+    VehiclePremium,
+    /// Tax owed on the day's pay.
+    Tax,
+    /// A household's power bill.
+    Power,
+    /// A claim an insurer owes on cover it sold.
+    Claim,
+}
+
+impl Origin {
+    pub const ALL: [Origin; 9] = [
+        Origin::Supply,
+        Origin::Care,
+        Origin::Upkeep,
+        Origin::Services,
+        Origin::HealthPremium,
+        Origin::VehiclePremium,
+        Origin::Tax,
+        Origin::Power,
+        Origin::Claim,
+    ];
+
+    /// Its name on disk. Exhaustive, so a new kind of bill cannot compile
+    /// until somebody has decided what it is called in a save.
+    pub fn code(self) -> u8 {
+        match self {
+            Origin::Supply => 1,
+            Origin::Care => 2,
+            Origin::Upkeep => 3,
+            Origin::Services => 4,
+            Origin::HealthPremium => 5,
+            Origin::VehiclePremium => 6,
+            Origin::Tax => 7,
+            Origin::Power => 8,
+            Origin::Claim => 9,
+        }
+    }
+
+    pub fn from_code(code: u8) -> Option<Origin> {
+        Origin::ALL.iter().copied().find(|o| o.code() == code)
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Origin::Supply => "supply",
+            Origin::Care => "care",
+            Origin::Upkeep => "building work",
+            Origin::Services => "services",
+            Origin::HealthPremium => "health premium",
+            Origin::VehiclePremium => "motor premium",
+            Origin::Tax => "tax",
+            Origin::Power => "power",
+            Origin::Claim => "claims",
+        }
+    }
+}
+
+/// **What became of one bill when it was presented**: what it came to,
+/// what was paid there and then, and what was left owing. `paid + owed`
+/// is `amount`, always — which is the whole of what "every bill has a
+/// funding path" means, and the thing the gates read.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
+pub struct Billed {
+    pub amount: f64,
+    pub paid: f64,
+    pub owed: f64,
+}
+
 /// One invoice: a delivery that was not paid for in cash, and the terms
 /// it was supplied on.
 ///
@@ -165,6 +271,13 @@ pub struct Invoice {
     pub doubtful: bool,
     /// What the goods were, so a collection can be told from a sale.
     pub what: Why,
+    /// **What bill it arose from.**
+    pub origin: Origin,
+    /// Raised through `bill`, which means it is one particular bill: the
+    /// same debtor, creditor, kind and day presented again is a retry and
+    /// adds nothing. An invoice raised through `raise` is anonymous and
+    /// two of them can stand side by side.
+    pub once: bool,
 }
 
 impl Invoice {
@@ -234,6 +347,12 @@ pub enum Refusal {
 /// name across a save and must never be confused with the delivery it
 /// came from or the firm that owes it — both of which are `usize` and
 /// would both compile.
+///
+/// **An obligation ends in one of two ways, and both are recorded**: it is
+/// paid, or it is charged off. Nothing else takes one off the book — not
+/// a new day, not a new bill, not a debtor running out of money — which is
+/// what distinguishes a debt from a shortfall on a counter that is cleared
+/// every morning.
 #[derive(Clone, Debug, Default)]
 pub struct Book {
     invoices: Registry<Invoice>,
@@ -245,6 +364,17 @@ pub struct Book {
     /// second sale.
     pub billed: f64,
     pub collected: f64,
+    /// **What has ever been charged off**, and by kind of bill. A charge-off
+    /// is an accounting event with a date and an amount, not a debt that
+    /// quietly stopped being mentioned.
+    pub charged_off: f64,
+    pub charged_off_by: BTreeMap<Origin, f64>,
+    /// Derived, and rebuilt on load: which live invoice each bill is, so a
+    /// retry finds it.
+    bills: BTreeMap<(Account, Account, Origin, u64), Key<Invoice>>,
+    /// Derived, and rebuilt on load: each debtor's live invoices, so asking
+    /// what one town owes does not walk every invoice in the world.
+    by_debtor: BTreeMap<Account, BTreeSet<Key<Invoice>>>,
 }
 
 impl Book {
@@ -252,7 +382,33 @@ impl Book {
         Book::default()
     }
 
-    /// **Raise an invoice**, which is the only way one comes into being.
+    fn keep(&mut self, inv: Invoice) -> Key<Invoice> {
+        let (debtor, creditor, origin, raised, once) =
+            (inv.debtor, inv.creditor, inv.origin, inv.raised, inv.once);
+        let key = self.invoices.add(inv);
+        self.by_debtor.entry(debtor).or_default().insert(key);
+        if once {
+            self.bills.insert((debtor, creditor, origin, raised), key);
+        }
+        key
+    }
+
+    fn forget(&mut self, key: Key<Invoice>, day: u64, how: &str) -> Option<Invoice> {
+        let inv = self.invoices.end(key, day, how)?;
+        if let Some(set) = self.by_debtor.get_mut(&inv.debtor) {
+            set.remove(&key);
+            if set.is_empty() {
+                self.by_debtor.remove(&inv.debtor);
+            }
+        }
+        if inv.once {
+            self.bills
+                .remove(&(inv.debtor, inv.creditor, inv.origin, inv.raised));
+        }
+        Some(inv)
+    }
+
+    /// **Raise an invoice**, which is one way one comes into being.
     pub fn raise(
         &mut self,
         day: u64,
@@ -266,7 +422,7 @@ impl Book {
             return None;
         }
         self.billed += amount;
-        Some(self.invoices.add(Invoice {
+        Some(self.keep(Invoice {
             debtor,
             creditor,
             raised: day,
@@ -275,7 +431,60 @@ impl Book {
             settled: 0.0,
             doubtful: false,
             what,
+            origin: Origin::Supply,
+            once: false,
         }))
+    }
+
+    /// **Owe what was not paid on one particular bill.**
+    ///
+    /// The bill is who owes, who is owed, what it was for and the day it
+    /// arose. **Presented again, it adds nothing** and hands back the
+    /// obligation already on the book — so a retried payment, a phase run
+    /// twice, or a day replayed after a reload cannot turn one debt into
+    /// two. A later payment reduces this obligation through `settle`; it
+    /// never raises another.
+    #[allow(clippy::too_many_arguments)]
+    pub fn bill(
+        &mut self,
+        day: u64,
+        debtor: Account,
+        creditor: Account,
+        amount: f64,
+        days_to_pay: u64,
+        what: Why,
+        origin: Origin,
+    ) -> Option<Key<Invoice>> {
+        if let Some(&k) = self.bills.get(&(debtor, creditor, origin, day)) {
+            return Some(k);
+        }
+        if amount <= 1e-9 || debtor == creditor {
+            return None;
+        }
+        self.billed += amount;
+        Some(self.keep(Invoice {
+            debtor,
+            creditor,
+            raised: day,
+            due: day + days_to_pay,
+            amount,
+            settled: 0.0,
+            doubtful: false,
+            what,
+            origin,
+            once: true,
+        }))
+    }
+
+    /// The obligation already on the book for one bill, if there is one.
+    pub fn find(
+        &self,
+        debtor: Account,
+        creditor: Account,
+        origin: Origin,
+        day: u64,
+    ) -> Option<Key<Invoice>> {
+        self.bills.get(&(debtor, creditor, origin, day)).copied()
     }
 
     /// **Pay something against an invoice**, returning what was actually
@@ -302,8 +511,61 @@ impl Book {
         }
     }
 
+    /// **Days past due before an unpaid household bill is charged off.**
+    ///
+    /// **A designed policy, anchored on the nearest regulatory rule and not
+    /// derived from it.** US bank regulators classify open-end retail credit
+    /// that is 180 days past due as a loss to be charged off, and
+    /// closed-end at 120 *(FFIEC, Uniform Retail Credit Classification and
+    /// Account Management Policy, Federal Register, 12 June 2000)*. A
+    /// hospital's or a builder's bad-debt policy is its own and nobody
+    /// regulates it; the open-end figure is used because a household's
+    /// running bills are more like a revolving account than a loan.
+    pub const CHARGE_OFF_AFTER: u64 = 180;
+
+    /// **Charge one obligation off**: the creditor recognises that it will
+    /// not be paid, and it leaves the book with a dated record of what
+    /// was lost. Returns what was charged off.
+    ///
+    /// Not a forgiveness the debtor asked for and not a debt that quietly
+    /// lapsed — an event, recorded by kind, whose total the gates hold
+    /// against what was billed and collected. **What a charged-off debt
+    /// becomes afterwards** — sold to a collector, pursued in court, still
+    /// owed at law — is not modelled, and is named rather than implied.
+    pub fn charge_off(&mut self, key: Key<Invoice>, day: u64) -> f64 {
+        let Some(inv) = self.forget(key, day, "charged off") else {
+            return 0.0;
+        };
+        let lost = inv.outstanding();
+        self.charged_off += lost;
+        *self.charged_off_by.entry(inv.origin).or_default() += lost;
+        lost
+    }
+
+    /// **Charge off whatever a policy says has gone too long**: every
+    /// obligation from a debtor `eligible` accepts that is more than
+    /// `CHARGE_OFF_AFTER` days past its due date. Returns what was charged
+    /// off today.
+    pub fn charge_off_overdue(&mut self, day: u64, eligible: impl Fn(Account) -> bool) -> f64 {
+        let stale: Vec<Key<Invoice>> = self
+            .invoices
+            .iter()
+            .filter(|(_, i)| {
+                eligible(i.debtor) && !i.settled_in_full() && day > i.due + Self::CHARGE_OFF_AFTER
+            })
+            .map(|(k, _)| k)
+            .collect();
+        stale.into_iter().map(|k| self.charge_off(k, day)).sum()
+    }
+
     pub fn get(&self, key: Key<Invoice>) -> Option<&Invoice> {
         self.invoices.get(key)
+    }
+
+    /// What became of an obligation, including one that has left the book
+    /// — paid off and rolled away, or charged off.
+    pub fn look(&self, key: Key<Invoice>) -> crate::registry::Lookup<'_, Invoice> {
+        self.invoices.look(key)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (Key<Invoice>, &Invoice)> {
@@ -318,13 +580,17 @@ impl Book {
         self.invoices.is_empty()
     }
 
+    fn of(&self, who: Account) -> impl Iterator<Item = (Key<Invoice>, &Invoice)> + '_ {
+        self.by_debtor
+            .get(&who)
+            .into_iter()
+            .flat_map(|set| set.iter())
+            .filter_map(move |&k| self.invoices.get(k).map(|i| (k, i)))
+    }
+
     /// What this account owes, over every invoice against it.
     pub fn owed_by(&self, who: Account) -> f64 {
-        self.invoices
-            .iter()
-            .filter(|(_, i)| i.debtor == who)
-            .map(|(_, i)| i.outstanding())
-            .sum()
+        self.of(who).map(|(_, i)| i.outstanding()).sum()
     }
 
     /// What this account is owed.
@@ -348,9 +614,7 @@ impl Book {
     /// trading with it. **This is the figure that restricts supply** —
     /// `overdue_by` is the ordinary lateness that does not.
     pub fn seriously_overdue(&self, who: Account, day: u64) -> f64 {
-        self.invoices
-            .iter()
-            .filter(|(_, i)| i.debtor == who)
+        self.of(who)
             .map(|(_, i)| {
                 if day > i.due + Self::ON_STOP_AFTER {
                     i.outstanding()
@@ -364,19 +628,23 @@ impl Book {
     /// What this account owes **past its due date**, which is ordinary
     /// lateness and is reported rather than acted on.
     pub fn overdue_by(&self, who: Account, day: u64) -> f64 {
-        self.invoices
-            .iter()
-            .filter(|(_, i)| i.debtor == who)
-            .map(|(_, i)| i.overdue_on(day))
+        self.of(who).map(|(_, i)| i.overdue_on(day)).sum()
+    }
+
+    /// What this account has to pay **by today**: everything falling due on
+    /// or before it. What a budget has to find room for.
+    pub fn due_by(&self, who: Account, day: u64) -> f64 {
+        self.of(who)
+            .filter(|(_, i)| i.due <= day)
+            .map(|(_, i)| i.outstanding())
             .sum()
     }
 
     /// What one customer owes one supplier, which is what a credit limit
     /// is measured against.
     pub fn between(&self, debtor: Account, creditor: Account) -> f64 {
-        self.invoices
-            .iter()
-            .filter(|(_, i)| i.debtor == debtor && i.creditor == creditor)
+        self.of(debtor)
+            .filter(|(_, i)| i.creditor == creditor)
             .map(|(_, i)| i.outstanding())
             .sum()
     }
@@ -397,9 +665,8 @@ impl Book {
     /// by whatever order a vector happened to be in.
     pub fn due_from(&self, who: Account) -> Vec<Key<Invoice>> {
         let mut mine: Vec<(Key<Invoice>, u64, u64)> = self
-            .invoices
-            .iter()
-            .filter(|(_, i)| i.debtor == who && !i.settled_in_full())
+            .of(who)
+            .filter(|(_, i)| !i.settled_in_full())
             .map(|(k, i)| (k, i.due, k.number()))
             .collect();
         // Due date first, then the order they were raised in, so the
@@ -421,8 +688,15 @@ impl Book {
             .map(|(k, _)| k)
             .collect();
         for k in done {
-            self.invoices.end(k, day, "settled");
+            self.forget(k, day, "settled");
         }
+    }
+
+    /// **Forget the graves of obligations that ended long ago**, so the
+    /// record of what was paid off does not grow with history either. The
+    /// totals — billed, collected, charged off — keep the account.
+    pub fn forget_ended_before(&mut self, day: u64) {
+        self.invoices.forget_graves_before(day);
     }
 
     /// **What this buyer can actually have.**
@@ -528,8 +802,180 @@ impl Book {
             who.into_iter().map(|a| self.owed_by(a)).sum()
         };
         assert!(
-            (owed - by).abs() < 1e-6,
+            (owed - by).abs() < 1e-6 * owed.abs().max(1.0),
             "what is owed ({owed}) is not what anybody owes ({by})"
         );
+        // **Every penny billed is collected, still owed, or charged off**,
+        // and nothing else: an obligation that left the book any other way
+        // is one that quietly lapsed.
+        let accounted = self.collected + owed + self.charged_off;
+        assert!(
+            (self.billed - accounted).abs() <= 1e-6 * self.billed.abs().max(1.0),
+            "{} billed against {} collected, {} owed and {} charged off — an obligation \
+             left the book without being paid or charged off",
+            self.billed,
+            self.collected,
+            owed,
+            self.charged_off
+        );
+    }
+}
+
+// =====================================================================
+// the book, written down
+// =====================================================================
+
+use crate::save::{Reader, SaveError, Store, Writer};
+
+impl Store for Invoice {
+    fn store(&self, w: &mut Writer) {
+        self.debtor.store(w);
+        self.creditor.store(w);
+        w.u64(self.raised);
+        w.u64(self.due);
+        w.f64(self.amount);
+        w.f64(self.settled);
+        w.u8(self.doubtful as u8);
+        self.what.store(w);
+        w.u8(self.origin.code());
+        w.u8(self.once as u8);
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let debtor = Account::load(r)?;
+        let creditor = Account::load(r)?;
+        let raised = r.u64()?;
+        let due = r.u64()?;
+        let amount = r.finite_f64()?;
+        let settled = r.finite_f64()?;
+        let doubtful = match r.u8()? {
+            0 => false,
+            1 => true,
+            n => return Err(SaveError::UnknownCode("doubtful flag", n as u32)),
+        };
+        let what = Why::load(r)?;
+        let code = r.u8()?;
+        let origin =
+            Origin::from_code(code).ok_or(SaveError::UnknownCode("bill origin", code as u32))?;
+        let once = match r.u8()? {
+            0 => false,
+            1 => true,
+            n => return Err(SaveError::UnknownCode("bill identity flag", n as u32)),
+        };
+        // **Each of these decodes perfectly well and none can be true**: a
+        // debt to oneself, a bill for nothing, a payment beyond the bill,
+        // and a bill due before it arose.
+        if debtor == creditor {
+            return Err(SaveError::Impossible("an obligation owed to oneself"));
+        }
+        if amount <= 0.0 || settled < 0.0 {
+            return Err(SaveError::Impossible("an obligation for nothing"));
+        }
+        if settled > amount * (1.0 + 1e-9) + 1e-9 {
+            return Err(SaveError::Impossible(
+                "more paid against an obligation than it was for",
+            ));
+        }
+        if due < raised {
+            return Err(SaveError::Impossible("an obligation due before it arose"));
+        }
+        Ok(Invoice {
+            debtor,
+            creditor,
+            raised,
+            due,
+            amount,
+            settled,
+            doubtful,
+            what,
+            origin,
+            once,
+        })
+    }
+}
+
+/// **The totals are written down and the indexes are not.** Which live
+/// invoice a bill is, and which invoices a debtor has, are read off the
+/// invoices themselves on the way back in — a second copy that had to agree
+/// with the first could silently stop agreeing.
+impl Store for Book {
+    fn store(&self, w: &mut Writer) {
+        self.invoices.store(w);
+        w.f64(self.lost);
+        w.f64(self.billed);
+        w.f64(self.collected);
+        w.f64(self.charged_off);
+        w.len(self.charged_off_by.len());
+        for (o, v) in self.charged_off_by.iter() {
+            w.u8(o.code());
+            w.f64(*v);
+        }
+    }
+    fn load(r: &mut Reader) -> Result<Self, SaveError> {
+        let invoices = Registry::<Invoice>::load(r)?;
+        let lost = r.finite_f64()?;
+        let billed = r.finite_f64()?;
+        let collected = r.finite_f64()?;
+        let charged_off = r.finite_f64()?;
+        let n = r.count()?;
+        let mut charged_off_by = BTreeMap::new();
+        for _ in 0..n {
+            let code = r.u8()?;
+            let o = Origin::from_code(code)
+                .ok_or(SaveError::UnknownCode("bill origin", code as u32))?;
+            let v = r.finite_f64()?;
+            if v < 0.0 {
+                return Err(SaveError::Impossible("a negative charge-off"));
+            }
+            if charged_off_by.insert(o, v).is_some() {
+                return Err(SaveError::Impossible("one kind of bill charged off twice"));
+            }
+        }
+        if lost < 0.0 || billed < 0.0 || collected < 0.0 || charged_off < 0.0 {
+            return Err(SaveError::Impossible("a book with a negative total"));
+        }
+        let mut book = Book {
+            invoices: Registry::new(),
+            lost,
+            billed,
+            collected,
+            charged_off,
+            charged_off_by,
+            bills: BTreeMap::new(),
+            by_debtor: BTreeMap::new(),
+        };
+        book.invoices = invoices;
+        let live: Vec<(Key<Invoice>, Account, Account, Origin, u64, bool)> = book
+            .invoices
+            .iter()
+            .map(|(k, i)| (k, i.debtor, i.creditor, i.origin, i.raised, i.once))
+            .collect();
+        for (k, debtor, creditor, origin, raised, once) in live {
+            book.by_debtor.entry(debtor).or_default().insert(k);
+            if once
+                && book
+                    .bills
+                    .insert((debtor, creditor, origin, raised), k)
+                    .is_some()
+            {
+                return Err(SaveError::Impossible("one bill owed twice"));
+            }
+        }
+        // **A book whose totals do not account for its invoices is refused
+        // at the door**, the way a treasury whose money does not conserve
+        // is: every penny billed is collected, still owed, or charged off.
+        let owed = book.outstanding();
+        let accounted = collected + owed + charged_off;
+        if (billed - accounted).abs() > 1e-6 * billed.abs().max(1.0) {
+            return Err(SaveError::Impossible(
+                "obligations that do not account for what was billed",
+            ));
+        }
+        let by_kind: f64 = book.charged_off_by.values().sum();
+        if (by_kind - charged_off).abs() > 1e-6 * charged_off.abs().max(1.0) {
+            return Err(SaveError::Impossible(
+                "charge-offs by kind that do not add up to the total",
+            ));
+        }
+        Ok(book)
     }
 }
