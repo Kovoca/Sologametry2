@@ -551,10 +551,13 @@ Real defects, each visible in a test or measurable in a binary.
    over four hundred days. A replacement floor at a thousandth of the order
    was measured and **not** shipped: both its sabotages stayed green.
 
-   **What it leaves open, and it is on master:** `distribute_profits` sizes
+   **What it left open is fixed, 2026-09-24:** `distribute_profits` sized
    working capital on *today's* outgoings, so any one-day interruption to a
-   firm's buying strips it permanently. Nothing fires it now the guard is
-   gone. Its own change, with its own measurement.
+   firm's buying stripped it permanently — reproduced on a viable works
+   with no guard involved, a cannery at 995,729 paid down to 156 five days
+   after its flour was cut. A firm now keeps the larger of its paid-in
+   capital and forty-five days of its **rated** operation; see CLAUDE.md,
+   "What a firm was given is not profit".
 4. **A sampled person's pocket is not the household pool.** Promoting
    somebody to detail creates their savings. The reification problem, not an
    accounting one.

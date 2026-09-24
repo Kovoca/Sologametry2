@@ -6035,12 +6035,39 @@ impl Economy {
             } else {
                 0.0
             };
-            let reserve = (outgoings[site] * RESERVE_DAYS)
+            // **Tomorrow's needs are planned, not read off today.**
+            //
+            // The reserve used to be forty-five days of what the firm paid
+            // out *today* and the hands it had *today* — so a works whose
+            // inputs stopped paid out nothing, employed nobody, and had its
+            // reserve fall to thirty days of one wage while the rest of its
+            // balance went to households as profit. Measured on the
+            // two-town fixture: a cannery holding 995,729 was down to 156
+            // five days after its flour was cut, and a freight rule that
+            // refused one day's delivery bankrupted three cement works on
+            // day one the same way. A temporary interruption must not pay
+            // out the money needed to start again.
+            //
+            // So the requirement is what running at its rating costs —
+            // inputs, power and a rated payroll — which does not move when
+            // today goes badly. What it actually paid out today still
+            // counts, because a works buying above plan needs more, not
+            // less. **What the firm owes is not in it, because nothing here
+            // records a firm's payables yet**: `credit.rs` keeps invoices
+            // and is not wired into distribution. When it is, the invoices
+            // falling due belong in this figure.
+            let requirement = (outgoings[site] * RESERVE_DAYS)
+                .max(self.planned_outlay(site) * RESERVE_DAYS)
                 .max(cargoes * RESERVE_DAYS)
-                .max(self.staff_today[site] * wage * RESERVE_DAYS)
                 .max(wage * 30.0);
+            // **And what it was given is not profit.** A firm's opening
+            // balance is paid-in capital; only what it has earned since is
+            // the owners' to take, which is the rule company law actually
+            // runs on. So it keeps whichever is larger — its capital or
+            // what it needs to operate — and pays out only what is over.
+            let keep = requirement.max(self.treasury.capital(Account::Firm(site)));
             let held = self.treasury.balance(Account::Firm(site));
-            let surplus = held - reserve;
+            let surplus = held - keep;
             if surplus <= 0.0 {
                 continue;
             }
@@ -6099,6 +6126,36 @@ impl Economy {
                 }
             }
         }
+    }
+
+    /// **What a day at its rating costs a works**: its inputs at what a
+    /// firm pays for them, its power, and the payroll its rating calls for.
+    ///
+    /// Planned rather than realised, which is the point: a mill short of
+    /// grain today still has a mill's wage bill and a mill's grain bill to
+    /// meet when the grain comes back. The rate is `demand_rate_of`, so a
+    /// power station — whose nameplate is "whatever the grid can carry" —
+    /// is planned on what it dispatched rather than on a billion tonnes of
+    /// coal; a dark station therefore plans nothing, and what protects it
+    /// is its capital.
+    pub fn planned_outlay(&self, site: usize) -> f64 {
+        let s = &self.ledger.sites[site];
+        let Some(r) = s.recipe else {
+            return 0.0;
+        };
+        let recipe = &RECIPES[r];
+        let m = s.market;
+        let rate = demand_rate_of(s);
+        let inputs: f64 = recipe
+            .inputs
+            .iter()
+            .map(|&(c, per)| {
+                per * rate * self.markets[m].price[c as usize] * Self::WHOLESALE_MARGIN
+            })
+            .sum();
+        let power = recipe.power * rate * self.markets[m].price[Commodity::Electricity as usize];
+        let payroll = crate::labour::rated_headcount(rate, recipe.labour) * self.day_rate_here(m);
+        inputs + power + payroll
     }
 
     /// **What the inputs a service site used today cost it**, at the price

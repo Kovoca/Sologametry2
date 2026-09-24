@@ -159,6 +159,17 @@ pub struct Treasury {
     /// What was in existence on day zero. Conservation is measured
     /// against this.
     opening: f64,
+    /// **What each account was given by `open`, and nothing else.**
+    ///
+    /// For a firm this is its paid-in capital, which is not profit and is
+    /// not the owners' to take out: a company may distribute only what it
+    /// has earned *(capital maintenance — UK Companies Act 2006 s.830,
+    /// "profits available for the purpose"; Delaware's DGCL §170 limits
+    /// dividends to surplus)*. Recorded here because `open` is the one door
+    /// money comes into the world by, so the figure cannot drift from what
+    /// actually came in: the capitals sum to `opening`, and a save whose do
+    /// not is refused.
+    capital: BTreeMap<Account, f64>,
     /// The day's movements, cleared each tick. The full history is not
     /// kept — a year of a country's transactions is millions of entries
     /// and nothing reads them — but the day's are, because that is what
@@ -191,6 +202,7 @@ impl Treasury {
         Treasury {
             balances: BTreeMap::new(),
             opening: 0.0,
+            capital: BTreeMap::new(),
             today: Vec::new(),
             flows: BTreeMap::new(),
             unpaid: 0.0,
@@ -209,7 +221,13 @@ impl Treasury {
     /// arriving through the back door.
     pub fn open(&mut self, account: Account, amount: f64) {
         *self.balances.entry(account).or_insert(0.0) += amount;
+        *self.capital.entry(account).or_insert(0.0) += amount;
         self.opening += amount;
+    }
+
+    /// What `open` gave this account — a firm's paid-in capital.
+    pub fn capital(&self, account: Account) -> f64 {
+        self.capital.get(&account).copied().unwrap_or(0.0)
     }
 
     pub fn balance(&self, account: Account) -> f64 {
@@ -516,6 +534,11 @@ impl crate::save::Store for Treasury {
         w.f64(self.unpaid);
         w.f64(self.created);
         w.f64(self.destroyed);
+        w.len(self.capital.len());
+        for (a, v) in self.capital.iter() {
+            a.store(w);
+            w.f64(*v);
+        }
     }
     fn load(r: &mut crate::save::Reader) -> Result<Self, crate::save::SaveError> {
         use crate::save::SaveError;
@@ -534,15 +557,42 @@ impl crate::save::Store for Treasury {
         for _ in 0..n {
             today.push(Transfer::load(r)?);
         }
+        let unpaid = r.finite_f64()?;
+        let created = r.finite_f64()?;
+        let destroyed = r.finite_f64()?;
+        let n = r.count()?;
+        let mut capital = BTreeMap::new();
+        for _ in 0..n {
+            let a = Account::load(r)?;
+            let v = r.finite_f64()?;
+            if v < 0.0 {
+                return Err(SaveError::Impossible(
+                    "an account opened with less than nothing",
+                ));
+            }
+            if capital.insert(a, v).is_some() {
+                return Err(SaveError::Impossible("one account's capital listed twice"));
+            }
+        }
+        // **The capitals are what `open` put in, and so is `opening`.** Two
+        // figures for one fact have to agree, or a firm's protected capital
+        // is money that never came into the world.
+        let paid_in: f64 = capital.values().sum();
+        if (paid_in - opening).abs() > (opening.abs() * 1e-9).max(1e-6) {
+            return Err(SaveError::Impossible(
+                "capital that does not add up to the money opened",
+            ));
+        }
         let t = Treasury {
             balances,
             opening,
+            capital,
             today,
             flows: std::collections::BTreeMap::new(),
-            unpaid: r.finite_f64()?,
+            unpaid,
             unpaid_why: BTreeMap::new(),
-            created: r.finite_f64()?,
-            destroyed: r.finite_f64()?,
+            created,
+            destroyed,
         };
         if t.created < 0.0 || t.destroyed < 0.0 {
             return Err(SaveError::Impossible(

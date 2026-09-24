@@ -6623,11 +6623,76 @@ Four things worth keeping from it:
   and the shipped version has it too. Nothing currently fires it now the
   guard is gone; it is named rather than fixed, because fixing it is its
   own change with its own measurement.
+  *(Fixed since — below.)*
 - **Two changes on one branch cost a day.** The guard was bundled with the
   counter change and was not what the branch was for. The counter change
   is innocent of all of this: with the guard removed and the counter left
   in, cement's cost, the kiln's balance and the fabric all match master to
   the digit.
+
+### What a firm was given is not profit (`distribute_profits`)
+
+The reserve a firm kept before paying out profit was forty-five days of
+what it paid out **today**. A works whose inputs stop pays out nothing —
+no materials, and with no work no staff — so its reserve fell to thirty
+days of one wage and the rest went to households. **"Nothing fires it"
+left a demonstrated mechanism in place**, and it fired without the freight
+guard: on the two-town fixture a viable cannery held 995,729 on day 60 and
+**156** five days after its flour was cut. It came back only because a
+works here can still take inputs it cannot pay for.
+
+Two faults in one rule, and they are separate:
+
+- **Tomorrow's needs were read off today.** The requirement is now what a
+  day at the firm's **rating** costs — inputs at what a firm pays, power,
+  and the payroll the rating calls for (`Economy::planned_outlay`) — with
+  today's actual outgoings kept as a floor, since a works buying above plan
+  needs more. What it *owes* is not in it, because nothing records a firm's
+  payables yet: `credit.rs` keeps invoices and is not wired into
+  distribution. When it is, the invoices falling due belong in this figure.
+- **Paid-in capital was paid out as profit.** Every firm opens with an
+  equal slice of the country's money, and the sweep treated it as earnings:
+  on day 1 the two-town fixture's farm paid out **765,097 of an 811,172
+  capital**. A company may distribute only what it has earned *(UK
+  Companies Act 2006 s.830; Delaware's DGCL §170)*. `Treasury::open` now
+  records each account's capital — the one door money comes into the world
+  by, so the figure cannot drift from what came in — and a firm keeps the
+  larger of its capital and its requirement. The capitals are written to
+  the save and **must sum to `opening`**, or the save is refused.
+
+**Gates**, each checked against a sabotage that turns it red: the
+interruption — cut a viable cannery's flour for a fortnight, restore it,
+and it keeps what it held up to a month of its measured spending and meets
+its payroll in full from the first day back (red without the planned
+requirement, at 811,172 against 896,156); capital maintenance — on every
+day a firm pays a dividend it still holds its capital (red without the
+floor: **2,648 of 3,305** dividend-days ended below capital across both
+fixtures); and the save refusing a capital that does not add up and one
+that is negative, each provoked separately.
+
+**Measured, five years on three worlds, and the move is real and mixed:**
+
+| | old sweep | new sweep |
+|---|---|---|
+| unemployment at the end, workforce (7 / 11 / 23) | 12.0 / 10.6 / 14.1% | **10.6 / 10.4 / 11.1%** |
+| unemployment at the end, by head | 12.0 / 12.1 / 14.8% | **10.0 / 10.8 / 11.7%** |
+| months outside the band, by head | 11 / 0 / 4 | 3 / 1 / 10 |
+| hungry, worst month | 2.5 / 0.2 / 4.7% | 4.5 / 0.2 / 4.7% |
+| homeless at the end | 0.3 / 0.0 / 5.0% | 0.0 / 0.0 / 4.4% |
+| households' money at the start | 4.41 / 3.27 / 3.32e10 | **3.38 / 2.54 / 2.54e10** |
+
+- **Unemployment ends lower in every world**, which is what firms that can
+  meet their payroll should do.
+- **Households hold about a quarter less money throughout.** The start
+  reading is after the first days, and the difference is the capital the
+  old rule handed them at once — the farm's day-1 dividend, at world scale.
+- **Firms now accumulate**: world 11's rose 2.40 to 2.98e10 against 1.68 to
+  1.81 before, because works here run below their rating and a reserve on
+  rated output is larger than one on what they actually spend. A slow
+  average of realised outgoings would hold less and needs state written to
+  the save; the rated figure needs none. Kept, and watched.
+- **World 7's worst hunger month went 2.5% to 4.5%**, inside its 5% band
+  and not explained here.
 
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
