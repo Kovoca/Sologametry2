@@ -68,7 +68,7 @@ fn the_circuit_closes() {
     // other towns, carriage, and imports. Profit, capital, lending and
     // interest are not costs of operating, and a denominator that included
     // a distribution would move with the very behaviour it measures.
-    // Beside it, what firms were recorded as owing over the same days.
+    // Beside it, the payments firms failed to make over the same days.
     let mut operating = 0.0;
     let mut owed = 0.0;
     for d in 0..(DAYS_PER_YEAR * 2) {
@@ -155,13 +155,20 @@ fn the_circuit_closes() {
     // outside world's too — nine tenths of it — so it was a fixed figure
     // for one fixture, and it had been passing by 0.2% since reserves were
     // sized on rated output. Firms here hold about 28 days of their
-    // operating costs, owing 1.5e9 unpaid over a month against 1.4e10
-    // held — which is why the obligations are shown beside the cash.
+    // operating costs.
+    //
+    // **What `owed` is, exactly**: the payments firms failed to make, added
+    // up day by day over the month — about 1.5e9 against 1.4e10 held. It is
+    // *not* a debt outstanding on the day of measurement: nothing here
+    // persists a shortfall past the day it happened, so there is no such
+    // debt to report, and the two are not comparable. It is shown so the
+    // failures are not hidden behind a healthy-looking balance, and it
+    // becomes an outstanding balance when unpaid bills persist.
     let days_held = firms3 / (operating / 30.0).max(1e-9);
     assert!(
         days_held < 60.0,
-        "firms are sitting on {firms3:.0}, {days_held:.0} days of their operating costs, \
-         and owed {owed:.0} unpaid over the last month"
+        "firms are sitting on {firms3:.0}, {days_held:.0} days of their operating costs; \
+         {owed:.0} of payments failed over the last month (failures, not a debt outstanding)"
     );
     // **Steady as well as small**, the same test households and the
     // treasury get. Working capital that drifts over two years is money

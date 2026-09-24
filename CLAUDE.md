@@ -6919,8 +6919,11 @@ transfer between domestic holders moves; "firms do not hoard" was 5% of all
 money *including the outside world's*, passing by 0.2%. They are measured
 now against the domestic circuit, and in days of **named operating costs**
 — wages, supplies and power, goods from other towns, carriage and imports,
-and no profit, capital or lending — with what firms owe shown beside what
-they hold: about 28 days held, 1.5e9 owed over a month against 1.4e10.
+and no profit, capital or lending — with firms' failed payments shown beside
+what they hold: about 28 days held, and 1.5e9 of payments failed over a
+month against 1.4e10 held. **That second figure is failures added up day
+by day, not a debt outstanding on the day** — nothing here persisted a
+shortfall, so there was no outstanding debt to compare with the cash.
 **Neither drift bound catches a capital pay-out or a steady firm drain**,
 and the test says so: what catches a leak is conservation and each holder's
 own gate.

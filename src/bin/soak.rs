@@ -257,6 +257,11 @@ fn main() {
     // at the till are different failures with different cures.
     let mut unpaid_year: std::collections::BTreeMap<(&'static str, &'static str), f64> =
         Default::default();
+    // **And between firms, which kind of works failed to pay which.** A
+    // total against "firms" cannot say whether it is a mill short for its
+    // grain or a hospital short for its medicine.
+    let mut unpaid_works: std::collections::BTreeMap<(&'static str, String, String), f64> =
+        Default::default();
 
     for d in 1..=days {
         g.a_day();
@@ -273,7 +278,7 @@ fn main() {
         if d > final_year_from {
             if let Some(e) = g.economy.as_ref() {
                 use scale_sim::money::Account;
-                for ((from, _, why), v) in e.treasury.unpaid_by.iter() {
+                for ((from, to, why), v) in e.treasury.unpaid_by.iter() {
                     let who = match from {
                         Account::Firm(_) => "firms",
                         Account::Households(_) => "households",
@@ -282,6 +287,24 @@ fn main() {
                         _ => "other",
                     };
                     *unpaid_year.entry((why, who)).or_default() += v;
+                    if let Account::Firm(s) = from {
+                        let payee = match to {
+                            Account::Firm(t) => e
+                                .ledger
+                                .sites
+                                .get(*t)
+                                .map(|x| format!("{:?}", x.kind))
+                                .unwrap_or_default(),
+                            other => other.name(),
+                        };
+                        let payer = e
+                            .ledger
+                            .sites
+                            .get(*s)
+                            .map(|x| format!("{:?}", x.kind))
+                            .unwrap_or_default();
+                        *unpaid_works.entry((why, payer, payee)).or_default() += v;
+                    }
                 }
                 for t in e.treasury.today.iter() {
                     if let Account::State(_) = t.to {
@@ -357,6 +380,12 @@ fn main() {
     );
     for ((why, who), v) in unpaid_year.iter() {
         println!("  {:<14} {:<16} {:>10.2e}", why, who, v);
+    }
+    println!("\n  and between firms, the ten largest, by who failed to pay whom:\n");
+    let mut works: Vec<_> = unpaid_works.iter().collect();
+    works.sort_by(|a, b| b.1.total_cmp(a.1));
+    for ((why, payer, payee), v) in works.into_iter().take(10) {
+        println!("  {:<10} {:<16} -> {:<18} {:>10.2e}", why, payer, payee, v);
     }
     by_trade(
         &g,

@@ -505,8 +505,20 @@ Real defects, each visible in a test or measurable in a binary.
      -> 8.71 / 7.23 / 8.51%; household purchases unpaid 8.93 / 5.29 / 4.18e10
      -> 8.48 / 4.61 / 4.02e10; firm-to-firm supply unpaid 6.95 / 2.37 / 4.01e10
      -> 9.18 / 2.46 / 4.45e10; months of unemployment outside the band by
-     head 5 / 3 / 8 -> 11 / 2 / 10; states flat in both. About neutral, as a
-     correction of a calibration should be.
+     head 5 / 3 / 8 -> 11 / 2 / 10; states flat in both. The aggregate
+     changes are small in these three worlds — an observation, not something
+     a calibration correction is owed; a correction can move an economy a
+     long way.
+   - **The worse firm-to-firm shortfall, located and not explained.**
+     `bin/soak` now splits failed payments between firms by which kind of
+     works failed to pay which. On world 7's final year, the gross-margin
+     version against this one, nearly all of the rise is **shops failing to
+     pay other shops for restock** — the retail relay — 1.56e10 -> 3.41e10;
+     every other pair moved within about 15%. A shop's cash is what the
+     counter brought in, which is the part household budgeting rewrites, so
+     the cause is left for after it rather than guessed. World 7's
+     unemployment months out of band (5 -> 11 by head) are not traced; the
+     same run is where to start.
    - **Two sampled-person gates were reading cliffs and are now
      comparisons.** The price-shock gate passed at cost only because the
      man starved (it accepted *evicted or dead* and he was never evicted);
