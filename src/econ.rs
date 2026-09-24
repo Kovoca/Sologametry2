@@ -8251,7 +8251,10 @@ impl Economy {
         let built = materials / MATERIAL_SHARE;
         // **The structure costs what it costs; the land answers demand.**
         // A worn-out house is a cheap house. The land under it is not.
-        built * (0.4 + 0.6 * self.fabric_condition(m)) + built * self.land_value_ratio(m)
+        // And where the town has built up, the structure costs more for
+        // being stacked: `height_premium` is one below the switch.
+        let height = Self::height_premium(self.housing_pressure(m));
+        built * (0.4 + 0.6 * self.fabric_condition(m)) * height + built * self.land_value_ratio(m)
     }
 
     /// **What the land under an ordinary dwelling is worth**, as a
@@ -8286,15 +8289,90 @@ impl Economy {
     /// away: a pure elasticity applied to the whole price would put six
     /// times between the loosest town and the tightest, where real metro
     /// median rents differ by under three.
+    ///
+    /// **And the ground is bid only so far.** Past the pressure where land
+    /// would be more of a dwelling's value than any but the dearest real
+    /// markets show, the town builds up rather than bidding the ground
+    /// further — see `ground_pressure`.
     pub fn land_value_ratio(&self, m: usize) -> f64 {
-        /// Land as a multiple of the structure at an ordinary density —
-        /// 0.399 / 0.601.
-        const LAND_OVER_STRUCTURE: f64 = 0.664;
         Self::built_land_ratio(
-            self.housing_pressure(m),
-            LAND_OVER_STRUCTURE,
+            Self::ground_pressure(self.housing_pressure(m)),
+            Self::LAND_OVER_STRUCTURE,
             Self::PRICE_RESPONSE,
         )
+    }
+
+    /// Land as a multiple of the structure at an ordinary density —
+    /// 0.399 / 0.601 *(FHFA/AEI, 2022)*. One constant, because the price
+    /// and the rent both read it and two copies would drift.
+    pub const LAND_OVER_STRUCTURE: f64 = 0.664;
+
+    /// **The most of a dwelling's value the ground is bid to before the
+    /// town builds up instead**: land at **59.3%** of a single-family
+    /// home's value, the 99th percentile of American counties *(FHFA,
+    /// Davis, Larson, Oliner and Shui, annual panel of 1,054 counties
+    /// 2012-2022; the median county is 22.9% and the 90th percentile
+    /// 39.5%)*.
+    ///
+    /// **Which percentile is a decision, and labelled as one.** A handful
+    /// of counties sit above it — the dearest in California — so this is
+    /// where the ordinary form gives way in all but the top hundredth of
+    /// real markets, not the most anybody has ever paid for ground.
+    pub const LAND_SHARE_AT_MOST: f64 = 0.593;
+
+    /// **How much dearer a building is for being built taller**: the
+    /// height elasticity of construction cost, about **0.25** for
+    /// structures of five floors or fewer *(Ahlfeldt and McMillen,
+    /// "Tall Buildings and Land Values", Review of Economics and
+    /// Statistics 2018, on Chicago 1870-2010)*.
+    ///
+    /// **Understated for towers, and said so.** The same study finds the
+    /// elasticity rising with height and passing 100% for super-tall
+    /// structures, so a town dense enough to need thirty floors is priced
+    /// here as though height cost what it costs at five. A rising
+    /// elasticity needs a height for each town, which nothing here has
+    /// yet.
+    pub const HEIGHT_COST_ELASTICITY: f64 = 0.25;
+
+    /// **The pressure at which a town stops spreading and builds up**:
+    /// where the fitted land curve reaches `LAND_SHARE_AT_MOST` of the
+    /// value. About 1.36, or 2,700 people to the buildable square
+    /// kilometre.
+    pub fn pressure_where_towns_build_up() -> f64 {
+        let most = Self::LAND_SHARE_AT_MOST / (1.0 - Self::LAND_SHARE_AT_MOST);
+        (most / Self::LAND_OVER_STRUCTURE).powf(1.0 / Self::PRICE_RESPONSE)
+    }
+
+    /// **The pressure the ground itself is bid at.** Below the switch it
+    /// is the pressure; above it the ground stops rising, because more
+    /// people on the same ground are housed by stacking dwellings rather
+    /// than by bidding each one a larger price for its plot.
+    ///
+    /// **This is what the land curve was never fitted to reach.** The two
+    /// exponents were fitted across towns within about a factor of two of
+    /// an ordinary density, and extrapolated to eighteen they made land
+    /// 99.9% of a dwelling's price and a house 9,826 years of pay (world
+    /// 23, Caldleigh). People at thirty-six thousand to the buildable
+    /// square kilometre do not live on house plots: they live in flats,
+    /// and a flat carries a sliver of the ground its building stands on.
+    pub fn ground_pressure(pressure: f64) -> f64 {
+        pressure.min(Self::pressure_where_towns_build_up())
+    }
+
+    /// **What stacking costs**: how many times denser than the densest
+    /// ordinary form the town is, to the height elasticity of
+    /// construction cost. One below the switch.
+    ///
+    /// Density above the switch is carried by height, so a town twice as
+    /// dense as the switch is built about twice as high — and pays
+    /// `2^0.25`, 19% more, for the building. **It answers the loss of
+    /// ground with height, and height is cheaper than ground**, which is
+    /// what building up is for; it is not free, and it is why a dense town
+    /// stays dearer than a loose one.
+    pub fn height_premium(pressure: f64) -> f64 {
+        (pressure / Self::pressure_where_towns_build_up())
+            .max(1.0)
+            .powf(Self::HEIGHT_COST_ELASTICITY)
     }
 
     /// **How hard people are pressing on the ground here**, as a ratio
@@ -8377,6 +8455,13 @@ impl Economy {
     /// following the local cost of living is its own change, and until it
     /// is made the spread in *prices* is right while the spread in what
     /// anybody can afford is not.
+    ///
+    /// **Half of that overshoot turned out to be the curve itself.** The
+    /// dearest towns were past the densest the exponents were fitted
+    /// across, with land at 67-86% of the price where the 99th-percentile
+    /// American county stops at 59.3%. Past that point a town now builds up
+    /// instead (`pressure_where_towns_build_up`), and the same towns read
+    /// 8.9-9.3 years on a fresh world.
     pub const PRICE_RESPONSE: f64 = 2.55;
 
     /// The same for a rent, and the lower of the two for the reason above.

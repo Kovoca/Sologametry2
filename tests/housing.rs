@@ -1,6 +1,6 @@
 //! The housing ladder, and what owning does to a life.
 
-use scale_sim::econ::{Doctrine, DAYS_PER_YEAR};
+use scale_sim::econ::{Doctrine, Economy, DAYS_PER_YEAR};
 use scale_sim::network::Network;
 use scale_sim::person::{self, Housing, Person, Trade};
 use scale_sim::polity::Polities;
@@ -58,47 +58,128 @@ fn a_house_costs_about_eight_years_of_wages() {
     // ground: **the same people on half the buildable land pay more.**
     // Nothing about population moves, so a pressure that reads population
     // cannot produce it.
-    let mut hemmed = a_nation().economy;
-    let m = (0..hemmed.markets.len())
-        .max_by(|&a, &b| {
-            hemmed.markets[a]
-                .population
-                .total_cmp(&hemmed.markets[b].population)
-        })
-        .unwrap();
-    let open_ground = e.house_price(m);
-    let open_rent = person::rent_per_day(&e, m);
-    let was = hemmed.markets[m]
-        .buildable_km2
-        .expect("a town nobody surveyed");
-    hemmed.markets[m].buildable_km2 = Some(was / 2.0);
-    let hemmed_in = hemmed.house_price(m);
-    let hemmed_rent = person::rent_per_day(&hemmed, m);
+    //
+    // **And it is asked twice, because there are two ways a town answers
+    // a loss of ground.** A loose town bids for it: the plot is dearer and
+    // the house with it. A town already past the switch builds up: the
+    // ground is bid no further and the building costs more for being
+    // taller. The first gate written here asked only the first question,
+    // of the most populous town — which is past the switch now, so the
+    // bar it held no longer described what that town does.
+    let switch = Economy::pressure_where_towns_build_up();
+    let squeeze = |m: usize, by: f64| {
+        let mut hemmed = a_nation().economy;
+        let was = hemmed.markets[m]
+            .buildable_km2
+            .expect("a town nobody surveyed");
+        hemmed.markets[m].buildable_km2 = Some(was / by);
+        hemmed
+    };
+    let by_pressure = |pick: fn(f64, f64) -> bool| {
+        (0..e.markets.len())
+            .reduce(|a, b| {
+                if pick(e.housing_pressure(b), e.housing_pressure(a)) {
+                    b
+                } else {
+                    a
+                }
+            })
+            .unwrap()
+    };
+
+    // **The loose town bids for ground.**
+    let loose = by_pressure(|b, a| b < a);
+    let hemmed = squeeze(loose, 2.0);
+    assert!(
+        hemmed.housing_pressure(loose) < switch,
+        "{} at pressure {:.2} halved is past the switch at {switch:.2}: the fixture has moved \
+         and this half of the gate no longer measures a town bidding for ground",
+        e.markets[loose].name,
+        e.housing_pressure(loose),
+    );
+    let (open_ground, hemmed_in) = (e.house_price(loose), hemmed.house_price(loose));
+    let (open_rent, hemmed_rent) = (
+        person::rent_per_day(&e, loose),
+        person::rent_per_day(&hemmed, loose),
+    );
     assert!(
         hemmed_in > open_ground * 1.5,
-        "{}: halving the buildable ground under the same people moved a house from          {open_ground:.3e} to {hemmed_in:.3e} — the ground is not deciding the price",
-        e.markets[m].name,
+        "{}: halving the buildable ground under the same people moved a house from \
+         {open_ground:.3e} to {hemmed_in:.3e} — the ground is not deciding the price",
+        e.markets[loose].name,
     );
     // **And a rent answers it less hard than a price does**, which is the
     // real ordering and the reason the two exponents differ at all.
     assert!(
         hemmed_rent > open_rent && hemmed_rent / open_rent < hemmed_in / open_ground,
-        "rent went {:.3} to {:.3} ({:.2}x) against the house's {:.2}x — a rent must move          with the ground and by less than a price does",
+        "rent went {:.3} to {:.3} ({:.2}x) against the house's {:.2}x — a rent must move \
+         with the ground and by less than a price does",
         open_rent,
         hemmed_rent,
         hemmed_rent / open_rent,
         hemmed_in / open_ground,
     );
 
-    // **And the spread is wider than reality, recorded rather than
-    // asserted away.** The two exponents were fitted to two real spreads,
-    // which leaves no degrees of freedom, so the *level* is the only
-    // independent check — and it half fails: the dearest towns reach
-    // 22-26 years of pay where the priciest American metros stop near
-    // 11-12. The cause is named in `Economy::land_value_ratio`: real
-    // expensive cities pay more and these do not. What is asserted here
-    // is only that a spread exists at all, which is what catches a return
-    // to one price everywhere.
+    // **The tight town builds up.** Halving its ground still costs its
+    // people — height is not free, and a rent in a tower carries the same
+    // building — but by less than the loose town paid, because height is
+    // cheaper than ground: which is what building up is for.
+    let tight = by_pressure(|b, a| b > a);
+    assert!(
+        e.housing_pressure(tight) > switch,
+        "{} at pressure {:.2} has not reached the switch at {switch:.2}: the fixture has \
+         moved and this half of the gate no longer measures a town building up",
+        e.markets[tight].name,
+        e.housing_pressure(tight),
+    );
+    let hemmed = squeeze(tight, 2.0);
+    let (up_open, up_hemmed) = (e.house_price(tight), hemmed.house_price(tight));
+    let (up_rent, up_rent_hemmed) = (
+        person::rent_per_day(&e, tight),
+        person::rent_per_day(&hemmed, tight),
+    );
+    assert!(
+        up_hemmed > up_open && up_rent_hemmed > up_rent,
+        "{}: halving its ground moved a house {up_open:.3e} to {up_hemmed:.3e} and a rent \
+         {up_rent:.3} to {up_rent_hemmed:.3} — building taller must cost something",
+        e.markets[tight].name,
+    );
+    assert!(
+        up_hemmed / up_open < hemmed_in / open_ground,
+        "{} built up and paid {:.2}x for half its ground, where a town bidding for ground \
+         paid {:.2}x — height must be cheaper than ground or nobody would build up",
+        e.markets[tight].name,
+        up_hemmed / up_open,
+        hemmed_in / open_ground,
+    );
+
+    // **And however little ground there is, the ground is never most of
+    // the price past what the dearest real markets show.** Squeezed to a
+    // thousandth of its ground the town is at the pressure cap; the old
+    // curve put land at 99.9% of a dwelling there, and a house at 9,826
+    // years of pay in world 23's Caldleigh.
+    let crushed = squeeze(tight, 1000.0);
+    let land = crushed.land_value_ratio(tight);
+    let share = land / (land + Economy::height_premium(crushed.housing_pressure(tight)));
+    assert!(
+        share <= Economy::LAND_SHARE_AT_MOST + 1e-9,
+        "{} on a thousandth of its ground puts land at {:.1}% of a dwelling's value \
+         against the {:.1}% the dearest real markets show",
+        e.markets[tight].name,
+        100.0 * share,
+        100.0 * Economy::LAND_SHARE_AT_MOST,
+    );
+
+    // **And the spread, recorded rather than asserted to a figure.** The
+    // two exponents were fitted to two real spreads, which leaves no
+    // degrees of freedom, so the *level* is the only independent check.
+    // It used to half fail — the dearest towns at 22-26 years of pay where
+    // the priciest American metros stop near 11-12 — and part of that was
+    // the curve run past where it was fitted, which building up now stops:
+    // the same towns read about 9 years on a fresh world. The rest is
+    // named in `Economy::PRICE_RESPONSE`: real expensive cities pay more
+    // and these do not. What is asserted here is only that a spread exists
+    // at all, which is what catches a return to one price everywhere.
     assert!(
         years[years.len() - 1] > years[0] * 2.0,
         "every town costs about the same again: {:.1} to {:.1} years of pay",

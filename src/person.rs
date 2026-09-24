@@ -1466,13 +1466,19 @@ pub fn rent_per_day(econ: &Economy, market: usize) -> f64 {
     // it costs — so the rent carries the same split the price does, and
     // **answers it less hard than a price does**, which is the real
     // ordering and the reason `econ::RENT_RESPONSE` records.
-    /// The land's share of what a dwelling is worth, as a multiple of the
-    /// structure — 0.399 / 0.601 *(FHFA/AEI, 2022)*.
-    const LAND_OVER_STRUCTURE: f64 = 0.664;
+    //
+    // **And a flat in a tower carries the same building as one bought.**
+    // Past the pressure where a town builds up, the ground is bid no
+    // further and the rent carries the height premium on its structure,
+    // exactly as the price does.
     let pressure = econ.housing_pressure(market);
-    let here =
-        1.0 + Economy::built_land_ratio(pressure, LAND_OVER_STRUCTURE, Economy::RENT_RESPONSE);
-    let ordinary = 1.0 + LAND_OVER_STRUCTURE;
+    let here = Economy::height_premium(pressure)
+        + Economy::built_land_ratio(
+            Economy::ground_pressure(pressure),
+            Economy::LAND_OVER_STRUCTURE,
+            Economy::RENT_RESPONSE,
+        );
+    let ordinary = 1.0 + Economy::LAND_OVER_STRUCTURE;
     day_rate(econ, market, Trade::ProductionWorker) * SHARE_OF_A_WAGE * kept * (here / ordinary)
 }
 

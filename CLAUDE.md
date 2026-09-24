@@ -5510,6 +5510,57 @@ needs demand that can move, and this model's town populations are fixed
 at world generation, which is why the stock and the construction that
 answers it are the next piece rather than this one.
 
+### Where ground runs out, a town builds up (`src/econ.rs`)
+
+The owner's answer to world 23's house at 9,826 years of pay: **as land
+per head falls, you get high rises rather than suburbs.** The land curve
+priced every dwelling on a house-sized share of ground at any density, so
+at thirty-six thousand people to the buildable square kilometre land came
+out 99.9% of the price. People at that density live in flats, and a flat
+carries a sliver of the plot its building stands on.
+
+So the ground is bid only so far. **The fitted curve holds until land
+would be 59.3% of a dwelling's value** — the 99th percentile of American
+counties for a single-family home *(FHFA, Davis, Larson, Oliner and Shui,
+1,054 counties 2012-2022: median 22.9%, 90th percentile 39.5%)* — which is
+pressure 1.36, about 2,700 people to the buildable km². Past it, more
+people on the same ground are housed by stacking rather than by bidding
+each plot dearer, and the building costs more for being taller: the height
+elasticity of construction cost is **about 0.25** up to five floors
+*(Ahlfeldt and McMillen, "Tall Buildings and Land Values", REStat 2018,
+Chicago 1870-2010)*.
+
+- **Height is cheaper than ground, and it is not free.** A town twice as
+  dense as the switch pays 19% more for its buildings. That is what
+  building up is for, and it is why a dense town still costs more than a
+  loose one.
+- **Understated for towers, and said so.** The same study finds the
+  elasticity rising with height and passing 100% for super-tall, so a town
+  dense enough for thirty floors is priced as though height cost what it
+  costs at five. A rising elasticity needs a height per town, which
+  nothing has yet.
+- **Which percentile is a decision.** A handful of counties — the dearest
+  in California — sit above 59.3%, where zoning holds the single-family
+  form against the price. This is where the ordinary form gives way in all
+  but the top hundredth of real markets.
+- **A flat in a tower carries the same building whoever lives in it**, so
+  the rent carries the height premium on its structure exactly as the
+  price does.
+
+It caught more than Caldleigh. Nine of the 48 towns in the soak worlds are
+past the switch — the capitals, where land had been 67-86% of the price
+and a house 33-47 years of pay — and **the documented overshoot at the top
+of the housing gate was the same extrapolation**: the dearest ordinary
+towns now read about 9 years on a fresh world against a real dearest
+metro of 11-12. World 23's homeless went from outside their band 59 months
+of 61 to inside it throughout.
+
+**The gate asks the ground question of both regimes**, because a town
+answers a loss of ground two ways: a loose town bids for it, a tight one
+builds up. The old gate asked only the first, of the most populous town —
+which is past the switch now, so its 1.5x bar no longer described what
+that town does.
+
 ### Who pays for medicine (`src/state.rs`, `src/econ.rs`)
 
 The owner's instruction: **medical care depends on the government too, and

@@ -67,8 +67,18 @@ fn main() {
     let e = &n.economy;
 
     println!(
-        "\n  {:<18} {:>12} {:>9} {:>10} {:>12} {:>10}",
-        "town", "people", "relief", "buildable", "people/km2", "price now"
+        "\n  {:<18} {:>12} {:>9} {:>10} {:>12} {:>10} {:>9} {:>8} {:>9} {:>6} {:>7}",
+        "town",
+        "people",
+        "relief",
+        "buildable",
+        "people/km2",
+        "price now",
+        "rent/day",
+        "years",
+        "pressure",
+        "land",
+        "height"
     );
     let mut density: Vec<(String, f64)> = Vec::new();
     let mut years: Vec<f64> = Vec::new();
@@ -90,8 +100,14 @@ fn main() {
             scale_sim::person::day_rate(e, m, scale_sim::occupation::Occupation::ProductionWorker)
                 * 250.0;
         years.push(e.house_price(m) / pay.max(1e-9));
+        // **Where the town stands against the switch to building up**: its
+        // pressure, land's share of a dwelling's value, and how much dearer
+        // its buildings are for being stacked.
+        let pressure = e.housing_pressure(m);
+        let land = e.land_value_ratio(m);
+        let height = scale_sim::econ::Economy::height_premium(pressure);
         println!(
-            "  {:<18} {:>12.3e} {:>8.0} {:>9.1}% {:>12.0} {:>10.3e} {:>9.3e} {:>8.1}",
+            "  {:<18} {:>12.3e} {:>8.0} {:>9.1}% {:>12.0} {:>10.3e} {:>9.3e} {:>8.1} {:>9.2} {:>5.1}% {:>7.2}",
             mk.name,
             mk.population,
             relief,
@@ -100,8 +116,16 @@ fn main() {
             e.house_price(m),
             scale_sim::person::rent_per_day(e, m),
             e.house_price(m) / pay.max(1e-9),
+            pressure,
+            100.0 * land / (land + height),
+            height,
         );
     }
+    println!(
+        "\n  a town builds up past pressure {:.2}, where land would pass {:.1}% of a dwelling's value",
+        scale_sim::econ::Economy::pressure_where_towns_build_up(),
+        100.0 * scale_sim::econ::Economy::LAND_SHARE_AT_MOST,
+    );
 
     density.sort_by(|a, b| a.1.total_cmp(&b.1));
     let (lo_n, lo) = density.first().cloned().unwrap_or_default();

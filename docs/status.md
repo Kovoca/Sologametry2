@@ -758,6 +758,59 @@ Real defects, each visible in a test or measurable in a binary.
       because a disc of 29 whole cells is 2.6% larger than the circle it
       approximates. The model's figure is the cells'; only the column's
       denominator is the circle.
+    **Fixed, 2026-09-24: past a point a town builds up.** The owner's
+    answer to the decision above: where land gets scarce, towns build high
+    rises rather than suburbs. The fitted land curve now holds only until
+    land would be **59.3%** of a dwelling's value — the 99th percentile of
+    US counties for a single-family home *(FHFA, Davis, Larson, Oliner and
+    Shui, 1,054 counties 2012-2022; median 22.9%, 90th percentile 39.5%)*.
+    That is pressure **1.36**, about 2,700 people to the buildable km².
+    Past it the ground is bid no further, and the structure costs more for
+    being stacked, at the height elasticity of construction cost of
+    **0.25** *(Ahlfeldt and McMillen, REStat 2018, Chicago: about 25% up to
+    five floors, rising with height and passing 100% for super-tall — so
+    towers are understated here, and said so)*. The rent carries the same
+    height premium on its structure. `Economy::pressure_where_towns_build_up`,
+    `ground_pressure`, `height_premium`.
+    - **Caldleigh** after five years: 30.8 years of pay, land 1.46 times the
+      structure and the building 1.91 times dearer for its height (9,826
+      years before). A 76 m² dwelling at a Hong Kong-like density.
+    - **It also caught the ordinary top end.** Nine of the 48 towns in the
+      three soak worlds sit past the switch — the capitals at 2.0-2.4, where
+      land had been 67-86% of the price. The same towns now run 17.7-22.6
+      years in world 23 against 34.9 before, and a fresh world's dearest
+      ordinary towns read 8.9-9.3 against a real dearest US metro of about
+      11-12. The documented overshoot at the top of the housing gate — the
+      dearest towns at 23-26 years where the real ones stop near 11-12 —
+      came from the same extrapolation.
+    - **Five years, worlds 7 / 11 / 23**, before and after (`bin/soak`):
+      a house, population-weighted, 20.5 / 14.8 / 526.4 years of pay became
+      **12.8 / 10.4 / 13.0**; the median town 13.2 / 7.1 / 8.2 became
+      11.8 / 7.1 / 8.1. World 23's homeless: worst month **6.9% to 0.8%**,
+      at the end **4.4% to 0.0%**, and outside its band in 59 of 61 months
+      before and none after. Worst hunger month 4.5 / 0.2 / 4.7% became
+      4.1 / 0.2 / 3.1%. Owned 1.7 / 11.9 / 7.8% became 5.8 / 10.6 / 9.4%.
+    - **One thing moves the other way in all three worlds**, and it is
+      recorded as observed rather than explained: mean unemployment over
+      the run is 0.07-0.25 points higher (8.54 / 6.93 / 8.59% became
+      8.76 / 7.00 / 8.84%) and the worst month about a point higher. House
+      prices and rents reach only the sampled people, whose pockets are
+      outside the economy's ledger, so any effect on the works comes back
+      through the skill feed and the planner. The direction fits what item
+      3 already records — poverty was staffing the mines — and it is not
+      established that that is the route.
+    - Gate: `tests/housing.rs` asks the ground question of both regimes — a
+      loose town bids for ground (halving it dearens a house by more than
+      half, a rent by less), the tightest town builds up (halving its ground
+      still costs, by less than ground would), and a town squeezed to a
+      thousandth of its ground keeps land at or under 59.3%. Red under each
+      of: the ground uncapped, height free, and a rent carrying no height.
+    - **Found on the way, and not fixed here:** world 11's Uxhaven has no
+      buildable ground within reach at all (relief 427 m/km), and
+      `housing_pressure` reads a surveyed zero as *nobody surveyed* and
+      prices the town as ordinary. With the old curve the honest answer —
+      the pressure cap — would have priced it at thousands of years, which
+      may be why it was written that way; with building up it is benign.
 14. **A merchant at a quay cannot see the demand inland.** An importer
     decides whether to land on its **own town's** price against import
     parity. A steel stockholder at a port with no steel demand of its own
@@ -769,6 +822,21 @@ Real defects, each visible in a test or measurable in a binary.
     fixture puts its cannery at the port instead, so it does not reach
     this; the generated worlds give every town its own stockholder, which
     hides it the same way.
+15. **Every maker of a good sells the same good.** *(Owner's note,
+    2026-09-24: "there is usually a profit margin... also a reason why
+    there's genuine products and aftermarket items.")* A commodity here has
+    one price per market, so a tonne of machinery from any works is a
+    perfect substitute for a tonne from any other, and the only thing that
+    decides who sells is cost and carriage. Real markets carry a brand or
+    maker's margin that differs by reputation — a part made to the original
+    design and sold under the maker's name against a cheaper copy that fits
+    the same hole — and that difference is how a known maker earns more
+    than its costs and how a cheap one wins on price. The item layer already
+    records the half this needs (`craft.rs` keeps who made a thing and how
+    well; `bom.rs` keeps what is in it) and nothing connects it to a price.
+    The same absence is why two-way trade in manufactures is a named gap in
+    `CLAUDE.md`: with one undifferentiated good a country cannot import and
+    export it at once. No figures are read for this yet.
 
 ---
 
