@@ -2185,6 +2185,7 @@ impl Region {
         // the top of every day, but a freshly built world is read before it
         // has had one.
         economy.resurvey();
+        economy.post_frontiers_where_no_coast_is_reached();
         // **And every works and shop gets a street and a number.** The
         // join between the two halves of this project: until now the
         // economy knew which town a cannery was in and the ground knew
@@ -2490,6 +2491,7 @@ impl Nations {
         // the top of every day, but a freshly built world is read before it
         // has had one.
         economy.resurvey();
+        economy.post_frontiers_where_no_coast_is_reached();
         // **And every works and shop gets a street and a number.** The
         // join between the two halves of this project: until now the
         // economy knew which town a cannery was in and the ground knew

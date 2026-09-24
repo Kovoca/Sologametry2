@@ -924,42 +924,19 @@ fn the_last_plant_dispatched_sets_the_price() {
     e.ledger.assert_conserved();
 }
 
-/// **A shortage is a different thing from a high price.**
+/// **Take the coal away and stop the pits**, through the journal like every
+/// other change to a stockpile. The plants stand, the load does not go
+/// away, and nothing can be generated.
 ///
-/// Real markets cap it administratively rather than letting it run away —
-/// ERCOT's was $9,000/MWh in the February 2021 Texas freeze, around two
-/// hundred times an ordinary wholesale price, and it sat there for four
-/// days and bankrupted several retailers.
-#[test]
-fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
-    let mut e = slice::symmetric(Doctrine::Prudent);
-    for _ in 0..20 {
-        e.step();
-    }
-    let ordinary = e.price(0, Commodity::Electricity);
-    // What the mills were getting through before the lights went out, so
-    // the consequence is read against it rather than against nought.
-    let milling = |e: &Economy| -> f64 {
-        (0..e.ledger.sites.len())
-            .filter(|&s| e.ledger.sites[s].name.contains("mill"))
-            .map(|s| e.ledger.sites[s].ran)
-            .sum()
-    };
-    let milling_before = milling(&e);
-
-    // **Take the coal away**, through the journal like every other change
-    // to a stockpile. The plants stand, the load does not go away, and
-    // nothing can be generated.
-    //
-    // Zeroing `throughput` does not work and it is worth saying why: on a
-    // power station that field is a sentinel meaning "whatever the grid
-    // can carry", so dispatch is limited by fuel and never reads it. That
-    // sentinel has now bitten four separate times.
-    //
-    // **And the collieries have to stop too.** The fixture digs its own
-    // coal now, so emptying the stations alone leaves them refilled by the
-    // next morning and the grid never actually goes short — the gate would
-    // then be measuring an ordinary day and saying nothing.
+/// Zeroing `throughput` on a station does not work and it is worth saying
+/// why: on a power station that field is a sentinel meaning "whatever the
+/// grid can carry", so dispatch is limited by fuel and never reads it. That
+/// sentinel has now bitten four separate times.
+///
+/// **And the collieries have to stop too.** The fixture digs its own coal,
+/// so emptying the stations alone leaves them refilled by the next morning
+/// and the grid never actually goes short.
+fn take_the_coal_away(e: &mut Economy) {
     for site in 0..e.ledger.sites.len() {
         if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::Mine {
             e.ledger.sites[site].throughput = 0.0;
@@ -985,6 +962,61 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
             );
         }
     }
+}
+
+/// The pits dig again, at the rate they were built for.
+fn let_the_pits_dig(e: &mut Economy) {
+    let fresh = slice::symmetric(Doctrine::Prudent);
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::Mine {
+            e.ledger.sites[site].throughput = fresh.ledger.sites[site].throughput;
+        }
+    }
+}
+
+/// **Fuel from outside the system**: twenty tonnes to every station, put
+/// there by the test. A fraction of a day's burn.
+const SUPPLIED_FUEL_T: f64 = 20.0;
+
+fn supply_fuel(e: &mut Economy) {
+    for site in 0..e.ledger.sites.len() {
+        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::PowerPlant {
+            e.ledger.apply(
+                &mut e.journal,
+                scale_sim::econ::Event::Produced {
+                    site,
+                    commodity: Commodity::Coal,
+                    qty: SUPPLIED_FUEL_T,
+                },
+            );
+        }
+    }
+}
+
+/// **A shortage is a different thing from a high price.**
+///
+/// Real markets cap it administratively rather than letting it run away —
+/// ERCOT's was $9,000/MWh in the February 2021 Texas freeze, around two
+/// hundred times an ordinary wholesale price, and it sat there for four
+/// days and bankrupted several retailers.
+#[test]
+fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    for _ in 0..20 {
+        e.step();
+    }
+    let ordinary = e.price(0, Commodity::Electricity);
+    // What the mills were getting through before the lights went out, so
+    // the consequence is read against it rather than against nought.
+    let milling = |e: &Economy| -> f64 {
+        (0..e.ledger.sites.len())
+            .filter(|&s| e.ledger.sites[s].name.contains("mill"))
+            .map(|s| e.ledger.sites[s].ran)
+            .sum()
+    };
+    let milling_before = milling(&e);
+
+    take_the_coal_away(&mut e);
     for _ in 0..10 {
         e.step();
     }
@@ -1020,60 +1052,105 @@ fn unserved_load_prices_at_the_cap_and_not_beyond_it() {
     // **And it does not recover on its own, which is a real thing and
     // not a defect.** The collieries dig again — nothing else is put back
     // by hand — and eighty days later the country is still dark: a mine
-    // needs power to work and a station needs coal to make it, so with
-    // literally none of either nothing can start. That is the **black
-    // start** problem, and a grid with no generation running really does
-    // need an outside source to come back; a model that bootstrapped
-    // itself out of nothing would be hiding it.
-    let fresh = slice::symmetric(Doctrine::Prudent);
-    for site in 0..e.ledger.sites.len() {
-        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::Mine {
-            e.ledger.sites[site].throughput = fresh.ledger.sites[site].throughput;
-        }
-    }
+    // needs power to work and a station needs coal to make it, and this
+    // fixture holds no reserve and has no supply that does not itself need
+    // power. **A fully isolated system with its fuel exhausted and nothing
+    // to restart from stays down**, and a model that bootstrapped itself out
+    // of nothing would be hiding that.
+    let_the_pits_dig(&mut e);
     for _ in 0..80 {
         e.step();
     }
     assert!(
         e.price(0, Commodity::Electricity) > ordinary * 5.0,
-        "the country restarted itself from no coal and no power at all,          which is a black start out of nothing"
+        "the country restarted itself from no coal and no power at all, \
+         which is a black start out of nothing"
     );
 
-    // **Given a start, it recovers completely.** Twenty tonnes to each
-    // station is a fraction of a day's burn, and it is enough: inside ten
-    // days the price is ordinary again, no load goes unserved and the mills
-    // are back at what they were milling before. Without this half the gate
-    // could not tell a shortage from a permanently wrecked country.
-    const BLACK_START_T: f64 = 20.0;
-    for site in 0..e.ledger.sites.len() {
-        if e.ledger.sites[site].kind == scale_sim::econ::SiteKind::PowerPlant {
-            e.ledger.apply(
-                &mut e.journal,
-                scale_sim::econ::Event::Produced {
-                    site,
-                    commodity: Commodity::Coal,
-                    qty: BLACK_START_T,
-                },
-            );
-        }
-    }
+    // **Given supplied fuel, a system that can black-start recovers.**
+    // Exactly what this proves, and no more: twenty tonnes to each station
+    // is put there **by the test**, and the fixture's grid holds black-start
+    // capability (`Grid::black_start`), so a station with something to burn
+    // can start without power from the network. Inside ten days the price is
+    // ordinary again, no load goes unserved and the mills are back. It is
+    // **recovery after supplied fuel**, not autonomous recovery: that would
+    // need a reserve the system holds against this, or a supply it can reach
+    // without power, and neither is represented. The next gate shows fuel
+    // alone is not enough.
+    supply_fuel(&mut e);
     for _ in 0..10 {
         e.step();
     }
     let after = e.price(0, Commodity::Electricity);
     assert!(
         after < ordinary * 2.0,
-        "ten days after a black start electricity is still {after:.1}          against an ordinary {ordinary:.1}"
+        "ten days after supplied fuel electricity is still {after:.1}          against an ordinary {ordinary:.1}"
     );
     assert!(
         e.unserved_power == 0.0,
-        "{:.1} of load still unserved after a black start",
+        "{:.1} of load still unserved after supplied fuel and a black start",
         e.unserved_power
     );
     let milling_after = milling(&e);
     assert!(
         milling_after > milling_before * 0.5,
         "the mills are still stopped at {milling_after:.0} against          {milling_before:.0} with the grid restored"
+    );
+    e.ledger.assert_conserved();
+}
+
+/// **Fuel alone does not restart a dark system.**
+///
+/// The half the cap gate cannot show. A thermal station needs power from
+/// the network before it makes any, so a system that has gone completely
+/// dark comes back only through a unit that starts on its own — a
+/// black-start unit (NERC EOP-005; Great Britain's Electricity System
+/// Restoration Standard). Take that capability away and give the stations
+/// the same twenty tonnes that restarts the cap gate's country inside ten
+/// days: this one stays dark, with the coal unburnt.
+///
+/// And the capability only binds on a restart. The same fixture without it
+/// runs perfectly well for as long as it never goes dark, because a world
+/// begins with its lights on.
+#[test]
+fn fuel_alone_does_not_restart_a_system_that_cannot_black_start() {
+    let mut e = slice::symmetric(Doctrine::Prudent);
+    e.grid.black_start = false;
+    for _ in 0..20 {
+        e.step();
+        assert_eq!(
+            e.unserved_power, 0.0,
+            "a live grid without black-start capability went short on day {}",
+            e.ledger.day
+        );
+    }
+    let ordinary = e.price(0, Commodity::Electricity);
+
+    take_the_coal_away(&mut e);
+    for _ in 0..10 {
+        e.step();
+    }
+    assert!(
+        e.unserved_power > 0.0,
+        "the grid never went dark, so this proves nothing"
+    );
+    let_the_pits_dig(&mut e);
+    supply_fuel(&mut e);
+    for _ in 0..10 {
+        e.step();
+    }
+    let coal: f64 = (0..e.ledger.sites.len())
+        .filter(|&s| e.ledger.sites[s].kind == scale_sim::econ::SiteKind::PowerPlant)
+        .map(|s| e.ledger.stock(s, Commodity::Coal))
+        .sum();
+    assert!(
+        e.unserved_power > 0.0 && e.price(0, Commodity::Electricity) > ordinary * 5.0,
+        "a system with no black-start capability restarted on fuel alone"
+    );
+    assert!(
+        coal >= SUPPLIED_FUEL_T * 3.0 * (1.0 - 1e-9),
+        "the stations burnt {:.1} t of the fuel they were given with no way to start",
+        SUPPLIED_FUEL_T * 3.0 - coal
     );
     e.ledger.assert_conserved();
 }

@@ -1966,6 +1966,19 @@ pub mod recipe {
 // Markets
 // ---------------------------------------------------------------------------
 
+/// **How goods cross the border at a town**, by the way they travel.
+///
+/// A sea shipment needs a port; a land-border shipment needs a crossing
+/// and a road to it. Both charge `Economy::PORT_HANDLING_PER_T` for what
+/// happens there — dockers at one, sheds and clearance at the other — which
+/// is a simplification rather than a measurement: what a frontier crossing
+/// really costs a tonne is not read yet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Gateway {
+    Quay,
+    Frontier,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Market {
     /// **Where the town is on the world map**, or nothing if it was built
@@ -1997,6 +2010,16 @@ pub struct Market {
     /// inshore boat, seven a coaster, twelve a Panamax, eighteen a
     /// capesize bulk carrier. See `world::Berth`.
     pub berth: crate::world::Berth,
+    /// **A road crossing to the outside world**: a frontier post where
+    /// goods come in and go out by lorry, the land half of what a quay is on
+    /// the coast. A sea shipment needs a port; a land-border shipment needs
+    /// a crossing and a road to it (see `Gateway`).
+    ///
+    /// No generated world sets it yet, because every town in one reaches a
+    /// quay. The hand-built fixtures with no sea do, which is what lets them
+    /// trade abroad at all — it used to happen because *no quay in reach*
+    /// was read as *no inland haul to pay*.
+    pub frontier: bool,
     /// **Square kilometres within reach that can be built on** — land
     /// rather than water, and not too steep to develop. The supply side of
     /// this town's housing market, measured off the world when the town
@@ -2085,6 +2108,7 @@ impl Market {
             cell: None,
             port: false,
             berth: crate::world::Berth::None,
+            frontier: false,
             // Nobody surveyed the ground of a town nobody put on a map.
             buildable_km2: None,
             name: name.into(),
@@ -2237,6 +2261,24 @@ pub struct Grid {
     /// Transmission plus distribution losses. 2-5% and 4-6% respectively
     /// in reality; 8% combined is a fair single figure.
     pub loss: f64,
+    /// **Whether the system can start from nothing.**
+    ///
+    /// A grid that has gone completely dark cannot be switched back on
+    /// from the stations that normally run it: a thermal plant needs power
+    /// from the network for its pumps, fans and mills before it makes any.
+    /// What restarts a system is a **black-start** unit — hydro, a gas
+    /// turbine or diesel sets that start on their own and energise enough
+    /// of the network for everything else to follow. Operators are required
+    /// to hold them: NERC EOP-005 in North America, the Electricity System
+    /// Restoration Standard in Great Britain.
+    ///
+    /// Represented simply: `true` means the system has that capability, and
+    /// a dark system restarts only if it does. **Fuel is still needed** —
+    /// what starts is a station with something to burn — so a system with
+    /// the capability and no fuel stays dark, and one with fuel and no
+    /// capability stays dark too. It says nothing about *which* unit or how
+    /// big; that is the next step if restoration is ever modelled in detail.
+    pub black_start: bool,
 }
 
 impl Grid {
@@ -2264,6 +2306,10 @@ impl Grid {
                 vec![line("main line")]
             },
             loss: 0.08,
+            // Every system here is built with its restoration plan, because
+            // every real operator is required to have one. A test can take
+            // it away; nothing in a generated world does yet.
+            black_start: true,
         }
     }
 
@@ -3963,6 +4009,19 @@ impl Economy {
     /// because an exact tie broken by index is the original bug wearing a
     /// cost function.
     fn generate_power(&mut self) {
+        // **A system that was dark yesterday starts only from a unit that
+        // can start on its own** (`Grid::black_start`). Nothing dispatched
+        // yesterday is what dark means; the first morning is not a restart,
+        // because a world begins with its lights on.
+        let dark = self.power_clearing.is_none() && self.ledger.day > 1;
+        if dark && !self.grid.black_start {
+            for site in 0..self.ledger.sites.len() {
+                if self.ledger.sites[site].kind == SiteKind::PowerPlant {
+                    self.ledger.sites[site].ran = 0.0;
+                }
+            }
+            return;
+        }
         // Dispatch against load, capped by what the wires can carry.
         let carry = self.grid.capacity().min(self.power_demand());
         let mut remaining = carry;
@@ -4147,8 +4206,12 @@ impl Economy {
             .get(&self.markets[m].nation)
             .copied()
             .unwrap_or(0.0);
-        let quay = self.nearest_quay(m).unwrap_or(m);
-        let inland = self.inland_leg(m);
+        // A landing is only made where parity is finite, which is only where
+        // a gateway can be reached; nothing is landed through a gateway
+        // that is not there.
+        let (Some(gate), Some(inland)) = (self.nearest_gateway(m), self.inland_leg(m)) else {
+            return;
+        };
         // Abroad first: the goods are not landed until the seller is paid.
         self.treasury.pay(
             day,
@@ -4167,7 +4230,7 @@ impl Economy {
         self.treasury.pay(
             day,
             Account::Firm(site),
-            Account::ServiceSector(quay),
+            Account::ServiceSector(gate),
             at * Self::PORT_HANDLING_PER_T,
             Why::Freight,
         );
@@ -6027,7 +6090,14 @@ impl Economy {
                         .outputs
                         .iter()
                         .map(|&(c, out)| {
-                            Self::WHOLESALE_MARGIN * out * self.landed_from_abroad(m, c)
+                            // Nothing to reserve for cargoes that cannot be
+                            // landed: no gateway in reach is no cargo.
+                            let landed = self.landed_from_abroad(m, c);
+                            if landed.is_finite() {
+                                Self::WHOLESALE_MARGIN * out * landed
+                            } else {
+                                0.0
+                            }
                         })
                         .sum::<f64>()
                         * s.throughput
@@ -6896,8 +6966,15 @@ impl Economy {
         // identical towns drifted apart inside it. With it, a town living on
         // imports is priced at its parity when it holds what it aims at, and
         // buys the moment it holds less.
+        //
+        // **And a merchant with no way across the border has no cost to
+        // give.** Its parity is infinite when no gateway can be reached, and
+        // it lands nothing, so it prices nothing — an infinity weighted by a
+        // day's landing of nought is not a number, and one of those in a
+        // market's cost is every price downstream of it.
         if self.buys_abroad(s) {
-            return Some(self.import_parity(m, c));
+            let parity = self.import_parity(m, c);
+            return parity.is_finite().then_some(parity);
         }
         // What this recipe's inputs cost at the reference, and what they
         // cost today.
@@ -8914,15 +8991,65 @@ impl Economy {
         self.markets[m].port && self.markets[m].berth != crate::world::Berth::None
     }
 
-    /// **Which quay this town's overseas trade goes through**: the one it
-    /// is cheapest to reach by road. `None` where no quay can be reached
-    /// at all — a world with no coast, or a town cut off from every one.
+    /// **Which quay this town's overseas trade goes through by sea**: the
+    /// one it is cheapest to reach by road. `None` where no quay can be
+    /// reached at all — a world with no coast, or a town cut off from every
+    /// one.
     pub fn nearest_quay(&self, m: usize) -> Option<usize> {
+        self.nearest(m, |e, q| e.quay(q))
+    }
+
+    /// **Where goods cross the border here, if they can**: a quay for a
+    /// sea shipment, a frontier post for a land one. A town can be both.
+    pub fn gateway(&self, m: usize) -> Option<Gateway> {
         if self.quay(m) {
+            Some(Gateway::Quay)
+        } else if self.markets[m].frontier {
+            Some(Gateway::Frontier)
+        } else {
+            None
+        }
+    }
+
+    /// **Which gateway this town's trade with the outside world goes
+    /// through**: the nearest by road of any kind. `None` where none can be
+    /// reached.
+    pub fn nearest_gateway(&self, m: usize) -> Option<usize> {
+        self.nearest(m, |e, g| e.gateway(g).is_some())
+    }
+
+    /// **A town that cannot reach any coast stands on a land frontier.**
+    ///
+    /// Called once, when a country is built: a landlocked state trades
+    /// with the world across its land borders, and a generated world does
+    /// not yet say where those crossings are — the neighbours beyond the
+    /// modelled nations are not modelled. So a town the generator could not
+    /// connect to any quay is given a frontier post of its own, which is
+    /// exactly what it had before by accident, when *no quay in reach* was
+    /// read as *nothing to pay* (`docs/status.md`, defect 12). Said out
+    /// loud, it is a stand-in until crossings are measured off the map.
+    ///
+    /// **And only at founding.** A town cut off later — a pass shut by snow,
+    /// a road closed — is not handed a crossing for its trouble; it has no
+    /// way across the border until the road opens.
+    ///
+    /// **It decides the flag rather than adding to it**, because a world is
+    /// founded twice: each nation is built on its own and then folded in
+    /// with its neighbours. A landlocked nation's towns get posts the first
+    /// time, and then reach a neighbour's quay by road — and keeping the
+    /// posts had an inland town loading ships.
+    pub fn post_frontiers_where_no_coast_is_reached(&mut self) {
+        for m in 0..self.markets.len() {
+            self.markets[m].frontier = self.nearest_quay(m).is_none();
+        }
+    }
+
+    fn nearest(&self, m: usize, is: impl Fn(&Economy, usize) -> bool) -> Option<usize> {
+        if is(self, m) {
             return Some(m);
         }
         (0..self.markets.len())
-            .filter(|&q| self.quay(q) && self.routing.freight(q, m).is_finite())
+            .filter(|&q| is(self, q) && self.routing.freight(q, m).is_finite())
             .min_by(|&a, &b| {
                 self.routing
                     .freight(a, m)
@@ -8931,19 +9058,31 @@ impl Economy {
             })
     }
 
-    /// **The haul between the water and this town**, per tonne, on a full
-    /// lorry — which is how bulk comes up from a port.
+    /// **The haul between the border and this town**, per tonne, on a full
+    /// lorry — which is how bulk comes up from a port or down from a
+    /// frontier post.
     ///
-    /// Zero at the quay itself. **Zero also where no quay can be reached**,
-    /// and that is a statement rather than a default: a town with no coast
-    /// in reach trades with the outside world over a land frontier, and in
-    /// a world that models no frontier the depot *is* the crossing. It is
-    /// what lets a one-nation fixture with no sea import anything at all.
-    pub fn inland_leg(&self, m: usize) -> f64 {
-        match self.nearest_quay(m) {
-            Some(q) if q != m => self.carriage_for(q, m, Self::A_LORRY_T) / Self::A_LORRY_T,
-            _ => 0.0,
-        }
+    /// Three answers, and they are different facts:
+    ///
+    /// - `Some(0.0)` — **the town is itself a gateway**, so the leg is
+    ///   genuinely zero-length;
+    /// - `Some(x)` — a gateway is reachable by road, at `x` a tonne;
+    /// - `None` — **no gateway can be reached**, so nothing crosses the
+    ///   border to or from this town at any price.
+    ///
+    /// This returned 0.0 for the last as well as the first. *No quay in
+    /// reach* was read as *nothing to pay*, so the most cut-off town in the
+    /// world landed its goods as though the dock were in its own high
+    /// street (`docs/status.md`, defect 12). The fixtures with no sea relied
+    /// on it; they have frontier posts now, which is the same trade said
+    /// out loud.
+    pub fn inland_leg(&self, m: usize) -> Option<f64> {
+        let g = self.nearest_gateway(m)?;
+        Some(if g == m {
+            0.0
+        } else {
+            self.carriage_for(g, m, Self::A_LORRY_T) / Self::A_LORRY_T
+        })
     }
 
     /// **What a tonne bought abroad costs to get to this town**, before
@@ -8964,9 +9103,11 @@ impl Economy {
             .get(&self.markets[m].nation)
             .copied()
             .unwrap_or(0.0);
-        self.world_price(c) * (1.0 + voyage) * (1.0 + duty)
-            + Self::PORT_HANDLING_PER_T
-            + self.inland_leg(m)
+        // No gateway in reach is no import, not a free one.
+        let Some(inland) = self.inland_leg(m) else {
+            return f64::INFINITY;
+        };
+        self.world_price(c) * (1.0 + voyage) * (1.0 + duty) + Self::PORT_HANDLING_PER_T + inland
     }
 
     /// **What the world charges for a tonne, in this world's money.**
@@ -9014,8 +9155,11 @@ impl Economy {
         let Some(voyage) = c.sea_freight() else {
             return f64::NEG_INFINITY;
         };
-        let netback =
-            self.world_price(c) * (1.0 - voyage) - Self::PORT_HANDLING_PER_T - self.inland_leg(m);
+        // The same three answers as an import, the other way round.
+        let Some(inland) = self.inland_leg(m) else {
+            return f64::NEG_INFINITY;
+        };
+        let netback = self.world_price(c) * (1.0 - voyage) - Self::PORT_HANDLING_PER_T - inland;
         netback / (1.0 + Self::TRADERS_MARGIN)
     }
 
@@ -9132,7 +9276,7 @@ impl Economy {
     /// between the two, and goes out from there. Letting it load a ship
     /// directly would teleport the cargo past the road it has to travel.
     pub fn worth_exporting(&self, m: usize, c: Commodity) -> bool {
-        self.quay(m)
+        self.gateway(m).is_some()
             && c.will_go_on_a_ship()
             && self.markets[m].price[c as usize] < self.export_parity(m, c)
     }
@@ -9153,7 +9297,7 @@ impl Economy {
         self.exported_today.clear();
         let day = self.ledger.day;
         for m in 0..self.markets.len() {
-            if !self.markets[m].port {
+            if self.gateway(m).is_none() {
                 continue;
             }
             for &c in Commodity::ALL.iter() {

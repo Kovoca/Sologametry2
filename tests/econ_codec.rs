@@ -277,6 +277,8 @@ fn a_road_a_market_and_a_works_come_back_whole() {
         cell: Some(4_242),
         port: true,
         berth: scale_sim::world::Berth::Ocean,
+        // Not the default, so a codec that dropped it would be caught.
+        frontier: true,
         // Written part way through its range like everything else here —
         // and the `None` arm is exercised by the hand-built fixtures,
         // which is what a town nobody surveyed looks like.

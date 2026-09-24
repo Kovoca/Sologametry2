@@ -710,8 +710,10 @@ the door; settled {:.0}/{:.0}/{:.0}; delivered {:.0}% (state affords {:.0}%); co
             "pay/yr",
             "years"
         );
+        let mut by_town: Vec<f64> = Vec::new();
         for m in 0..e.markets.len() {
             let pay = scale_sim::person::day_rate(e, m, Trade::ProductionWorker) * 260.0;
+            by_town.push(e.house_price(m) / pay.max(1e-9));
             println!(
                 "  {:<14} {:>10.3e} {:>9.1} {:>9.1} {:>9.1} {:>6.2} {:>6.2} {:>11.3e} {:>9.0} {:>7.1}",
                 e.markets[m].name,
@@ -724,6 +726,22 @@ the door; settled {:.0}/{:.0}/{:.0}; delivered {:.0}% (state affords {:.0}%); co
                 e.house_price(m),
                 pay,
                 e.house_price(m) / pay.max(1e-9)
+            );
+        }
+        // **The median town**, beside the mean above. An affordability
+        // figure is conventionally a median, because one town can carry a
+        // population-weighted mean of a ratio on its own — world 23's 527
+        // years is one town at 9,826 over fifteen between 3.8 and 34.9.
+        by_town.sort_by(|a, b| a.total_cmp(b));
+        let n_towns = by_town.len();
+        if n_towns > 0 {
+            let median = if n_towns % 2 == 1 {
+                by_town[n_towns / 2]
+            } else {
+                0.5 * (by_town[n_towns / 2 - 1] + by_town[n_towns / 2])
+            };
+            println!(
+                "\n  the median town's house costs {median:.1} years of a production worker's pay"
             );
         }
     }

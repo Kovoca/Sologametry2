@@ -274,10 +274,14 @@ pub fn build(doctrine: Doctrine) -> Economy {
         cost_factor: 1.0,
     });
 
-    let markets = vec![
-        Market::new("Ashford", ASHFORD_POP),
-        Market::new("Bexley", BEXLEY_POP),
-    ];
+    // **Ashford stands on a frontier.** The country has no sea, and its
+    // steel stockholder lands tinplate from abroad, so it needs a way across
+    // the border — which it used to get from *no quay in reach* being read
+    // as *no haul to pay* (`docs/status.md`, defect 12). Now it is said.
+    // Bexley reaches it by the road, and pays the road.
+    let mut ashford = Market::new("Ashford", ASHFORD_POP);
+    ashford.frontier = true;
+    let markets = vec![ashford, Market::new("Bexley", BEXLEY_POP)];
 
     // One road. The freight cost on it is what bounds the price gap
     // between the two towns (spec A.7) — cutting it is an economic event,
@@ -551,8 +555,15 @@ pub fn symmetric(doctrine: Doctrine) -> Economy {
         });
     }
 
+    // **Every town a frontier post**, and not one of them: each has its
+    // own stockholder landing tinplate, so each needs a border crossing,
+    // and giving it to one would break the symmetry this fixture exists for.
     let markets: Vec<Market> = (0..TOWNS)
-        .map(|m| Market::new(["Alpha", "Beta", "Gamma"][m], POP))
+        .map(|m| {
+            let mut town = Market::new(["Alpha", "Beta", "Gamma"][m], POP);
+            town.frontier = true;
+            town
+        })
         .collect();
 
     // A triangle: every town is exactly as far from every other, so no

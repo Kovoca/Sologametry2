@@ -446,6 +446,7 @@ impl Store for Market {
         }
         w.bool(self.port);
         self.berth.store(w);
+        w.bool(self.frontier);
         // **Appended, never inserted.** What the ground offers is a fact
         // measured when the town was founded; a save written before it
         // existed loads as a town nobody surveyed, which prices housing
@@ -480,6 +481,7 @@ impl Store for Market {
         };
         let port = r.bool()?;
         let berth = crate::world::Berth::load(r)?;
+        let frontier = r.bool()?;
         let buildable_km2 = match r.u8()? {
             0 => None,
             1 => {
@@ -505,6 +507,7 @@ impl Store for Market {
             cell,
             port,
             berth,
+            frontier,
             buildable_km2,
             name,
             nation,
@@ -775,6 +778,7 @@ impl Store for crate::econ::Grid {
             l.store(w);
         }
         w.f64(self.loss);
+        w.bool(self.black_start);
     }
     fn load(r: &mut Reader) -> Result<Self, SaveError> {
         let n = r.count()?;
@@ -783,6 +787,7 @@ impl Store for crate::econ::Grid {
             lines.push(crate::econ::Line::load(r)?);
         }
         let loss = r.finite_f64()?;
+        let black_start = r.bool()?;
         // **Every parent and every feed has to be a line that exists.** A
         // dangling parent is a substation whose outage takes nothing with
         // it, which is the whole of what makes the grid a hierarchy rather
@@ -807,7 +812,11 @@ impl Store for crate::econ::Grid {
         if !(0.0..1.0).contains(&loss) {
             return Err(SaveError::Impossible("a grid losing all of its power"));
         }
-        Ok(crate::econ::Grid { lines, loss })
+        Ok(crate::econ::Grid {
+            lines,
+            loss,
+            black_start,
+        })
     }
 }
 

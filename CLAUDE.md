@@ -6771,6 +6771,109 @@ green there and red on master — the drained cannery takes 124.8 t of flour
 and leaves 36,852 unpaid. `docs/status.md`, tracked gap 2, says what it
 waits for.
 
+### A run that never offered the case established nothing about it (`tests/carriage.rs`)
+
+The freight guard was removed on the evidence that no sub-tonne load had
+appeared in one fixture over four hundred days. That is the rule this file
+already keeps arriving from the other side: **a run that never offers the
+case says nothing about it.** So the case is made to happen. On the viable
+fixture the cannery is turned down to a trickle and its flour yard emptied,
+and it needs 0.189 t from a mill 120 km away: worth 64.2, carried for
+380.3, and the cannery holds 1.8M. It must arrive, the mill and the carrier
+must both be paid, and the cannery must run on it the next morning. Put
+`if freight > paid { continue; }` back and it goes red: *the cannery was
+left without flour*.
+
+### No way across the border is no trade across it (`tests/gateways.rs`)
+
+`inland_leg` answered 0.0 both where a town *was* its own port and where
+no port could be reached at all — the second read as *nothing to pay*, so
+the most cut-off town in the world imported as though the dock were in its
+high street, and could never export, because exports needed a quay of its
+own. Three answers now, the same for both directions:
+
+| | `inland_leg` | import parity | export parity |
+|---|---|---|---|
+| the town is a gateway | `Some(0)` | world + voyage + handling | world − voyage − handling |
+| a gateway is a road away | `Some(road)` | + the road | − the road |
+| **no gateway reachable** | **`None`** | **infinite** | **minus infinity** |
+
+**And the gateway follows how the goods travel** (`econ::Gateway`): a sea
+shipment needs a quay, a land-border one needs a frontier post
+(`Market::frontier`) and a road to it, and a country with no sea can sell
+through its post as well as buy. The fixtures with no sea were relying on
+the old default, so they have posts now — Ashford's in `build`, every
+town's in `symmetric`, which keeps it symmetric. A generated town that
+cannot reach any coast when its country is founded is given one, which is
+what it had before by accident; that one was needed, because a *single*
+extracted nation can be landlocked and the health and labour gates build
+exactly that. **A town cut off later — a pass shut by snow — is not handed
+a crossing for its trouble.**
+
+Both kinds of gateway charge the same handling a tonne. What a land
+crossing really costs is not read yet, and is said so rather than guessed.
+
+- **A world is founded twice**, and the flag has to be decided at the
+  second. Each nation is built on its own and then folded in with its
+  neighbours, so a landlocked nation's towns were given posts, then
+  reached a neighbour's quay by road, and kept the posts — an inland town
+  loading ships. Founding decides the flag from the country as finally
+  built.
+- **An infinite parity is a decision, never a cost.** It is the right
+  answer to "is it worth importing?" and the wrong thing to average into a
+  market's cost: a merchant cut off from every gateway lands nought, and
+  nought times infinity is not a number. One town cut off by a winter pass
+  turned an eight-nation world's money into NaN by day fifty. Debug builds
+  caught it at the conservation check; a release build, where that check is
+  compiled out, ran one test for over half an hour instead of four minutes
+  and never said why. So a merchant with no way across the border prices
+  nothing and reserves nothing for cargoes, and the gate requires the books
+  to conserve and every price to stay a number — red without the guard, at
+  *steel at Ashford: price inf, cost inf*.
+
+### What the power-recovery gate proves, stated exactly (`Grid::black_start`)
+
+The cap gate supplied twenty tonnes of coal to a dark country and watched
+it recover, and called that a black start. **It proves recovery after
+supplied fuel**, and only because every station here could start with no
+power from the network — which real thermal stations cannot: a coal plant
+needs the grid for its pumps, fans and mills before it makes any. What
+restarts a real system is a black-start unit — hydro, a gas turbine or
+diesel sets — and operators are required to hold them (NERC EOP-005 in
+North America, the Electricity System Restoration Standard in Great
+Britain).
+
+So the capability is explicit and simple: `Grid::black_start`, on for every
+grid built, saved with the grid, and a dark system restarts only if it has
+one. **Fuel is still needed** — a system with the capability and none of
+it stays dark, which is the cap gate's first half — and now a system with
+fuel and no capability stays dark too, with the coal unburnt, which is the
+new gate's. "Dark" is read off yesterday's dispatch, so the first morning
+of a world is not a restart; a gate holds that as well.
+
+**Autonomous recovery is not modelled.** It would need a reserve the system
+holds against exactly this, or a supply it can reach without power, and
+neither is represented; a fully isolated system with its fuel exhausted
+correctly stays down.
+
+### A mean of a ratio can be one town (`docs/status.md`, defect 13)
+
+World 23's house at 527 years of a production worker's pay was traced from
+the raw terms before anything was touched. It is **one town**: Caldleigh,
+in mountain country with 3.5% of its reach buildable, puts 9.7M people on
+36,133 per buildable km² and prices a house at 9,826 years. The other
+fifteen run 3.8 to 34.9 and the median town is 8.2, against a real 7.1.
+
+The pay is ordinary, the materials are ordinary, and the figure is a
+valuation — the same price a sampled person pays, with no sales at any
+other. What runs it is the land term, `0.664 x pressure^2.55`, fitted where
+towns sit within a factor of two of an ordinary density and extrapolated to
+eighteen: land 1,065 times the building. Two things look wrong and both are
+decisions rather than constants — a dwelling priced on a house-sized share
+of land at any density, where people at that density live in flats, and a
+land share of 99.9% that no market has — so neither is changed yet. The
+soak prints each town's terms and the median town now.
+
 ## Sixteen combinations, because four changes have six interactions (`bin/matrix`)
 
 Four behaviours were introduced together and starved a country. Reverting

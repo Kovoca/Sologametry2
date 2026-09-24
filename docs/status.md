@@ -549,12 +549,62 @@ Real defects, each visible in a test or measurable in a binary.
 
    **Shipped, 2026-09-23**, with every gate green: 937 tests across 97
    files, plus the strengthened cap gate and the two fixture-role gates.
+   *(What that cap gate proves, stated exactly, 2026-09-24: a dark grid
+   prices at its cap and not beyond; load goes unserved and the mills stop;
+   a country with its fuel exhausted and nothing to restart from stays
+   dark; and **given fuel the test puts there**, a system that can
+   black-start recovers inside ten days. That last is recovery after
+   supplied fuel, not autonomous recovery — the fixture holds no reserve and
+   has no supply that does not itself need power. Black-start capability is
+   now explicit (`Grid::black_start`, on for every grid built), and a
+   second gate shows fuel alone does not restart a system without it.)*
    Five years on three worlds against master, the change moves
    homelessness at the end by +0.3, 0.0 and +0.8 points (worlds 7, 11,
    23) and leaves what a house costs unchanged. World 23's house at
    **526 years of a production worker's pay is not this change** — master
    reads 529.4 on the same world — and is recorded below as its own
    defect.
+
+   **The whole comparison, re-run in full, 2026-09-24**, because the first
+   one read homelessness at the end and left unemployment and money
+   unassessed. Five years each, `ba829eb` (master before the change)
+   against `b9b4cd7` (after; nothing between them touches a generated world
+   but this change and the freight guard shipped with it):
+
+   | worlds 7 / 11 / 23 | before | after |
+   |---|---|---|
+   | homeless, mean over the run | 0.12 / 0.00 / 4.90% | 0.21 / 0.00 / 5.50% |
+   | homeless at the end | 0.0 / 0.0 / 4.2% | 0.3 / 0.0 / 5.0% |
+   | unemployment, mean (workforce) | 13.0 / 8.9 / 13.3% | **12.2 / 9.0 / 12.0%** |
+   | months outside its band | 12 / 0 / 22 | **3 / 0 / 3** |
+   | households' money at the end | 3.86 / 3.49 / 4.74e10 | 4.22 / 3.62 / 4.47e10 |
+   | hungry, worst month | 2.5 / 0.2 / 4.7% | the same |
+
+   **So the change leaves a world that works better and a few more people
+   on the street in the one world that already had them** — in world 23
+   about four of 640 sampled people over the run. Why, from world 23's own
+   tables, and it is not the counter reaching them directly: **a sampled
+   person does not buy through the counter at all** — their food, their
+   rent and their other outgoings come out of their own pocket, which is
+   not the household pool (gap 4). The change reaches them through work
+   and prices only:
+   - **Income**: pay per day did not fall in the trades that carry the
+     homelessness — food service 7.3 → 7.4 days of food a day, office
+     clerks 10.0 → 10.6, production workers 9.4 → 9.9 — but **days worked
+     did**: clerks 75.3 → 72.2%, production 85.8 → 82.8%, cleaners 82.6 →
+     78.0%. Why those days fell is not traced: a shop selling less to a
+     thin purse rosters fewer shifts, which is one route, but clerks and
+     production workers are mostly not shop staff.
+   - **Rent** is a fixed share of a production worker's day, so it did not
+     move with it; notices fell 3.3 → 2.3% of renters a year and evictions
+     rose 1.8 → 1.9%.
+   - **Consumption** moved the other way: food ends at 0.75 of its cost
+     against 0.84, and savings in days of food rose in most trades.
+   Homelessness rose in exactly the trades whose days fell — food service
+   6.0 → 8.2%, clerks 3.3 → 5.7%, production 3.9 → 5.9% — which is fewer
+   paid days meeting a rent that did not change. Kept as an observed effect;
+   it is not by itself a case against the counter, and one world of 640
+   people cannot separate four people from sampling noise.
 
    **And the last blocking gate was not the counter change at all**,
    2026-09-22. `tests/durability.rs::a_worn_out_town_is_a_cheap_town` went
@@ -633,6 +683,36 @@ Real defects, each visible in a test or measurable in a binary.
     `src/` and from `CLAUDE.md`, so inserting one renames every later
     defect — a position read as a name, which this project has a rule
     about.)*
+    **Fixed, 2026-09-24.** `inland_leg` returns one of three answers —
+    `Some(0)` where the town is itself a gateway, the road's cost where one
+    is reachable, and `None` where none is — and `None` makes import parity
+    infinite and export parity minus infinity. The gateway depends on the
+    mode (`econ::Gateway`): a quay for a sea shipment, a frontier post for
+    a land-border one (`Market::frontier`), and exports may leave through
+    either, so a country with no sea can sell as well as buy. The fixtures
+    with no sea have explicit frontier posts; a generated town that cannot
+    reach any coast when its country is built is given one
+    (`post_frontiers_where_no_coast_is_reached`), which is what it had
+    before by accident; a town cut off *later* gets nothing free. Both
+    handle a tonne at the same per-tonne charge for now — what a land
+    crossing really costs is not read yet. Gates in `tests/gateways.rs`, all
+    three red under the old rules.
+
+    Two things the suite found on the way. **A world is founded twice** —
+    each nation built on its own, then folded in with its neighbours — so
+    posts added to a landlocked nation's towns survived into a world where
+    they could reach a neighbour's quay, and an inland town was loading
+    ships; the founding step decides the flag now rather than adding to it.
+    **And an unreachable parity is not a cost.** A merchant with no gateway
+    has an infinite parity and lands nothing, and priced as a cost, nought
+    times infinity is not a number: in an eight-nation world a town cut
+    off by a winter pass turned money into NaN by day fifty, and in a
+    release build, with the conservation check compiled out, a test ran for
+    over half an hour instead of four minutes. Such a merchant prices
+    nothing now, and the gate requires the treasury to conserve and every
+    price to stay a number. Five-year soak on worlds 7/11/23
+    identical to the baseline, month by month, because every town in them
+    reaches a quay.
 13. **World 23 prices a house at about 527 years of a production
     worker's pay.** Measured by `cargo run --release --bin soak -- --seed
     23 --nations 4 --years 5 --each 40`: **529.4 on master before the
@@ -644,6 +724,40 @@ Real defects, each visible in a test or measurable in a binary.
     a house is its bill of materials at the local price of cement, steel
     and timber, times the land term, so one of those four is the place to
     look, and none has been read. Named rather than diagnosed.
+    **Traced, 2026-09-24, and not recalibrated.** The raw terms, world 23
+    after five years (`bin/soak` prints them town by town now):
+    - **It is one town.** Caldleigh, 9.7M people, prices a house at
+      1.334e7 against a production worker's 1,357 a year: **9,826 years**.
+      The other fifteen towns run 3.8 to 34.9, averaging 14.0 weighted by
+      people, and the median town is **8.2** against a real 7.1. The 526 is
+      a population-weighted mean of a ratio, and Caldleigh is 97.5% of it.
+    - **The denominator is ordinary**: 1,357 is inside the 1,330-2,106 the
+      other towns pay, in the same model money.
+    - **The numerator is a valuation, not a sale.** `house_price` is the
+      dwelling's bill of materials at local prices over the 45% materials
+      are of a build, worn by condition, plus land; it is also the price a
+      sampled person pays to buy outright. There are no transactions at any
+      other price and no asking prices. The dwelling is the same bill in
+      every town — 16.7 t of cement, 3.27 t of steel, 3.80 t of timber.
+    - **Its materials are ordinary and its land is not.** Structure 12,512;
+      land 1,064.6 times that. Caldleigh sits in mountain country (relief
+      428 m/km) with 3.5% of its reach buildable, so its people press on
+      **36,133 per buildable km²** against 900-4,100 elsewhere — a
+      Dhaka-like density, so the pressure itself is plausible.
+    - **The mechanism** is `0.664 x pressure^2.55` (pressure 18.1 here,
+      clamped at 20), an exponent fitted where towns sit within about a
+      factor of two of an ordinary density. Extrapolated to eighteen times
+      it makes land 99.9% of the price.
+    - **What looks wrong, for a decision rather than a tuning:** a dwelling
+      is priced on a house-sized share of land at any density, where at
+      thirty-six thousand to the square kilometre people live in flats and
+      share a plot; and a land share of 99.9% is beyond any real market.
+      Either answer is a change to the model, not to a constant, and
+      neither is made.
+    - In passing: the diagnostic's "buildable" column can read 102.6%,
+      because a disc of 29 whole cells is 2.6% larger than the circle it
+      approximates. The model's figure is the cells'; only the column's
+      denominator is the circle.
 14. **A merchant at a quay cannot see the demand inland.** An importer
     decides whether to land on its **own town's** price against import
     parity. A steel stockholder at a port with no steel demand of its own

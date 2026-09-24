@@ -331,7 +331,7 @@ fn main() {
                 "  {:<22} {:>5} {:>8.0} {:>8.0} {:>8.0} {:>8.0} {:>7.2}",
                 e.markets[m].name,
                 if e.quay(m) { "yes" } else { "" },
-                e.inland_leg(m),
+                e.inland_leg(m).unwrap_or(f64::INFINITY),
                 e.markets[m].price[c as usize],
                 e.import_parity(m, c),
                 e.export_parity(m, c),
