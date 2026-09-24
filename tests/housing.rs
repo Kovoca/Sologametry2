@@ -202,6 +202,39 @@ fn house_years(e: &scale_sim::econ::Economy) -> Vec<f64> {
     years
 }
 
+/// **A town surveyed with no gentle ground is the dearest case, not an
+/// ordinary one.** A surveyed zero answered as though nobody had looked, so
+/// world 11's Uxhaven — ten million people in 427 m of relief to the
+/// kilometre — was priced like a town on a plain. Everything within reach
+/// being steep is where building costs most; a town nobody surveyed is still
+/// read as ordinary, which is what a hand-built fixture relies on.
+#[test]
+fn a_town_with_no_gentle_ground_is_not_an_ordinary_town() {
+    let open = a_nation().economy;
+    let m = 0;
+    let mut steep = a_nation().economy;
+    steep.markets[m].buildable_km2 = Some(0.0);
+    let mut unsurveyed = a_nation().economy;
+    unsurveyed.markets[m].buildable_km2 = None;
+    assert_eq!(
+        steep.housing_pressure(m),
+        Economy::PRESSURE_CEILING,
+        "a town with nothing gentle within reach reads pressure {:.2}",
+        steep.housing_pressure(m)
+    );
+    assert_eq!(unsurveyed.housing_pressure(m), 1.0);
+    assert!(
+        steep.house_price(m) > unsurveyed.house_price(m)
+            && steep.house_price(m) >= open.house_price(m),
+        "{}: on nothing but steep ground a house costs {:.3e}, against {:.3e} unsurveyed \
+         and {:.3e} as surveyed",
+        open.markets[m].name,
+        steep.house_price(m),
+        unsurveyed.house_price(m),
+        open.house_price(m),
+    );
+}
+
 /// **Owning stops the rent**, which is the whole reason people want to.
 #[test]
 fn owning_stops_the_rent() {

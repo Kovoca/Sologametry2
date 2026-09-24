@@ -3467,6 +3467,11 @@ pub struct Economy {
     /// Hands on today at each site, filled by `labour::update`. Payroll is
     /// paid by a particular employer, so it needs the breakdown.
     pub staff_today: Vec<f64>,
+    /// **What each hospital billed today**, by site, so the three payers'
+    /// shares can be reconciled against the one bill they allocate. Raised
+    /// afresh each day and never saved: it is a record of today's invoice,
+    /// not state.
+    pub hospital_billed: std::collections::BTreeMap<usize, f64>,
     /// **What share of its wage bill each firm has been able to meet**,
     /// smoothed over weeks.
     ///
@@ -3569,6 +3574,7 @@ impl Economy {
         // end.** Clearing on the way out left `today` empty for anything
         // that looked after `step` returned — which is everything.
         self.treasury.open_the_books();
+        self.hospital_billed.clear();
 
         for site in self.ledger.sites.iter_mut() {
             site.ran = 0.0;
@@ -5905,49 +5911,102 @@ impl Economy {
         }
     }
 
-    /// **What a builder charges over its direct costs**: the gross margin
-    /// of US engineering and construction firms, **15.46%** of sales —
-    /// what is left of the price after direct labour and materials, and
-    /// what pays for the yard, the vans, the power, the carriage on its
-    /// deliveries and a profit *(Damodaran, Margins by Sector (US), 48
-    /// firms, data as of January 2026; operating margin 6.49%)*.
+    /// **What a builder keeps of what it charges**: the operating margin
+    /// of US engineering and construction firms, **6.49%** of revenue
+    /// *(Damodaran, Margins by Sector (US), 48 firms, data as of January
+    /// 2026: pre-tax unadjusted operating margin)*, charged over every
+    /// operating cost the model gives it — see `operating_costs_today`.
     ///
-    /// **Billed at cost, a provider has no way back in.** It took in
-    /// wages and the materials it used and paid out those and its power
-    /// and carriage as well, so it ran at a small loss every day and a
-    /// bad week left it on nothing for good: with no money it cannot pay
-    /// for its power or its deliveries, is then paid its wages and its
-    /// materials, and starts the next day short of all three again.
-    pub const BUILDERS_GROSS_MARGIN: f64 = 0.1546;
+    /// **An operating margin, not the gross margin, and the reason is what
+    /// the model has.** The first version charged the 15.46% gross margin
+    /// over wages and materials alone. A gross margin is what is left after
+    /// cost of goods, and it has to pay for everything below that line —
+    /// head office, purchased services, rent, insurance, depreciation —
+    /// none of which a firm here pays for. So the whole of it became
+    /// distributable profit: builders paid out 9.1% of revenue and kept more
+    /// besides, against a real 6.49% after all costs, while their power and
+    /// carriage, which are costs of the work, sat outside the bill. Measured
+    /// over 200 days, all the costs the model gives a builder came to 85.7%
+    /// of its revenue, against the table's 84.54% cost of goods.
+    ///
+    /// **Billed at cost, a provider has no way back in.** A bad week left
+    /// one on nothing for good: with no money it cannot pay for its power
+    /// or its deliveries, is paid only what the day cost, and starts the
+    /// next day short again.
+    pub const BUILDERS_OPERATING_MARGIN: f64 = 0.0649;
 
-    /// **What a hospital charges over its staff and supplies**: the gross
-    /// margin of US hospital chains, **39.10%** of sales *(Damodaran, 31
-    /// firms, January 2026; operating margin 13.36%)*. For those firms
-    /// cost of goods is 60.9% of sales, which is about salaries and
-    /// supplies — the two things a hospital's bill here is made of.
+    /// **What a hospital keeps of what it charges**: the operating margin
+    /// of US hospital chains, **13.36%** of revenue *(Damodaran, 31 firms,
+    /// January 2026)*, over every operating cost the model gives it.
     ///
     /// **Listed chains are investor-owned, and so is a hospital here**: it
     /// pays its profit to shareholders across the nation like any company
     /// of its size. Most American hospitals are not-for-profit and run far
     /// thinner, keeping what is left for their buildings and paying nobody
     /// a dividend; that ownership is not modelled.
-    pub const HOSPITAL_GROSS_MARGIN: f64 = 0.3910;
+    ///
+    /// **A hospital's own costs are not calibrated, and this does not
+    /// calibrate them.** Measured over 200 days its power came to 15.7% of
+    /// its revenue — 57% of its payroll — and its supplies to more than its
+    /// payroll, where a real hospital's staff are most of its costs. The
+    /// margin is applied to whatever the costs are.
+    pub const HOSPITAL_OPERATING_MARGIN: f64 = 0.1336;
 
-    /// A price whose gross margin is `margin` of it, over `direct` costs.
-    pub fn priced_over(direct: f64, margin: f64) -> f64 {
-        direct / (1.0 - margin)
+    /// **A price that leaves `margin` of it after `costs`**: `costs / (1 -
+    /// margin)`. A margin is a share of the price, not of the cost, so a
+    /// 6.49% margin is a 6.94% markup and a 13.36% margin a 15.42% one.
+    pub fn priced_over(costs: f64, margin: f64) -> f64 {
+        costs / (1.0 - margin)
     }
 
-    /// **What a hospital bills for today**: its staff and the supplies the
-    /// wards used, over its margin. One function, because the state taxes
+    /// **Every operating cost a provider incurred doing today's work**: its
+    /// payroll, the inputs the work used at the price a firm pays, the
+    /// power it drew at the price of power here, and the carriage charged
+    /// on what reached it today, paid or not. Incurred rather than paid,
+    /// because a bill must not shrink with the provider's ability to settle
+    /// its own suppliers — that is the loop with no way in.
+    ///
+    /// **What is not here is not in the price either**: rent, insurance,
+    /// purchased services, depreciation and a head office, which no firm in
+    /// this model pays for. A payer's bill is lower than a real one by
+    /// about that much, and it is named rather than priced into a profit
+    /// nobody earned.
+    fn operating_costs_today(&self, site: usize) -> f64 {
+        use crate::money::{Account, Why};
+        let s = &self.ledger.sites[site];
+        let m = s.market;
+        let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
+        let power = s.recipe.map(|r| RECIPES[r].power * s.ran).unwrap_or(0.0)
+            * self.markets[m].price[Commodity::Electricity as usize];
+        let carriage_paid: f64 = self
+            .treasury
+            .today
+            .iter()
+            .filter(|t| t.from == Account::Firm(site) && t.why == Why::Freight)
+            .map(|t| t.amount)
+            .sum();
+        let carriage_owed: f64 = self
+            .treasury
+            .unpaid_by
+            .iter()
+            .filter(|((from, _, why), _)| *from == Account::Firm(site) && *why == "freight")
+            .map(|(_, v)| v)
+            .sum();
+        hands * self.day_rate_here(m)
+            + self.inputs_used_cost(site)
+            + power
+            + carriage_paid
+            + carriage_owed
+    }
+
+    /// **What a hospital bills for today**: every operating cost of the
+    /// day's work, over its margin. One function, because the state taxes
     /// for its share of this and then pays it, and two copies of the
     /// arithmetic are how the payment came to outrun the tax.
     pub fn hospital_bill(&self, site: usize) -> f64 {
-        let m = self.ledger.sites[site].market;
-        let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
         Self::priced_over(
-            hands * self.day_rate_here(m) + self.inputs_used_cost(site),
-            Self::HOSPITAL_GROSS_MARGIN,
+            self.operating_costs_today(site),
+            Self::HOSPITAL_OPERATING_MARGIN,
         )
     }
 
@@ -5993,6 +6052,7 @@ impl Economy {
             // bill: every hospital in world 23 met under two thirds of its
             // payroll with the state paying all it could.
             let bill = self.hospital_bill(site);
+            self.hospital_billed.insert(site, bill);
             let (public, insured, pocket) = self
                 .governments
                 .get(&nation)
@@ -6000,11 +6060,23 @@ impl Economy {
                 .unwrap_or((1.0, 0.0, 0.0));
             *wanted.entry(nation).or_default() += bill;
 
+            let funded = self.state_affords(nation);
             let mut paid = self.treasury.pay(
                 day,
                 Account::State(nation),
                 Account::Firm(site),
-                bill * public * self.state_affords(nation),
+                bill * public * funded,
+                Why::PublicSpending,
+            );
+            // **What the state did not fund is still owed on the bill.** It
+            // pays the hospital on what it could afford yesterday, and the
+            // rest of its share was neither paid nor recorded anywhere — so
+            // the three payers' portions did not add up to the invoice they
+            // were allocating. It is a shortfall, recorded as one.
+            self.treasury.record_unpaid(
+                Account::State(nation),
+                Account::Firm(site),
+                bill * public * (1.0 - funded).max(0.0),
                 Why::PublicSpending,
             );
             // **What the insurers carry**, out of premiums the same
@@ -6045,9 +6117,8 @@ impl Economy {
                 continue;
             }
             let m = self.ledger.sites[site].market;
-            let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
-            // Wages plus what the materials cost them, which is what a
-            // builder actually charges for.
+            // Every operating cost of the work, over the margin a builder
+            // keeps, which is what a builder actually charges for.
             //
             // **The materials the work used, at the price a firm pays for
             // them** — not the supply bills the builder managed to settle
@@ -6057,10 +6128,9 @@ impl Economy {
             // cement, so never held the money. In world 23 builders paid for
             // no materials all year and every cement works in the world met
             // none of its payroll.
-            let materials = self.inputs_used_cost(site);
             let due = Self::priced_over(
-                hands * self.day_rate_here(m) + materials,
-                Self::BUILDERS_GROSS_MARGIN,
+                self.operating_costs_today(site),
+                Self::BUILDERS_OPERATING_MARGIN,
             );
             self.treasury.pay(
                 day,
@@ -8356,24 +8426,28 @@ impl Economy {
     /// and the rent both read it and two copies would drift.
     pub const LAND_OVER_STRUCTURE: f64 = 0.664;
 
-    /// **The most of a dwelling's value the ground is bid to before the
-    /// town builds up instead**: land at **59.3%** of a single-family
-    /// home's value, the 99th percentile of American counties *(FHFA,
-    /// Davis, Larson, Oliner and Shui, annual panel of 1,054 counties
-    /// 2012-2022; the median county is 22.9% and the 90th percentile
-    /// 39.5%)*.
+    /// **Where the land curve stops being followed**: land at **59.3%** of
+    /// a dwelling's value.
     ///
-    /// **Which percentile is a decision, and labelled as one.** A handful
-    /// of counties sit above it — the dearest in California — so this is
-    /// where the ordinary form gives way in all but the top hundredth of
-    /// real markets, not the most anybody has ever paid for ground.
+    /// **A chosen approximation, not a measured switch.** 59.3% is the 99th
+    /// percentile of an observed distribution — land's share of
+    /// single-family home value across 1,054 US counties, 2012-2022 *(FHFA,
+    /// Davis, Larson, Oliner and Shui; median 22.9%, 90th percentile
+    /// 39.5%)*. It says how high land shares are seen to go. It does not
+    /// identify a point at which developers stop bidding for ground and
+    /// start building up, and no source here does. It is used as the place
+    /// the fitted curve is no longer trusted, because the curve was fitted
+    /// across towns well below it and extrapolated past it to 99.9%.
     pub const LAND_SHARE_AT_MOST: f64 = 0.593;
 
     /// **How much dearer a building is for being built taller**: the
-    /// height elasticity of construction cost, about **0.25** for
-    /// structures of five floors or fewer *(Ahlfeldt and McMillen,
-    /// "Tall Buildings and Land Values", Review of Economics and
-    /// Statistics 2018, on Chicago 1870-2010)*.
+    /// height elasticity of construction cost per unit of floor area, about
+    /// **0.25** for structures of five floors or fewer *(Ahlfeldt and
+    /// McMillen, "Tall Buildings and Land Values", Review of Economics and
+    /// Statistics 2018, on Chicago 1870-2010; "about 25%" in the authors'
+    /// VoxEU summary, and 0.251 in the paper's Table 6 as a review read
+    /// it)*. So doubling height raises the unit cost by `2^0.25 - 1`,
+    /// about **19%** — not 25%.
     ///
     /// **Understated for towers, and said so.** The same study finds the
     /// elasticity rising with height and passing 100% for super-tall
@@ -8412,6 +8486,14 @@ impl Economy {
     /// ordinary form the town is, to the height elasticity of
     /// construction cost. One below the switch.
     ///
+    /// **An approximation of vertical density in a valuation, and nothing
+    /// more.** It changes what a dwelling is worth and what a room rents
+    /// for. It builds nothing: no dwelling is added, no cement or steel is
+    /// used, no builder is employed and no time passes. A town has no stock
+    /// of dwellings to add to, and more habitable space in a running world
+    /// should need funded construction — materials, labour and time — which
+    /// is a named gap.
+    ///
     /// Density above the switch is carried by height, so a town twice as
     /// dense as the switch is built about twice as high — and pays
     /// `2^0.25`, 19% more, for the building. **It answers the loss of
@@ -8448,11 +8530,30 @@ impl Economy {
         let Some(km2) = mk.buildable_km2 else {
             return 1.0;
         };
+        // **Surveyed, and nothing gentle within reach**, which is not the
+        // same as nobody having looked. It answered as an ordinary town, so
+        // world 11's Uxhaven — ten million people in country of 427 m of
+        // relief to the kilometre — priced like a town on a plain.
+        //
+        // What a zero here means is only that no ground within reach falls
+        // under the 15% slope cut: everything is steep. That is building's
+        // dearest case, not an impossible one — real cities stand on such
+        // ground — so it is the pressure ceiling, stated rather than
+        // defaulted. Two things it is not, because the model cannot yet say
+        // either: that no *undeveloped* land remains (nothing records which
+        // ground is built on), or that no footprint is possible at all
+        // (steep ground is priced, never forbidden). The dwellings already
+        // there are valued either way.
         if km2 <= 0.0 {
-            return 1.0;
+            return Self::PRESSURE_CEILING;
         }
-        (mk.population / km2 / ORDINARY_DENSITY).clamp(0.05, 20.0)
+        (mk.population / km2 / ORDINARY_DENSITY).clamp(0.05, Self::PRESSURE_CEILING)
     }
+
+    /// **The most pressure a town's ground is read at**: twenty times an
+    /// ordinary density, about 40,000 people to the buildable square
+    /// kilometre. A designed bound, where the densest real cities sit.
+    pub const PRESSURE_CEILING: f64 = 20.0;
 
     /// **How hard a house price answers the ground**, as an exponent on
     /// pressure.

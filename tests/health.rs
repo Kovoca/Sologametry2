@@ -213,20 +213,21 @@ fn a_state_that_does_not_pay_for_medicine_does_not_tax_for_it() {
     );
 }
 
-/// **And a state does not spend what it did not raise.** The mirror of the
-/// gate above, and the half this file recorded as missing: `Treasury::pay`
-/// lets a state overdraw by design, so nothing stopped the exchequer paying
-/// out more than it taxed for.
+/// **On this model's balanced-budget rule, a state raises what it spends.**
+/// The mirror of the gate above. A state here sizes its tax to what its
+/// services cost, so a systematic gap between the two is a defect — which
+/// is a rule of this model's fiscal policy, not of states in general:
+/// opening reserves and recorded borrowing can finance spending, and the
+/// universal rule is the one after this.
 ///
-/// It happened. Hospitals came to bill their costs over a margin, the
-/// payment read the new bill and the tax read its own copy of the old one,
-/// and over five years three worlds' states ended **3.5-5.8e10 below
-/// nought** — money that was never raised, reaching households as
-/// hospital dividends. What discriminates is the direction: the exchequer
-/// must not *fall* by more than a few weeks of its own outgoings, the same
-/// bar the hoarding gate sets on it rising.
+/// It happened. Hospitals came to bill over a margin, the payment read the
+/// new bill and the tax read its own copy of the old one, and over five
+/// years three worlds' states ended 3.5-5.8e10 below nought — money that
+/// was never raised, reaching households as hospital dividends. The
+/// exchequer must not *fall* by more than a few weeks of its own
+/// outgoings, the same bar the hoarding gate sets on it rising.
 #[test]
-fn a_state_does_not_spend_what_it_did_not_raise() {
+fn a_state_on_a_balanced_budget_raises_what_it_spends() {
     for system in [HealthSystem::TaxFunded, HealthSystem::PrivateInsurance] {
         let mut e = a_country_that(system, 40);
         let held = |e: &Economy| -> f64 {
@@ -341,4 +342,140 @@ fn the_three_payers_account_for_the_whole_bill() {
         "the state's share runs over a range of {spread:.2}, which is one arrangement \
          wearing four names"
     );
+}
+
+/// **A state finances nothing it has not recorded.** Every day each
+/// exchequer reconciles — what it held, plus what it received, less what it
+/// paid, is what it holds — and it never goes below nought, because this
+/// model has no state borrowing to record and `Treasury::pay` would
+/// otherwise let a state overdraw without anything saying so. Drawing down
+/// reserves is allowed; spending money that nobody lent is not.
+#[test]
+fn a_state_finances_nothing_it_has_not_recorded() {
+    for system in [HealthSystem::TaxFunded, HealthSystem::PrivateInsurance] {
+        let mut e = a_country_that(system, 40);
+        for day in 0..200 {
+            let before: Vec<(u16, f64)> = e
+                .nations()
+                .into_iter()
+                .map(|n| (n, e.treasury.balance(Account::State(n))))
+                .collect();
+            e.step();
+            for &(n, held) in &before {
+                let state = Account::State(n);
+                let received: f64 = e
+                    .treasury
+                    .today
+                    .iter()
+                    .filter(|t| t.to == state)
+                    .map(|t| t.amount)
+                    .sum();
+                let paid: f64 = e
+                    .treasury
+                    .today
+                    .iter()
+                    .filter(|t| t.from == state)
+                    .map(|t| t.amount)
+                    .sum();
+                let now = e.treasury.balance(state);
+                assert!(
+                    (held + received - paid - now).abs() <= 1e-6 * held.abs().max(1.0),
+                    "{}, day {day}: state {n} held {held:.6e}, received {received:.6e}, paid \
+                     {paid:.6e} and holds {now:.6e} — its books do not reconcile",
+                    system.name()
+                );
+                assert!(
+                    now >= 0.0,
+                    "{}, day {day}: state {n} holds {now:.3e} — it has spent money nobody \
+                     lent it",
+                    system.name()
+                );
+            }
+        }
+    }
+}
+
+/// **A hospital's bill is allocated once.** The state, the insurers and the
+/// patient each owe a share of the one invoice, and what each paid plus
+/// what each was recorded as owing must come to the bill — no more, so an
+/// insured patient is not charged the insurer's part again, and no less, so
+/// a share the state did not fund does not quietly vanish. It did vanish:
+/// the state paid on what it could afford and recorded nothing for the
+/// rest.
+#[test]
+fn a_hospital_bill_is_allocated_once() {
+    use scale_sim::money::Why;
+    // And a state that cannot reach its own economy, so there is a share it
+    // does not fund: without one the rule for it is never exercised.
+    for (system, weak) in [
+        (HealthSystem::TaxFunded, false),
+        (HealthSystem::SocialInsurance, false),
+        (HealthSystem::PrivateInsurance, false),
+        (HealthSystem::TaxFunded, true),
+    ] {
+        let mut e = a_nation().economy;
+        for gov in e.governments.values_mut() {
+            gov.health = system;
+            if weak {
+                gov.capacity = scale_sim::state::Capacity::Weak;
+            }
+        }
+        for _ in 0..40 {
+            e.step();
+        }
+        let mut checked = 0;
+        let mut unfunded = 0.0;
+        for day in 0..60 {
+            e.step();
+            for (&site, &bill) in e.hospital_billed.iter() {
+                let hospital = Account::Firm(site);
+                let payer = |a: &Account| {
+                    matches!(
+                        a,
+                        Account::State(_) | Account::ServiceSector(_) | Account::Households(_)
+                    )
+                };
+                let paid: f64 = e
+                    .treasury
+                    .today
+                    .iter()
+                    .filter(|t| {
+                        t.to == hospital
+                            && payer(&t.from)
+                            && matches!(t.why, Why::PublicSpending | Why::Claim | Why::Purchase)
+                    })
+                    .map(|t| t.amount)
+                    .sum();
+                let owed: f64 = e
+                    .treasury
+                    .unpaid_by
+                    .iter()
+                    .filter(|((from, to, why), _)| {
+                        *to == hospital
+                            && payer(from)
+                            && matches!(*why, "public spending" | "claims" | "purchases")
+                    })
+                    .map(|(_, v)| v)
+                    .sum();
+                unfunded += owed;
+                assert!(
+                    (paid + owed - bill).abs() <= 1e-6 * bill.max(1.0),
+                    "{}, day {day}: a hospital billed {bill:.6e} and was paid {paid:.6e} with \
+                     {owed:.6e} recorded as owed — the shares do not allocate the bill once",
+                    system.name()
+                );
+                checked += 1;
+            }
+        }
+        assert!(
+            checked > 0,
+            "{}: no hospital billed anything",
+            system.name()
+        );
+        assert!(
+            !weak || unfunded > 0.0,
+            "a weak state funded every hospital bill in full — the unfunded share was never \
+             exercised"
+        );
+    }
 }

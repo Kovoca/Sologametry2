@@ -2153,6 +2153,7 @@ impl Region {
             exchange: crate::exchange::Exchange::at_par(),
             arrivals: Vec::new(),
             staff_today: Vec::new(),
+            hospital_billed: Default::default(),
             payroll_met: Vec::new(),
             state_afford: Default::default(),
             building_stock: Vec::new(),

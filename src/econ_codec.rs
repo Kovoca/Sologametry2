@@ -1632,6 +1632,7 @@ impl Store for crate::econ::Economy {
             shipments,
             arrivals,
             staff_today,
+            hospital_billed: Default::default(),
             payroll_met,
             state_afford,
             building_stock,

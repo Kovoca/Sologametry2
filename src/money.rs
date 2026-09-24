@@ -261,21 +261,11 @@ impl Treasury {
             _ => amount.min(self.balance(from).max(0.0)),
         };
         if capped <= 1e-9 {
-            self.unpaid += amount;
-            *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount;
-            *self
-                .unpaid_by
-                .entry((from, to, reason_name(why)))
-                .or_insert(0.0) += amount;
+            self.record_unpaid(from, to, amount, why);
             return 0.0;
         }
         if capped < amount {
-            self.unpaid += amount - capped;
-            *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount - capped;
-            *self
-                .unpaid_by
-                .entry((from, to, reason_name(why)))
-                .or_insert(0.0) += amount - capped;
+            self.record_unpaid(from, to, amount - capped, why);
         }
         *self.balances.entry(from).or_insert(0.0) -= capped;
         *self.balances.entry(to).or_insert(0.0) += capped;
@@ -339,6 +329,22 @@ impl Treasury {
         });
         *self.flows.entry(reason_name(why)).or_insert(0.0) += taken;
         taken
+    }
+
+    /// **A bill that was owed and not paid**, recorded without any money
+    /// moving: by reason and by who owed whom, for the day. `pay` uses it for
+    /// what a payer could not cover; a caller uses it directly for a share
+    /// it deliberately did not fund, which would otherwise vanish.
+    pub fn record_unpaid(&mut self, from: Account, to: Account, amount: f64, why: Why) {
+        if amount <= 0.0 {
+            return;
+        }
+        self.unpaid += amount;
+        *self.unpaid_why.entry(reason_name(why)).or_insert(0.0) += amount;
+        *self
+            .unpaid_by
+            .entry((from, to, reason_name(why)))
+            .or_insert(0.0) += amount;
     }
 
     /// Start of a new day.

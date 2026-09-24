@@ -89,7 +89,14 @@ fn main() {
         let km2 = mk.buildable_km2.unwrap_or(0.0);
         let r = scale_sim::world::HOUSING_REACH_CELLS as f64 * scale_sim::region::KM_PER_CELL;
         let share = km2 / (std::f64::consts::PI * r * r);
-        let per_km2 = mk.population / km2.max(1e-9);
+        // A town with no gentle ground has no density to print: it is read
+        // at the pressure ceiling, and the column says so rather than
+        // printing people divided by nothing.
+        let per_km2 = if km2 > 0.0 {
+            mk.population / km2
+        } else {
+            f64::INFINITY
+        };
         density.push((mk.name.clone(), per_km2));
         // **The independent check.** The two exponents are fitted to two
         // observed spreads, which leaves no degrees of freedom and so no
@@ -122,7 +129,8 @@ fn main() {
         );
     }
     println!(
-        "\n  a town builds up past pressure {:.2}, where land would pass {:.1}% of a dwelling's value",
+        "\n  past pressure {:.2}, where land would pass {:.1}% of a dwelling's value, the land \
+         curve is no longer followed and a town is valued as building up",
         scale_sim::econ::Economy::pressure_where_towns_build_up(),
         100.0 * scale_sim::econ::Economy::LAND_SHARE_AT_MOST,
     );

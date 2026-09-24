@@ -1,18 +1,31 @@
-//! **A provider charges more than it costs, or a bad week is for ever.**
+//! **A provider billed below its costs never gets back on its feet.**
 //!
-//! Builders and hospitals were billed exactly what the day used — wages,
-//! and the materials or supplies at the price a firm pays — and nothing
-//! more. Everything else they pay, the power and the carriage on their
-//! deliveries, had no income behind it, and a firm that takes in exactly
-//! what it pays out has no buffer: knock it to nothing and it stays there.
-//! In the five-year soak both took in within a fraction of a per cent of
-//! what they paid out, every year, in every world.
+//! Builders and hospitals were billed the day's wages and the materials or
+//! supplies used, and nothing more. Their power and the carriage on their
+//! deliveries are costs of the work too, and had no income behind them —
+//! so a provider knocked to nothing stayed there: it could not pay for its
+//! power or its deliveries, was paid less than the day cost, and started
+//! the next day short again.
 //!
-//! Real firms price over their direct costs, and the gross margin is the
-//! measured share left after direct labour and materials: **15.46%** of
-//! sales for US engineering and construction firms and **39.10%** for
-//! hospital chains *(Damodaran, Margins by Sector (US), data as of January
-//! 2026)*.
+//! **The first fix was a margin, and the measurement said it was the wrong
+//! fix.** A gross margin over wages and materials did get providers back
+//! on their feet, by charging far more than the work cost. Bill every
+//! operating cost the model has and they recover with no margin at all:
+//!
+//! | the bill covers                 | no margin     | operating margin |
+//! |---------------------------------|---------------|------------------|
+//! | wages and materials only        | 9 of 10 short | 2 of 10 short    |
+//! | every operating cost incurred   | 0             | 0                |
+//!
+//! So this gate holds the bill to the whole cost; the margin itself is set
+//! from its source, not by this test.
+//!
+//! **Part of that recovery is borrowed, and it is named.** The cost billed
+//! is what was *incurred* — power and carriage owed as well as paid — and
+//! what a firm fails to pay here is recorded for the day and then forgotten,
+//! not owed. So a drained provider is paid for bills it never settled and
+//! keeps the cash. When unpaid bills persist as obligations, it will have
+//! to settle them out of that money, and this gate must be read again.
 
 use scale_sim::econ::{Doctrine, Economy, SiteKind};
 use scale_sim::money::{Account, Why};
@@ -47,14 +60,9 @@ fn left_unpaid_by(e: &Economy, site: usize) -> f64 {
 /// country — their money handed to the households of their town, so
 /// nothing is created or destroyed — and require each of them, within two
 /// months, to be paying everybody it owes in full: its staff, its
-/// suppliers, its carriers and its power.
-///
-/// At cost there is no way back. A provider that starts the day with
-/// nothing cannot pay for its power or its deliveries; it is then paid its
-/// wages and the materials it used, pays the wages, and starts the next
-/// day with exactly the materials' worth — which is short of the materials
-/// *and* the power *and* the carriage. So it stays short, every day, for
-/// ever. A margin is what closes that gap.
+/// suppliers, its carriers and its power. Red with power and carriage left
+/// out of the bill: two of ten still short with the margins, nine of ten
+/// without them.
 #[test]
 fn a_provider_emptied_to_nothing_gets_back_on_its_feet() {
     let mut e = a_nation();

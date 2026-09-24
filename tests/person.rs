@@ -381,35 +381,31 @@ fn a_man_in_work_keeps_his_roof() {
     );
 }
 
-/// **A supply shock does not kill a working man; it keeps him poor** —
-/// which is what this project measured when blackouts first reached
-/// anybody, and what this gate now asks.
+/// **This outage costs this worker shifts and food while it lasts.** That
+/// is the whole claim, and it is narrower than the outcome on purpose.
 ///
-/// It was named for putting him on the street, and it never did: in the
-/// negligent nation it runs on, the man lost his shifts, went forty-five
-/// days hungry and died, and the gate accepted *evicted or dead*. When
-/// builders and hospitals came to price over a margin he kept his shifts
-/// through the blackout instead, and came out housed — so the gate was
-/// reading which side of a cliff one fixture stood on, the lesson this
-/// project keeps having to relearn.
+/// It replaces a gate named for putting him on the street, which never did:
+/// in the negligent nation it runs on, the man lost his shifts, went
+/// forty-five days hungry and died, and the gate accepted *evicted or
+/// dead*. When builders and hospitals came to bill their costs he kept his
+/// shifts through the blackout instead and ended housed — so it was
+/// reading which side of a cliff one fixture stood on.
 ///
-/// **What is robust is the comparison**: the same country and the same
-/// man, run with the transformer failing and without, read over exactly
-/// the days the country is dark. He works less, because a blackout shuts
-/// the shop, and holds fewer days of food, because bread costs seven or
-/// eight times as much while his pay waits a third of a year to follow
-/// the cost of living. **After the repair he comes out ahead** — prices
-/// fall faster than the lagging wage, which this project already records
-/// — so the window is the outage and not the run.
+/// **What it compares**: the same country and the same man, run with the
+/// transformer failing and without, read over exactly the days the
+/// country is dark. Measured: 185 days worked against 299, and 29 days of
+/// food in hand on average against 80. After the repair he comes out
+/// ahead, which this project already records, so the window is the outage
+/// and not the run.
 ///
-/// **What it catches, measured**: a shock that never reaches him trips the
-/// guard on the outage. Taken away one at a time — works offering shifts
-/// in the dark, pay following bread the same day, or both together — it
-/// stays green, because a shop's rota follows its sales and that alone
-/// costs him a third of his days. The claim is that the shock reaches
-/// him, not which road it takes.
+/// **What it does not establish is why.** Taken away one at a time —
+/// works offering shifts in the dark, pay following bread the same day, or
+/// both together — it stays green, so neither is shown to be the road.
+/// The wage lag is a separate claim and wants its own gate if it needs
+/// proof. What turns this one red is a shock that never reaches him, which
+/// trips its guard on the outage.
 #[test]
-fn a_price_shock_leaves_a_working_man_poorer() {
+fn an_outage_costs_this_worker_shifts_and_food_while_it_lasts() {
     // **A negligent nation, because a prudent one absorbs this.** A country
     // with a spare transformer in store rides the fault out — *with a
     // spare the run is byte-identical to no fault at all* — so testing the

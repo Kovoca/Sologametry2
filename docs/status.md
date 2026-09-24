@@ -482,12 +482,39 @@ Real defects, each visible in a test or measurable in a binary.
      other one: firms here buy only with cash in hand, where real firms
      buy on agreed terms (`credit.rs`, not wired), and the household bills
      are outside the household's budget.
+   - **Corrected on review, 2026-09-24.** The margins are margins on
+     revenue, reproduced by dividing by one less the margin — markups of
+     18.29% and 64.20% on the billed cost, not "15.46% and 39.10% over
+     direct costs" as the report said. And they were the wrong margins: a
+     gross margin pays for expenses below cost of goods that no firm here
+     has, so all of it became profit (builders paid out 9.1% of revenue,
+     hospitals 25%). Every operating cost incurred — payroll, inputs used,
+     power, carriage — is now billed over the **operating** margin, 6.49% and
+     13.36%. The emptied-provider gate then showed the margin was never the
+     fix: billed their whole cost, providers recover with no margin at all
+     (9 of 10 stuck with wages and materials alone at no margin, 2 of 10
+     with the margins, none with the whole cost either way). Part of that
+     recovery rides on unpaid bills being forgotten rather than owed. The
+     state gate became the review's two: books that reconcile and never go
+     below nought (no state borrowing exists to record), and this model's
+     balanced-budget rule kept as its own gate; a third allocates each
+     hospital bill once across state, insurer and patient, with the share a
+     state does not fund now recorded as owed rather than vanishing.
+     Five years, worlds 7 / 11 / 23, operating margins over every cost
+     against the gross-margin version: mean unemployment 8.65 / 7.21 / 8.58%
+     -> 8.71 / 7.23 / 8.51%; household purchases unpaid 8.93 / 5.29 / 4.18e10
+     -> 8.48 / 4.61 / 4.02e10; firm-to-firm supply unpaid 6.95 / 2.37 / 4.01e10
+     -> 9.18 / 2.46 / 4.45e10; months of unemployment outside the band by
+     head 5 / 3 / 8 -> 11 / 2 / 10; states flat in both. About neutral, as a
+     correction of a calibration should be.
    - **Two sampled-person gates were reading cliffs and are now
      comparisons.** The price-shock gate passed at cost only because the
      man starved (it accepted *evicted or dead* and he was never evicted);
-     it now compares the same man with and without the fault over the days
-     the country is dark — 185 days worked against 299, 29 days of food
-     against 80. The shared-roof gate's 5% bar sat between readings that had
+     it now claims only that **this outage costs this worker shifts and food
+     while it lasts**, comparing the same man with and without the fault over
+     the days the country is dark — 185 days worked against 299, 29 days of
+     food against 80 — and records that neither the lost shifts in the dark
+     nor the wage lag is shown to be the road. The shared-roof gate's 5% bar sat between readings that had
      moved to 1.7% and -28%; it now runs the town again without the
      equivalence scale — 1.017 against 0.717.
 3. **A household buys the basket whatever its balance.** `consume_households`
@@ -866,12 +893,17 @@ Real defects, each visible in a test or measurable in a binary.
       still costs, by less than ground would), and a town squeezed to a
       thousandth of its ground keeps land at or under 59.3%. Red under each
       of: the ground uncapped, height free, and a rent carrying no height.
-    - **Found on the way, and not fixed here:** world 11's Uxhaven has no
-      buildable ground within reach at all (relief 427 m/km), and
-      `housing_pressure` reads a surveyed zero as *nobody surveyed* and
-      prices the town as ordinary. With the old curve the honest answer —
-      the pressure cap — would have priced it at thousands of years, which
-      may be why it was written that way; with building up it is benign.
+    - **Uxhaven, fixed on review:** a surveyed zero — nothing within reach
+      under the 15% slope cut — is read at the pressure ceiling, 12.2 years
+      of pay against 5.9 as an "ordinary" town. The model cannot yet tell
+      *no undeveloped land left* from *no footprint at all*: nothing records
+      which ground is built on, and steep ground is priced, never forbidden.
+    - **Corrected on review:** 59.3% is a distribution statistic used as a
+      chosen approximation, not an identified switching threshold; an
+      elasticity of 0.25 is 19% per doubling of height, not the 25% the
+      report said; and "building up" changes only the valuation — nothing is
+      built, and additional space needing funded construction is a named
+      gap.
 14. **A merchant at a quay cannot see the demand inland.** An importer
     decides whether to land on its **own town's** price against import
     parity. A steel stockholder at a port with no steel demand of its own
@@ -895,9 +927,19 @@ Real defects, each visible in a test or measurable in a binary.
     than its costs and how a cheap one wins on price. The item layer already
     records the half this needs (`craft.rs` keeps who made a thing and how
     well; `bom.rs` keeps what is in it) and nothing connects it to a price.
-    The same absence is why two-way trade in manufactures is a named gap in
-    `CLAUDE.md`: with one undifferentiated good a country cannot import and
-    export it at once. No figures are read for this yet.
+    No figures are read for this yet.
+    **Two-way trade does not wait on it**, corrected on review, 2026-09-24:
+    a coast can land grain while an inland district sells grain over a
+    nearby border with no brands anywhere. Measured over 300 days, worlds 7
+    / 11 / 23: nations both import and export steel (3 / 4 / 4 of them, and
+    in the same town over the year), and none both imports and exports
+    grain, though the world as a whole lands 3.8e7 t and ships 1.9e6 t. The
+    decision is per town, against the town's own band, so nothing nets it
+    nationally. **What blocks the geographic case is the gateway rule**:
+    exports leave only from a town that is itself a gateway, and a frontier
+    post is given only to a town that can reach no coast at all — so an
+    inland district near a border, which can reach some distant quay, has no
+    crossing to sell through.
 
 ---
 
@@ -913,6 +955,35 @@ property, learn things, have families; factories and machines produce goods;
 trades and construction happen — all of it with nobody at the controls. The
 player comes after, into a world that is already running. The clock and the
 player below move behind this phase accordingly.
+
+**The money sequence, agreed on review, 2026-09-24**, in this order:
+
+1. **Pricing equations and cost definitions** — done: providers bill every
+   operating cost incurred over the source's operating margin; housing's
+   switch is labelled a chosen approximation and a valuation only.
+2. **Household budgeting.** One budget, drawn up before anything is bought:
+   known commitments first — rent, premiums, debt payments, authorised
+   construction or maintenance — then discretionary spending from what is
+   left; unexpected medical bills through cover and any permitted debt; and
+   unmet demand, deferred work and unpaid obligations recorded separately.
+   The payer has to be the right one: a landlord's repair is not a tenant's
+   builder's bill, and an insured patient does not pay the insurer's part.
+   Forecast wages may inform the plan and are never spendable before they
+   are paid or lent against.
+3. **Bounded trade credit.** The invoices in `credit.rs`, connected through
+   agreed limits, due dates, collection and default, authorised before the
+   goods move — not bookkeeping on unlimited compulsory lending.
+4. **Reassess**, on a small controlled economy: the existing behaviour,
+   budgeting alone, credit alone, and both — reading consumption and
+   production beside cash, overdue debt and external flows. A recovery that
+   rests on unpaid invoices growing for ever has not fixed anything.
+
+**Kept on that path, not shown closed:** the production-to-shelf
+integration test (three gates on master in `tests/production_to_shelf.rs`;
+the fourth, *a works receives only what it can pay for*, is on the
+`pay-on-delivery` branch and red here), and the unreachable-freight defect
+(item 12 above has gates, which do not yet establish it closed once
+households budget and firms trade on credit).
 
 ### Phase A — the world runs itself
 

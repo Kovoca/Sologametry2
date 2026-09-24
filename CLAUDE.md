@@ -4378,7 +4378,7 @@ cash. A saving that buys something has reached somebody. It counts what
 they hold now, vehicles at replacement cost: sharers 9.5% ahead, and 1.4%
 with the scale deleted. *(Both readings have moved since, and the gate now
 runs the town twice rather than holding a bar between them — see "A
-provider charges more than it costs".)*
+provider is billed its whole cost".)*
 
 ## People decide, when they have a reason to (`src/planner.rs`)
 
@@ -4693,6 +4693,14 @@ so the quarter it was built unable to make was a permanent deficit with
 nothing on the other side. Countries are now built to make what they need,
 and every town keeps its merchants, who land when the price says to. Two-way
 trade in manufactures is a named gap until goods are differentiated.
+*(Corrected since, on review: differentiation is not the prerequisite. A
+coast can land grain while an inland district sells grain over a nearby
+border, with no brands anywhere. Measured over 300 days on worlds 7 / 11 /
+23, nations both import and export steel — 3 / 4 / 4 of them — while no
+nation both imports and exports grain, though the world as a whole does.
+What blocks the geographic case is the gateway rule: exports leave only
+from a town that is itself a gateway, and a frontier post is given only to
+a town that can reach no coast at all. See `docs/status.md`, gap 15.)*
 
 **And a town's workforce followed the jobs its works were rated for**, not
 the jobs they ran. Real plants run at about 78% of capacity *(US Federal
@@ -5512,7 +5520,7 @@ needs demand that can move, and this model's town populations are fixed
 at world generation, which is why the stock and the construction that
 answers it are the next piece rather than this one.
 
-### Where ground runs out, a town builds up (`src/econ.rs`)
+### Where ground runs out, a town is valued as building up (`src/econ.rs`)
 
 The owner's answer to world 23's house at 9,826 years of pay: **as land
 per head falls, you get high rises rather than suburbs.** The land curve
@@ -5521,47 +5529,53 @@ at thirty-six thousand people to the buildable square kilometre land came
 out 99.9% of the price. People at that density live in flats, and a flat
 carries a sliver of the plot its building stands on.
 
-So the ground is bid only so far. **The fitted curve holds until land
-would be 59.3% of a dwelling's value** — the 99th percentile of American
-counties for a single-family home *(FHFA, Davis, Larson, Oliner and Shui,
-1,054 counties 2012-2022: median 22.9%, 90th percentile 39.5%)* — which is
-pressure 1.36, about 2,700 people to the buildable km². Past it, more
-people on the same ground are housed by stacking rather than by bidding
-each plot dearer, and the building costs more for being taller: the height
-elasticity of construction cost is **about 0.25** up to five floors
-*(Ahlfeldt and McMillen, "Tall Buildings and Land Values", REStat 2018,
-Chicago 1870-2010)*.
+So the fitted curve is followed only so far: **to land at 59.3% of a
+dwelling's value**, and past that the ground is bid no further and the
+building costs more for being taller. The height elasticity of
+construction cost per unit of floor area is **0.25** for buildings of five
+floors or fewer *(Ahlfeldt and McMillen, "Tall Buildings and Land Values",
+REStat 2018, Chicago 1870-2010; 0.251 in the paper's Table 6)*, so doubling
+height raises the unit cost by `2^0.25 - 1`, **about 19%**.
 
-- **Height is cheaper than ground, and it is not free.** A town twice as
-  dense as the switch pays 19% more for its buildings. That is what
-  building up is for, and it is why a dense town still costs more than a
-  loose one.
-- **Understated for towers, and said so.** The same study finds the
-  elasticity rising with height and passing 100% for super-tall, so a town
-  dense enough for thirty floors is priced as though height cost what it
-  costs at five. A rising elasticity needs a height per town, which
-  nothing has yet.
-- **Which percentile is a decision.** A handful of counties — the dearest
-  in California — sit above 59.3%, where zoning holds the single-family
-  form against the price. This is where the ordinary form gives way in all
-  but the top hundredth of real markets.
-- **A flat in a tower carries the same building whoever lives in it**, so
-  the rent carries the height premium on its structure exactly as the
-  price does.
+**Three things this is not, each corrected on review:**
+
+- **59.3% is not a measured switch.** It is the 99th percentile of an
+  observed distribution — land's share of single-family home value across
+  1,054 US counties, 2012-2022 *(FHFA, Davis, Larson, Oliner and Shui;
+  median 22.9%, 90th percentile 39.5%)*. It says how high land shares are
+  seen to go; nothing identifies it as where developers stop bidding for
+  ground and build up. It is a **chosen approximation**: the place the
+  fitted curve, calibrated on towns well below it, stops being trusted.
+- **"About 25% per doubling of height" was wrong**, in the report and not
+  in the code: an elasticity of 0.25 is 19% per doubling. The paper's
+  taller-building estimates are much higher, so towers are understated.
+- **Nothing is built.** It changes what a dwelling is worth and what a room
+  rents for, and nothing else — no dwelling is added, no cement or steel
+  used, no builder employed, no time taken. It is an approximation of
+  vertical density *in a valuation*. More habitable space in a running
+  world should need funded construction, and there is no stock of
+  dwellings yet for it to add to: a named gap.
+
+**A town with no gentle ground is not an ordinary town.** A surveyed zero —
+nothing within reach under the 15% slope cut — answered as though nobody
+had looked, so world 11's Uxhaven, ten million people in 427 m of relief to
+the kilometre, was priced like a town on a plain: 5.9 years. It is read at
+the pressure ceiling now, 12.2 years. What the model cannot yet say is
+either of the two things that zero might mean in life — that no
+*undeveloped* land remains (nothing records which ground is built on), or
+that no footprint is possible at all (steep ground is priced, never
+forbidden). The dwellings already there are valued in both.
 
 It caught more than Caldleigh. Nine of the 48 towns in the soak worlds are
-past the switch — the capitals, where land had been 67-86% of the price
-and a house 33-47 years of pay — and **the documented overshoot at the top
-of the housing gate was the same extrapolation**: the dearest ordinary
-towns now read about 9 years on a fresh world against a real dearest
-metro of 11-12. World 23's homeless went from outside their band 59 months
-of 61 to inside it throughout.
+past the point — the capitals, where land had been 67-86% of the price and
+a house 33-47 years of pay — and the dearest ordinary towns now read about
+9 years on a fresh world against a real dearest metro of 11-12. World 23's
+homeless went from outside their band 59 months of 61 to inside it
+throughout.
 
 **The gate asks the ground question of both regimes**, because a town
-answers a loss of ground two ways: a loose town bids for it, a tight one
-builds up. The old gate asked only the first, of the most populous town —
-which is past the switch now, so its 1.5x bar no longer described what
-that town does.
+answers a loss of ground two ways here: a loose town bids for it, and past
+the point the valuation stacks instead.
 
 ### Who pays for medicine (`src/state.rs`, `src/econ.rs`)
 
@@ -6824,82 +6838,108 @@ green there and red on master — the drained cannery takes 124.8 t of flour
 and leaves 36,852 unpaid. `docs/status.md`, tracked gap 2, says what it
 waits for.
 
-### A provider charges more than it costs (`tests/margins.rs`)
+### A provider is billed its whole cost (`tests/margins.rs`)
 
 The owner's point about why cash on delivery collapsed: **things were
 being charged at cost, and there is usually a profit margin.** Builders
-and hospitals billed exactly what the day used — wages, and materials or
-supplies at the price a firm pays — so everything else they paid, the
-power and the carriage, had no income behind it. In the soak both took in
-within a fraction of a per cent of what they paid out, every year. **A
-firm that takes in exactly what it pays out has no buffer**, and one
-knocked to nothing stays there: it cannot pay for its power or deliveries,
-is paid its wages and materials, and starts the next day short again.
+and hospitals billed the day's wages and the materials or supplies used,
+and nothing more.
 
-Real firms price over their direct costs, and the gross margin is the
-measured share of sales left after direct labour and materials: **15.46%**
-for US engineering and construction firms and **39.10%** for hospital
-chains, whose cost of goods (60.9% of sales) is about salaries and
-supplies *(Damodaran, Margins by Sector (US), January 2026)*. Listed
-chains are investor-owned, and a hospital here pays its profit to
-shareholders like any company its size; most American hospitals are
-not-for-profit and run thinner, which is not modelled.
+**Measured, the fault was charging below cost, not at it.** Their power and
+the carriage on their deliveries are costs of the work and sat outside the
+bill, so a provider knocked to nothing stayed there. Emptied and watched
+for two months:
 
-The gate empties every builder and hospital in a country and requires
-each to be paying everybody it owes within two months. With margins all
-ten do; at cost four builders and all five hospitals are still short.
+| the bill covers                 | no margin     | operating margin |
+|---------------------------------|---------------|------------------|
+| wages and materials only        | 9 of 10 short | 2 of 10 short    |
+| every operating cost incurred   | 0             | 0                |
 
-**It found a second copy of a rule, again.** The state taxed for its
-share of the hospital bill with its own arithmetic — wages and supplies,
-no margin — while the payment read the new bill. `Treasury::pay` lets a
-state overdraw, so every exchequer paid the margin out of nothing, three
-worlds ended five years 3.5-5.8e10 below nought, and **the soak read as a
-triumph**: households with nearly three times the money, every band met.
-It was the state printing it. One function now, `hospital_bill`, and the
-gate that was recorded as missing — a state does not spend what it did
-not raise.
+So the gate holds the bill to the whole cost, and the margin is set from its
+source rather than by the test.
 
-**Measured honestly, the effect is modest and it moves money in both
-directions.** Suppliers are paid more — firm-to-firm supply unpaid falls
-in all three worlds, by a third in world 7 — and households come up
-shorter at the counter in all three, because the builders' bill and the
-hospital door are raised after the counter has spent the purse. The
-margin is right and it makes that older gap bite harder.
+**The first version used the wrong margin, and described it wrongly.** It
+priced wages and materials over the **gross** margin — 15.46% of revenue for
+US engineering and construction, 39.10% for hospital chains *(Damodaran,
+Margins by Sector (US), January 2026)*. The code divided by one less the
+margin, which reproduces a margin on revenue: markups of **18.29%** and
+**64.20%** on the billed cost, not the 15.46% and 39.10% "over direct costs"
+the report said. And a gross margin has to pay for everything below that
+line — head office, purchased services, rent, insurance, depreciation —
+none of which a firm here pays for, so all of it became distributable
+profit: builders paid out 9.1% of revenue and hospitals 25% over 200 days,
+against real operating margins of 6.49% and 13.36%.
 
-**Two gates had been balanced on nought**, and a correct change tipped
-both. The circuit's drift was measured against households' own balance,
-which a transfer between domestic holders moves; "firms do not hoard" was
-5% of all money *including the outside world's*, passing by 0.2%. Each is
-now measured against a base the change cannot move — the domestic
-circuit, and days of what firms pay out — and each was checked against
-the defects it is supposed to catch. **Neither drift bound catches a
-capital pay-out or a steady firm drain**, and that is recorded in the test
-rather than implied: what catches a leak is conservation and each
-holder's own gate.
+**What the model's costs correspond to was measured first.** All the costs a
+builder has here came to 85.7% of its revenue, against the table's 84.54%
+cost of goods. So a builder or hospital now bills **every operating cost it
+incurred** — payroll, inputs used at the price a firm pays, power drawn,
+carriage — over the **operating** margin, **6.49%** and **13.36%**, the share
+the table leaves after all costs. The expenses between gross and operating
+margin are in neither the bill nor the costs, and that is named: a payer's
+bill is lower than a real one by about that much.
 
-**And two gates on sampled people were reading cliffs**, which the margin
+- **Part of the recovery is borrowed.** The cost billed is what was
+  incurred, owed as well as paid, and what a firm fails to pay here is
+  recorded for the day and then forgotten. So a drained provider is paid for
+  bills it never settled and keeps the cash. When unpaid bills persist as
+  obligations the gate must be read again.
+- **A hospital's own costs are not calibrated**, and a margin cannot fix
+  that: its power came to 15.7% of revenue — 57% of its payroll — and its
+  supplies to more than its payroll, where a real hospital's staff are most
+  of its costs. Not yet checked against a source.
+- Listed chains are investor-owned, and a hospital here pays its profit to
+  shareholders like any company its size; most American hospitals are
+  not-for-profit and run thinner, which is not modelled.
+
+**It found a second copy of a rule, again.** The state taxed for its share
+of the hospital bill with its own arithmetic while the payment read the
+new bill; `Treasury::pay` lets a state overdraw, so every exchequer paid the
+difference out of nothing, three worlds ended five years 3.5-5.8e10 below
+nought, and **the soak read as a triumph** — households with nearly three
+times the money. One function now, `hospital_bill`. And the gates are the
+ones the review asked for, not a rule that states never spend more than
+they raise, which opening reserves and recorded borrowing contradict:
+
+- **A state finances nothing it has not recorded**: every day its books
+  reconcile, and with no state borrowing in the model it never goes below
+  nought. Drawing down reserves is allowed.
+- **On this model's balanced-budget rule it raises what it spends**, which
+  is this model's fiscal policy rather than a law of states, and is kept as
+  that scenario's stricter gate.
+- **A hospital bill is allocated once**: what the state, the insurers and
+  the patient paid, plus what each was recorded as owing, is the bill. The
+  state paid only what it could afford and recorded nothing for the rest,
+  so a share vanished; it is recorded now, and on this fixture a state
+  affords about 42% of its share, so the case is not hypothetical.
+
+**Two gates had been balanced on nought**, and a correct change tipped both.
+The circuit's drift was measured against households' own balance, which a
+transfer between domestic holders moves; "firms do not hoard" was 5% of all
+money *including the outside world's*, passing by 0.2%. They are measured
+now against the domestic circuit, and in days of **named operating costs**
+— wages, supplies and power, goods from other towns, carriage and imports,
+and no profit, capital or lending — with what firms owe shown beside what
+they hold: about 28 days held, 1.5e9 owed over a month against 1.4e10.
+**Neither drift bound catches a capital pay-out or a steady firm drain**,
+and the test says so: what catches a leak is conservation and each holder's
+own gate.
+
+**And two gates on sampled people were reading cliffs**, which the change
 tipped over:
 
-- **`a_price_shock_can_put_a_working_man_on_the_street` never put him on
-  the street.** At cost he lost his shifts, went forty-five days hungry and
-  died, and the gate accepted *evicted or dead*; with margins he kept his
-  shifts through the blackout and ended housed. This file's own measured
-  claim is the older one — *a supply shock does not kill a working man, it
-  keeps him poor* — so that is the gate now, as a controlled comparison:
-  the same man in the same negligent country with the transformer failing
-  and without, read over exactly the days it is dark. He works 185 days
-  against 299 and holds 29 days of food against 80. **After the repair he
-  comes out ahead**, prices falling faster than the lagging wage, which is
-  why the window is the outage. Taking away works' shifts in the dark, the
-  wage lag, or both, leaves it green — the shop's own rota carries it — and
-  that is recorded in the test.
+- **The price-shock gate never put anybody on the street.** At cost the man
+  lost his shifts, went forty-five days hungry and died, and the gate
+  accepted *evicted or dead*. It is now the narrower claim the comparison
+  supports — **this outage costs this worker shifts and food while it
+  lasts** — the same man with and without the fault over the days the
+  country is dark: 185 days worked against 299, 29 days of food against 80.
+  Taking away works' shifts in the dark, the wage lag, or both, leaves it
+  green, so it establishes neither as the road, and says so.
 - **`people_share_a_roof`'s bar was between two readings that had both
-  moved.** It sat at 5% more for sharers, placed between 9.5% with the
-  equivalence scale and 1.4% without; by the margin commit they read 5.7%
-  and then 1.7% with it and **-28%** without, so the bar was balanced on
-  one of them. It now runs the same town again with the scale deleted and
-  requires the scale to be worth a tenth: 1.017 against 0.717. Red with the
-  scale taken out of the model, at 0.728 against 0.717.
+  moved** — 9.5% and 1.4% when set, 1.7% and -28% by then. It now runs the
+  same town again without the equivalence scale: 1.017 against 0.717, and
+  red at 0.728 against 0.717 with the scale taken out of the model.
 
 ### A run that never offered the case established nothing about it (`tests/carriage.rs`)
 

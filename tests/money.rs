@@ -63,18 +63,36 @@ fn the_circuit_closes() {
     // Everything held at home: households, firms, states and the service
     // sector — all of it but the world outside.
     let domestic1 = e.treasury.total() - abroad1;
-    // What firms paid out over the last month, profit aside: the
-    // outgoings a working balance is held against.
-    let mut paid_out = 0.0;
+    // **Firms' operating costs over the last month**, named rather than
+    // "everything but profit": wages, supplies and power, goods bought from
+    // other towns, carriage, and imports. Profit, capital, lending and
+    // interest are not costs of operating, and a denominator that included
+    // a distribution would move with the very behaviour it measures.
+    // Beside it, what firms were recorded as owing over the same days.
+    let mut operating = 0.0;
+    let mut owed = 0.0;
     for d in 0..(DAYS_PER_YEAR * 2) {
         e.step();
         if d >= DAYS_PER_YEAR * 2 - 30 {
-            paid_out += e
+            operating += e
                 .treasury
                 .today
                 .iter()
-                .filter(|t| matches!(t.from, Account::Firm(_)) && t.why != Why::Profit)
+                .filter(|t| {
+                    matches!(t.from, Account::Firm(_))
+                        && matches!(
+                            t.why,
+                            Why::Payroll | Why::Supply | Why::Purchase | Why::Freight | Why::Trade
+                        )
+                })
                 .map(|t| t.amount)
+                .sum::<f64>();
+            owed += e
+                .treasury
+                .unpaid_by
+                .iter()
+                .filter(|((from, _, _), _)| matches!(from, Account::Firm(_)))
+                .map(|(_, v)| v)
                 .sum::<f64>();
         }
     }
@@ -136,12 +154,14 @@ fn the_circuit_closes() {
     // costs. The bar was 5% of all money issued, and that counted the
     // outside world's too — nine tenths of it — so it was a fixed figure
     // for one fixture, and it had been passing by 0.2% since reserves were
-    // sized on rated output. Firms here hold 26-34 days of their outgoings
-    // with providers pricing over a margin and 15-30 without.
-    let days_held = firms3 / (paid_out / 30.0).max(1e-9);
+    // sized on rated output. Firms here hold about 28 days of their
+    // operating costs, owing 1.5e9 unpaid over a month against 1.4e10
+    // held — which is why the obligations are shown beside the cash.
+    let days_held = firms3 / (operating / 30.0).max(1e-9);
     assert!(
         days_held < 60.0,
-        "firms are sitting on {firms3:.0}, {days_held:.0} days of what they pay out"
+        "firms are sitting on {firms3:.0}, {days_held:.0} days of their operating costs, \
+         and owed {owed:.0} unpaid over the last month"
     );
     // **Steady as well as small**, the same test households and the
     // treasury get. Working capital that drifts over two years is money
