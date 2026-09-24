@@ -4397,6 +4397,20 @@ impl Economy {
                 .max(0.0);
                 batches = batches.min(room / out);
             }
+            // **Power is paid for as it is drawn**, so a works runs only as
+            // far as its till covers the bill. It is the metered half of
+            // `payable_on_delivery`: a works that had spent down to nothing
+            // went on drawing power, and its bill went on a counter.
+            if recipe.power > 0.0 {
+                let price = self.markets[mkt].price[Commodity::Electricity as usize];
+                if price > 0.0 {
+                    let cash = self
+                        .treasury
+                        .balance(crate::money::Account::Firm(site))
+                        .max(0.0);
+                    batches = batches.min(cash / (recipe.power * price));
+                }
+            }
             if batches <= 1e-9 {
                 continue;
             }
@@ -5191,6 +5205,19 @@ impl Economy {
                         continue;
                     }
                     let from_m = self.ledger.sites[src].market;
+                    // **Paid for on delivery, or not delivered.** See
+                    // `payable_on_delivery`.
+                    let unit = self.markets[market].price[c as usize] * WHOLESALE;
+                    let wanted = qty;
+                    let qty = self.payable_on_delivery(
+                        dst,
+                        qty,
+                        unit,
+                        self.carriage_for(from_m, market, qty),
+                    );
+                    if qty <= 1e-9 {
+                        break;
+                    }
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     let freight = self.carriage_for(from_m, market, qty);
                     self.ledger.apply(
@@ -5209,7 +5236,7 @@ impl Economy {
                     // **And the buyer pays the seller.** Only shops took money
                     // from households, so every works upstream of a counter —
                     // farm, mill, mine, steelworks — had no income whatever.
-                    let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
+                    let due = qty * unit;
                     self.treasury.pay(
                         day,
                         crate::money::Account::Firm(dst),
@@ -5219,6 +5246,10 @@ impl Economy {
                     );
                     owed -= qty;
                     taken[dst] += qty;
+                    // Out of money: no further supplier can be paid today.
+                    if qty < wanted {
+                        break;
+                    }
                 }
             }
         }
@@ -6448,6 +6479,17 @@ impl Economy {
                     }
                     let from_m = self.ledger.sites[src].market;
                     let to_m = self.ledger.sites[dst].market;
+                    // **Paid for on delivery, or not delivered.**
+                    let unit = self.markets[from_m].price[c as usize] * Self::WHOLESALE_MARGIN;
+                    let qty = self.payable_on_delivery(
+                        dst,
+                        qty,
+                        unit,
+                        self.carriage_for(from_m, to_m, qty),
+                    );
+                    if qty <= 1e-9 {
+                        continue;
+                    }
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
                     let freight = self.carriage_for(from_m, to_m, qty);
@@ -6469,7 +6511,7 @@ impl Economy {
                     // the goods were bought. This moved goods between towns
                     // and paid only the haulier, so whoever grew or made
                     // them gave them away.
-                    let due = qty * self.markets[from_m].price[c as usize] * Self::WHOLESALE_MARGIN;
+                    let due = qty * unit;
                     self.treasury.pay(
                         self.ledger.day,
                         crate::money::Account::Firm(dst),
@@ -6700,6 +6742,41 @@ impl Economy {
     /// of the two real answers — the other is ex-works, where the buyer
     /// owns it from the moment it leaves and bears the loss — and it is the
     /// one this model's own proration was already written for.
+    /// **What a firm can pay for on delivery**: the part of a load it has
+    /// the cash for, goods and carriage together.
+    ///
+    /// Goods used to move first and be paid for afterwards, out of whatever
+    /// the buyer held — so a works with an empty till still received its
+    /// grain, and the grower's loss went on a counter. That makes every
+    /// supplier a compulsory lender. A delivery between firms now needs
+    /// payment the buyer can actually make; credit a supplier has agreed to
+    /// would be the other authorised form, and nothing extends it yet
+    /// (`credit.rs` is not wired in).
+    ///
+    /// **Nothing is held back for wages**, and that was tried. Holding a
+    /// day's payroll and power out of what a works may spend on stock
+    /// cleared a unit or two a day of the mill's wages on `slice::viable`,
+    /// and it stopped every hospital in a nation buying medicine: a
+    /// hospital or a builder is paid for the day's wages and materials
+    /// *after* the deliveries, so a day's payroll held back from a large
+    /// staff is its whole till.
+    ///
+    /// Carriage never rises as a load shrinks, so trimming the load against
+    /// the carriage on the whole of it leaves the trimmed load affordable.
+    pub fn payable_on_delivery(&self, buyer: usize, tonnes: f64, unit: f64, carriage: f64) -> f64 {
+        let cash = self
+            .treasury
+            .balance(crate::money::Account::Firm(buyer))
+            .max(0.0);
+        if tonnes * unit + carriage <= cash {
+            return tonnes;
+        }
+        if unit <= 0.0 {
+            return if carriage <= cash { tonnes } else { 0.0 };
+        }
+        ((cash - carriage) / unit).clamp(0.0, tonnes)
+    }
+
     pub fn pay_the_seller(&mut self, consignor: usize, consignee: usize, goods: f64) {
         if goods <= 1e-9 || consignor == consignee {
             return;
@@ -7272,6 +7349,19 @@ impl Economy {
         if take <= 1e-9 {
             return None;
         }
+        // **And the consignee has to be able to pay for it.** It pays the
+        // seller and the carrier when the load is tipped, so what it holds
+        // now is what it is trusted for; a load nobody can pay for does not
+        // set off.
+        let take = self.payable_on_delivery(
+            consignee,
+            take,
+            self.markets[from_market].landed[commodity as usize],
+            self.carriage_for(from_market, to_market, take),
+        );
+        if take <= 1e-9 {
+            return None;
+        }
         self.book_the_road(from_market, to_market, day, due, take);
 
         let goods = self.markets[from_market].landed[commodity as usize] * take;
@@ -7311,8 +7401,9 @@ impl Economy {
             },
         );
         // **The accepted quantity, not the requested one.** The load has
-        // been clamped twice by here — by what the seller holds and by
-        // what is left of the road — and a caller that goes on believing
+        // been clamped three times by here — by what the seller holds, by
+        // what is left of the road and by what the consignee can pay — and
+        // a caller that goes on believing
         // its own request overstates what moved, what the carrier earned
         // and what work was done, while understating the demand still
         // outstanding.

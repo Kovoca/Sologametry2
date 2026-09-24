@@ -407,3 +407,100 @@ fn a_thin_purse_buys_less_and_leaves_the_rest_on_the_shelf() {
     );
     e.ledger.assert_conserved();
 }
+
+/// **A works with no money receives nothing on a promise.**
+///
+/// The rule the unpaid counter used to stand in for. Take a viable
+/// cannery's cash down to what a few tonnes of flour cost, keep its flour
+/// yard empty so it has to buy, and play a day: it may receive only what it
+/// can pay for, it must leave nothing unpaid, and the flour it cannot pay
+/// for stays with the mill. Then give it its money back and the flour comes.
+///
+/// The cash is moved to Seaton's households rather than destroyed, so the
+/// books balance.
+#[test]
+fn a_works_receives_only_what_it_can_pay_for() {
+    let mut e = slice::viable(Doctrine::Prudent);
+    run(&mut e, 60);
+    let cannery = slice::site(&e, Role::SeatonCannery);
+    let mill = slice::site(&e, Role::HarwickMill);
+    let flour = Commodity::Flour;
+    let flour_price = e.price(slice::SEATON, flour);
+    // Room enough for what it should buy, and next to nothing to pay with.
+    let yard = e.ledger.stock(cannery, flour);
+    e.ledger.apply(
+        &mut e.journal,
+        Event::Consumed {
+            site: cannery,
+            commodity: flour,
+            qty: yard,
+            reason: Use::Input,
+        },
+    );
+    let held = e.treasury.balance(Account::Firm(cannery));
+    let leave = flour_price * 5.0;
+    e.treasury.pay(
+        e.ledger.day,
+        Account::Firm(cannery),
+        Account::Households(slice::SEATON),
+        held - leave,
+        Why::Profit,
+    );
+
+    let from = e.journal.entries().len();
+    e.step();
+    let received: f64 = e.journal.entries()[from..]
+        .iter()
+        .filter_map(|entry| match &entry.event {
+            Event::Shipped {
+                to, commodity, qty, ..
+            } if *to == cannery && *commodity == flour => Some(*qty),
+            _ => None,
+        })
+        .sum();
+    let owed: f64 = e
+        .treasury
+        .unpaid_by
+        .iter()
+        .filter(|((f, _, _), _)| *f == Account::Firm(cannery))
+        .map(|(_, v)| v)
+        .sum();
+    assert!(
+        owed <= 1e-6,
+        "the cannery left {owed:.1} unpaid after receiving {received:.1} t of flour"
+    );
+    assert!(
+        received < e.markets[slice::SEATON].daily_household_demand(Commodity::ProcessedFood),
+        "a cannery with a few tonnes' money took {received:.1} t of flour"
+    );
+    assert!(
+        e.ledger.stock(mill, flour) > 0.0,
+        "the mill had no flour to withhold, so this proves nothing"
+    );
+
+    // Give it back, and it buys again.
+    let rich = e.treasury.balance(Account::Households(slice::SEATON));
+    e.treasury.pay(
+        e.ledger.day,
+        Account::Households(slice::SEATON),
+        Account::Firm(cannery),
+        (held - leave).min(rich),
+        Why::Trade,
+    );
+    let from = e.journal.entries().len();
+    e.step();
+    let restocked: f64 = e.journal.entries()[from..]
+        .iter()
+        .filter_map(|entry| match &entry.event {
+            Event::Shipped {
+                to, commodity, qty, ..
+            } if *to == cannery && *commodity == flour => Some(*qty),
+            _ => None,
+        })
+        .sum();
+    assert!(
+        restocked > received,
+        "with its money back the cannery took {restocked:.1} t against {received:.1}"
+    );
+    e.ledger.assert_conserved();
+}
