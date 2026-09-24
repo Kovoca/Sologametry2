@@ -381,62 +381,97 @@ fn a_man_in_work_keeps_his_roof() {
     );
 }
 
+/// **A supply shock does not kill a working man; it keeps him poor** —
+/// which is what this project measured when blackouts first reached
+/// anybody, and what this gate now asks.
+///
+/// It was named for putting him on the street, and it never did: in the
+/// negligent nation it runs on, the man lost his shifts, went forty-five
+/// days hungry and died, and the gate accepted *evicted or dead*. When
+/// builders and hospitals came to price over a margin he kept his shifts
+/// through the blackout instead, and came out housed — so the gate was
+/// reading which side of a cliff one fixture stood on, the lesson this
+/// project keeps having to relearn.
+///
+/// **What is robust is the comparison**: the same country and the same
+/// man, run with the transformer failing and without, read over exactly
+/// the days the country is dark. He works less, because a blackout shuts
+/// the shop, and holds fewer days of food, because bread costs seven or
+/// eight times as much while his pay waits a third of a year to follow
+/// the cost of living. **After the repair he comes out ahead** — prices
+/// fall faster than the lagging wage, which this project already records
+/// — so the window is the outage and not the run.
+///
+/// **What it catches, measured**: a shock that never reaches him trips the
+/// guard on the outage. Taken away one at a time — works offering shifts
+/// in the dark, pay following bread the same day, or both together — it
+/// stays green, because a shop's rota follows its sales and that alone
+/// costs him a third of his days. The claim is that the shock reaches
+/// him, not which road it takes.
 #[test]
-fn a_price_shock_can_put_a_working_man_on_the_street() {
-    // And once he is out he is half as employable, because the address
-    // goes on the form — which is what makes homelessness self-sustaining
-    // rather than a bad month. The order matters: hungry first, then
-    // evicted, because rent is due whether or not he was on the rota and
-    // food can be gone without for a day.
-    // **A negligent nation, because a prudent one absorbs this.**
+fn a_price_shock_leaves_a_working_man_poorer() {
+    // **A negligent nation, because a prudent one absorbs this.** A country
+    // with a spare transformer in store rides the fault out — *with a
+    // spare the run is byte-identical to no fault at all* — so testing the
+    // shock needs one that has not bought one.
     //
-    // This used to run on the default region and produce a quintupling of
-    // bread from one transformer failure. It no longer does, and that is
-    // the model getting better rather than the test getting stale: a
-    // country with a spare transformer in store and a freight industry
-    // that moves stock on days of cover simply rides the fault out. This
-    // project's own notes say so — *with a spare transformer the run is
-    // byte-identical to no fault at all* — so testing the shock requires
-    // a country that has not bought one.
-    let world = World::generate(384, 216, 20260828);
-    let polities = Polities::partition(&world, 24);
-    let settlements = Settlements::place(&world, &polities, 3000);
-    let network = Network::build(&world, &settlements, 500);
-    let &(id, _) = polities.ranked().first().expect("no nations");
-    let mut r = Region::extract(
-        &world,
-        &polities,
-        &settlements,
-        &network,
-        id,
-        5,
-        Doctrine::Negligent,
-    )
-    .expect("no region");
-    let mut hal = Person::new("Hal", Trade::Sales, 0, 5.0);
-    let mut evicted = false;
-    for n in 0..800u64 {
-        if n == 20 {
-            r.economy.grid.fail_transformer("main line");
+    // Day by day: days of food in hand, days worked so far, and whether
+    // the grid was short of power.
+    let run = |fault: bool| -> Vec<(f64, u64, bool)> {
+        let world = World::generate(384, 216, 20260828);
+        let polities = Polities::partition(&world, 24);
+        let settlements = Settlements::place(&world, &polities, 3000);
+        let network = Network::build(&world, &settlements, 500);
+        let &(id, _) = polities.ranked().first().expect("no nations");
+        let mut r = Region::extract(
+            &world,
+            &polities,
+            &settlements,
+            &network,
+            id,
+            5,
+            Doctrine::Negligent,
+        )
+        .expect("no region");
+        let mut hal = Person::new("Hal", Trade::Sales, 0, 5.0);
+        let mut days = Vec::new();
+        for n in 0..500u64 {
+            if fault && n == 20 {
+                r.economy.grid.fail_transformer("main line");
+            }
+            r.economy.step();
+            let day = r.economy.ledger.day;
+            person::live_a_day(&mut hal, &mut r.economy, day);
+            let bread = r.economy.price(hal.market, FOOD) * FOOD_PER_DAY;
+            let food = if hal.state == State::Dead {
+                0.0
+            } else {
+                hal.money / bread.max(1e-9)
+            };
+            days.push((food, hal.days_worked, r.economy.unserved_power > 0.0));
         }
-        r.economy.step();
-        let day = r.economy.ledger.day;
-        person::live_a_day(&mut hal, &mut r.economy, day);
-        if hal.housing == person::Housing::Homeless {
-            evicted = true;
-            break;
-        }
-    }
+        days
+    };
+    let lit = run(false);
+    let dark = run(true);
+
+    // The outage, read off the dark run rather than typed in.
+    let out: Vec<usize> = (0..dark.len()).filter(|&d| dark[d].2).collect();
     assert!(
-        evicted || hal.state == person::State::Dead,
-        "a country with no spare transformer lost its power, and a man on shop \
-         wages kept both his job and his tenancy throughout: worked {} days, \
-         hungry {}, money {:.0}, bread {:.0}",
-        hal.days_worked,
-        hal.days_hungry,
-        hal.money,
-        r.economy
-            .price(0, scale_sim::econ::Commodity::ProcessedFood)
+        out.len() > 60,
+        "the transformer failed and the country was dark for {} days — the fixture no \n         longer has an outage to measure",
+        out.len()
+    );
+    let (first, last) = (out[0], out[out.len() - 1]);
+    let mean_food =
+        |r: &[(f64, u64, bool)]| out.iter().map(|&d| r[d].0).sum::<f64>() / out.len() as f64;
+    let worked = |r: &[(f64, u64, bool)]| r[last].1 - r[first].1;
+    let (lit_food, dark_food) = (mean_food(&lit), mean_food(&dark));
+    let (lit_work, dark_work) = (worked(&lit), worked(&dark));
+    assert!(
+        dark_work < lit_work && dark_food < lit_food * 0.75,
+        "over the {} days the country was dark, the man in it worked {dark_work} days \n         against {lit_work} in the lit one and held {dark_food:.1} days of food against \n         {lit_food:.1} — the shock did not reach him",
+        out.len()
     );
 }
 

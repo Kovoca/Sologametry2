@@ -60,8 +60,23 @@ fn the_circuit_closes() {
     }
     let (hh1, firms1, state1) = held(&e);
     let abroad1 = e.treasury.balance(Account::Abroad);
-    for _ in 0..(DAYS_PER_YEAR * 2) {
+    // Everything held at home: households, firms, states and the service
+    // sector — all of it but the world outside.
+    let domestic1 = e.treasury.total() - abroad1;
+    // What firms paid out over the last month, profit aside: the
+    // outgoings a working balance is held against.
+    let mut paid_out = 0.0;
+    for d in 0..(DAYS_PER_YEAR * 2) {
         e.step();
+        if d >= DAYS_PER_YEAR * 2 - 30 {
+            paid_out += e
+                .treasury
+                .today
+                .iter()
+                .filter(|t| matches!(t.from, Account::Firm(_)) && t.why != Why::Profit)
+                .map(|t| t.amount)
+                .sum::<f64>();
+        }
     }
     let (hh3, firms3, state3) = held(&e);
 
@@ -86,19 +101,47 @@ fn the_circuit_closes() {
     // gained beyond a steady circuit has to be **accounted for by money
     // that actually crossed the border** — anything more than that is a
     // leak, and this gate is the one that would catch it.
+    //
+    // **Measured against the domestic circuit, not against what households
+    // held.** The bar was half of households' own year-one balance, and a
+    // transfer between two domestic holders moves that: when builders and
+    // hospitals came to price over a margin they held 1.7e9 more of the
+    // same 2.32e10 of domestic money, households' year-one balance fell
+    // from 5.40e9 to 3.72e9, and the gate turned over at an unplaced 2.05e9
+    // against 1.97e9 at cost — the same drift, found by firms running their
+    // balances down in both runs. The bar is the old one's size carried
+    // across: half of 5.40e9 is 11.6% of the circuit.
+    //
+    // **What it does not catch, measured rather than assumed**: firms
+    // paying out their paid-in capital (it goes before the window opens;
+    // the working-capital gates hold that), and firms paying out 0.3% of
+    // their balance every day (households spend it straight back: 2.35e9
+    // unplaced). Leaks are caught by conservation, asserted every day
+    // above, and by each holder's own gate — the state's in both
+    // directions in `tests/health.rs`, the firms' just below. This is a
+    // bound on how far the domestic circuit drifts, and nothing more.
     let from_abroad = abroad1 - e.treasury.balance(Account::Abroad);
     let unexplained = (hh3 - hh1) - from_abroad.max(0.0);
     assert!(
-        unexplained.abs() < hh1 * 0.5,
+        unexplained.abs() < domestic1 * 0.116,
         "household balances went {hh1:.0} -> {hh3:.0}, and only {from_abroad:.0} of that          crossed the border — {unexplained:.0} came from nowhere"
     );
     // **And nobody hoards.** A firm holds working capital, not a fortune,
     // and a state that collects more than it spends is a bug rather than a
     // policy — a tax rate is quoted against value added, and turnover
     // counts the same value at every step of a chain.
+    //
+    // **Measured in days of what firms pay out**, which is what working
+    // capital is: real corporate cash runs to a month or two of operating
+    // costs. The bar was 5% of all money issued, and that counted the
+    // outside world's too — nine tenths of it — so it was a fixed figure
+    // for one fixture, and it had been passing by 0.2% since reserves were
+    // sized on rated output. Firms here hold 26-34 days of their outgoings
+    // with providers pricing over a margin and 15-30 without.
+    let days_held = firms3 / (paid_out / 30.0).max(1e-9);
     assert!(
-        firms3 < issued * 0.05,
-        "firms are sitting on {firms3:.0} of {issued:.0}"
+        days_held < 60.0,
+        "firms are sitting on {firms3:.0}, {days_held:.0} days of what they pay out"
     );
     // **Steady as well as small**, the same test households and the
     // treasury get. Working capital that drifts over two years is money

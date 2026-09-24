@@ -4376,7 +4376,9 @@ days filled, sharers spent the quarter they saved on rent — on a van, 171
 of 199 of them against 41 of 151 living alone — and came out with half the
 cash. A saving that buys something has reached somebody. It counts what
 they hold now, vehicles at replacement cost: sharers 9.5% ahead, and 1.4%
-with the scale deleted.
+with the scale deleted. *(Both readings have moved since, and the gate now
+runs the town twice rather than holding a bar between them — see "A
+provider charges more than it costs".)*
 
 ## People decide, when they have a reason to (`src/planner.rs`)
 
@@ -6821,6 +6823,83 @@ The gate `a_works_receives_only_what_it_can_pay_for` is on the branch,
 green there and red on master — the drained cannery takes 124.8 t of flour
 and leaves 36,852 unpaid. `docs/status.md`, tracked gap 2, says what it
 waits for.
+
+### A provider charges more than it costs (`tests/margins.rs`)
+
+The owner's point about why cash on delivery collapsed: **things were
+being charged at cost, and there is usually a profit margin.** Builders
+and hospitals billed exactly what the day used — wages, and materials or
+supplies at the price a firm pays — so everything else they paid, the
+power and the carriage, had no income behind it. In the soak both took in
+within a fraction of a per cent of what they paid out, every year. **A
+firm that takes in exactly what it pays out has no buffer**, and one
+knocked to nothing stays there: it cannot pay for its power or deliveries,
+is paid its wages and materials, and starts the next day short again.
+
+Real firms price over their direct costs, and the gross margin is the
+measured share of sales left after direct labour and materials: **15.46%**
+for US engineering and construction firms and **39.10%** for hospital
+chains, whose cost of goods (60.9% of sales) is about salaries and
+supplies *(Damodaran, Margins by Sector (US), January 2026)*. Listed
+chains are investor-owned, and a hospital here pays its profit to
+shareholders like any company its size; most American hospitals are
+not-for-profit and run thinner, which is not modelled.
+
+The gate empties every builder and hospital in a country and requires
+each to be paying everybody it owes within two months. With margins all
+ten do; at cost four builders and all five hospitals are still short.
+
+**It found a second copy of a rule, again.** The state taxed for its
+share of the hospital bill with its own arithmetic — wages and supplies,
+no margin — while the payment read the new bill. `Treasury::pay` lets a
+state overdraw, so every exchequer paid the margin out of nothing, three
+worlds ended five years 3.5-5.8e10 below nought, and **the soak read as a
+triumph**: households with nearly three times the money, every band met.
+It was the state printing it. One function now, `hospital_bill`, and the
+gate that was recorded as missing — a state does not spend what it did
+not raise.
+
+**Measured honestly, the effect is modest and it moves money in both
+directions.** Suppliers are paid more — firm-to-firm supply unpaid falls
+in all three worlds, by a third in world 7 — and households come up
+shorter at the counter in all three, because the builders' bill and the
+hospital door are raised after the counter has spent the purse. The
+margin is right and it makes that older gap bite harder.
+
+**Two gates had been balanced on nought**, and a correct change tipped
+both. The circuit's drift was measured against households' own balance,
+which a transfer between domestic holders moves; "firms do not hoard" was
+5% of all money *including the outside world's*, passing by 0.2%. Each is
+now measured against a base the change cannot move — the domestic
+circuit, and days of what firms pay out — and each was checked against
+the defects it is supposed to catch. **Neither drift bound catches a
+capital pay-out or a steady firm drain**, and that is recorded in the test
+rather than implied: what catches a leak is conservation and each
+holder's own gate.
+
+**And two gates on sampled people were reading cliffs**, which the margin
+tipped over:
+
+- **`a_price_shock_can_put_a_working_man_on_the_street` never put him on
+  the street.** At cost he lost his shifts, went forty-five days hungry and
+  died, and the gate accepted *evicted or dead*; with margins he kept his
+  shifts through the blackout and ended housed. This file's own measured
+  claim is the older one — *a supply shock does not kill a working man, it
+  keeps him poor* — so that is the gate now, as a controlled comparison:
+  the same man in the same negligent country with the transformer failing
+  and without, read over exactly the days it is dark. He works 185 days
+  against 299 and holds 29 days of food against 80. **After the repair he
+  comes out ahead**, prices falling faster than the lagging wage, which is
+  why the window is the outage. Taking away works' shifts in the dark, the
+  wage lag, or both, leaves it green — the shop's own rota carries it — and
+  that is recorded in the test.
+- **`people_share_a_roof`'s bar was between two readings that had both
+  moved.** It sat at 5% more for sharers, placed between 9.5% with the
+  equivalence scale and 1.4% without; by the margin commit they read 5.7%
+  and then 1.7% with it and **-28%** without, so the bar was balanced on
+  one of them. It now runs the same town again with the scale deleted and
+  requires the scale to be worth a tenth: 1.017 against 0.717. Red with the
+  scale taken out of the model, at 0.728 against 0.717.
 
 ### A run that never offered the case established nothing about it (`tests/carriage.rs`)
 

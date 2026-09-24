@@ -213,6 +213,52 @@ fn a_state_that_does_not_pay_for_medicine_does_not_tax_for_it() {
     );
 }
 
+/// **And a state does not spend what it did not raise.** The mirror of the
+/// gate above, and the half this file recorded as missing: `Treasury::pay`
+/// lets a state overdraw by design, so nothing stopped the exchequer paying
+/// out more than it taxed for.
+///
+/// It happened. Hospitals came to bill their costs over a margin, the
+/// payment read the new bill and the tax read its own copy of the old one,
+/// and over five years three worlds' states ended **3.5-5.8e10 below
+/// nought** — money that was never raised, reaching households as
+/// hospital dividends. What discriminates is the direction: the exchequer
+/// must not *fall* by more than a few weeks of its own outgoings, the same
+/// bar the hoarding gate sets on it rising.
+#[test]
+fn a_state_does_not_spend_what_it_did_not_raise() {
+    for system in [HealthSystem::TaxFunded, HealthSystem::PrivateInsurance] {
+        let mut e = a_country_that(system, 40);
+        let held = |e: &Economy| -> f64 {
+            e.nations()
+                .into_iter()
+                .map(|n| e.treasury.balance(Account::State(n)))
+                .sum()
+        };
+        let opening = held(&e);
+        for _ in 0..200 {
+            e.step();
+        }
+        let closing = held(&e);
+        let outgoings: f64 = e
+            .treasury
+            .today
+            .iter()
+            .filter(|t| matches!(t.from, Account::State(_)))
+            .map(|t| t.amount)
+            .sum();
+        assert!(outgoings > 0.0, "{}: a state paying nobody", system.name());
+        assert!(
+            opening - closing < outgoings * 20.0,
+            "{}: the exchequer fell {:.3e} over two hundred days, {:.0} days of its own \
+             outgoings — it is paying for something it did not tax for",
+            system.name(),
+            opening - closing,
+            (opening - closing) / outgoings
+        );
+    }
+}
+
 /// **What a health service delivers is what somebody paid for.**
 ///
 /// It used to read the budget line — what the *state* could afford —

@@ -523,20 +523,33 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // **A quarter off the cost of living for moving in with somebody**,
     // and that is not a rounding â€” it is the difference between a
     // part-time wage keeping a roof and not.
-    let mut e = a_nation().economy;
-    let mut folk = Populace::seed(&e, 70, 20260828);
-    // Put everybody in the worst-paid, least secure work there is, so the
-    // margin is where it can actually be seen.
-    for p in folk.people.values_mut() {
-        p.settle_into(Trade::FoodService);
-        // Qualified for it: a trade you cannot enter is not a trade
-        // you are in, and the gate is the point of the qualification.
-        p.qualification = scale_sim::person::qualification_for(Trade::FoodService);
-    }
-    for day in 0..(DAYS_PER_YEAR * 2) {
-        e.step();
-        folk.live_a_day(&mut e, day);
-    }
+    //
+    // `scale` false runs the same town with everybody carrying a whole
+    // household's costs — the scale deleted, and nothing else moved — which
+    // is what the gate below compares against.
+    let two_years = |scale: bool| {
+        let mut e = a_nation().economy;
+        let mut folk = Populace::seed(&e, 70, 20260828);
+        // Put everybody in the worst-paid, least secure work there is, so
+        // the margin is where it can actually be seen.
+        for p in folk.people.values_mut() {
+            p.settle_into(Trade::FoodService);
+            // Qualified for it: a trade you cannot enter is not a trade
+            // you are in, and the gate is the point of the qualification.
+            p.qualification = scale_sim::person::qualification_for(Trade::FoodService);
+        }
+        for day in 0..(DAYS_PER_YEAR * 2) {
+            if !scale {
+                for p in folk.people.values_mut() {
+                    p.household_share = 1.0;
+                }
+            }
+            e.step();
+            folk.live_a_day(&mut e, day);
+        }
+        (e, folk)
+    };
+    let (e, folk) = two_years(true);
 
     let homeless_share = |alone: bool| -> f64 {
         // **Handles, and the household read off the slot.** The people
@@ -587,7 +600,7 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
     // Measured: sharers held 9.5% more than people living alone; with
     // everybody's share of the household set back to a whole one — the
     // scale deleted — 1.4%. The bar sits between them.
-    let has = |alone: bool| -> f64 {
+    let has = |e: &scale_sim::econ::Economy, folk: &Populace, alone: bool| -> f64 {
         let idx: Vec<_> = folk
             .people
             .ids()
@@ -601,15 +614,29 @@ fn people_share_a_roof_and_that_is_most_of_how_they_afford_one() {
                 let p = &folk.people[i];
                 p.money
                     + p.conveyance.price_in_wage_days()
-                        * scale_sim::person::day_rate(&e, p.market, Trade::Driver)
+                        * scale_sim::person::day_rate(e, p.market, Trade::Driver)
             })
             .sum::<f64>()
             / idx.len() as f64
     };
-    let (alone_has, shared_has) = (has(true), has(false));
+    let (alone_has, shared_has) = (has(&e, &folk, true), has(&e, &folk, false));
+    // **The literal claim**: sharing leaves people with more.
     assert!(
-        shared_has > alone_has * 1.05,
-        "sharing a roof left people holding {shared_has:.0} against {alone_has:.0} living alone, counting what they bought -- the equivalence scale is not reaching anybody"
+        shared_has > alone_has,
+        "sharing a roof left people holding {shared_has:.0} against {alone_has:.0} living alone, counting what they bought"
+    );
+    // **And the scale is what does it, measured against the same town
+    // without it.** The bar sat at 5% more for sharers, placed between
+    // 9.5% with the scale and 1.4% without; both have moved since — to
+    // 5.7% and then 1.7% with it, and -28% without — and the bar was left
+    // balanced on the first of them. A bar between two readings that move
+    // is fitted to wherever they were; the comparison is what carries.
+    let (e0, folk0) = two_years(false);
+    let without = has(&e0, &folk0, false) / has(&e0, &folk0, true);
+    let with = shared_has / alone_has;
+    assert!(
+        with > without + 0.1,
+        "sharers hold {with:.3} of what people alone hold with the equivalence scale and \n         {without:.3} without it -- the scale is not reaching anybody"
     );
     assert!(
         alone >= shared - 1e-9,

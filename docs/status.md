@@ -429,6 +429,56 @@ Real defects, each visible in a test or measurable in a binary.
    36,852 unpaid. What it waits for: providers paid for what they are
    commissioned to do rather than at cost for what they happened to use,
    and the household bills brought inside the household's budget.
+   **Half of the first is done, 2026-09-24: providers price over a
+   margin.** The owner's point — things charged at cost explain the
+   failures; there is usually a profit margin. A builder bills its direct
+   costs over the **15.46%** gross margin of US engineering and
+   construction firms and a hospital over the **39.10%** of hospital
+   chains *(Damodaran, Margins by Sector (US), January 2026; for chains,
+   cost of goods is 60.9% of sales, about salaries and supplies)*. Empty
+   every builder and hospital in a country and every one is paying all it
+   owes within two months; at cost 4 of 5 builders and 5 of 5 hospitals are
+   still short (`tests/margins.rs`, red at either margin set to nought).
+   They are still paid for what they *used* rather than what they were
+   commissioned to do.
+   - **It found the state overdrawing.** `tax_and_spend` sized the tax on
+     its own copy of the hospital bill, without the margin, while the
+     payment read the new bill — so every state paid the margin out of an
+     overdraft `Treasury::pay` allows by design, and three worlds' states
+     ended five years 3.5-5.8e10 below nought, the money reaching
+     households as hospital dividends. One function now
+     (`Economy::hospital_bill`), and the gate this file recorded as
+     missing: **a state does not spend what it did not raise**
+     (`tests/health.rs`), red at 50 days of outgoings with the second copy
+     put back.
+   - **Two money gates were on knife edges**, each corrected to its claim
+     and recorded in `tests/money.rs`: the circuit's drift was measured
+     against households' own balance, which a transfer between domestic
+     holders moves (now the domestic circuit, same size of bar); and "firms
+     do not hoard" was 5% of all money *including abroad's*, passing by
+     0.2% at cost (now days of outgoings under sixty — firms hold 15-34).
+     Neither drift assertion catches a capital pay-out or a steady firm
+     drain, both measured; conservation and each holder's own gate do.
+   - **Five years, worlds 7 / 11 / 23**: firm-to-firm supply unpaid
+     1.06e11 / 2.67e10 / 4.53e10 -> 6.95e10 / 2.37e10 / 4.01e10; household
+     purchases unpaid 7.85 / 4.57 / 3.93e10 -> 8.93 / 5.29 / 4.18e10;
+     mean unemployment 8.76 / 7.00 / 8.84% -> 8.65 / 7.21 / 8.58%; months
+     of unemployment outside the band by head 7 / 1 / 10 -> 5 / 3 / 8;
+     worst hunger month 4.1 / 0.2 / 3.1% -> 3.4 / 0.2 / 3.4%; states flat
+     in both. World 23's builders meet 91% of payroll against 98%: they
+     pay profit out in towns that can pay and miss payroll in towns that
+     cannot.
+   - **So the second half now bites harder**: a dearer bill for the same
+     work comes out of the same purse the counter has already spent, which
+     is why households are shorter at the till in all three worlds.
+   - **Two sampled-person gates were reading cliffs and are now
+     comparisons.** The price-shock gate passed at cost only because the
+     man starved (it accepted *evicted or dead* and he was never evicted);
+     it now compares the same man with and without the fault over the days
+     the country is dark — 185 days worked against 299, 29 days of food
+     against 80. The shared-roof gate's 5% bar sat between readings that had
+     moved to 1.7% and -28%; it now runs the town again without the
+     equivalence scale — 1.017 against 0.717.
 3. **A household buys the basket whatever its balance.** `consume_households`
    records the shortfall as unpaid, so a poor town eats like a rich one on
    credit nobody extended. Fixing it moves hunger.

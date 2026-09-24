@@ -5728,11 +5728,13 @@ impl Economy {
                     if self.markets[m].nation != nation {
                         continue;
                     }
-                    // And what its wards used, which it is paid for too.
-                    bill += (self.staff_today.get(site).copied().unwrap_or(0.0)
-                        * self.day_rate_here(m)
-                        + self.inputs_used_cost(site))
-                        * public_share;
+                    // And what its wards used, and its margin: the state's
+                    // share of **the same bill the hospital is paid**, from
+                    // the one function that works it out. With a second copy
+                    // here the margin went unraised and every state paid it
+                    // out of an overdraft — three worlds' exchequers ended
+                    // five years 3.5-5.8e10 below nought.
+                    bill += self.hospital_bill(site) * public_share;
                 }
             }
             if bill <= 0.0 {
@@ -5903,6 +5905,52 @@ impl Economy {
         }
     }
 
+    /// **What a builder charges over its direct costs**: the gross margin
+    /// of US engineering and construction firms, **15.46%** of sales —
+    /// what is left of the price after direct labour and materials, and
+    /// what pays for the yard, the vans, the power, the carriage on its
+    /// deliveries and a profit *(Damodaran, Margins by Sector (US), 48
+    /// firms, data as of January 2026; operating margin 6.49%)*.
+    ///
+    /// **Billed at cost, a provider has no way back in.** It took in
+    /// wages and the materials it used and paid out those and its power
+    /// and carriage as well, so it ran at a small loss every day and a
+    /// bad week left it on nothing for good: with no money it cannot pay
+    /// for its power or its deliveries, is then paid its wages and its
+    /// materials, and starts the next day short of all three again.
+    pub const BUILDERS_GROSS_MARGIN: f64 = 0.1546;
+
+    /// **What a hospital charges over its staff and supplies**: the gross
+    /// margin of US hospital chains, **39.10%** of sales *(Damodaran, 31
+    /// firms, January 2026; operating margin 13.36%)*. For those firms
+    /// cost of goods is 60.9% of sales, which is about salaries and
+    /// supplies — the two things a hospital's bill here is made of.
+    ///
+    /// **Listed chains are investor-owned, and so is a hospital here**: it
+    /// pays its profit to shareholders across the nation like any company
+    /// of its size. Most American hospitals are not-for-profit and run far
+    /// thinner, keeping what is left for their buildings and paying nobody
+    /// a dividend; that ownership is not modelled.
+    pub const HOSPITAL_GROSS_MARGIN: f64 = 0.3910;
+
+    /// A price whose gross margin is `margin` of it, over `direct` costs.
+    pub fn priced_over(direct: f64, margin: f64) -> f64 {
+        direct / (1.0 - margin)
+    }
+
+    /// **What a hospital bills for today**: its staff and the supplies the
+    /// wards used, over its margin. One function, because the state taxes
+    /// for its share of this and then pays it, and two copies of the
+    /// arithmetic are how the payment came to outrun the tax.
+    pub fn hospital_bill(&self, site: usize) -> f64 {
+        let m = self.ledger.sites[site].market;
+        let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
+        Self::priced_over(
+            hands * self.day_rate_here(m) + self.inputs_used_cost(site),
+            Self::HOSPITAL_GROSS_MARGIN,
+        )
+    }
+
     /// **Somebody pays the builders.**
     ///
     /// The building trade consumes cement, steel and timber and produces
@@ -5939,14 +5987,12 @@ impl Economy {
             }
             let m = self.ledger.sites[site].market;
             let nation = self.markets[m].nation;
-            let hands = self.staff_today.get(site).copied().unwrap_or(0.0);
             // **Wages and the supplies the wards used**, as the builders
-            // below are paid. A budget covering only a hospital's payroll
-            // left it buying medicine out of the wage bill: every hospital
-            // in world 23 met under two thirds of its payroll with the
-            // state paying all it could.
-            let supplies = self.inputs_used_cost(site);
-            let bill = hands * self.day_rate_here(m) + supplies;
+            // below are paid, over a margin. A budget covering only a
+            // hospital's payroll left it buying medicine out of the wage
+            // bill: every hospital in world 23 met under two thirds of its
+            // payroll with the state paying all it could.
+            let bill = self.hospital_bill(site);
             let (public, insured, pocket) = self
                 .governments
                 .get(&nation)
@@ -6012,7 +6058,10 @@ impl Economy {
             // no materials all year and every cement works in the world met
             // none of its payroll.
             let materials = self.inputs_used_cost(site);
-            let due = hands * self.day_rate_here(m) + materials;
+            let due = Self::priced_over(
+                hands * self.day_rate_here(m) + materials,
+                Self::BUILDERS_GROSS_MARGIN,
+            );
             self.treasury.pay(
                 day,
                 Account::Households(m),
