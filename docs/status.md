@@ -471,6 +471,17 @@ Real defects, each visible in a test or measurable in a binary.
    - **So the second half now bites harder**: a dearer bill for the same
      work comes out of the same purse the counter has already spent, which
      is why households are shorter at the till in all three worlds.
+   - **And it does not rescue cash on delivery**, measured by replaying
+     the branch's one commit over the margins (worlds 7 / 11 / 23, five
+     years): unemployment peaks at 98 / 85 / 82% against 15.5 / 13.1 /
+     15.2% on master, every hospital ends the run idle, households end
+     holding 1e7 / 2.5e9 / 7.5e7. It starts in the second month — world 7
+     goes 8.6% to 15.8% unemployed by day 60 — with food cover under two
+     days and food at three times its cost, and the money goes abroad
+     (+3.2e10 in world 7) and into firms. So the missing half is the
+     other one: firms here buy only with cash in hand, where real firms
+     buy on agreed terms (`credit.rs`, not wired), and the household bills
+     are outside the household's budget.
    - **Two sampled-person gates were reading cliffs and are now
      comparisons.** The price-shock gate passed at cost only because the
      man starved (it accepted *evicted or dead* and he was never evicted);
