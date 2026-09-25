@@ -169,6 +169,7 @@ fn main() {
     let mut nations = 4usize;
     let mut years = 5u64;
     let mut each = 40usize;
+    let mut supply = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -176,8 +177,12 @@ fn main() {
             "--nations" => nations = it.next().and_then(|v| v.parse().ok()).unwrap_or(4).max(1),
             "--years" => years = it.next().and_then(|v| v.parse().ok()).unwrap_or(5).max(1),
             "--each" => each = it.next().and_then(|v| v.parse().ok()).unwrap_or(40).max(4),
+            "--supply-answers-price" => supply = true,
             "--help" | "-h" => {
-                println!("usage: soak [--seed N] [--nations N] [--years N] [--each N]");
+                println!(
+                    "usage: soak [--seed N] [--nations N] [--years N] [--each N] \
+                     [--supply-answers-price]"
+                );
                 return;
             }
             other => {
@@ -192,7 +197,7 @@ fn main() {
     let polities = Polities::partition(&world, 24);
     let settlements = Settlements::place(&world, &polities, 3000);
     let network = Network::build(&world, &settlements, 500);
-    let n = Nations::build(
+    let mut n = Nations::build(
         &world,
         &polities,
         &settlements,
@@ -201,6 +206,10 @@ fn main() {
         4,
         Doctrine::Prudent,
     );
+    n.economy.experiments.supply_answers_price = supply;
+    if supply {
+        println!("a works makes only as much as is worth making");
+    }
     let folk = Populace::seed(&n.economy, each, seed);
     let sampled = folk.people.len();
     {
@@ -285,7 +294,7 @@ fn main() {
     // What each commodity fetched and cost, against its reference, over the
     // same samples: which prices are off, and whether it is the cost or the
     // scarcity on top of it.
-    let mut quoted: std::collections::BTreeMap<String, [f64; 4]> = Default::default();
+    let mut quoted: std::collections::BTreeMap<String, [f64; 11]> = Default::default();
 
     for d in 1..=days {
         g.a_day();
@@ -534,20 +543,81 @@ fn book_accrual(
 fn price_arithmetic(
     e: &scale_sim::econ::Economy,
     at_prices: &mut std::collections::BTreeMap<String, [f64; 6]>,
-    quoted: &mut std::collections::BTreeMap<String, [f64; 4]>,
+    quoted: &mut std::collections::BTreeMap<String, [f64; 11]>,
 ) {
     use scale_sim::econ::{demand_rate_of, Economy, SiteKind, RECIPES};
-    for market in e.markets.iter() {
+    for (m, market) in e.markets.iter().enumerate() {
         for &c in Commodity::ALL.iter() {
             let (price, cost) = (market.price[c as usize], market.cost[c as usize]);
             if !price.is_finite() || !cost.is_finite() {
                 continue;
             }
-            let row = quoted.entry(format!("{c:?}")).or_insert([0.0; 4]);
+            let row = quoted.entry(format!("{c:?}")).or_insert([0.0; 11]);
             row[0] += price / c.base_cost();
             row[1] += cost / c.base_cost();
             row[2] += if cost > 0.0 { price / cost } else { 0.0 };
             row[3] += 1.0;
+            // **Cover against the target the price aims at, and the most
+            // cover the sheds that are counted could hold.** A commodity
+            // whose counted storage cannot hold its target is priced as
+            // scarce however much of it there is; one whose working stock
+            // alone exceeds the target sits on the floor. The same sheds the
+            // price counts: only shops, for a thing households buy and no
+            // works uses.
+            let cover = market.cover[c as usize];
+            if c == Commodity::Electricity || !cover.is_finite() || cover <= 1e-9 {
+                continue;
+            }
+            let industrial: f64 = e
+                .ledger
+                .sites
+                .iter()
+                .filter(|site| site.market == m)
+                .filter_map(|site| {
+                    let r = site.recipe?;
+                    let per = RECIPES[r]
+                        .inputs
+                        .iter()
+                        .find(|&&(ic, _)| ic == c)
+                        .map(|&(_, q)| q)?;
+                    Some(per * demand_rate_of(site))
+                })
+                .sum();
+            let shop_only = c.per_capita_annual() > 0.0 && industrial <= 0.0;
+            let counted = |site: &&scale_sim::econ::Site| {
+                site.market == m && (!shop_only || site.kind == SiteKind::Shop)
+            };
+            let (held, room): (f64, f64) = e
+                .ledger
+                .sites
+                .iter()
+                .enumerate()
+                .filter(|(_, site)| counted(site))
+                .map(|(s, site)| (e.ledger.stock(s, c), site.capacity[c as usize]))
+                .fold((0.0, 0.0), |a, b| (a.0 + b.0, a.1 + b.1));
+            if held <= 1e-9 {
+                continue;
+            }
+            let demand = held / cover;
+            let target = e.target_cover(m, c);
+            if target <= 1e-9 || demand <= 1e-12 {
+                continue;
+            }
+            let seen = market.expected_cover[c as usize];
+            row[4] += seen / target;
+            row[5] += room / demand / target;
+            row[6] += 1.0;
+            // **An average over towns can hide a split** — plenty where it is
+            // made and short everywhere else — so the towns short of their
+            // target are counted, and each side's price read apart.
+            let ratio = if cost > 0.0 { price / cost } else { 0.0 };
+            if seen < target {
+                row[7] += 1.0;
+                row[8] += ratio;
+            } else {
+                row[9] += ratio;
+            }
+            row[10] += 1.0;
         }
     }
     for (s, site) in e.ledger.sites.iter().enumerate() {
@@ -604,7 +674,7 @@ fn price_arithmetic(
 fn margins(
     accrual: &std::collections::BTreeMap<String, [f64; ACCRUAL]>,
     at_prices: &std::collections::BTreeMap<String, [f64; 6]>,
-    quoted: &std::collections::BTreeMap<String, [f64; 4]>,
+    quoted: &std::collections::BTreeMap<String, [f64; 11]>,
 ) {
     println!(
         "\n  the final year, by kind of works: billed to its customers against billed
@@ -664,18 +734,30 @@ fn margins(
         );
     }
     println!("\n  and what each commodity fetched, over every town and the same samples:\n");
-    println!("                  price /    cost /    price /");
-    println!("                reference reference     cost");
+    println!("                  price /    cost /    price /    cover /  storage /  towns   price/cost  price/cost");
+    println!("                reference reference     cost     target     target   short    if short   otherwise");
     for (k, a) in quoted.iter() {
         if a[3] <= 0.0 {
             continue;
         }
+        let per = |x: f64| if a[6] > 0.0 { x / a[6] } else { f64::NAN };
+        let short = a[7];
+        let rest = a[10] - a[7];
         println!(
-            "  {:<14} {:>9.2} {:>9.2} {:>9.2}",
+            "  {:<14} {:>9.2} {:>9.2} {:>9.2} {:>10.2} {:>10.2} {:>6.0}% {:>11.2} {:>11.2}",
             k,
             a[0] / a[3],
             a[1] / a[3],
-            a[2] / a[3]
+            a[2] / a[3],
+            per(a[4]),
+            per(a[5]),
+            if a[10] > 0.0 {
+                short / a[10] * 100.0
+            } else {
+                f64::NAN
+            },
+            if short > 0.0 { a[8] / short } else { f64::NAN },
+            if rest > 0.0 { a[9] / rest } else { f64::NAN },
         );
     }
 }

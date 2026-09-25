@@ -3246,6 +3246,11 @@ pub struct Experiments {
     /// closes the margin — rather than only what each warehouse holds
     /// above the whole market's working cover.
     pub market_wide_trade: bool,
+    /// **A works makes only as much as is worth making**: at the day's
+    /// prices, its output has to cover what it pays for its inputs and its
+    /// power. Off, a works runs at its rating whenever it has inputs and room,
+    /// whatever its output fetches.
+    pub supply_answers_price: bool,
 }
 
 impl Default for Experiments {
@@ -3261,6 +3266,7 @@ impl Default for Experiments {
             marginal_source_pricing: false,
             cheapest_delivered_supplier: false,
             market_wide_trade: false,
+            supply_answers_price: false,
         }
     }
 }
@@ -3275,6 +3281,7 @@ impl Experiments {
                 marginal_source_pricing: bits & 2 != 0,
                 cheapest_delivered_supplier: bits & 4 != 0,
                 market_wide_trade: bits & 8 != 0,
+                supply_answers_price: false,
             })
             .collect()
     }
@@ -4441,6 +4448,20 @@ impl Economy {
             if s.kind == SiteKind::PowerPlant {
                 continue;
             }
+            // **Experiment: a works makes only as much as is worth making.**
+            // Off by default, and then this is exactly what it was. After
+            // the power station is passed over and not before: a station is
+            // dispatched by the grid and paid the clearing price, and its
+            // `ran` is what orders its coal, so zeroing it here starved the
+            // grid and put every hospital on the price cap.
+            if self.experiments.supply_answers_price && !self.buys_abroad(site) {
+                eagerness *= self.worth_making(site);
+                if eagerness <= 0.0 {
+                    self.ledger.sites[site].ran = 0.0;
+                    continue;
+                }
+            }
+            let s = &self.ledger.sites[site];
             let Some(r) = s.recipe else { continue };
             let recipe = &RECIPES[r];
             // **A blackout stops the factory; it does not stop the farm.**
@@ -9861,6 +9882,61 @@ impl Economy {
             most = most.max(over / FULLY_WORTH_IT);
         }
         most.clamp(0.0, 1.0)
+    }
+
+    /// **How much of its rating a works thinks worth running**, nought to
+    /// one: whether, at the day's prices, what its output fetches covers what
+    /// it pays for the inputs and the power that make it.
+    ///
+    /// **Against what it pays, not against the cost figure.** The shutdown
+    /// rule tried before compared a works' price with its cost of production
+    /// and throttled any good selling under it — and prices here sit at 0.7
+    /// to 0.8 of that figure in ordinary times, so it stopped works that
+    /// were making money. What a works can see, and what a real one stops
+    /// on, is its output failing to cover what it pays out to make it: price
+    /// under average variable cost. Measured on the committed model, cement,
+    /// food and goods cover theirs several times over at the glut floor, and
+    /// chemical works, machine works and mills do not.
+    ///
+    /// **Wages are not in it**, because hands are kept on through a short
+    /// stoppage — nobody is hired and fired by the day — so for a decision
+    /// taken daily they are not a cost that stopping saves.
+    ///
+    /// **A slope, not a switch**, for the reason the import terminals
+    /// learned: a yes-or-no test against a price that moves every day is a
+    /// limit cycle. Behind a works' decision stand the several things a real
+    /// one weighs — which orders, which shifts, which lines — so the tonnage
+    /// falls away as the margin thins. Full tilt at a margin of five per
+    /// cent of what the output fetches: a designed figure, like the
+    /// terminals' two.
+    pub fn worth_making(&self, site: usize) -> f64 {
+        /// The margin on what the output fetches at which a works runs flat
+        /// out.
+        const FULLY_WORTH_IT: f64 = 0.05;
+
+        let s = &self.ledger.sites[site];
+        let Some(r) = s.recipe else { return 1.0 };
+        let recipe = &RECIPES[r];
+        let m = s.market;
+        let price = |c: Commodity| self.markets[m].price[c as usize];
+        let fetches: f64 = recipe
+            .outputs
+            .iter()
+            .map(|&(c, q)| q * price(c) * Self::WHOLESALE_MARGIN)
+            .sum();
+        // A service sells nothing and is paid for what it did: there is no
+        // output price for it to weigh.
+        if fetches <= 1e-12 || !fetches.is_finite() {
+            return 1.0;
+        }
+        let pays: f64 = recipe
+            .inputs
+            .iter()
+            .map(|&(c, q)| q * price(c) * Self::WHOLESALE_MARGIN)
+            .sum::<f64>()
+            + recipe.power * price(Commodity::Electricity);
+        let margin = (fetches - pays) / fetches;
+        (margin / FULLY_WORTH_IT).clamp(0.0, 1.0)
     }
 
     /// **Does a tonne of this come from abroad at this site?** The recipe

@@ -1302,7 +1302,8 @@ impl Store for crate::econ::Economy {
         w.u8((x.carrier_landed_cost as u8)
             | ((x.marginal_source_pricing as u8) << 1)
             | ((x.cheapest_delivered_supplier as u8) << 2)
-            | ((x.market_wide_trade as u8) << 3));
+            | ((x.market_wide_trade as u8) << 3)
+            | ((x.supply_answers_price as u8) << 6));
 
         w.len(self.import_duty.len());
         for (nation, rate) in self.import_duty.iter() {
@@ -1436,7 +1437,9 @@ impl Store for crate::econ::Economy {
             n => return Err(SaveError::UnknownCode("power clearing tag", n as u32)),
         };
         let bits = r.u8()?;
-        if bits & 0xF0 != 0 {
+        // Bit 6 is the supply experiment; bits 4 and 5 are kept for the money
+        // rules measured on the trade-credit branch.
+        if bits & 0xB0 != 0 {
             return Err(SaveError::UnknownCode("experiment switches", bits as u32));
         }
         let experiments = crate::econ::Experiments {
@@ -1444,6 +1447,7 @@ impl Store for crate::econ::Economy {
             marginal_source_pricing: bits & 2 != 0,
             cheapest_delivered_supplier: bits & 4 != 0,
             market_wide_trade: bits & 8 != 0,
+            supply_answers_price: bits & 64 != 0,
         };
 
         let n = r.count()?;
