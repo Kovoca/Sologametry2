@@ -5993,6 +5993,85 @@ pricing questions this file already names: the landed cost that does not
 reach the price (experiments L and M), and why prices settle under cost at
 all.
 
+### Which chains invert, measured (`bin/soak`, `bin/recipes`)
+
+`bin/soak` now ends with each kind of works' final year **on an accrual
+basis** — what it billed its customers against what it was billed for
+inputs, power, payroll, carriage and goods from abroad, paid or failed —
+then the same works at the day's prices, sampled monthly, and what each
+commodity fetched against its cost. A cash book cannot show a works billed
+twice what it takes in: the half it fails to pay is a shortfall on the
+day's tally and never reaches its books. Power is told from supply by who
+is paid, because a station and a mill are both paid under "supply".
+
+The committed model, five years, worlds 7 / 11 / 23:
+
+| | costs billed / revenue billed | at the day's prices, samples where it loses |
+|---|---|---|
+| chemical works | **2.25 / 2.05 / 1.77** | inputs alone, **100%** in every world |
+| machine works | 1.53 / 1.40 / 1.46 | whole outlay 99 / 79 / 83% |
+| mill | 1.45 / 1.32 / 1.46 | inputs alone 44 / 36 / 36% |
+| cracker | 1.35 / 0.77 / 1.76 | inputs alone 19 / 25 / 50% |
+| shop | 1.04 / 1.01 / 1.02 | — |
+| factory | 0.47 / 0.44 / 0.42 | none |
+| butcher | 0.32 in all three | none |
+| mine, farm, oil field, forestry | 0.01 - 0.34 | none |
+
+**The recipes are not what inverts them.** At the reference prices a
+chemical works spends 35% of its output's value on oil, a machine works
+58% on steel and plastic, a cracker 72%, a mill 87% (`cargo run --release
+--bin recipes`). What inverts them is the prices, and they are structural —
+several read the same in every world:
+
+| price / cost, every town, final year | 7 | 11 | 23 |
+|---|---|---|---|
+| coal | 2.79 | 2.56 | 2.30 |
+| petroleum | 2.47 | 2.56 | 2.49 |
+| plastics | 2.27 | 1.88 | 1.79 |
+| remedies | 2.43 | 2.43 | 2.43 |
+| meat | 2.21 | 2.20 | 2.21 |
+| timber | 1.71 | 1.41 | 2.07 |
+| grain | 1.26 | 1.18 | 1.20 |
+| chemicals | 0.93 | 0.92 | 0.92 |
+| retail goods | 0.82 | 1.00 | 0.94 |
+| flour | 0.78 | 0.74 | 0.74 |
+| processed food | 0.78 | 0.77 | 0.77 |
+| **cement, livestock, machinery** | **0.70** | **0.70** | **0.70** |
+| electricity | 0.56 | 0.48 | 0.54 |
+
+**Raw materials are always scarce and manufactures sit on the glut floor**,
+the 0.7 the price clamp allows. That is what a price reads when nothing a
+works makes answers it: a works runs at its rating whenever it has inputs
+and room, so the scarcity multiplier reports how its stock sits against
+its target — a fact about how the stores were sized — and a chemical works
+buys oil at two and a half times its cost and sells chemicals under theirs
+every day of five years.
+
+Three more things the readout shows, named rather than fixed:
+
+- **A shop's costs are its revenue.** Shops buy at three quarters of the
+  price and sell at the whole of it, and billed 1.01-1.04 of what they took;
+  the retail margin is not reaching their books. Shops relaying goods to
+  other shops at the wholesale share is part of it — 3.0e10 of shop-to-shop
+  supply went unpaid in world 7 — and not established as all of it.
+- **The butcher is inverted at its own reference prices** (0.99 of its
+  output's value is livestock) and is profitable only because livestock
+  sits on the floor and meat at 2.2 times its cost.
+- **A dearer input barely reaches the cost figure.** A cost is built on
+  labour at `VALUE_ADDED_AN_HOUR`, and a machine works' sixty hours a tonne
+  come to 1,320 against a tonne of machinery worth 620 — so by the cost
+  figure machinery is a fifth steel, while by what the works pays out it is
+  more than half. The finished-goods end of the price scale is compressed
+  and the labour-hours are real, and the two do not meet.
+
+**The rejected shutdown rule compared the wrong thing.** It cut a works'
+output as its price fell below its *cost figure*, and prices sit at 0.7-0.8
+of that figure in ordinary times, so it read every glut-floor good as a
+reason to stop. What a works can see, and what a real one stops on, is
+whether its output covers what it pays out to make it — price below average
+variable cost. By that test cement, food and goods are profitable at 0.7
+and carry on, and chemical works, machine works and mills are not.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

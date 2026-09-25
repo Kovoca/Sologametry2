@@ -273,6 +273,19 @@ fn main() {
         std::collections::BTreeMap<scale_sim::credit::Origin, f64>,
     )> = None;
     let mut held_back_year = 0.0;
+    // **What each kind of works is billed and bills, whether or not the
+    // money moved.** A cash book hides a works billed twice what it takes
+    // in: the half it cannot pay is a shortfall on the day's tally and never
+    // reaches its books. Paid and failed, by who was to be paid.
+    let mut accrual: std::collections::BTreeMap<String, [f64; ACCRUAL]> = Default::default();
+    // **And the arithmetic the prices set**: at the day's prices, what a
+    // works running at its rating pays for its inputs, and for everything,
+    // against what its output fetches — sampled monthly over the final year.
+    let mut at_prices: std::collections::BTreeMap<String, [f64; 6]> = Default::default();
+    // What each commodity fetched and cost, against its reference, over the
+    // same samples: which prices are off, and whether it is the cost or the
+    // scarcity on top of it.
+    let mut quoted: std::collections::BTreeMap<String, [f64; 4]> = Default::default();
 
     for d in 1..=days {
         g.a_day();
@@ -348,6 +361,20 @@ fn main() {
                 }
             }
         }
+        if d > final_year_from {
+            if let Some(e) = g.economy.as_ref() {
+                for t in e.treasury.today.iter() {
+                    let name = scale_sim::money::reason_name(t.why);
+                    book_accrual(e, &mut accrual, t.from, t.to, name, t.amount, false);
+                }
+                for ((from, to, why), v) in e.treasury.unpaid_by.iter() {
+                    book_accrual(e, &mut accrual, *from, *to, why, *v, true);
+                }
+                if d % month == 0 {
+                    price_arithmetic(e, &mut at_prices, &mut quoted);
+                }
+            }
+        }
         if d == final_year_from {
             if let Some(e) = g.economy.as_ref() {
                 let b = &e.obligations;
@@ -410,6 +437,7 @@ fn main() {
         println!("  {:<10} {:<16} -> {:<18} {:>10.2e}", why, payer, payee, v);
     }
     obligations(&g, book_at_year, held_back_year);
+    margins(&accrual, &at_prices, &quoted);
     by_trade(
         &g,
         &worked_final_year,
@@ -418,6 +446,222 @@ fn main() {
         final_year_from,
         days,
     );
+}
+
+/// Columns of a kind of works' accrual book: what it was billed to its
+/// customers and what it was billed for inputs, power, payroll, carriage and
+/// goods from abroad — each as paid and as failed on the day's tally.
+const ACCRUAL: usize = 12;
+
+/// **Book one payment, or one shortfall, to the works on either end.**
+///
+/// A cost is sorted by who was to be paid rather than by the reason, because
+/// a power station and a mill are both paid under "supply". Profit, tax and
+/// capital are not operating costs and are left out; so is capital coming
+/// back to a firm, which is not revenue.
+fn book_accrual(
+    e: &scale_sim::econ::Economy,
+    accrual: &mut std::collections::BTreeMap<String, [f64; ACCRUAL]>,
+    from: Account,
+    to: Account,
+    reason: &str,
+    amount: f64,
+    failed: bool,
+) {
+    let kind = |s: usize| e.ledger.sites.get(s).map(|x| format!("{:?}", x.kind));
+    let skip = matches!(
+        reason,
+        "profit" | "tax" | "capital" | "lending" | "repayment" | "interest"
+    );
+    if skip {
+        return;
+    }
+    let f = failed as usize;
+    if let Account::Firm(s) = to {
+        if let Some(k) = kind(s) {
+            accrual.entry(k).or_insert([0.0; ACCRUAL])[f] += amount;
+        }
+    }
+    if let Account::Firm(s) = from {
+        let col = if reason == "payroll" {
+            Some(6)
+        } else {
+            match to {
+                Account::Firm(t) => {
+                    let power = e
+                        .ledger
+                        .sites
+                        .get(t)
+                        .map(|x| x.kind == scale_sim::econ::SiteKind::PowerPlant)
+                        .unwrap_or(false);
+                    Some(if power { 4 } else { 2 })
+                }
+                Account::ServiceSector(_) => Some(8),
+                Account::Abroad => Some(10),
+                _ => None,
+            }
+        };
+        if let (Some(c), Some(k)) = (col, kind(s)) {
+            accrual.entry(k).or_insert([0.0; ACCRUAL])[c + f] += amount;
+        }
+    }
+}
+
+/// **At the day's prices, does a works running at its rating cover what it
+/// buys?** Each works with a recipe, making something, that is not an
+/// importer: its output at the price a firm is paid (a power station is paid
+/// the clearing price itself), its inputs at the price a firm pays, and its
+/// whole planned outlay — inputs, power and payroll at rating.
+///
+/// Columns: output value, inputs, planned outlay, works sampled, works whose
+/// inputs alone cost more than the output fetches, works whose whole outlay
+/// does.
+fn price_arithmetic(
+    e: &scale_sim::econ::Economy,
+    at_prices: &mut std::collections::BTreeMap<String, [f64; 6]>,
+    quoted: &mut std::collections::BTreeMap<String, [f64; 4]>,
+) {
+    use scale_sim::econ::{demand_rate_of, Economy, SiteKind, RECIPES};
+    for market in e.markets.iter() {
+        for &c in Commodity::ALL.iter() {
+            let (price, cost) = (market.price[c as usize], market.cost[c as usize]);
+            if !price.is_finite() || !cost.is_finite() {
+                continue;
+            }
+            let row = quoted.entry(format!("{c:?}")).or_insert([0.0; 4]);
+            row[0] += price / c.base_cost();
+            row[1] += cost / c.base_cost();
+            row[2] += if cost > 0.0 { price / cost } else { 0.0 };
+            row[3] += 1.0;
+        }
+    }
+    for (s, site) in e.ledger.sites.iter().enumerate() {
+        let Some(r) = site.recipe else { continue };
+        let recipe = &RECIPES[r];
+        if recipe.outputs.is_empty() || e.buys_abroad(s) {
+            continue;
+        }
+        if matches!(
+            site.kind,
+            SiteKind::Shop | SiteKind::Hospital | SiteKind::Builders
+        ) {
+            continue;
+        }
+        let rate = demand_rate_of(site);
+        if rate <= 1e-9 {
+            continue;
+        }
+        let m = site.market;
+        let paid_at = if site.kind == SiteKind::PowerPlant {
+            1.0
+        } else {
+            Economy::WHOLESALE_MARGIN
+        };
+        let out: f64 = recipe
+            .outputs
+            .iter()
+            .map(|&(c, q)| q * rate * e.markets[m].price[c as usize] * paid_at)
+            .sum();
+        let inputs: f64 = recipe
+            .inputs
+            .iter()
+            .map(|&(c, q)| q * rate * e.markets[m].price[c as usize] * Economy::WHOLESALE_MARGIN)
+            .sum();
+        let outlay = e.planned_outlay(s);
+        let row = at_prices
+            .entry(format!("{:?}", site.kind))
+            .or_insert([0.0; 6]);
+        row[0] += out;
+        row[1] += inputs;
+        row[2] += outlay;
+        row[3] += 1.0;
+        if inputs > out {
+            row[4] += 1.0;
+        }
+        if outlay > out {
+            row[5] += 1.0;
+        }
+    }
+}
+
+/// **What each kind of works was billed against what it billed**, over the
+/// final year, and what the day's prices say it should have been.
+fn margins(
+    accrual: &std::collections::BTreeMap<String, [f64; ACCRUAL]>,
+    at_prices: &std::collections::BTreeMap<String, [f64; 6]>,
+    quoted: &std::collections::BTreeMap<String, [f64; 4]>,
+) {
+    println!(
+        "\n  the final year, by kind of works: billed to its customers against billed
+  to it, paid or not (failed = a shortfall on the day's tally)\n"
+    );
+    println!(
+        "                    revenue  of it   inputs    power  payroll carriage   abroad  of costs  costs /"
+    );
+    println!(
+        "                     billed  failed   billed   billed   billed   billed   billed    failed  revenue"
+    );
+    for (k, a) in accrual.iter() {
+        let rev = a[0] + a[1];
+        let cost: f64 = (2..ACCRUAL).map(|i| a[i]).sum();
+        let failed: f64 = (2..ACCRUAL).step_by(2).map(|i| a[i + 1]).sum();
+        if rev + cost <= 0.0 {
+            continue;
+        }
+        println!(
+            "  {:<16} {:>9.2e} {:>6.0}% {:>8.2e} {:>8.2e} {:>8.2e} {:>8.2e} {:>8.2e} {:>8.0}% {:>8.2}",
+            k,
+            rev,
+            if rev > 0.0 { a[1] / rev * 100.0 } else { 0.0 },
+            a[2] + a[3],
+            a[4] + a[5],
+            a[6] + a[7],
+            a[8] + a[9],
+            a[10] + a[11],
+            if cost > 0.0 { failed / cost * 100.0 } else { 0.0 },
+            if rev > 0.0 { cost / rev } else { f64::INFINITY },
+        );
+    }
+    println!("\n  at the day's prices, sampled monthly, a works running at its rating:\n");
+    println!("                  inputs /  outlay /   works    inputs alone   whole outlay");
+    println!("                    output    output  sampled   cost more      costs more");
+    for (k, a) in at_prices.iter() {
+        if a[3] <= 0.0 {
+            continue;
+        }
+        println!(
+            "  {:<14} {:>9.2} {:>9.2} {:>8.0} {:>11.0}% {:>13.0}%",
+            k,
+            if a[0] > 0.0 {
+                a[1] / a[0]
+            } else {
+                f64::INFINITY
+            },
+            if a[0] > 0.0 {
+                a[2] / a[0]
+            } else {
+                f64::INFINITY
+            },
+            a[3],
+            a[4] / a[3] * 100.0,
+            a[5] / a[3] * 100.0,
+        );
+    }
+    println!("\n  and what each commodity fetched, over every town and the same samples:\n");
+    println!("                  price /    cost /    price /");
+    println!("                reference reference     cost");
+    for (k, a) in quoted.iter() {
+        if a[3] <= 0.0 {
+            continue;
+        }
+        println!(
+            "  {:<14} {:>9.2} {:>9.2} {:>9.2}",
+            k,
+            a[0] / a[3],
+            a[1] / a[3],
+            a[2] / a[3]
+        );
+    }
 }
 
 /// **What is owed, and what became of what was owed**: the year's billing

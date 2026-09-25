@@ -1013,7 +1013,7 @@ impl Economy {
 /// So it keeps its figure and gets its name, and the wage is the share of
 /// it that `WAGE_SHARE_OF_VALUE_ADDED` says, following what is actually
 /// paid. See `Economy::site_cost`.
-const VALUE_ADDED_AN_HOUR: f64 = 22.0;
+pub const VALUE_ADDED_AN_HOUR: f64 = 22.0;
 
 /// **Wages are a little over half of what work adds.** Pay to employees
 /// was 51.8% of US GDP in 2023 *(BEA)*, and the share of a corporate
