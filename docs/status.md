@@ -1016,10 +1016,48 @@ player below move behind this phase accordingly.
 3. **Bounded trade credit.** The invoices in `credit.rs`, connected through
    agreed limits, due dates, collection and default, authorised before the
    goods move — not bookkeeping on unlimited compulsory lending.
+   **Built and measured, 2026-09-24, on the `trade-credit` branch — not
+   shippable.** Every payment a firm makes is paid, owed on the book, or
+   refused before the goods move, under either rule: trade credit (net 30,
+   sixty days of planned outlay per supplier, on stop at 60 days past due)
+   or cash on delivery (goods and consignments move only as far as they are
+   paid for). Wages owed are debts due that day and paid first; a works in
+   arrears keeps a day's planned outlay before paying suppliers (without it
+   the viable fixture's mill stood idle 211 days); no dividend while owing;
+   firms' debts charged off at 180 days past due. Seven gates in
+   `tests/trade_credit.rs`, nine sabotages, all red. See step 4 for what it
+   measured.
 4. **Reassess**, on a small controlled economy: the existing behaviour,
    budgeting alone, credit alone, and both — reading consumption and
    production beside cash, overdue debt and external flows. A recovery that
    rests on unpaid invoices growing for ever has not fixed anything.
+   **Done, 2026-09-24, and the answer is prices.** `cargo run --release
+   --bin money_rules` (on the branch) runs the four on `slice::viable` for
+   two years: trade credit keeps the works at 62% of rating, 110 t of food a
+   day and 17% unemployment against cash on delivery's 32%, 31 t and 29%,
+   with 9.2e5 charged off; budgeting makes no difference there because that
+   fixture has no service bills. **On worlds 7 / 11 / 23 all four collapse**
+   (five-year soaks, `--spend-first` and `--cash-on-delivery` on the
+   branch's `bin/soak`): mean unemployment 37-60% against the committed
+   model's 12-15%, 58-91% at the end, food at 2.5-3.7 times its cost, the
+   states emptied, 1.2-3.3e12 owed at the end with over 90% of it overdue,
+   and 0.4-1.3e12 charged off in the final year. Credit is the less bad
+   rule; nothing is forgotten in any of them. **Traced**: the first to fail
+   are the machine works, all on stop by day 150 in world 7. Steel priced as
+   scarce (1,572-2,997 against a cost of 626-877) and machinery as a glut
+   (434-491 against 621-702), 0.72 t of steel a tonne, so a works paid 2.6
+   times what it took in. An output's price is built from its inputs'
+   *costs*, deliberately, so a shortage does not compound down a chain —
+   and so a processor buys at the shortage price and sells at the
+   cost-built one. The forgotten tally paid the gap: 9.8 / 3.4 / 4.0e10 a
+   year of firms' failed payments in the committed model. **Next is
+   pricing, not credit**: a works' price able to answer what its inputs
+   actually cost it, or its output falling when it cannot cover them —
+   which is the landed cost that does not reach the price (experiments L
+   and M) and the question already on this list of why prices settle
+   under cost at all. Measure first: across the worlds, per kind of works,
+   the margin between what its inputs cost it and what its output fetches,
+   with credit on, to see how many chains invert and how often.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;
