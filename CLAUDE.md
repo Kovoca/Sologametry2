@@ -5951,15 +5951,25 @@ whose firms' failed payments are forgotten:
 
 | | committed | budget + credit | spend + credit | budget + cash | spend + cash |
 |---|---|---|---|---|---|
-| mean unemployment | 14.7 / 11.6 / 13.8% | 51.5 / 42.8 / 37.2% | 49.2 / 44.5 / 42.9% | 58.4 / 52.8 / 51.0% | 60.3 / 54.6 / 50.8% |
-| at the end | 13.8 / 10.1 / 15.9% | 88.1 / 68.1 / 58.6% | 77.6 / 68.0 / 57.9% | 91.5 / 85.1 / 79.9% | 91.5 / 88.5 / 89.6% |
-| food price / cost at the end | 0.82 / 0.75 / 0.78 | 3.67 / 3.47 / 3.67 | 3.67 / 3.29 / 2.45 | 3.67 / 3.67 / 3.67 | 3.67 / 3.67 / 3.64 |
+| mean unemployment | 14.7 / 11.6 / 13.8% | 51.5 / 42.8 / 37.2% | 49.2 / 44.5 / 42.9% | 58.6 / 51.3 / 50.0% | 60.3 / 53.6 / 52.0% |
+| at the end | 13.8 / 10.1 / 15.9% | 88.1 / 68.1 / 58.6% | 77.6 / 68.0 / 57.9% | 89.7 / 85.9 / 72.0% | 89.2 / 86.0 / 89.4% |
+| food price / cost at the end | 0.82 / 0.75 / 0.78 | 3.67 / 3.47 / 3.67 | 3.67 / 3.29 / 2.45 | 3.67 / 3.67 / 3.67 | 3.67 / 3.67 / 3.67 |
 | forgotten, final year | 9.8 / 3.4 / 4.0e10 | nought | nought | nought | nought |
-| owed at the end | 2.9 / 0.7 / 3.4e9 | 3.3 / 1.8 / 1.6e12 | 2.3 / 1.6 / 1.2e12 | 3.3 / 1.9 / 1.9e12 | 2.8 / 1.5 / 1.8e12 |
-| charged off, final year | none | 1.2 / 0.6 / 0.5e12 | 0.8 / 0.5 / 0.4e12 | 1.3 / 0.8 / 0.7e12 | 1.3 / 0.6 / 0.6e12 |
+| owed at the end | 2.9 / 0.7 / 3.4e9 | 3.3 / 1.8 / 1.6e12 | 2.3 / 1.6 / 1.2e12 | 3.2 / 1.9 / 1.9e12 | 2.8 / 1.6 / 1.9e12 |
+| charged off, final year | none | 1.2 / 0.6 / 0.5e12 | 0.8 / 0.5 / 0.4e12 | 1.2 / 0.7 / 0.6e12 | 1.3 / 0.7 / 0.6e12 |
 
 Nothing is forgotten in any of the four, and that is the point: **the
 forgotten tally was paying for something**, and it is not credit.
+
+**The cash-on-delivery columns were measured twice**, and the first
+measurement was wrong for a reason worth keeping. A sabotage pass restores a
+file by moving its backup back, which leaves it the backup's *older*
+timestamp; cargo then took the last sabotaged build for fresh and did not
+recompile, so everything built after the pass — those six soaks, and a full
+suite run — carried "firms' debts are never charged off" compiled in. It
+showed as a gate that had just passed going red. Rerun on a build checked
+newer than its sources, the conclusion stands and the figures above are the
+clean ones. A restored file is touched now.
 
 **Traced, and it is prices.** The first to fail in world 7 are the machine
 works: all sixteen on stop by day 150. A machine works needs 0.72 t of steel

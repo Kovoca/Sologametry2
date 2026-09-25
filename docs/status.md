@@ -1039,10 +1039,14 @@ player below move behind this phase accordingly.
    fixture has no service bills. **On worlds 7 / 11 / 23 all four collapse**
    (five-year soaks, `--spend-first` and `--cash-on-delivery` on the
    branch's `bin/soak`): mean unemployment 37-60% against the committed
-   model's 12-15%, 58-91% at the end, food at 2.5-3.7 times its cost, the
+   model's 12-15%, 58-90% at the end, food at 2.5-3.7 times its cost, the
    states emptied, 1.2-3.3e12 owed at the end with over 90% of it overdue,
    and 0.4-1.3e12 charged off in the final year. Credit is the less bad
-   rule; nothing is forgotten in any of them. **Traced**: the first to fail
+   rule; nothing is forgotten in any of them. *(The cash-on-delivery runs
+   were rerun: the first set was built from a stale build that still
+   carried a sabotage — a file restored from a backup keeps its older
+   timestamp and cargo does not recompile. Same conclusion.)* **Traced**:
+   the first to fail
    are the machine works, all on stop by day 150 in world 7. Steel priced as
    scarce (1,572-2,997 against a cost of 626-877) and machinery as a glut
    (434-491 against 621-702), 0.72 t of steel a tonne, so a works paid 2.6
