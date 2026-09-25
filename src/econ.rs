@@ -439,6 +439,18 @@ impl Commodity {
         }
     }
 
+    /// **Whether a works carries the town's normal stock of this input.**
+    /// For most inputs it does: what a steelworks holds in its coal yard is
+    /// the coal the town holds. Not for oil, whose sixty days are a national
+    /// reserve of the kind IEA members are obliged to hold, not a works'
+    /// yard: stocking it made chemical works buy a strategic reserve at the
+    /// shortage price. Grain was tried out too, on the argument that its
+    /// months are the season's carry held by farms and terminals, and the
+    /// mills did worse for it — measured, they lose less holding more.
+    pub fn works_stock_to_target(self) -> bool {
+        !matches!(self, Commodity::Petroleum)
+    }
+
     pub fn target_cover_days(self) -> f64 {
         match self {
             Commodity::Electricity => 0.0,
@@ -4797,7 +4809,21 @@ impl Economy {
                 } else {
                     site.throughput
                 };
-                per * rate * (days + lead[market])
+                // **A works stocks to the figure the price calls normal.**
+                // Its running needs are the first pass and are a day's; the
+                // inventory it builds in the second pass aims at the town's
+                // stock days for that input, the same figure a shop aims at
+                // and the price is read against. Aimed at three days, a
+                // town whose coal sat only in a steelworks' yard held about
+                // a quarter of the twenty days its price calls normal and
+                // read as short for ever — coal at 2.8-3.5 times its cost
+                // where it was not dug, oil at 7 times against its sixty.
+                let aim = if days > 1.0 && c.works_stock_to_target() {
+                    self.stock_days(market, c).max(days)
+                } else {
+                    days
+                };
+                per * rate * (aim + lead[market])
             }
         };
         let short = want - self.ledger.stock(dst, c);
