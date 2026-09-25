@@ -1096,7 +1096,12 @@ player below move behind this phase accordingly.
    priced: firms' reserves are sized in money at the day's prices, so a
    higher price level parks the world's fixed money in them, and a price at
    the cost figure clears import parity in more places. See CLAUDE.md, "A
-   surplus priced by what it costs to keep". With credit on: on the branch, next.
+   surplus priced by what it costs to keep". **Firm half tested the same day:** firms that make
+   money sit exactly on their 45-day reserve, and at cost prices that
+   reserve asks for 82-110% of all the domestic money (61-81% at floor
+   prices). Next: read published anchors for firms' cash and for money
+   against output, and decide which of the reserve and the money stock is
+   wrong — before the surplus price can ship. With credit on: on the branch, next.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;

@@ -6184,6 +6184,28 @@ price level where the world's money and the world price allow, which is
 the question this file has carried for a while — why prices here settle
 under cost at all.
 
+**The firm half, tested (`bin/soak` now prints what firms hold against what
+they must keep).** A firm pays out profit only above the larger of its
+paid-in capital and `RESERVE_DAYS` — 45 — of its outgoings, one measure of
+which is a day at its rating at the day's prices. Firms that make money sit
+exactly on that reserve (butchers at 1.00-1.01 of it in all six runs), and
+it rises with the price level:
+
+| worlds 7 / 11 / 23 | floor prices | surplus at cost |
+|---|---|---|
+| 45 days at rating, all firms | 4.8 / 2.9 / 3.1e10 | 6.3 / 4.1 / 4.0e10 |
+| firms must keep, share of all domestic money | 81 / 63 / 61% | **110 / 89 / 82%** |
+| households' money at the end | 2.27 / 2.27 / 3.10e10 | 0.11 / 0.73 / 1.42e10 |
+
+**At cost prices the firms' reserve alone asks for more than all the money
+in world 7**, and households are left what the rule does not claim. The
+readout counts the rating and the capital, not the day's actual spending,
+which is why shops and mines show above their reserve. What it does not
+settle is which figure is wrong — 45 days of outlay, or a stock of money
+fixed at the opening while the price level is pinned by reference costs.
+Both want published anchors — cash held by real firms, money against output
+— read before anything is changed.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,
