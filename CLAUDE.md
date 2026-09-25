@@ -5913,6 +5913,76 @@ works are rated to make. It showed before as unpaid waiters and shows now
 as idle factories. The states' arrears were nought in all three worlds;
 only the deliberately weak fixture carries any.
 
+### Trade credit between firms: built, measured, and every rule collapses the world
+
+**On the `trade-credit` branch, not master**, with the measurement kept, the
+same standing as cash on delivery before it. What it does:
+
+- **Every delivery between firms is authorised before it moves** — out of
+  the buyer's cash, and, on trade credit, out of what the supplier will let
+  it owe (net 30, up to sixty days of the buyer's planned outlay from any one
+  supplier, a designed figure) — and what moved is paid or owed on the day's
+  account between the two. A works 60 days past due is on stop: cash only.
+- **For cash on delivery the goods move only as far as they are paid for**,
+  and a consignment struck days ago is unloaded only as far as the consignee
+  can pay on arrival; the rest waits on the lorry.
+- **Wages for work done are owed if not paid**, due that day, and paid first;
+  **a works in arrears keeps a day's planned outlay** before paying its
+  suppliers; **no dividend while a firm owes**; a firm's debt 180 days past
+  due is charged off like a household's; an importer lands only what it can
+  pay the world, the duty, the dockers and the road for.
+- `Experiments::spend_before_bills` and `cash_on_delivery` give the four
+  combinations, each accounting for every delivery.
+
+**Keeping working capital was worth finding on its own.** On `slice::viable`
+the mill mills at a loss before the harvest, falls behind with its farms and
+goes on stop; handing every penny to its oldest creditor, it had nothing to
+buy grain with and stood idle 211 days, the cannery beside it. Keeping a
+day's planned outlay, it never stops: works ran 52% of rating before, 62%
+after, food bought 85 to 110 t a day. That is the "collections drained the
+till" failure of the first credit attempt, and the rule is what real firms in
+arrears do.
+
+**On the fixture, credit beats cash on delivery**: 62% of rating against
+32%, 110 t of food a day against 31, unemployment 17% against 29%, and 9.2e5
+charged off over two years. **On three generated worlds, every rule
+collapses** — five years, worlds 7 / 11 / 23, against the committed model
+whose firms' failed payments are forgotten:
+
+| | committed | budget + credit | spend + credit | budget + cash | spend + cash |
+|---|---|---|---|---|---|
+| mean unemployment | 14.7 / 11.6 / 13.8% | 51.5 / 42.8 / 37.2% | 49.2 / 44.5 / 42.9% | 58.4 / 52.8 / 51.0% | 60.3 / 54.6 / 50.8% |
+| at the end | 13.8 / 10.1 / 15.9% | 88.1 / 68.1 / 58.6% | 77.6 / 68.0 / 57.9% | 91.5 / 85.1 / 79.9% | 91.5 / 88.5 / 89.6% |
+| food price / cost at the end | 0.82 / 0.75 / 0.78 | 3.67 / 3.47 / 3.67 | 3.67 / 3.29 / 2.45 | 3.67 / 3.67 / 3.67 | 3.67 / 3.67 / 3.64 |
+| forgotten, final year | 9.8 / 3.4 / 4.0e10 | nought | nought | nought | nought |
+| owed at the end | 2.9 / 0.7 / 3.4e9 | 3.3 / 1.8 / 1.6e12 | 2.3 / 1.6 / 1.2e12 | 3.3 / 1.9 / 1.9e12 | 2.8 / 1.5 / 1.8e12 |
+| charged off, final year | none | 1.2 / 0.6 / 0.5e12 | 0.8 / 0.5 / 0.4e12 | 1.3 / 0.8 / 0.7e12 | 1.3 / 0.6 / 0.6e12 |
+
+Nothing is forgotten in any of the four, and that is the point: **the
+forgotten tally was paying for something**, and it is not credit.
+
+**Traced, and it is prices.** The first to fail in world 7 are the machine
+works: all sixteen on stop by day 150. A machine works needs 0.72 t of steel
+a tonne; steel was priced as scarce — 1,572 to 2,997 a tonne against a cost
+of 626 to 877 — and machinery as a glut, 434 to 491 against a cost of 621 to
+702. One took in 1.55e8 over forty days and was billed 3.4e8. That follows
+from a rule this file records as right on its own terms: **an output's price
+is built from its inputs' costs, not their prices**, so a shortage of steel
+does not compound into the price of everything made of it. Its consequence,
+invisible while unpaid bills were forgotten, is that a processor buys at the
+shortage price and sells at the cost-built one. The steelworks it cannot pay
+go on stop, the goods works lose their machinery, the service sector loses
+its customers and owes wages it can never pay — 2.25e12 of them in world 7,
+growing without bound because a service sector's debts are not charged off.
+
+**What it waits for is not a better credit rule.** Either a works' price
+must be able to answer what its inputs actually cost it, or its output must
+fall when it cannot cover them — the shutdown rule, rejected before because
+prices here sit below their cost figures in ordinary times. Both are the
+pricing questions this file already names: the landed cost that does not
+reach the price (experiments L and M), and why prices settle under cost at
+all.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,
