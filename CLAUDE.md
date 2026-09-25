@@ -6072,6 +6072,76 @@ whether its output covers what it pays out to make it — price below average
 variable cost. By that test cement, food and goods are profitable at 0.7
 and carry on, and chemical works, machine works and mills are not.
 
+### Every price sits on the floor or above cost, and never at it
+
+The readout also prints each commodity's cover against the target its price
+aims at, how much cover the sheds the price counts could hold, and the price
+split by whether a town is short of its target. Five years, worlds 7 / 11 /
+23, committed model:
+
+| | towns short | price / cost where short | where not |
+|---|---|---|---|
+| coal | 75-77% | 2.8-3.5 | 0.70 |
+| petroleum | 57-67% | **7.1-7.5** | 0.70 |
+| plastics | 44-59% | 2.7-3.1 | 0.83-1.02 |
+| timber | 36-59% | 2.6-3.0 | 0.71-0.72 |
+| grain | 36-52% | 1.8-2.1 | 0.71-0.73 |
+| steel | 31-39% | 1.4-1.7 | 0.70-0.71 |
+| iron ore, meat | every town | 1.6, 2.2 | — |
+| cement, machinery, livestock | none | — | 0.70 |
+
+**Two faults, and the averages hid both.**
+
+- **The price is a step at the target.** The multiplier is `1 + gap /
+  |elasticity|` against elasticities of 0.08 to 1.0, clamped at 0.7, so a
+  town reaches the floor 3% over its target in oil, 12% over in coal and 30%
+  over in goods, and is dear as soon as it is under. A stock almost never
+  sits exactly on its target, so almost no price sits at its cost. The
+  elasticity is a demand elasticity and says how dear a *shortfall* makes a
+  thing; applied to a surplus, it turns an ordinary spare week of stock into
+  the floor.
+- **Coal is plentiful where it is dug and short everywhere else.** On
+  average a town holds 2.2-2.6 times its target of coal, and three quarters
+  of towns are short of it: what the colliery towns hold does not reach the
+  rest. Timber, plastics, grain and steel split the same way. Oil is the one
+  tight by construction — the sheds the price counts can hold about 1.2
+  times its sixty-day target — and remedies are never on a shop shelf in any
+  town, so their price is the empty-shelf multiplier, 2.43 of cost, in every
+  world.
+
+### Letting a works cut back when it loses, measured (branch `supply-response`)
+
+`Experiments::supply_answers_price`, on its own branch and off by default: a
+works runs only as much as, at the day's prices, its output covers what it
+pays for its inputs and its power — full tilt at a five per cent margin, a
+designed figure, and nothing at a loss. Wages are left out, because hands
+are kept on through a short stoppage. Five years, worlds 7 / 11 / 23,
+against the same binary with the switch off:
+
+| | off | on |
+|---|---|---|
+| chemical works, costs billed / revenue billed | 2.25 / 2.05 / 1.77 | **1.08 / 1.07 / 0.89** |
+| mills | 1.45 / 1.32 / 1.46 | **0.69 / 0.60 / 0.70** |
+| crackers | 1.35 / 0.77 / 1.76 | 1.28 / 0.69 / 0.71 |
+| machine works | 1.53 / 1.40 / 1.46 | 1.03 / 1.07 / 1.17 |
+| flour, price / cost | 0.78 / 0.74 / 0.74 | 1.41 / 1.47 / 1.54 |
+| mean unemployment, monthly readings | 14.7 / 11.6 / 13.8% | **18.0 / 14.2 / 16.5%** |
+| months out of band, by head | 29 / 26 / 39 | 47 / 35 / 49 |
+| net to abroad over the run | +3.2 / −6.1 / −9.4e9 | +10.0 / +0.2 / −2.9e9 |
+| households' money at the end | 2.27 / 2.27 / 3.10e10 | 0.37 / 0.98 / 1.77e10 |
+| coal, price / cost | 2.79 / 2.56 / 2.30 | 2.86 / 2.58 / 2.43 |
+
+**It closes the inversions and makes the world worse**, and the last row is
+why: what the processors stop buying does not bring the raw materials down,
+because what keeps them dear is the split above, not the demand. The works
+that stop are replaced by imports, the jobs go with them, and the money goes
+abroad. Not shipped. Its first version checked the switch before a power
+station was passed over, so a station losing on its coal zeroed the output
+its coal order is read from, the grids ran short, electricity sat at its
+cap, and the hospitals' power bills left every state in all three worlds
+with nothing; stations
+are dispatched by the grid and are skipped now.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,
