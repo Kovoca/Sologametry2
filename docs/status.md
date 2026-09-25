@@ -1026,7 +1026,15 @@ player below move behind this phase accordingly.
    the viable fixture's mill stood idle 211 days); no dividend while owing;
    firms' debts charged off at 180 days past due. Seven gates in
    `tests/trade_credit.rs`, nine sabotages, all red. See step 4 for what it
-   measured.
+   measured. **Verification on this branch**, clean build, 2026-09-24: 943
+   tests pass and 4 fail — `a_state_that_does_not_pay_for_medicine_does_
+   not_tax_for_it`, `people_share_a_roof_and_that_is_most_of_how_they_
+   afford_one`, `the_viable_fixture_earns_its_living_and_names_what_goes_
+   unpaid` and `the_wage_price_loop_settles`, not examined one by one.
+   `tests/nations.rs` run test by test: 21 of 23 pass, and the two
+   twenty-year road-decay runs had not finished after twenty minutes each,
+   because a collapsed economy's book of debts grows every day. Master's
+   suite the same day: 963 passed, none failed.
 4. **Reassess**, on a small controlled economy: the existing behaviour,
    budgeting alone, credit alone, and both — reading consumption and
    production beside cash, overdue debt and external flows. A recovery that
@@ -1074,7 +1082,13 @@ player below move behind this phase accordingly.
    to 2.8 times their cost, cement, livestock and machinery sit on the 0.7
    floor, flour and food at 0.74-0.78 — the same in every world, because
    nothing a works makes answers its price. See CLAUDE.md, "Which chains
-   invert, measured". With credit on: on the branch, next.
+   invert, measured". **With credit on** (this branch's default, budget
+   and trade credit, same worlds): the same pattern, amplified — coal 6.2
+   to 10.2 times its cost, oil 3.5-4.9, electricity 4.3-4.8, food 3.4-3.7;
+   mills billed 1.10-1.50 times what they bill and losing at the day's
+   prices in 64-93% of samples, chemical works 1.00-3.42, crackers
+   1.04-1.95, machine works 1.31-2.07; and shops at exactly 1.00 in all
+   three worlds.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;
