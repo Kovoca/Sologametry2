@@ -383,6 +383,20 @@ fn main() {
                 for ((from, to, why), v) in e.treasury.unpaid_by.iter() {
                     book_accrual(e, &mut accrual, *from, *to, why, *v, true);
                 }
+                // **What was owed at the moment of billing**, rather than the
+                // settlement that pays it later: counting both would bill it
+                // twice, and counting only the settlement books it on the
+                // day somebody found the money.
+                for ((debtor, creditor, origin), b) in e.bills_today.iter() {
+                    if b.owed <= 0.0 {
+                        continue;
+                    }
+                    let reason = match origin.name() {
+                        "wages" => "payroll",
+                        other => other,
+                    };
+                    book_accrual(e, &mut accrual, *debtor, *creditor, reason, b.owed, true);
+                }
                 if d % month == 0 {
                     price_arithmetic(e, &mut at_prices, &mut quoted);
                 }
@@ -482,9 +496,10 @@ fn book_accrual(
     failed: bool,
 ) {
     let kind = |s: usize| e.ledger.sites.get(s).map(|x| format!("{:?}", x.kind));
+    // A settlement pays a bill already booked when it was owed.
     let skip = matches!(
         reason,
-        "profit" | "tax" | "capital" | "lending" | "repayment" | "interest"
+        "profit" | "tax" | "capital" | "lending" | "repayment" | "interest" | "settlements"
     );
     if skip {
         return;
@@ -606,7 +621,8 @@ fn margins(
 ) {
     println!(
         "\n  the final year, by kind of works: billed to its customers against billed
-  to it, paid or not (failed = a shortfall on the day's tally)\n"
+  to it, paid or not (failed = a shortfall on the day's tally, or owed on the
+  book when it was billed)\n"
     );
     println!(
         "                    revenue  of it   inputs    power  payroll carriage   abroad  of costs  costs /"
