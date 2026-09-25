@@ -6142,6 +6142,48 @@ cap, and the hospitals' power bills left every state in all three worlds
 with nothing; stations
 are dispatched by the grid and are skipped now.
 
+### A surplus priced by what it costs to keep, measured (branch `surplus-price`)
+
+The first of the two faults, taken on its own. Above its target a
+commodity is priced by Working's theory of storage instead of by the demand
+elasticity: whoever holds more than they need sells the excess for what it
+fetches when it is used, less what keeping it costs until then, so the
+multiplier is `1 - carry a day x excess days` *(Working, "The Theory of
+Price of Storage", American Economic Review 39(6), 1949)*. Carry is
+`CARRY_A_YEAR`, 20% for interest and the shed — **designed**, since a
+current primary figure was not read; the exchange's storage cap on grain in
+a delivery warehouse was $0.0015 a bushel a day from November 2001 *(CBOT,
+approved revisions to corn and soybean futures, 2000)* — plus the
+commodity's own daily spoilage. The shortage side is unchanged.
+
+| five years, worlds 7 / 11 / 23 | off | on |
+|---|---|---|
+| cement, machinery, livestock, price / cost | 0.70 | 0.98-0.99 |
+| flour, food, goods, chemicals | 0.74-1.00 | 1.00-1.03 |
+| mills, costs billed / revenue billed | 1.45 / 1.32 / 1.46 | 1.12 / 1.05 / 1.02 |
+| machine works | 1.53 / 1.40 / 1.46 | 1.18 / 1.03 / 1.02 |
+| chemical works | 2.25 / 2.05 / 1.77 | 1.61 / 1.52 / 0.92 |
+| mean unemployment, monthly readings | 14.7 / 11.6 / 13.8% | **23.2 / 16.9 / 21.6%** |
+| households' money at the end | 2.27 / 2.27 / 3.10e10 | **0.11 / 0.73 / 1.42e10** |
+| firms' money, moved over the run (world 7) | +0.36e10 | **+1.83e10** |
+| net to abroad over the run | +3.2 / -6.1 / -9.4e9 | +10.1 / -0.7 / -2.4e9 |
+
+**The rate does not matter**: 10%, 20% and 30% a year land within about a
+point of unemployment of one another in every world, because a typical
+surplus is weeks. The shape is what moves the world.
+
+**Not shipped, and what it suggests is a hypothesis, not a finding.** The
+surplus price now does what it should and the country is poorer for it:
+money leaves households for firms and for abroad. Two mechanisms fit the
+totals and neither is yet shown town by town — the reserve a firm keeps
+before paying profit is its planned outlay *at the day's prices*, so it
+grows by the price level while the money in the world does not; and a
+price at the cost figure is above import parity in more places than one at
+0.7 of it. If they hold, **the 0.7 floor has been doing a job**: holding the
+price level where the world's money and the world price allow, which is
+the question this file has carried for a while — why prices here settle
+under cost at all.
+
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
 The design is four levels of economy — **local, regional, national,

@@ -1086,7 +1086,17 @@ player below move behind this phase accordingly.
    by 2.6-3.3 points, because the raw materials stay dear. Next, in order:
    the price's response to a surplus, then why coal does not move from
    where it is dug — each measured on the same three worlds with this
-   readout. With credit on: on the branch, next.
+   readout.
+   **The surplus side, measured 2026-09-25 (branch `surplus-price`, not
+   shipped):** priced by what it costs to keep the excess (Working's theory
+   of storage), manufactures sit at cost instead of on the floor, mills and
+   machine works nearly stop losing, and mean unemployment rises 5.3-8.5
+   points while households' money drains into firms and abroad; the carry
+   rate itself does not matter. Hypothesis to test before anything else is
+   priced: firms' reserves are sized in money at the day's prices, so a
+   higher price level parks the world's fixed money in them, and a price at
+   the cost figure clears import parity in more places. See CLAUDE.md, "A
+   surplus priced by what it costs to keep". With credit on: on the branch, next.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;
