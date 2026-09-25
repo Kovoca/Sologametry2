@@ -1024,6 +1024,27 @@ pub const VALUE_ADDED_AN_HOUR: f64 = 22.0;
 /// power are far more capital-heavy than that, and services far less.
 pub const WAGE_SHARE_OF_VALUE_ADDED: f64 = 0.55;
 
+/// **What it costs to keep a tonne of stock a year**, as a share of what it
+/// is worth — interest on the money tied up in it, and the shed it stands
+/// in. What rots is each commodity's own `spoilage_per_day` and comes on top.
+///
+/// It is what a surplus is priced by. Whoever holds more than they need
+/// can sell the excess now or keep it until it is used, and will not take
+/// less today than it fetches then minus the cost of keeping it: the price
+/// of a surplus stands below the price of the thing by the cost of carrying
+/// it *(Working, "The Theory of Price of Storage", American Economic Review
+/// 39(6), 1949)*. So a surplus that keeps costs little, and one that rots
+/// costs its rot.
+///
+/// **Designed, not read.** The exchange's own storage charge for grain in a
+/// delivery warehouse was capped at $0.0015 a bushel a day from November
+/// 2001 *(CBOT, approved revisions to corn and soybean futures, 2000)*, and
+/// interest comes on top of that; a current primary figure was not read.
+/// Twenty per cent a year sits between those, and the measured result
+/// hardly depends on it — a typical surplus is weeks, and weeks of twenty
+/// per cent a year is a per cent or two.
+pub const CARRY_A_YEAR: f64 = 0.20;
+
 /// **The sentinel, named once.**
 ///
 /// A power station's `throughput` is not a rate: it means "whatever the
@@ -8469,11 +8490,27 @@ impl Economy {
                 // a country doing nothing unusual whatever.
                 let target = (self.stock_days(m, c) + lead[m]).max(0.5);
                 let gap = (target - cover) / target;
+                // **A shortfall and a surplus are not mirror images.** Below
+                // the target the price rises by the shortfall over the
+                // demand elasticity, which is what a shortage does. Above
+                // it, a surplus is *carried*, not dumped: whoever holds
+                // more than they need sells the excess for what it would
+                // fetch when it is used, less what it costs to keep it
+                // until then — see `CARRY_A_YEAR`. Applying the demand
+                // elasticity to a surplus read a spare week of stock as a
+                // glut: a town 3% over its oil target, 12% over its coal
+                // target or 30% over its goods target was on the floor.
+                //
                 // The floor is well above zero: a glut is a bad price, not
                 // a free good. Producers stop selling long before that, and
                 // in a real surplus the crop is stored or exported rather
                 // than given away.
-                let multiplier = (1.0 + gap / c.elasticity().abs()).clamp(0.7, 8.0);
+                let multiplier = if cover < target {
+                    (1.0 + gap / c.elasticity().abs()).min(8.0)
+                } else {
+                    let carry = CARRY_A_YEAR / DAYS_PER_YEAR as f64 + c.spoilage_per_day(true);
+                    (1.0 - carry * (cover - target)).max(0.7)
+                };
                 // **Price is what it cost to make, times what scarcity is
                 // doing to it.** Not a typed-in constant times scarcity,
                 // which is what this was: a glut of oil could never make
