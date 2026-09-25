@@ -169,6 +169,11 @@ fn main() {
     let mut nations = 4usize;
     let mut years = 5u64;
     let mut each = 40usize;
+    // **The money rules**, for comparing them on the same world: households
+    // shopping before they budget, and firms buying for cash on delivery
+    // rather than on credit. Off is the model as it stands.
+    let mut spend_first = false;
+    let mut cash_on_delivery = false;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -176,8 +181,12 @@ fn main() {
             "--nations" => nations = it.next().and_then(|v| v.parse().ok()).unwrap_or(4).max(1),
             "--years" => years = it.next().and_then(|v| v.parse().ok()).unwrap_or(5).max(1),
             "--each" => each = it.next().and_then(|v| v.parse().ok()).unwrap_or(40).max(4),
+            "--spend-first" => spend_first = true,
+            "--cash-on-delivery" => cash_on_delivery = true,
             "--help" | "-h" => {
-                println!("usage: soak [--seed N] [--nations N] [--years N] [--each N]");
+                println!(
+                    "usage: soak [--seed N] [--nations N] [--years N] [--each N]                      [--spend-first] [--cash-on-delivery]"
+                );
                 return;
             }
             other => {
@@ -201,6 +210,10 @@ fn main() {
         4,
         Doctrine::Prudent,
     );
+    let mut n = n;
+    n.economy.experiments.spend_before_bills = spend_first;
+    n.economy.experiments.cash_on_delivery = cash_on_delivery;
+    println!("money rules: {}", n.economy.experiments.money_label());
     let folk = Populace::seed(&n.economy, each, seed);
     let sampled = folk.people.len();
     {

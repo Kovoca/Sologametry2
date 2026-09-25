@@ -3246,6 +3246,19 @@ pub struct Experiments {
     /// closes the margin — rather than only what each warehouse holds
     /// above the whole market's working cover.
     pub market_wide_trade: bool,
+    /// **Households shop before they budget**: the counter spends the purse
+    /// as though no bills were coming, and whatever the bills then find
+    /// short is owed. Off, the counter makes room for the day's known bills
+    /// out of the discretionary goods first. Either way nothing is
+    /// forgotten; it is the order of spending that differs.
+    pub spend_before_bills: bool,
+    /// **Firms buy for cash on delivery, and nothing else**: a delivery
+    /// between firms moves only as far as the buyer's cash covers the goods
+    /// and the carriage, and a works draws only the power its till can pay
+    /// for. Off, a supplier extends trade credit within a limit on net-30
+    /// terms and puts a customer seriously in arrears on stop. Either way a
+    /// delivery is paid for or owed, never forgotten.
+    pub cash_on_delivery: bool,
 }
 
 impl Default for Experiments {
@@ -3261,6 +3274,8 @@ impl Default for Experiments {
             marginal_source_pricing: false,
             cheapest_delivered_supplier: false,
             market_wide_trade: false,
+            spend_before_bills: false,
+            cash_on_delivery: false,
         }
     }
 }
@@ -3275,8 +3290,41 @@ impl Experiments {
                 marginal_source_pricing: bits & 2 != 0,
                 cheapest_delivered_supplier: bits & 4 != 0,
                 market_wide_trade: bits & 8 != 0,
+                ..Experiments::default()
             })
             .collect()
+    }
+
+    /// **The four money rules**: households budgeting or not, firms trading
+    /// on credit or for cash on delivery — every one of them accounting for
+    /// every delivery, so what differs between them is behaviour and not
+    /// bookkeeping.
+    pub fn money_rules() -> Vec<Experiments> {
+        [(true, true), (false, true), (true, false), (false, false)]
+            .into_iter()
+            .map(|(spend_first, cod)| Experiments {
+                spend_before_bills: spend_first,
+                cash_on_delivery: cod,
+                ..Experiments::default()
+            })
+            .collect()
+    }
+
+    /// `budget` or `spend`, then `credit` or `cash`.
+    pub fn money_label(self) -> String {
+        format!(
+            "{} + {}",
+            if self.spend_before_bills {
+                "spend first"
+            } else {
+                "budget"
+            },
+            if self.cash_on_delivery {
+                "cash on delivery"
+            } else {
+                "trade credit"
+            }
+        )
     }
 
     pub fn label(self) -> String {
@@ -3606,8 +3654,12 @@ impl Economy {
         // arrears to its hospitals stays in arrears until it pays.
         {
             let day = self.ledger.day;
-            self.obligations
-                .charge_off_overdue(day, |a| matches!(a, crate::money::Account::Households(_)));
+            self.obligations.charge_off_overdue(day, |a| {
+                matches!(
+                    a,
+                    crate::money::Account::Households(_) | crate::money::Account::Firm(_)
+                )
+            });
             self.obligations.roll_the_book(day, Self::KEEP_SETTLED_FOR);
             self.obligations
                 .forget_ended_before(day.saturating_sub(DAYS_PER_YEAR));
@@ -3666,6 +3718,9 @@ impl Economy {
         self.pay_for_services();
         self.run_the_service_sector();
         self.pay_wages();
+        // **Then what fell due**: wages owed first, then suppliers, oldest
+        // first — before anybody takes a dividend.
+        self.settle_between_firms();
         // What is left over after the wages is somebody's income too.
         self.distribute_profits();
         // The state takes its share of the day's pay and dividends, which is
@@ -3778,6 +3833,14 @@ impl Economy {
                 (Account::Abroad, Account::Firm(s))
             } else {
                 (Account::Firm(s), Account::Abroad)
+            };
+            // **Lent out of what a firm holds**, and nothing is left on the
+            // day's tally for what it did not: the stock records what
+            // crossed, so a lending that fell short is not an unpaid bill.
+            let amount = if from_world {
+                amount
+            } else {
+                amount.min(self.treasury.balance(from).max(0.0))
             };
             moved += self.treasury.pay(day, from, to, amount, Why::Capital);
         }
@@ -4236,6 +4299,31 @@ impl Economy {
     /// was patched with a world price set at two-thirds of reference, which
     /// was a second price for the same tonne. There is one price, and one
     /// level to trade it at.
+    /// **What landing `qty` of `c` at this importer costs it**: the world's
+    /// price at its own port and the voyage, the duty, the dockers and the
+    /// road up from the quay — every payment `pay_for_imports` makes. Nought
+    /// where nothing would be paid.
+    fn landing_cost(&self, site: usize, c: Commodity, qty: f64) -> f64 {
+        if qty <= 1e-9 || !self.buys_abroad(site) {
+            return 0.0;
+        }
+        let Some(voyage) = c.sea_freight() else {
+            return 0.0;
+        };
+        let m = self.ledger.sites[site].market;
+        let (Some(_), Some(inland)) = (self.nearest_gateway(m), self.inland_leg(m)) else {
+            return 0.0;
+        };
+        let at = Self::WHOLESALE_MARGIN * qty;
+        let at_their_port = self.world_price(c) * (1.0 + voyage);
+        let duty = self
+            .import_duty
+            .get(&self.markets[m].nation)
+            .copied()
+            .unwrap_or(0.0);
+        at * (at_their_port * (1.0 + duty) + Self::PORT_HANDLING_PER_T + inland)
+    }
+
     fn pay_for_imports(&mut self, site: usize, c: Commodity, qty: f64) {
         if qty <= 1e-9 || !self.buys_abroad(site) {
             return;
@@ -4260,33 +4348,37 @@ impl Economy {
             return;
         };
         // Abroad first: the goods are not landed until the seller is paid.
-        self.treasury.pay(
-            day,
+        // `produce` has already held the landing to what the importer can
+        // pay for, so these are paid in full; were one ever short, it is
+        // owed rather than forgotten.
+        let _ = day;
+        self.charge_delivery(
             Account::Firm(site),
             Account::Abroad,
             at * at_their_port,
             Why::Trade,
+            crate::credit::Origin::Supply,
         );
-        self.treasury.pay(
-            day,
+        self.charge_delivery(
             Account::Firm(site),
             Account::State(self.markets[m].nation),
             at * at_their_port * duty,
             Why::Tax,
+            crate::credit::Origin::Tax,
         );
-        self.treasury.pay(
-            day,
+        self.charge_delivery(
             Account::Firm(site),
             Account::ServiceSector(gate),
             at * Self::PORT_HANDLING_PER_T,
             Why::Freight,
+            crate::credit::Origin::Carriage,
         );
-        self.treasury.pay(
-            day,
+        self.charge_delivery(
             Account::Firm(site),
             Account::ServiceSector(m),
             at * inland,
             Why::Freight,
+            crate::credit::Origin::Carriage,
         );
     }
 
@@ -4483,29 +4575,49 @@ impl Economy {
             for &(c, need) in recipe.inputs {
                 batches = batches.min(self.ledger.stock(site, c) / need);
             }
-            // **An importer pays on the same terms as every other firm here**
-            // — what it can, with the shortfall recorded — and that is a
-            // decision, measured, rather than an oversight.
-            //
-            // A gate watching who pays the outside world found depots with
-            // empty tills landing cargoes: the payment capped at nothing,
-            // logged as unpaid, the goods landed anyway. Requiring payment
-            // before release is what a real port does, and it was tried. It
-            // starved the importers, because **their own customers do not
-            // pay them**: on the day the first terminal landed grain it could
-            // not pay for, 130 million of firm-to-firm purchases and 34
-            // million at the shop counters also went unpaid, all the way
-            // down the chain to households whose wages do not cover the
-            // basket. Making the quay the one strictly-cash firm in an
-            // economy where nobody else is made steel three times the world
-            // price and cured nothing. The shortfall lives in the wage
-            // scales, and it is named there.
+            // **An importer lands what it can pay for** — see below, where
+            // its cash is read. It did not: a gate watching who pays the
+            // outside world found depots with empty tills landing cargoes,
+            // the payment capped at nothing and logged as unpaid. Requiring
+            // payment before release was tried once and starved the
+            // importers, because **their own customers did not pay them**:
+            // 130 million of firm-to-firm purchases and 34 million at the
+            // counters went unpaid the day the first terminal landed grain it
+            // could not pay for. It is tried again now that nobody's bill is
+            // forgotten — a customer pays or owes on terms, and what it owes
+            // it pays when due.
             // Do not produce into a full shed.
             for &(c, out) in recipe.outputs {
                 let room = (self.ledger.sites[site].capacity[c as usize]
                     - self.ledger.stock(site, c))
                 .max(0.0);
                 batches = batches.min(room / out);
+            }
+            // **What it can pay for, before it runs.** For cash on
+            // delivery a works draws only the power its till covers; an
+            // importer, on either rule, lands only what it can pay the world,
+            // the duty, the dockers and the road for — foreign suppliers'
+            // credit is what the capital account's funded share stands for
+            // (`settle_the_exchange`), not a second invoice beside it.
+            let cash = self
+                .treasury
+                .balance(crate::money::Account::Firm(site))
+                .max(0.0);
+            if self.buys_abroad(site) {
+                let per_batch: f64 = recipe
+                    .outputs
+                    .iter()
+                    .map(|&(c, out)| self.landing_cost(site, c, out))
+                    .sum::<f64>()
+                    + recipe.power * self.markets[s.market].price[Commodity::Electricity as usize];
+                if per_batch > 0.0 {
+                    batches = batches.min(cash / per_batch);
+                }
+            } else if self.experiments.cash_on_delivery && recipe.power > 0.0 {
+                let price = self.markets[s.market].price[Commodity::Electricity as usize];
+                if price > 0.0 {
+                    batches = batches.min(cash / (recipe.power * price));
+                }
             }
             if batches <= 1e-9 {
                 continue;
@@ -4638,7 +4750,7 @@ impl Economy {
             // station is paid the same share of its bill in cash and is
             // owed the rest, so the shortfall falls on no one station and
             // survives the night.
-            if let Account::Households(_) = buyer {
+            if matches!(buyer, Account::Households(_) | Account::Firm(_)) {
                 self.charge_paying(
                     buyer,
                     Account::Firm(site),
@@ -4664,7 +4776,7 @@ impl Economy {
         // when it can settle nothing. A household's is already owed above;
         // a works' is still a shortfall on the day's tally until firms
         // settle on terms of their own.
-        if rate < 1.0 && !matches!(buyer, Account::Households(_)) {
+        if rate < 1.0 && !matches!(buyer, Account::Households(_) | Account::Firm(_)) {
             self.treasury.pay(
                 day,
                 buyer,
@@ -4983,7 +5095,6 @@ impl Economy {
     /// is served first — which is exactly how a shortage is supposed to
     /// pull goods toward itself.
     fn share_out(&mut self, c: Commodity, need: &[f64], reach: &[Vec<usize>], auction: bool) {
-        let day = self.ledger.day;
         /// **What a firm pays for an input, against what the next one down
         /// the chain sells it for.** Buying and selling at the same price
         /// gives every business in the country a gross margin of exactly
@@ -5318,6 +5429,19 @@ impl Economy {
                         continue;
                     }
                     let from_m = self.ledger.sites[src].market;
+                    // **Authorised before it moves**: paid for, or owed on
+                    // terms this supplier agreed to, or not delivered.
+                    let unit = self.markets[market].price[c as usize] * WHOLESALE;
+                    let qty = qty
+                        * self.authorise(
+                            dst,
+                            crate::money::Account::Firm(src),
+                            qty * unit,
+                            self.carriage_for(from_m, market, qty),
+                        );
+                    if qty <= 1e-9 {
+                        continue;
+                    }
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     let freight = self.carriage_for(from_m, market, qty);
                     self.ledger.apply(
@@ -5336,13 +5460,12 @@ impl Economy {
                     // **And the buyer pays the seller.** Only shops took money
                     // from households, so every works upstream of a counter —
                     // farm, mill, mine, steelworks — had no income whatever.
-                    let due = qty * self.markets[market].price[c as usize] * WHOLESALE;
-                    self.treasury.pay(
-                        day,
+                    self.charge_delivery(
                         crate::money::Account::Firm(dst),
                         crate::money::Account::Firm(src),
-                        due,
+                        qty * unit,
                         crate::money::Why::Supply,
+                        crate::credit::Origin::Supply,
                     );
                     owed -= qty;
                     taken[dst] += qty;
@@ -5547,7 +5670,7 @@ impl Economy {
                     .balance(crate::money::Account::Households(m))
                     .max(0.0);
                 let room = (purse - necessary - commitments[m]).max(0.0);
-                if discretionary > room + 1e-12 {
+                if !self.experiments.spend_before_bills && discretionary > room + 1e-12 {
                     self.held_back_today += discretionary - room;
                     room / discretionary
                 } else {
@@ -5752,13 +5875,22 @@ impl Economy {
             }
             let m = self.ledger.sites[site].market;
             let bill = hands * self.day_rate_here(m);
-            let paid = self.treasury.pay(
-                day,
-                Account::Firm(site),
-                Account::Households(m),
-                bill,
-                Why::Payroll,
-            );
+            // **Wages for work done are owed if they are not paid** — the
+            // day has been worked — and are due that day. The wage arrears
+            // are the first thing a works pays off; see `settle_between_firms`.
+            let cash = self.treasury.balance(Account::Firm(site)).max(0.0);
+            let paid = self
+                .charge_on_terms(
+                    Account::Firm(site),
+                    Account::Households(m),
+                    bill,
+                    cash,
+                    Why::Payroll,
+                    crate::credit::Origin::Wages,
+                    0,
+                )
+                .paid;
+            let _ = day;
             // **Nobody is hired and fired by the day**, so what a firm
             // could afford this week is a slow average of what it has been
             // affording. The same three-week stickiness the labour market
@@ -6080,12 +6212,15 @@ impl Economy {
             }
             if cover[m] > 0.0 {
                 let wages = cover[m] * self.day_rate_here(m);
-                self.treasury.pay(
-                    day,
+                let cash = self.treasury.balance(Account::ServiceSector(m)).max(0.0);
+                self.charge_on_terms(
                     Account::ServiceSector(m),
                     Account::Households(m),
                     wages,
+                    cash,
                     Why::Payroll,
+                    crate::credit::Origin::Wages,
+                    0,
                 );
             }
 
@@ -6109,16 +6244,41 @@ impl Economy {
                 Why::Purchase,
                 crate::credit::Origin::Services,
             );
-            // Paid to the people who did the work.
-            self.treasury.pay(
-                day,
-                Account::ServiceSector(m),
-                Account::Households(m),
-                wages,
-                Why::Payroll,
-            );
+            // Paid to the people who did the work, or owed to them. The
+            // insurers' staff above and these are one sector's payroll to
+            // one town, so they are one bill: the second is added to it.
+            let cash = self.treasury.balance(Account::ServiceSector(m)).max(0.0);
+            let paid = self
+                .treasury
+                .pay(day, Account::ServiceSector(m), Account::Households(m), wages.min(cash), Why::Payroll);
+            if wages - paid > 1e-9 {
+                self.obligations.bill_more(
+                    day,
+                    Account::ServiceSector(m),
+                    Account::Households(m),
+                    wages - paid,
+                    0,
+                    Why::Payroll,
+                    crate::credit::Origin::Wages,
+                );
+            }
+            let entry = self
+                .bills_today
+                .entry((
+                    Account::ServiceSector(m),
+                    Account::Households(m),
+                    crate::credit::Origin::Wages,
+                ))
+                .or_default();
+            entry.amount += wages;
+            entry.paid += paid;
+            entry.owed += (wages - paid).max(0.0);
             // And the margin is somebody's income too.
-            let over = self.treasury.balance(Account::ServiceSector(m)) - wages * 30.0;
+            // What it owes — claims, wages, anything outstanding — comes
+            // before its owners, as it does for a works.
+            let over = self.treasury.balance(Account::ServiceSector(m))
+                - wages * 30.0
+                - self.obligations.owed_by(Account::ServiceSector(m));
             if over > 0.0 {
                 self.treasury.pay(
                     day,
@@ -6212,12 +6372,20 @@ impl Economy {
             .map(|t| t.amount)
             .sum();
         let carriage_owed: f64 = self
-            .treasury
-            .unpaid_by
+            .bills_today
             .iter()
-            .filter(|((from, _, why), _)| *from == Account::Firm(site) && *why == "freight")
-            .map(|(_, v)| v)
-            .sum();
+            .filter(|((from, _, origin), _)| {
+                *from == Account::Firm(site) && *origin == crate::credit::Origin::Carriage
+            })
+            .map(|(_, b)| b.owed)
+            .sum::<f64>()
+            + self
+                .treasury
+                .unpaid_by
+                .iter()
+                .filter(|((from, _, why), _)| *from == Account::Firm(site) && *why == "freight")
+                .map(|(_, v)| v)
+                .sum::<f64>();
         hands * self.day_rate_here(m)
             + self.inputs_used_cost(site)
             + power
@@ -6285,6 +6453,31 @@ impl Economy {
         why: crate::money::Why,
         origin: crate::credit::Origin,
     ) -> crate::credit::Billed {
+        self.charge_on_terms(
+            debtor,
+            creditor,
+            amount,
+            pay_now,
+            why,
+            origin,
+            Self::DAYS_TO_PAY,
+        )
+    }
+
+    /// **Present a bill due in `days`**, paying no more than `pay_now` of it
+    /// now. Wages are due the day the work was done; everything else here
+    /// is on net 30.
+    #[allow(clippy::too_many_arguments)]
+    pub fn charge_on_terms(
+        &mut self,
+        debtor: crate::money::Account,
+        creditor: crate::money::Account,
+        amount: f64,
+        pay_now: f64,
+        why: crate::money::Why,
+        origin: crate::credit::Origin,
+        days: u64,
+    ) -> crate::credit::Billed {
         if amount <= 1e-12 || debtor == creditor {
             return crate::credit::Billed::default();
         }
@@ -6311,12 +6504,118 @@ impl Economy {
         let owed = (amount - paid).max(0.0);
         if owed > 1e-9 {
             self.obligations
-                .bill(day, debtor, creditor, owed, Self::DAYS_TO_PAY, why, origin);
+                .bill(day, debtor, creditor, owed, days, why, origin);
         }
-        let billed = crate::credit::Billed { amount, paid, owed };
+        let billed = crate::credit::Billed {
+            amount,
+            paid,
+            owed,
+        };
         self.bills_today.insert(id, billed);
         billed
     }
+
+    /// **Charge for a delivery**: cash pays what it covers and the rest goes
+    /// on the day's account between the two, on net 30. Unlike a bill, a
+    /// delivery is not a retry when it recurs — a mill draws on the same
+    /// farm in both of the day's passes — so the day's record accumulates.
+    ///
+    /// Whether the goods should have moved at all is decided before, by
+    /// `authorise`; this is what the move then costs.
+    pub fn charge_delivery(
+        &mut self,
+        debtor: crate::money::Account,
+        creditor: crate::money::Account,
+        amount: f64,
+        why: crate::money::Why,
+        origin: crate::credit::Origin,
+    ) -> crate::credit::Billed {
+        if amount <= 1e-12 || debtor == creditor {
+            return crate::credit::Billed::default();
+        }
+        let day = self.ledger.day;
+        let cash = match debtor {
+            crate::money::Account::Abroad => amount,
+            _ => self.treasury.balance(debtor).max(0.0),
+        };
+        let paid = self
+            .treasury
+            .pay(day, debtor, creditor, cash.min(amount), why);
+        let owed = (amount - paid).max(0.0);
+        if owed > 1e-9 {
+            self.obligations
+                .bill_more(day, debtor, creditor, owed, Self::DAYS_TO_PAY, why, origin);
+        }
+        let entry = self
+            .bills_today
+            .entry((debtor, creditor, origin))
+            .or_default();
+        entry.amount += amount;
+        entry.paid += paid;
+        entry.owed += owed;
+        crate::credit::Billed {
+            amount,
+            paid,
+            owed,
+        }
+    }
+
+    /// **The terms a supplier gives a works**: net 30, up to sixty days of
+    /// what the works spends at its rating from any one supplier.
+    ///
+    /// **The sixty days is designed, not measured.** Real limits are set
+    /// customer by customer, commonly from what the customer buys in a month
+    /// or two; nothing here reads a published figure for them yet.
+    pub const TRADE_CREDIT_LIMIT_DAYS: f64 = 60.0;
+
+    pub fn trade_terms(&self, buyer: usize) -> crate::credit::Terms {
+        crate::credit::Terms {
+            days: crate::credit::Terms::NET_30,
+            limit: self.planned_outlay(buyer) * Self::TRADE_CREDIT_LIMIT_DAYS,
+        }
+    }
+
+    /// **How much of a delivery a works may take before it moves**, as a
+    /// share of the load: whatever its cash covers, and — unless it buys
+    /// for cash on delivery — whatever its supplier will let it owe on top.
+    /// A works seriously in arrears is on stop and gets cash only.
+    ///
+    /// With cash on delivery the carriage has to be paid too, so it comes
+    /// out of the cash before the goods do; on credit the carrier is owed
+    /// like anybody else and the carriage decides nothing.
+    ///
+    /// **This is the decision that has to happen before the goods move.**
+    /// Moving them and then finding who can pay made every supplier a
+    /// compulsory lender.
+    pub fn authorise(
+        &self,
+        buyer: usize,
+        seller: crate::money::Account,
+        value: f64,
+        carriage: f64,
+    ) -> f64 {
+        if value <= 1e-12 {
+            return 1.0;
+        }
+        let cash = self
+            .treasury
+            .balance(crate::money::Account::Firm(buyer))
+            .max(0.0);
+        if self.experiments.cash_on_delivery {
+            return ((cash - carriage) / value).clamp(0.0, 1.0);
+        }
+        self.obligations
+            .what_can_be_bought(
+                self.ledger.day,
+                crate::money::Account::Firm(buyer),
+                seller,
+                value,
+                cash,
+                self.trade_terms(buyer),
+            )
+            .share_of(value)
+    }
+
 
     /// **Pay off what has fallen due**, oldest due date first, out of cash
     /// above nought and never more than `budget`. With `early`, obligations
@@ -6332,6 +6631,18 @@ impl Economy {
         budget: f64,
         early: bool,
     ) -> f64 {
+        self.settle_what_is_due_for(debtor, budget, early, None)
+    }
+
+    /// The same, for one kind of bill only — which is how wages owed are
+    /// paid before anything else.
+    pub fn settle_what_is_due_for(
+        &mut self,
+        debtor: crate::money::Account,
+        budget: f64,
+        early: bool,
+        only: Option<crate::credit::Origin>,
+    ) -> f64 {
         let day = self.ledger.day;
         let mut left = budget.min(self.treasury.balance(debtor).max(0.0));
         let mut paid = 0.0;
@@ -6344,6 +6655,9 @@ impl Economy {
             };
             if !early && inv.due > day {
                 break;
+            }
+            if only.is_some_and(|o| o != inv.origin) {
+                continue;
             }
             let creditor = inv.creditor;
             let x = inv.outstanding().min(left);
@@ -6550,6 +6864,59 @@ impl Economy {
         }
     }
 
+    /// **Each works and each town's service sector pays what has fallen
+    /// due**, out of its cash after the day's wages: the wages it still owes
+    /// first, then its suppliers, its carriers and its power, oldest due
+    /// date first. Before any dividend, because a firm that pays its owners
+    /// while its suppliers wait is taking their money.
+    ///
+    /// **After the wages, not before.** Collections taken first emptied a
+    /// works' till before its payroll, and the payroll is what decides how
+    /// many people it keeps on; that was one of the three ways wiring the
+    /// credit book in starved a country.
+    ///
+    /// **And not out of tomorrow's working capital.** Paying every penny to
+    /// the oldest creditor left a works in arrears unable to buy the day's
+    /// inputs for cash — the only terms it gets once it is on stop — so it
+    /// stopped, took nothing in, and never paid anybody. Measured on
+    /// `slice::viable`: the mill, milling at a loss before the harvest, went
+    /// on stop on day 300, handed everything to its farms, and stood idle
+    /// until day 510 with flour at four times its price in the next town,
+    /// and the cannery idle beside it. A firm in arrears keeps what it takes
+    /// to keep producing and pays its suppliers out of the rest, which is
+    /// why creditors agree payment plans rather than taking the last penny.
+    /// **A designed rule**: the working capital kept is one day of what the
+    /// firm spends at its rating on inputs, power and wages
+    /// (`planned_outlay`), read off the plan and never off what it happened
+    /// to spend today — a floor that moves with today's spending is the one
+    /// that kept everything and collected nothing. Wages owed are paid
+    /// before it, from all the cash there is.
+    pub fn settle_between_firms(&mut self) {
+        use crate::credit::Origin;
+        use crate::money::Account;
+        let debtors: Vec<Account> = (0..self.ledger.sites.len())
+            .map(Account::Firm)
+            .chain((0..self.markets.len()).map(Account::ServiceSector))
+            .collect();
+        for debtor in debtors {
+            if self.obligations.owed_by(debtor) <= 1e-9 {
+                continue;
+            }
+            self.settle_what_is_due_for(debtor, f64::INFINITY, false, Some(Origin::Wages));
+            let keep = match debtor {
+                Account::Firm(site) => self.planned_outlay(site),
+                Account::ServiceSector(m) => self
+                    .services
+                    .as_ref()
+                    .map(|svc| svc.total_in(m) * self.day_rate_here(m))
+                    .unwrap_or(0.0),
+                _ => 0.0,
+            };
+            let spare = (self.treasury.balance(debtor) - keep).max(0.0);
+            self.settle_what_is_due(debtor, spare, false);
+        }
+    }
+
     /// **The residual belongs to somebody.**
     ///
     /// Wages were the first flow and on their own they do not close the
@@ -6662,7 +7029,13 @@ impl Economy {
             // the owners' to take, which is the rule company law actually
             // runs on. So it keeps whichever is larger — its capital or
             // what it needs to operate — and pays out only what is over.
-            let keep = requirement.max(self.treasury.capital(Account::Firm(site)));
+            // **And what it owes comes before its owners.** A firm with
+            // bills outstanding — wages, suppliers, carriage, power — pays
+            // no dividend out of the money those bills are owed from: a
+            // distribution is only out of what is left after its debts,
+            // which is what capital maintenance means once there are debts.
+            let keep = requirement.max(self.treasury.capital(Account::Firm(site)))
+                + self.obligations.owed_by(Account::Firm(site));
             let held = self.treasury.balance(Account::Firm(site));
             let surplus = held - keep;
             if surplus <= 0.0 {
@@ -7045,6 +7418,19 @@ impl Economy {
                     }
                     let from_m = self.ledger.sites[src].market;
                     let to_m = self.ledger.sites[dst].market;
+                    // **Authorised before it moves**, like every delivery
+                    // between firms.
+                    let unit = self.markets[from_m].price[c as usize] * Self::WHOLESALE_MARGIN;
+                    let qty = qty
+                        * self.authorise(
+                            dst,
+                            crate::money::Account::Firm(src),
+                            qty * unit,
+                            self.carriage_for(from_m, to_m, qty),
+                        );
+                    if qty <= 1e-9 {
+                        continue;
+                    }
                     let paid = self.markets[from_m].landed[c as usize] * qty;
                     // The same quote the gap was tested against.
                     let freight = self.carriage_for(from_m, to_m, qty);
@@ -7066,13 +7452,12 @@ impl Economy {
                     // the goods were bought. This moved goods between towns
                     // and paid only the haulier, so whoever grew or made
                     // them gave them away.
-                    let due = qty * self.markets[from_m].price[c as usize] * Self::WHOLESALE_MARGIN;
-                    self.treasury.pay(
-                        self.ledger.day,
+                    self.charge_delivery(
                         crate::money::Account::Firm(dst),
                         crate::money::Account::Firm(src),
-                        due,
+                        qty * unit,
                         crate::money::Why::Supply,
+                        crate::credit::Origin::Supply,
                     );
                     let carried = self.routes[r].moved.map_or(0.0, |(_, _, t)| t);
                     if qty > carried {
@@ -7301,13 +7686,12 @@ impl Economy {
         if goods <= 1e-9 || consignor == consignee {
             return;
         }
-        let day = self.ledger.day;
-        self.treasury.pay(
-            day,
+        self.charge_delivery(
             crate::money::Account::Firm(consignee),
             crate::money::Account::Firm(consignor),
             goods,
             crate::money::Why::Purchase,
+            crate::credit::Origin::Supply,
         );
     }
 
@@ -7315,14 +7699,13 @@ impl Economy {
         if freight <= 1e-9 {
             return;
         }
-        let day = self.ledger.day;
         let market = self.ledger.sites[consignee].market;
-        self.treasury.pay(
-            day,
+        self.charge_delivery(
             crate::money::Account::Firm(consignee),
             crate::money::Account::ServiceSector(market),
             freight,
             crate::money::Why::Freight,
+            crate::credit::Origin::Carriage,
         );
     }
 
@@ -7876,6 +8259,20 @@ impl Economy {
         if take <= 1e-9 {
             return None;
         }
+        // **And the consignee has to be good for it** — in cash, or on terms
+        // the consignor agreed to — before the load sets off. The contract is
+        // struck now and settled on arrival, so what the consignee holds on
+        // the day it lands may differ; whatever it cannot pay then is owed.
+        let take = take
+            * self.authorise(
+                consignee,
+                crate::money::Account::Firm(consignor),
+                self.markets[from_market].landed[commodity as usize] * take,
+                self.carriage_for(from_market, to_market, take),
+            );
+        if take <= 1e-9 {
+            return None;
+        }
         self.book_the_road(from_market, to_market, day, due, take);
 
         let goods = self.markets[from_market].landed[commodity as usize] * take;
@@ -7929,6 +8326,28 @@ impl Economy {
     /// same rule `schedule.rs` had to learn about finished work, and for
     /// the same reason: between the lorry leaving and the lorry arriving,
     /// somebody may have filled the shed it was going into.
+    /// **How much of a load a buyer can take for cash on delivery**: all of
+    /// it on credit terms, and for cash on delivery only as many tonnes as
+    /// its cash covers the goods and the carriage of.
+    fn payable_tonnes(&self, id: crate::shipment::ShipmentId, buyer: usize, tonnes: f64) -> f64 {
+        if !self.experiments.cash_on_delivery {
+            return tonnes;
+        }
+        let Some(s) = self.shipments.get(id) else {
+            return 0.0;
+        };
+        let (goods, freight) = s.share(1.0);
+        let per_tonne = goods + freight;
+        if per_tonne <= 1e-12 {
+            return tonnes;
+        }
+        let cash = self
+            .treasury
+            .balance(crate::money::Account::Firm(buyer))
+            .max(0.0);
+        (cash / per_tonne).min(tonnes)
+    }
+
     pub fn tip(&mut self, id: crate::shipment::ShipmentId) -> f64 {
         use crate::shipment::Leg;
         let Some(s) = self.shipments.get(id) else {
@@ -7942,7 +8361,12 @@ impl Economy {
         let room = (self.ledger.sites[consignee].capacity[c]
             - self.ledger.stock(consignee, commodity))
         .max(0.0);
-        let off = aboard.min(room);
+        // **And for cash on delivery, what the consignee can pay for.** The
+        // contract was struck when the load set off; the money is paid when
+        // it lands, and a buyer who has spent it since takes what it can pay
+        // for and the rest waits on the lorry — which is what cash on
+        // delivery means, rather than a debt it never agreed to run up.
+        let off = aboard.min(room).min(self.payable_tonnes(id, consignee, aboard));
         if off <= 1e-9 {
             // Nothing doing. A lorry standing at a bay is a lorry not
             // earning, which is exactly why demurrage is a thing.
@@ -8148,7 +8572,7 @@ impl Economy {
                 let room = (self.ledger.sites[site].capacity[c]
                     - self.ledger.stock(site, commodity))
                 .max(0.0);
-                let off = left.min(room);
+                let off = left.min(room).min(self.payable_tonnes(id, site, left));
                 if off <= 1e-9 {
                     continue;
                 }
@@ -10012,21 +10436,24 @@ impl Economy {
                 );
                 self.exported_today.push((c, sold, earned));
                 let price = self.markets[m].price[c as usize];
+                // **Out of what the world has just paid it**, and owed on
+                // the day's account where that falls short: the goods have
+                // been taken off the growers' hands either way.
                 for (s, q) in taken {
-                    self.treasury.pay(
-                        day,
+                    self.charge_delivery(
                         crate::money::Account::Firm(quay),
                         crate::money::Account::Firm(s),
                         Self::WHOLESALE_MARGIN * q * price,
                         crate::money::Why::Supply,
+                        crate::credit::Origin::Supply,
                     );
                 }
-                self.treasury.pay(
-                    day,
+                self.charge_delivery(
                     crate::money::Account::Firm(quay),
                     crate::money::Account::ServiceSector(m),
                     at * Self::PORT_HANDLING_PER_T,
                     crate::money::Why::Freight,
+                    crate::credit::Origin::Carriage,
                 );
             }
         }

@@ -183,10 +183,14 @@ pub enum Origin {
     Power,
     /// A claim an insurer owes on cover it sold.
     Claim,
+    /// Wages for work already done.
+    Wages,
+    /// Carriage: a haul, the dockers, the road up from the quay.
+    Carriage,
 }
 
 impl Origin {
-    pub const ALL: [Origin; 9] = [
+    pub const ALL: [Origin; 11] = [
         Origin::Supply,
         Origin::Care,
         Origin::Upkeep,
@@ -196,6 +200,8 @@ impl Origin {
         Origin::Tax,
         Origin::Power,
         Origin::Claim,
+        Origin::Wages,
+        Origin::Carriage,
     ];
 
     /// Its name on disk. Exhaustive, so a new kind of bill cannot compile
@@ -211,6 +217,8 @@ impl Origin {
             Origin::Tax => 7,
             Origin::Power => 8,
             Origin::Claim => 9,
+            Origin::Wages => 10,
+            Origin::Carriage => 11,
         }
     }
 
@@ -229,6 +237,8 @@ impl Origin {
             Origin::Tax => "tax",
             Origin::Power => "power",
             Origin::Claim => "claims",
+            Origin::Wages => "wages",
+            Origin::Carriage => "carriage",
         }
     }
 }
@@ -474,6 +484,41 @@ impl Book {
             origin,
             once: true,
         }))
+    }
+
+    /// **Add a delivery to the day's account between two parties**: the
+    /// obligation for this debtor, creditor and kind raised today grows by
+    /// `amount`, or is opened if there is none. Unlike `bill`, presenting
+    /// it again adds again — each call is a different delivery.
+    ///
+    /// **Merging is legitimate only because the terms are identical.** Two
+    /// deliveries on the same day between the same firms on the same terms
+    /// fall due on the same day, so one statement for the day's deliveries
+    /// loses nothing an invoice each would carry — and a mill that draws on
+    /// the same farm in both of the day's passes does not grow the book by
+    /// two entries a day for ever.
+    #[allow(clippy::too_many_arguments)]
+    pub fn bill_more(
+        &mut self,
+        day: u64,
+        debtor: Account,
+        creditor: Account,
+        amount: f64,
+        days_to_pay: u64,
+        what: Why,
+        origin: Origin,
+    ) -> Option<Key<Invoice>> {
+        if amount <= 1e-9 || debtor == creditor {
+            return None;
+        }
+        if let Some(&k) = self.bills.get(&(debtor, creditor, origin, day)) {
+            if let Some(inv) = self.invoices.get_mut(k) {
+                inv.amount += amount;
+                self.billed += amount;
+                return Some(k);
+            }
+        }
+        self.bill(day, debtor, creditor, amount, days_to_pay, what, origin)
     }
 
     /// The obligation already on the book for one bill, if there is one.
