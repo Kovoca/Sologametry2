@@ -1074,7 +1074,19 @@ player below move behind this phase accordingly.
    to 2.8 times their cost, cement, livestock and machinery sit on the 0.7
    floor, flour and food at 0.74-0.78 — the same in every world, because
    nothing a works makes answers its price. See CLAUDE.md, "Which chains
-   invert, measured". With credit on: on the branch, next.
+   invert, measured". **And the prices are a step, not a curve**: split by
+   whether a town is short of its target, every commodity sits on the 0.7
+   floor where it is not short and well over cost where it is — coal 2.8-3.5
+   times in the three quarters of towns short of it, oil 7.1-7.5 — while on
+   average towns hold more than twice their coal target. Two faults: a
+   demand elasticity applied to a surplus puts a town 3-30% over its target
+   on the floor, and what a colliery town holds does not reach the rest.
+   **Letting a works cut back when its output does not cover its inputs**
+   (branch `supply-response`) closes the inversions and raises unemployment
+   by 2.6-3.3 points, because the raw materials stay dear. Next, in order:
+   the price's response to a surplus, then why coal does not move from
+   where it is dug — each measured on the same three worlds with this
+   readout. With credit on: on the branch, next.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;
