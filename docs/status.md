@@ -1039,10 +1039,14 @@ player below move behind this phase accordingly.
    fixture has no service bills. **On worlds 7 / 11 / 23 all four collapse**
    (five-year soaks, `--spend-first` and `--cash-on-delivery` on the
    branch's `bin/soak`): mean unemployment 37-60% against the committed
-   model's 12-15%, 58-91% at the end, food at 2.5-3.7 times its cost, the
+   model's 12-15%, 58-90% at the end, food at 2.5-3.7 times its cost, the
    states emptied, 1.2-3.3e12 owed at the end with over 90% of it overdue,
    and 0.4-1.3e12 charged off in the final year. Credit is the less bad
-   rule; nothing is forgotten in any of them. **Traced**: the first to fail
+   rule; nothing is forgotten in any of them. *(The cash-on-delivery runs
+   were rerun: the first set was built from a stale build that still
+   carried a sabotage — a file restored from a backup keeps its older
+   timestamp and cargo does not recompile. Same conclusion.)* **Traced**:
+   the first to fail
    are the machine works, all on stop by day 150 in world 7. Steel priced as
    scarce (1,572-2,997 against a cost of 626-877) and machinery as a glut
    (434-491 against 621-702), 0.72 t of steel a tonne, so a works paid 2.6
@@ -1058,6 +1062,19 @@ player below move behind this phase accordingly.
    under cost at all. Measure first: across the worlds, per kind of works,
    the margin between what its inputs cost it and what its output fetches,
    with credit on, to see how many chains invert and how often.
+   **Measured, 2026-09-24, on the committed model** (`bin/soak` now ends
+   with each kind of works on an accrual basis, at the day's prices, and
+   each commodity's price against its cost; `bin/recipes` gives the
+   reference ratios). Four kinds of works are billed more than they bill:
+   chemical works 1.77-2.25 times, machine works 1.40-1.53, mills
+   1.32-1.46, crackers 0.77-1.76; a chemical works' inputs alone cost more
+   than its output in every monthly sample of every world. Their recipes
+   are sound at the reference (inputs 35%, 58%, 87%, 72% of output). The
+   prices are not: coal, oil, plastics, timber, meat and remedies run 1.4
+   to 2.8 times their cost, cement, livestock and machinery sit on the 0.7
+   floor, flour and food at 0.74-0.78 — the same in every world, because
+   nothing a works makes answers its price. See CLAUDE.md, "Which chains
+   invert, measured". With credit on: on the branch, next.
 
 **Kept on that path, not shown closed:** the production-to-shelf
 integration test (three gates on master in `tests/production_to_shelf.rs`;

@@ -403,7 +403,7 @@ impl Default for Treasury {
     }
 }
 
-fn reason_name(why: Why) -> &'static str {
+pub fn reason_name(why: Why) -> &'static str {
     match why {
         Why::Purchase => "purchases",
         Why::Supply => "supply",

@@ -5951,15 +5951,25 @@ whose firms' failed payments are forgotten:
 
 | | committed | budget + credit | spend + credit | budget + cash | spend + cash |
 |---|---|---|---|---|---|
-| mean unemployment | 14.7 / 11.6 / 13.8% | 51.5 / 42.8 / 37.2% | 49.2 / 44.5 / 42.9% | 58.4 / 52.8 / 51.0% | 60.3 / 54.6 / 50.8% |
-| at the end | 13.8 / 10.1 / 15.9% | 88.1 / 68.1 / 58.6% | 77.6 / 68.0 / 57.9% | 91.5 / 85.1 / 79.9% | 91.5 / 88.5 / 89.6% |
-| food price / cost at the end | 0.82 / 0.75 / 0.78 | 3.67 / 3.47 / 3.67 | 3.67 / 3.29 / 2.45 | 3.67 / 3.67 / 3.67 | 3.67 / 3.67 / 3.64 |
+| mean unemployment | 14.7 / 11.6 / 13.8% | 51.5 / 42.8 / 37.2% | 49.2 / 44.5 / 42.9% | 58.6 / 51.3 / 50.0% | 60.3 / 53.6 / 52.0% |
+| at the end | 13.8 / 10.1 / 15.9% | 88.1 / 68.1 / 58.6% | 77.6 / 68.0 / 57.9% | 89.7 / 85.9 / 72.0% | 89.2 / 86.0 / 89.4% |
+| food price / cost at the end | 0.82 / 0.75 / 0.78 | 3.67 / 3.47 / 3.67 | 3.67 / 3.29 / 2.45 | 3.67 / 3.67 / 3.67 | 3.67 / 3.67 / 3.67 |
 | forgotten, final year | 9.8 / 3.4 / 4.0e10 | nought | nought | nought | nought |
-| owed at the end | 2.9 / 0.7 / 3.4e9 | 3.3 / 1.8 / 1.6e12 | 2.3 / 1.6 / 1.2e12 | 3.3 / 1.9 / 1.9e12 | 2.8 / 1.5 / 1.8e12 |
-| charged off, final year | none | 1.2 / 0.6 / 0.5e12 | 0.8 / 0.5 / 0.4e12 | 1.3 / 0.8 / 0.7e12 | 1.3 / 0.6 / 0.6e12 |
+| owed at the end | 2.9 / 0.7 / 3.4e9 | 3.3 / 1.8 / 1.6e12 | 2.3 / 1.6 / 1.2e12 | 3.2 / 1.9 / 1.9e12 | 2.8 / 1.6 / 1.9e12 |
+| charged off, final year | none | 1.2 / 0.6 / 0.5e12 | 0.8 / 0.5 / 0.4e12 | 1.2 / 0.7 / 0.6e12 | 1.3 / 0.7 / 0.6e12 |
 
 Nothing is forgotten in any of the four, and that is the point: **the
 forgotten tally was paying for something**, and it is not credit.
+
+**The cash-on-delivery columns were measured twice**, and the first
+measurement was wrong for a reason worth keeping. A sabotage pass restores a
+file by moving its backup back, which leaves it the backup's *older*
+timestamp; cargo then took the last sabotaged build for fresh and did not
+recompile, so everything built after the pass — those six soaks, and a full
+suite run — carried "firms' debts are never charged off" compiled in. It
+showed as a gate that had just passed going red. Rerun on a build checked
+newer than its sources, the conclusion stands and the figures above are the
+clean ones. A restored file is touched now.
 
 **Traced, and it is prices.** The first to fail in world 7 are the machine
 works: all sixteen on stop by day 150. A machine works needs 0.72 t of steel
@@ -5982,6 +5992,85 @@ prices here sit below their cost figures in ordinary times. Both are the
 pricing questions this file already names: the landed cost that does not
 reach the price (experiments L and M), and why prices settle under cost at
 all.
+
+### Which chains invert, measured (`bin/soak`, `bin/recipes`)
+
+`bin/soak` now ends with each kind of works' final year **on an accrual
+basis** — what it billed its customers against what it was billed for
+inputs, power, payroll, carriage and goods from abroad, paid or failed —
+then the same works at the day's prices, sampled monthly, and what each
+commodity fetched against its cost. A cash book cannot show a works billed
+twice what it takes in: the half it fails to pay is a shortfall on the
+day's tally and never reaches its books. Power is told from supply by who
+is paid, because a station and a mill are both paid under "supply".
+
+The committed model, five years, worlds 7 / 11 / 23:
+
+| | costs billed / revenue billed | at the day's prices, samples where it loses |
+|---|---|---|
+| chemical works | **2.25 / 2.05 / 1.77** | inputs alone, **100%** in every world |
+| machine works | 1.53 / 1.40 / 1.46 | whole outlay 99 / 79 / 83% |
+| mill | 1.45 / 1.32 / 1.46 | inputs alone 44 / 36 / 36% |
+| cracker | 1.35 / 0.77 / 1.76 | inputs alone 19 / 25 / 50% |
+| shop | 1.04 / 1.01 / 1.02 | — |
+| factory | 0.47 / 0.44 / 0.42 | none |
+| butcher | 0.32 in all three | none |
+| mine, farm, oil field, forestry | 0.01 - 0.34 | none |
+
+**The recipes are not what inverts them.** At the reference prices a
+chemical works spends 35% of its output's value on oil, a machine works
+58% on steel and plastic, a cracker 72%, a mill 87% (`cargo run --release
+--bin recipes`). What inverts them is the prices, and they are structural —
+several read the same in every world:
+
+| price / cost, every town, final year | 7 | 11 | 23 |
+|---|---|---|---|
+| coal | 2.79 | 2.56 | 2.30 |
+| petroleum | 2.47 | 2.56 | 2.49 |
+| plastics | 2.27 | 1.88 | 1.79 |
+| remedies | 2.43 | 2.43 | 2.43 |
+| meat | 2.21 | 2.20 | 2.21 |
+| timber | 1.71 | 1.41 | 2.07 |
+| grain | 1.26 | 1.18 | 1.20 |
+| chemicals | 0.93 | 0.92 | 0.92 |
+| retail goods | 0.82 | 1.00 | 0.94 |
+| flour | 0.78 | 0.74 | 0.74 |
+| processed food | 0.78 | 0.77 | 0.77 |
+| **cement, livestock, machinery** | **0.70** | **0.70** | **0.70** |
+| electricity | 0.56 | 0.48 | 0.54 |
+
+**Raw materials are always scarce and manufactures sit on the glut floor**,
+the 0.7 the price clamp allows. That is what a price reads when nothing a
+works makes answers it: a works runs at its rating whenever it has inputs
+and room, so the scarcity multiplier reports how its stock sits against
+its target — a fact about how the stores were sized — and a chemical works
+buys oil at two and a half times its cost and sells chemicals under theirs
+every day of five years.
+
+Three more things the readout shows, named rather than fixed:
+
+- **A shop's costs are its revenue.** Shops buy at three quarters of the
+  price and sell at the whole of it, and billed 1.01-1.04 of what they took;
+  the retail margin is not reaching their books. Shops relaying goods to
+  other shops at the wholesale share is part of it — 3.0e10 of shop-to-shop
+  supply went unpaid in world 7 — and not established as all of it.
+- **The butcher is inverted at its own reference prices** (0.99 of its
+  output's value is livestock) and is profitable only because livestock
+  sits on the floor and meat at 2.2 times its cost.
+- **A dearer input barely reaches the cost figure.** A cost is built on
+  labour at `VALUE_ADDED_AN_HOUR`, and a machine works' sixty hours a tonne
+  come to 1,320 against a tonne of machinery worth 620 — so by the cost
+  figure machinery is a fifth steel, while by what the works pays out it is
+  more than half. The finished-goods end of the price scale is compressed
+  and the labour-hours are real, and the two do not meet.
+
+**The rejected shutdown rule compared the wrong thing.** It cut a works'
+output as its price fell below its *cost figure*, and prices sit at 0.7-0.8
+of that figure in ordinary times, so it read every glut-floor good as a
+reason to stop. What a works can see, and what a real one stops on, is
+whether its output covers what it pays out to make it — price below average
+variable cost. By that test cement, food and goods are profitable at 0.7
+and carry on, and chemical works, machine works and mills are not.
 
 ## A nation without a state is a province (`src/state.rs`, `src/econ.rs`)
 
