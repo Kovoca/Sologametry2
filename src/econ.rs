@@ -6591,8 +6591,7 @@ impl Economy {
     /// this pass is for; who owns what is the next question, not this one.
     fn distribute_profits(&mut self) {
         use crate::money::{Account, Why};
-        /// Days of its own payroll a firm holds as working capital.
-        const RESERVE_DAYS: f64 = 45.0;
+        const RESERVE_DAYS: f64 = Economy::RESERVE_DAYS;
 
         let day = self.ledger.day;
         if self.staff_today.len() != self.ledger.sites.len() {
@@ -9648,6 +9647,11 @@ impl Economy {
     /// the border and the inland trade cannot drift apart — the whole point
     /// of the round trip breaking even is that both sides use one number.
     pub const WHOLESALE_MARGIN: f64 = 0.75;
+
+    /// **How many days of its outgoings a firm keeps before it pays out
+    /// profit**: of today's, of a day at its rating, or of its cargoes,
+    /// whichever is largest — and never less than its paid-in capital.
+    pub const RESERVE_DAYS: f64 = 45.0;
 
     /// **Unloading a ship, per tonne**, at this country's end: stevedores,
     /// terminal handling and clearance. Real: $8-15 a tonne for bulk grain

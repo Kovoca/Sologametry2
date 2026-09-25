@@ -437,6 +437,7 @@ fn main() {
     report(&readings, years);
     idle_jobs(&g);
     firm_books(&books);
+    reserves(&g);
     println!(
         "\n  failed and forgotten over the final year — shortfalls on the day's tally,
   owed by nobody the next morning — by what for and who failed:\n"
@@ -1680,6 +1681,55 @@ fn idle_jobs(g: &GameState) {
 
 /// **The final year's books for each kind of works**: income, and each
 /// outgoing by reason, and what was left.
+/// **What firms hold at the end, against what they must keep.** A firm pays
+/// out as profit only what it holds above the larger of its paid-in capital
+/// and `RESERVE_DAYS` of its outgoings — read here at its rating, at the
+/// day's prices, which is the part that moves with the price level. If firms
+/// are sitting on their reserve, what they hold is set by the rule and not by
+/// what they earn.
+fn reserves(g: &GameState) {
+    let Some(e) = g.economy.as_ref() else { return };
+    let days = scale_sim::econ::Economy::RESERVE_DAYS;
+    let mut by: std::collections::BTreeMap<String, [f64; 4]> = Default::default();
+    for (s, site) in e.ledger.sites.iter().enumerate() {
+        let a = Account::Firm(s);
+        let held = e.treasury.balance(a);
+        let capital = e.treasury.capital(a);
+        let planned = e.planned_outlay(s) * days;
+        let row = by.entry(format!("{:?}", site.kind)).or_insert([0.0; 4]);
+        row[0] += held;
+        row[1] += capital;
+        row[2] += planned;
+        row[3] += capital.max(planned);
+    }
+    println!(
+        "
+  what firms hold at the end, against what they must keep before paying profit
+  ({days} days of a day at their rating at the day's prices, or their capital):
+"
+    );
+    println!("                       held     capital    at rating    must keep  held / keep");
+    let mut total = [0.0f64; 4];
+    let line = |k: &str, a: &[f64; 4]| {
+        println!(
+            "  {:<16} {:>10.2e} {:>10.2e} {:>11.2e} {:>11.2e} {:>11.2}",
+            k,
+            a[0],
+            a[1],
+            a[2],
+            a[3],
+            if a[3] > 0.0 { a[0] / a[3] } else { f64::NAN }
+        );
+    };
+    for (k, a) in by.iter() {
+        for i in 0..4 {
+            total[i] += a[i];
+        }
+        line(k, a);
+    }
+    line("all firms", &total);
+}
+
 fn firm_books(books: &std::collections::BTreeMap<(String, bool, String), f64>) {
     let mut kinds: Vec<String> = books.keys().map(|k| k.0.clone()).collect();
     kinds.sort();
